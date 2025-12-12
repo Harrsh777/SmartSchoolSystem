@@ -95,7 +95,7 @@ export default function ParentDashboard() {
                 </div>
               </div>
               <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4">
-                <p className="text-sm text-emerald-100 mb-2">Child's Information</p>
+                <p className="text-sm text-emerald-100 mb-2">Child&apos;s Information</p>
                 <p className="text-xl font-bold">{demoStudent.name}</p>
                 <p className="text-sm text-emerald-100">Class {demoStudent.class}-{demoStudent.section} | Roll No: {demoStudent.rollNo}</p>
               </div>
