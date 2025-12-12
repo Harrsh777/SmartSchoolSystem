@@ -3,7 +3,13 @@
 import { HTMLAttributes, ReactNode } from 'react';
 import { motion } from 'framer-motion';
 
-interface CardProps extends HTMLAttributes<HTMLDivElement> {
+// Exclude all props that conflict between HTML div and Framer Motion
+type ExcludedProps = 
+  | 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onDragEnter' | 'onDragExit' | 'onDragLeave' | 'onDragOver'
+  | 'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration'
+  | 'onTransitionEnd';
+
+interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, ExcludedProps> {
   children: ReactNode;
   hover?: boolean;
 }
@@ -14,8 +20,8 @@ export default function Card({ children, className = '', hover = false, ...props
   if (hover) {
     return (
       <motion.div
-        whileHover={{ y: -4, shadow: 'lg' }}
-        className={`${baseStyles} transition-shadow ${className}`}
+        whileHover={{ y: -4 }}
+        className={`${baseStyles} transition-shadow hover:shadow-lg ${className}`}
         {...props}
       >
         {children}
