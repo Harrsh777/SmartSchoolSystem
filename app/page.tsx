@@ -1,6 +1,6 @@
 'use client';
 
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion, useScroll } from 'framer-motion';
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';

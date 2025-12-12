@@ -4,14 +4,14 @@ import { use } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { mockNotices } from '@/lib/demoData';
-import { MessageSquare, Bell, AlertCircle, Calendar, FileText, DollarSign, BookOpen } from 'lucide-react';
+import { MessageSquare, Bell, AlertCircle, Calendar } from 'lucide-react';
 
 export default function CommunicationPage({
   params,
 }: {
   params: Promise<{ school: string }>;
 }) {
-  const { school } = use(params);
+  use(params); // school param available if needed
   const notices = mockNotices;
 
   const priorityColors = {

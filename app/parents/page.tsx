@@ -281,7 +281,7 @@ export default function ParentDashboard() {
 
         {activeTab === 'child' && (
           <Card>
-            <h2 className="text-2xl font-bold text-black mb-6">Child Information</h2>
+            <h2 className="text-2xl font-bold text-black mb-6">Child&apos;s Information</h2>
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
