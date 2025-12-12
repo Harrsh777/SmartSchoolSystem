@@ -31,22 +31,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       lg: 'px-8 py-4 text-lg',
     };
 
-    // Explicitly exclude conflicting props to avoid type conflicts with framer-motion
-    const {
-      onDrag: _onDrag,
-      onDragStart: _onDragStart,
-      onDragEnd: _onDragEnd,
-      onDragEnter: _onDragEnter,
-      onDragExit: _onDragExit,
-      onDragLeave: _onDragLeave,
-      onDragOver: _onDragOver,
-      onAnimationStart: _onAnimationStart,
-      onAnimationEnd: _onAnimationEnd,
-      onAnimationIteration: _onAnimationIteration,
-      onTransitionEnd: _onTransitionEnd,
-      ...safeProps
-    } = props;
-
     return (
       <motion.button
         ref={ref}
@@ -54,7 +38,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         whileTap={disabled ? undefined : { scale: 0.98 }}
         disabled={disabled}
         className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
-        {...safeProps}
+        {...props}
       >
         {children}
       </motion.button>
