@@ -3,7 +3,13 @@
 import { ButtonHTMLAttributes, forwardRef } from 'react';
 import { motion } from 'framer-motion';
 
-interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onDragEnter' | 'onDragExit' | 'onDragLeave' | 'onDragOver'> {
+// Exclude all props that conflict between HTML button and Framer Motion
+type ExcludedProps = 
+  | 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onDragEnter' | 'onDragExit' | 'onDragLeave' | 'onDragOver'
+  | 'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration'
+  | 'onTransitionEnd';
+
+interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, ExcludedProps> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
 }
@@ -25,17 +31,21 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       lg: 'px-8 py-4 text-lg',
     };
 
-    // Explicitly exclude drag-related props to avoid type conflicts with framer-motion
+    // Explicitly exclude conflicting props to avoid type conflicts with framer-motion
     const {
-      onDrag,
-      onDragStart,
-      onDragEnd,
-      onDragEnter,
-      onDragExit,
-      onDragLeave,
-      onDragOver,
+      onDrag: _onDrag,
+      onDragStart: _onDragStart,
+      onDragEnd: _onDragEnd,
+      onDragEnter: _onDragEnter,
+      onDragExit: _onDragExit,
+      onDragLeave: _onDragLeave,
+      onDragOver: _onDragOver,
+      onAnimationStart: _onAnimationStart,
+      onAnimationEnd: _onAnimationEnd,
+      onAnimationIteration: _onAnimationIteration,
+      onTransitionEnd: _onTransitionEnd,
       ...safeProps
-    } = props as ButtonHTMLAttributes<HTMLButtonElement>;
+    } = props;
 
     return (
       <motion.button
