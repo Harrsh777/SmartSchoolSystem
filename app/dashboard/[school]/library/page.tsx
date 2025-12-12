@@ -11,7 +11,7 @@ export default function LibraryPage({
 }: {
   params: Promise<{ school: string }>;
 }) {
-  const { school } = use(params);
+  use(params); // school param available if needed
   const books = mockLibraryBooks;
   const issues = mockLibraryIssues;
 

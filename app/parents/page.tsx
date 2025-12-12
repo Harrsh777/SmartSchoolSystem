@@ -11,7 +11,6 @@ import {
   demoMarks,
   demoFees,
   demoExams,
-  demoTimetable,
   demoReportCard,
 } from '@/lib/studentData';
 import {
@@ -20,16 +19,13 @@ import {
   BookOpen,
   DollarSign,
   FileText,
-  Clock,
   Award,
-  TrendingUp,
   CheckCircle,
   XCircle,
   AlertCircle,
   Download,
   Phone,
   Mail,
-  MapPin,
 } from 'lucide-react';
 
 export default function ParentDashboard() {
@@ -170,7 +166,7 @@ export default function ParentDashboard() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'overview' | 'child' | 'attendance' | 'marks' | 'fees' | 'exams' | 'report')}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
                   activeTab === tab.id
                     ? 'bg-black text-white'

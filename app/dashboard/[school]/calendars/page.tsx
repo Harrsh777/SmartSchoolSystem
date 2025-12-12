@@ -4,15 +4,15 @@ import { use, useState } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { mockCalendarEvents, eventLabels, type CalendarEvent } from '@/lib/demoData';
-import { Calendar, ChevronLeft, ChevronRight, Plus, Star, List, Grid } from 'lucide-react';
+import { mockCalendarEvents, eventLabels } from '@/lib/demoData';
+import { Calendar, ChevronLeft, ChevronRight, Plus, Star } from 'lucide-react';
 
 export default function CalendarsPage({
   params,
 }: {
   params: Promise<{ school: string }>;
 }) {
-  const { school } = use(params);
+  use(params); // school param available if needed
   const [currentDate, setCurrentDate] = useState(new Date(2024, 1, 1)); // February 2024
   const [selectedCalendar, setSelectedCalendar] = useState<string>('Senior Wing Calendar');
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day' | 'list'>('month');

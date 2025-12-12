@@ -4,14 +4,14 @@ import { use } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { mockTransport } from '@/lib/demoData';
-import { Bus, Users, Phone, MapPin } from 'lucide-react';
+import { Bus, Users, Phone } from 'lucide-react';
 
 export default function TransportPage({
   params,
 }: {
   params: Promise<{ school: string }>;
 }) {
-  const { school } = use(params);
+  use(params); // school param available if needed
   const routes = mockTransport;
 
   const stats = {

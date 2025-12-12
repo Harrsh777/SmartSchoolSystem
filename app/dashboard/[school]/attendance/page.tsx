@@ -11,7 +11,7 @@ export default function AttendancePage({
 }: {
   params: Promise<{ school: string }>;
 }) {
-  const { school } = use(params);
+  use(params); // school param available if needed
   const attendance = mockAttendance;
 
   const overallStats = {

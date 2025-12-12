@@ -22,7 +22,6 @@ import {
   FileText,
   Clock,
   Award,
-  TrendingUp,
   CheckCircle,
   XCircle,
   AlertCircle,
@@ -119,7 +118,7 @@ export default function StudentDashboard() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'overview' | 'attendance' | 'marks' | 'fees' | 'exams' | 'timetable' | 'report')}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
                   activeTab === tab.id
                     ? 'bg-black text-white'

@@ -2,7 +2,7 @@
 
 import { use } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { getSchoolBySlug, createSchoolSlug } from '@/lib/demoData';
+import { getSchoolBySlug } from '@/lib/demoData';
 
 export default function SchoolDashboardLayout({
   children,

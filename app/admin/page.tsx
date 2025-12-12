@@ -32,7 +32,7 @@ export default function AdminDashboard() {
   }, []);
 
   const currentYear = new Date().getFullYear();
-  const newSchoolsThisYear = schools.filter(school => {
+  const newSchoolsThisYear = schools.filter(() => {
     // Mock: assume schools created this year
     return true; // For demo, we'll show all as new
   }).length;

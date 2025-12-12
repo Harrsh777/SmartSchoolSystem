@@ -5,14 +5,13 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { mockStudents } from '@/lib/demoData';
 import { Users, Search } from 'lucide-react';
-import Input from '@/components/ui/Input';
 
 export default function StudentsPage({
   params,
 }: {
   params: Promise<{ school: string }>;
 }) {
-  const { school } = use(params);
+  use(params); // school param available if needed
   const students = mockStudents;
 
   return (

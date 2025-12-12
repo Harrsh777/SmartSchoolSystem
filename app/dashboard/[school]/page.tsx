@@ -78,7 +78,7 @@ export default function DashboardPage({
         animate={{ opacity: 1, y: 0 }}
       >
         <h1 className="text-3xl font-bold text-black mb-2">Dashboard Overview</h1>
-        <p className="text-gray-600">Welcome back! Here's what's happening at your school.</p>
+        <p className="text-gray-600">Welcome back! Here&apos;s what&apos;s happening at your school.</p>
       </motion.div>
 
       {/* Stats Grid */}
@@ -126,7 +126,7 @@ export default function DashboardPage({
             </button>
             <button className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left">
               <p className="font-semibold text-black">Mark Attendance</p>
-              <p className="text-sm text-gray-600 mt-1">Record today's attendance</p>
+              <p className="text-sm text-gray-600 mt-1">Record today&apos;s attendance</p>
             </button>
             <button className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left">
               <p className="font-semibold text-black">Create Exam</p>

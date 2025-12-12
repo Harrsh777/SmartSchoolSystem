@@ -83,12 +83,11 @@ const testimonials = [
 
 export default function Home() {
   const containerRef = useRef(null);
-  const { scrollYProgress } = useScroll({
+  useScroll({
     target: containerRef,
     offset: ["start start", "end end"]
   });
   
-  const y = useTransform(scrollYProgress, [0, 1], [0, -50]);
   const [hoveredFeature, setHoveredFeature] = useState<number | null>(null);
 
   return (
@@ -362,7 +361,7 @@ export default function Home() {
                       <span key={i} className="text-amber-400">★</span>
                     ))}
                   </div>
-                  <p className="text-gray-700 text-lg mb-8 italic">"{testimonial.content}"</p>
+                  <p className="text-gray-700 text-lg mb-8 italic">&quot;{testimonial.content}&quot;</p>
                   <div>
                     <div className="font-bold text-gray-900">{testimonial.name}</div>
                     <div className="text-gray-600 text-sm mb-1">{testimonial.role}</div>

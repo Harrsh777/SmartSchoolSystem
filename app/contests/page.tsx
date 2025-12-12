@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { mockContests, type Contest, getStoredSchools } from '@/lib/demoData';
-import { Trophy, Calendar, Users, Award, CheckCircle, X, Search, Filter, Mail, Phone, MapPin, User } from 'lucide-react';
+import { Trophy, Calendar, Users, Award, CheckCircle, X, Search } from 'lucide-react';
 
 interface RegistrationData {
   schoolName: string;

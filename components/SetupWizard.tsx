@@ -65,7 +65,7 @@ export default function SetupWizard({ schoolId, onComplete }: SetupWizardProps) 
     // In a real app, save this data
     // For demo, just mark as complete
     const schools = JSON.parse(localStorage.getItem('eduflow360_schools') || '[]');
-    const schoolIndex = schools.findIndex((s: any) => s.id === schoolId);
+    const schoolIndex = schools.findIndex((s: { id: string }) => s.id === schoolId);
     if (schoolIndex >= 0) {
       schools[schoolIndex].setupCompleted = true;
       localStorage.setItem('eduflow360_schools', JSON.stringify(schools));
@@ -195,7 +195,7 @@ export default function SetupWizard({ schoolId, onComplete }: SetupWizardProps) 
           <div className="flex items-center justify-between mb-8">
             <div>
               <h2 className="text-2xl font-bold text-black">Setup Your School</h2>
-              <p className="text-gray-600 mt-1">Let's get you started in a few simple steps</p>
+              <p className="text-gray-600 mt-1">Let&apos;s get you started in a few simple steps</p>
             </div>
             <button
               onClick={onComplete}

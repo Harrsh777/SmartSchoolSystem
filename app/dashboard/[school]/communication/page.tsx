@@ -20,15 +20,15 @@ export default function CommunicationPage({
     'Low': 'bg-blue-100 text-blue-800',
   };
 
-  // Category icons available for future use
-  const categoryIcons: Record<string, any> = {
-    'Examination': FileText,
-    'Meeting': Calendar,
-    'Event': Calendar,
-    'Fee': DollarSign,
-    'Library': BookOpen,
-    'Holiday': Calendar,
-  };
+  // Category icons available for future use (commented out for now)
+  // const categoryIcons: Record<string, React.ComponentType<{ size?: number }>> = {
+  //   'Examination': FileText,
+  //   'Meeting': Calendar,
+  //   'Event': Calendar,
+  //   'Fee': DollarSign,
+  //   'Library': BookOpen,
+  //   'Holiday': Calendar,
+  // };
 
   const stats = {
     total: notices.length,
