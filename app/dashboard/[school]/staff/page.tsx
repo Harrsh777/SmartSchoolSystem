@@ -1,18 +1,71 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import { mockStaff } from '@/lib/demoData';
-import { UserCheck, Search, Mail, Phone } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import { UserCheck, Search, Mail, Phone, Plus, Upload, HelpCircle } from 'lucide-react';
+import type { Staff } from '@/lib/supabase';
+import StaffTutorial from '@/components/staff/StaffTutorial';
 
 export default function StaffPage({
   params,
 }: {
   params: Promise<{ school: string }>;
 }) {
-  use(params); // school param available if needed
-  const staff = mockStaff;
+  const { school: schoolCode } = use(params);
+  const router = useRouter();
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  useEffect(() => {
+    fetchStaff();
+  }, [schoolCode]);
+
+  const fetchStaff = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/staff?school_code=${schoolCode}`);
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        setStaff(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching staff:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredStaff = staff.filter(member => {
+    const matchesSearch = 
+      member.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      member.staff_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      member.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (member.department && member.department.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    const matchesDepartment = departmentFilter === 'all' || member.department === departmentFilter;
+    
+    return matchesSearch && matchesDepartment;
+  });
+
+  const uniqueDepartments = Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading staff...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -25,9 +78,26 @@ export default function StaffPage({
             <h1 className="text-3xl font-bold text-black mb-2">Staff Management</h1>
             <p className="text-gray-600">Manage all staff members and their information</p>
           </div>
-          <button className="px-6 py-3 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors font-medium">
-            + Add Staff
-          </button>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowTutorial(true)}
+            >
+              <HelpCircle size={18} className="mr-2" />
+              Tutorial
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/dashboard/${schoolCode}/staff/import`)}
+            >
+              <Upload size={18} className="mr-2" />
+              Bulk Import
+            </Button>
+            <Button onClick={() => router.push(`/dashboard/${schoolCode}/staff/add`)}>
+              <Plus size={18} className="mr-2" />
+              Add Staff
+            </Button>
+          </div>
         </div>
       </motion.div>
 
@@ -44,123 +114,177 @@ export default function StaffPage({
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <input
                   type="text"
-                  placeholder="Search staff by name, role, or department..."
+                  placeholder="Search staff by name, staff ID, role, or department..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black"
                 />
               </div>
             </div>
-            <select className="px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black">
-              <option>All Departments</option>
-              <option>Administration</option>
-              <option>Mathematics</option>
-              <option>Languages</option>
-              <option>Science</option>
-              <option>Social Studies</option>
-              <option>Computer Science</option>
-              <option>Sports</option>
+            <select 
+              value={departmentFilter}
+              onChange={(e) => setDepartmentFilter(e.target.value)}
+              className="px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black"
+            >
+              <option value="all">All Departments</option>
+              {uniqueDepartments.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
             </select>
           </div>
         </Card>
       </motion.div>
 
       {/* Staff Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {staff.map((member, index) => (
-          <motion.div
-            key={member.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 + index * 0.1 }}
-          >
-            <Card hover>
-              <div className="flex items-start space-x-4">
-                <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">
-                  {member.name.split(' ').map(n => n[0]).join('')}
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-black mb-1">{member.name}</h3>
-                  <p className="text-sm text-gray-600 mb-2">{member.role}</p>
-                  <p className="text-xs text-gray-500 mb-3">{member.department}</p>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2 text-xs text-gray-600">
-                      <Mail size={14} />
-                      <span>{member.email}</span>
-                    </div>
-                    <div className="flex items-center space-x-2 text-xs text-gray-600">
-                      <Phone size={14} />
-                      <span>{member.phone}</span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-2">
-                      Joined: {new Date(member.joinDate).toLocaleDateString()}
+      {filteredStaff.length === 0 ? (
+        <Card>
+          <div className="text-center py-12">
+            <UserCheck className="mx-auto text-gray-400 mb-4" size={48} />
+            <p className="text-gray-600 text-lg mb-2">No staff found</p>
+            <p className="text-gray-500 text-sm mb-6">
+              {staff.length === 0 
+                ? 'Get started by adding your first staff member'
+                : 'Try adjusting your search or filters'}
+            </p>
+            {staff.length === 0 && (
+              <div className="flex gap-3 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/dashboard/${schoolCode}/staff/import`)}
+                >
+                  <Upload size={18} className="mr-2" />
+                  Bulk Import
+                </Button>
+                <Button onClick={() => router.push(`/dashboard/${schoolCode}/staff/add`)}>
+                  <Plus size={18} className="mr-2" />
+                  Add Staff
+                </Button>
+              </div>
+            )}
+          </div>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredStaff.map((member, index) => (
+            <motion.div
+              key={member.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 + index * 0.05 }}
+            >
+              <Card hover>
+                <div className="flex items-start space-x-4">
+                  <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">
+                    {member.full_name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-black mb-1">{member.full_name}</h3>
+                    <p className="text-sm text-gray-600 mb-2">{member.role}</p>
+                    {member.department && (
+                      <p className="text-xs text-gray-500 mb-3">{member.department}</p>
+                    )}
+                    <div className="space-y-2">
+                      {member.email && (
+                        <div className="flex items-center space-x-2 text-xs text-gray-600">
+                          <Mail size={14} />
+                          <span className="truncate">{member.email}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center space-x-2 text-xs text-gray-600">
+                        <Phone size={14} />
+                        <span>{member.phone}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2">
+                        Joined: {member.date_of_joining ? new Date(member.date_of_joining).toLocaleDateString() : 'N/A'}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div className="mt-4 pt-4 border-t border-gray-200 flex space-x-2">
-                <button className="flex-1 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                  View
-                </button>
-                <button className="flex-1 px-3 py-2 text-sm border-2 border-gray-300 hover:border-black rounded-lg transition-colors">
-                  Edit
-                </button>
-              </div>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+                <div className="mt-4 pt-4 border-t border-gray-200 flex space-x-2">
+                  <button 
+                    onClick={() => router.push(`/dashboard/${schoolCode}/staff/${member.id}/view`)}
+                    className="flex-1 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    View
+                  </button>
+                  <button 
+                    onClick={() => router.push(`/dashboard/${schoolCode}/staff/${member.id}/edit`)}
+                    className="flex-1 px-3 py-2 text-sm border-2 border-gray-300 hover:border-black rounded-lg transition-colors"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {/* Stats Summary */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.8 }}
-        className="grid grid-cols-1 md:grid-cols-4 gap-6"
-      >
-        <Card>
-          <div className="flex items-center space-x-4">
-            <div className="bg-blue-500 p-3 rounded-lg">
-              <UserCheck className="text-white" size={24} />
+      {staff.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8 }}
+          className="grid grid-cols-1 md:grid-cols-4 gap-6"
+        >
+          <Card>
+            <div className="flex items-center space-x-4">
+              <div className="bg-blue-500 p-3 rounded-lg">
+                <UserCheck className="text-white" size={24} />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Total Staff</p>
+                <p className="text-2xl font-bold text-black">{staff.length}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Total Staff</p>
-              <p className="text-2xl font-bold text-black">{staff.length}</p>
+          </Card>
+          <Card>
+            <div className="flex items-center space-x-4">
+              <div className="bg-green-500 p-3 rounded-lg">
+                <UserCheck className="text-white" size={24} />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Teachers</p>
+                <p className="text-2xl font-bold text-black">
+                  {staff.filter(s => s.role.toLowerCase().includes('teacher')).length}
+                </p>
+              </div>
             </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center space-x-4">
-            <div className="bg-green-500 p-3 rounded-lg">
-              <UserCheck className="text-white" size={24} />
+          </Card>
+          <Card>
+            <div className="flex items-center space-x-4">
+              <div className="bg-purple-500 p-3 rounded-lg">
+                <UserCheck className="text-white" size={24} />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Administration</p>
+                <p className="text-2xl font-bold text-black">
+                  {staff.filter(s => s.department === 'Administration').length}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Teachers</p>
-              <p className="text-2xl font-bold text-black">{staff.filter(s => s.role.includes('Teacher')).length}</p>
+          </Card>
+          <Card>
+            <div className="flex items-center space-x-4">
+              <div className="bg-orange-500 p-3 rounded-lg">
+                <UserCheck className="text-white" size={24} />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Departments</p>
+                <p className="text-2xl font-bold text-black">{uniqueDepartments.length}</p>
+              </div>
             </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center space-x-4">
-            <div className="bg-purple-500 p-3 rounded-lg">
-              <UserCheck className="text-white" size={24} />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Administration</p>
-              <p className="text-2xl font-bold text-black">{staff.filter(s => s.department === 'Administration').length}</p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center space-x-4">
-            <div className="bg-orange-500 p-3 rounded-lg">
-              <UserCheck className="text-white" size={24} />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Departments</p>
-              <p className="text-2xl font-bold text-black">{new Set(staff.map(s => s.department)).size}</p>
-            </div>
-          </div>
-        </Card>
-      </motion.div>
+          </Card>
+        </motion.div>
+      )}
+
+      {showTutorial && (
+        <StaffTutorial
+          schoolCode={schoolCode}
+          onClose={() => setShowTutorial(false)}
+        />
+      )}
     </div>
   );
 }

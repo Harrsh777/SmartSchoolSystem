@@ -3,8 +3,16 @@
 export interface School {
   id: string;
   name: string;
+  code?: string;
   email: string;
   address: string;
+  phone?: string;
+  principalName?: string;
+  principalEmail?: string;
+  principalPhone?: string;
+  establishedYear?: string;
+  schoolType?: string;
+  affiliation?: string;
   logo?: string;
   colors?: {
     primary: string;
@@ -203,6 +211,11 @@ export const getSchoolBySlug = (slug: string): School | null => {
 export const getSchoolByEmail = (email: string): School | null => {
   const schools = getStoredSchools();
   return schools.find(s => s.email === email) || null;
+};
+
+export const getSchoolByCode = (code: string): School | null => {
+  const schools = getStoredSchools();
+  return schools.find(s => s.code?.toLowerCase() === code.toLowerCase()) || null;
 };
 
 export const createSchoolSlug = (name: string): string => {

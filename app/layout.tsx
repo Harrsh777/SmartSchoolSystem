@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EduFlow360 - School Management Platform",
+  title: "EduYan - Smart School Management System",
   description: "One Platform. Every School Operation. Simplified.",
 };
 

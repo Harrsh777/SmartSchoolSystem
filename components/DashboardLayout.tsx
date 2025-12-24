@@ -33,7 +33,7 @@ const menuItems = [
   { icon: BookOpen, label: 'Classes', path: '/classes' },
   { icon: Calendar, label: 'Attendance', path: '/attendance' },
   { icon: CalendarDays, label: 'Calendars', path: '/calendars' },
-  { icon: FileText, label: 'Exams', path: '/exams' },
+  { icon: FileText, label: 'Examinations', path: '/examinations' },
   { icon: DollarSign, label: 'Fees', path: '/fees' },
   { icon: Library, label: 'Library', path: '/library' },
   { icon: Bus, label: 'Transport', path: '/transport' },
@@ -78,7 +78,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                 {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
               <Link href="/" className="text-xl font-bold text-black">
-                EduFlow<span className="text-gray-600">360</span>
+                Edu<span className="text-gray-600">-Yan</span>
               </Link>
               <div className="hidden sm:block h-6 w-px bg-gray-300" />
               <span className="hidden sm:block text-gray-700 font-medium">{schoolName}</span>

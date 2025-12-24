@@ -1,27 +1,97 @@
 'use client';
 
 import { use, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import SetupWizard from '@/components/SetupWizard';
-import { mockDashboardStats, getSchoolBySlug } from '@/lib/demoData';
+import Button from '@/components/ui/Button';
 import { Users, UserCheck, DollarSign, Calendar, FileText, Bell } from 'lucide-react';
+import type { AcceptedSchool } from '@/lib/supabase';
+
+interface DashboardStats {
+  totalStudents: number;
+  totalStaff: number;
+  feeCollection: {
+    collected: number;
+    total: number;
+  };
+  todayAttendance: {
+    percentage: number;
+    present: number;
+  };
+  upcomingExams: number;
+  recentNotices: number;
+}
 
 export default function DashboardPage({
   params,
 }: {
   params: Promise<{ school: string }>;
 }) {
-  const { school } = use(params);
-  const [showWizard, setShowWizard] = useState(false);
-  const stats = mockDashboardStats;
+  const { school: schoolCode } = use(params);
+  const router = useRouter();
+  const [school, setSchool] = useState<AcceptedSchool | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalStudents: 0,
+    totalStaff: 0,
+    feeCollection: { collected: 0, total: 0 },
+    todayAttendance: { percentage: 0, present: 0 },
+    upcomingExams: 0,
+    recentNotices: 0,
+  });
 
   useEffect(() => {
-    const schoolData = getSchoolBySlug(school);
-    if (schoolData && !schoolData.setupCompleted) {
-      setShowWizard(true);
+    fetchSchoolData();
+    fetchDashboardStats();
+  }, [schoolCode]);
+
+  const fetchSchoolData = async () => {
+    try {
+      // Get from sessionStorage first
+      const storedSchool = sessionStorage.getItem('school');
+      if (storedSchool) {
+        const schoolData = JSON.parse(storedSchool);
+        if (schoolData.school_code === schoolCode) {
+          setSchool(schoolData);
+          return;
+        }
+      }
+
+      // If not in sessionStorage, fetch from API
+      const response = await fetch(`/api/schools/accepted`);
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        const schoolData = result.data.find((s: AcceptedSchool) => s.school_code === schoolCode);
+        if (schoolData) {
+          setSchool(schoolData);
+          sessionStorage.setItem('school', JSON.stringify(schoolData));
+        } else {
+          router.push('/login');
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching school:', err);
+      router.push('/login');
     }
-  }, [school]);
+  };
+
+  const fetchDashboardStats = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/dashboard/stats?school_code=${schoolCode}`);
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        setStats(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching dashboard stats:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const statCards = [
     {
@@ -38,15 +108,23 @@ export default function DashboardPage({
     },
     {
       title: 'Fee Collection',
-      value: `₹${(stats.feeCollection.collected / 100000).toFixed(1)}L`,
-      subtitle: `of ₹${(stats.feeCollection.total / 100000).toFixed(1)}L`,
+      value: stats.feeCollection.total > 0 
+        ? `₹${(stats.feeCollection.collected / 100000).toFixed(1)}L`
+        : '₹0',
+      subtitle: stats.feeCollection.total > 0
+        ? `of ₹${(stats.feeCollection.total / 100000).toFixed(1)}L`
+        : 'Not configured',
       icon: DollarSign,
       color: 'bg-purple-500',
     },
     {
       title: "Today's Attendance",
-      value: `${stats.todayAttendance.percentage}%`,
-      subtitle: `${stats.todayAttendance.present} present`,
+      value: stats.todayAttendance.percentage > 0
+        ? `${stats.todayAttendance.percentage.toFixed(1)}%`
+        : '0%',
+      subtitle: stats.todayAttendance.present > 0
+        ? `${stats.todayAttendance.present} present`
+        : 'No data',
       icon: Calendar,
       color: 'bg-orange-500',
     },
@@ -64,21 +142,43 @@ export default function DashboardPage({
     },
   ];
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!school) {
+    return (
+      <Card>
+        <div className="text-center py-12">
+          <p className="text-gray-600 text-lg mb-4">School not found</p>
+          <Button onClick={() => router.push('/login')}>
+            Back to Login
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
   return (
-    <>
-      {showWizard && (
-        <SetupWizard
-          schoolId={school}
-          onComplete={() => setShowWizard(false)}
-        />
-      )}
-      <div className="space-y-8">
+    <div className="space-y-8">
+      {/* Welcome Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-3xl font-bold text-black mb-2">Dashboard Overview</h1>
-        <p className="text-gray-600">Welcome back! Here&apos;s what&apos;s happening at your school.</p>
+        <div>
+          <h1 className="text-3xl font-bold text-black mb-2">
+            Welcome, {school.school_name}
+          </h1>
+          <p className="text-gray-600">Here&apos;s what&apos;s happening at your school.</p>
+        </div>
       </motion.div>
 
       {/* Stats Grid */}
@@ -120,19 +220,31 @@ export default function DashboardPage({
         <Card>
           <h2 className="text-xl font-bold text-black mb-4">Quick Actions</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <button className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left">
+            <button
+              onClick={() => router.push(`/dashboard/${schoolCode}/students/add`)}
+              className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left"
+            >
               <p className="font-semibold text-black">Add Student</p>
               <p className="text-sm text-gray-600 mt-1">Register new student</p>
             </button>
-            <button className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left">
+            <button
+              onClick={() => router.push(`/dashboard/${schoolCode}/attendance`)}
+              className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left"
+            >
               <p className="font-semibold text-black">Mark Attendance</p>
               <p className="text-sm text-gray-600 mt-1">Record today&apos;s attendance</p>
             </button>
-            <button className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left">
+            <button
+              onClick={() => router.push(`/dashboard/${schoolCode}/examinations`)}
+              className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left"
+            >
               <p className="font-semibold text-black">Create Exam</p>
               <p className="text-sm text-gray-600 mt-1">Schedule new examination</p>
             </button>
-            <button className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left">
+            <button
+              onClick={() => router.push(`/dashboard/${schoolCode}/communication`)}
+              className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left"
+            >
               <p className="font-semibold text-black">Send Notice</p>
               <p className="text-sm text-gray-600 mt-1">Publish announcement</p>
             </button>
@@ -140,7 +252,6 @@ export default function DashboardPage({
         </Card>
       </motion.div>
     </div>
-    </>
   );
 }
 

@@ -1,170 +1,198 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import { mockNotices } from '@/lib/demoData';
-import { MessageSquare, Bell, AlertCircle, Calendar } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import { Plus, Search, Bell, FileText, AlertCircle, Edit2, Archive } from 'lucide-react';
+import NoticeStats from '@/components/communication/NoticeStats';
+import NoticeFilters from '@/components/communication/NoticeFilters';
+import NoticeCard from '@/components/communication/NoticeCard';
+import CreateNoticeModal from '@/components/communication/CreateNoticeModal';
+import EditNoticeModal from '@/components/communication/EditNoticeModal';
+import type { Notice } from '@/lib/supabase';
 
 export default function CommunicationPage({
   params,
 }: {
   params: Promise<{ school: string }>;
 }) {
-  use(params); // school param available if needed
-  const notices = mockNotices;
+  const { school: schoolCode } = use(params);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
+  const [filters, setFilters] = useState({
+    search: '',
+    category: 'all',
+    priority: 'all',
+    status: 'all',
+  });
 
-  const priorityColors = {
-    'High': 'bg-red-100 text-red-800',
-    'Medium': 'bg-yellow-100 text-yellow-800',
-    'Low': 'bg-blue-100 text-blue-800',
+  useEffect(() => {
+    fetchNotices();
+  }, [schoolCode, filters]);
+
+  const fetchNotices = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        ...(filters.category !== 'all' && { category: filters.category }),
+        ...(filters.priority !== 'all' && { priority: filters.priority }),
+        ...(filters.status !== 'all' && { status: filters.status }),
+        ...(filters.search && { search: filters.search }),
+      });
+
+      const response = await fetch(`/api/communication/notices?${params}`);
+      const result = await response.json();
+
+      if (response.ok && result.data) {
+        setNotices(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching notices:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Category icons available for future use (commented out for now)
-  // const categoryIcons: Record<string, React.ComponentType<{ size?: number }>> = {
-  //   'Examination': FileText,
-  //   'Meeting': Calendar,
-  //   'Event': Calendar,
-  //   'Fee': DollarSign,
-  //   'Library': BookOpen,
-  //   'Holiday': Calendar,
-  // };
-
-  const stats = {
-    total: notices.length,
-    active: notices.filter(n => n.status === 'Active').length,
-    highPriority: notices.filter(n => n.priority === 'High').length,
+  const handleEdit = (notice: Notice) => {
+    setSelectedNotice(notice);
+    setShowEditModal(true);
   };
+
+  const handleArchive = async (noticeId: string) => {
+    if (!confirm('Are you sure you want to archive this notice? It will be moved to archived status.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/communication/notices/${noticeId}?school_code=${schoolCode}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        fetchNotices();
+      } else {
+        alert(result.error || 'Failed to archive notice');
+      }
+    } catch (error) {
+      console.error('Error archiving notice:', error);
+      alert('Failed to archive notice. Please try again.');
+    }
+  };
+
+  const handleFilterChange = (key: string, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading notices...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
+      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
+        className="flex items-center justify-between"
       >
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Communication Hub</h1>
-            <p className="text-gray-600">Manage notices, announcements, and messages</p>
-          </div>
-          <button className="px-6 py-3 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors font-medium">
-            + New Notice
-          </button>
+        <div>
+          <h1 className="text-3xl font-bold text-black mb-2">Communication Hub</h1>
+          <p className="text-gray-600">Manage notices, announcements, and messages</p>
         </div>
+        <Button onClick={() => setShowCreateModal(true)}>
+          <Plus size={18} className="mr-2" />
+          New Notice
+        </Button>
       </motion.div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <Card>
-            <div className="flex items-center space-x-4">
-              <div className="bg-blue-500 p-3 rounded-lg">
-                <MessageSquare className="text-white" size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Total Notices</p>
-                <p className="text-2xl font-bold text-black">{stats.total}</p>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <Card>
-            <div className="flex items-center space-x-4">
-              <div className="bg-green-500 p-3 rounded-lg">
-                <Bell className="text-white" size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Active Notices</p>
-                <p className="text-2xl font-bold text-black">{stats.active}</p>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <Card>
-            <div className="flex items-center space-x-4">
-              <div className="bg-red-500 p-3 rounded-lg">
-                <AlertCircle className="text-white" size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">High Priority</p>
-                <p className="text-2xl font-bold text-black">{stats.highPriority}</p>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-      </div>
+      {/* Stats Cards */}
+      <NoticeStats notices={notices} onStatClick={handleFilterChange} />
+
+      {/* Filters */}
+      <NoticeFilters
+        filters={filters}
+        onFilterChange={handleFilterChange}
+      />
 
       {/* Notices List */}
-      <div className="space-y-4">
-        {notices.map((notice, index) => (
-          <motion.div
-            key={notice.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 + index * 0.1 }}
-          >
-            <Card hover>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <h3 className="text-xl font-bold text-black">{notice.title}</h3>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                      priorityColors[notice.priority as keyof typeof priorityColors]
-                    }`}>
-                      {notice.priority}
-                    </span>
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                      {notice.category}
-                    </span>
-                  </div>
-                  <p className="text-gray-600 mb-4">{notice.content}</p>
-                  <div className="flex items-center space-x-4 text-sm text-gray-500">
-                    <div className="flex items-center space-x-1">
-                      <Calendar size={16} />
-                      <span>
-                        {new Date(notice.date).toLocaleDateString('en-US', { 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </span>
-                    </div>
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                      notice.status === 'Active' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {notice.status}
-                    </span>
-                  </div>
-                </div>
-                <div className="ml-4 flex space-x-2">
-                  <button className="px-4 py-2 text-sm border-2 border-gray-300 hover:border-black rounded-lg transition-colors">
-                    Edit
-                  </button>
-                  <button className="px-4 py-2 text-sm bg-black text-white hover:bg-gray-800 rounded-lg transition-colors">
-                    View
-                  </button>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        {notices.length === 0 ? (
+          <Card>
+            <div className="text-center py-12">
+              <Bell className="mx-auto text-gray-400 mb-4" size={48} />
+              <p className="text-gray-600 text-lg mb-2">No notices found</p>
+              <p className="text-gray-500 text-sm mb-6">
+                {filters.search || filters.category !== 'all' || filters.priority !== 'all' || filters.status !== 'all'
+                  ? 'Try adjusting your filters'
+                  : 'Create your first notice to get started'}
+              </p>
+              {!filters.search && filters.category === 'all' && filters.priority === 'all' && filters.status === 'all' && (
+                <Button onClick={() => setShowCreateModal(true)}>
+                  <Plus size={18} className="mr-2" />
+                  Create First Notice
+                </Button>
+              )}
+            </div>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {notices.map((notice) => (
+              <NoticeCard
+                key={notice.id}
+                notice={notice}
+                onEdit={() => handleEdit(notice)}
+                onArchive={() => handleArchive(notice.id!)}
+              />
+            ))}
+          </div>
+        )}
+      </motion.div>
+
+      {/* Modals */}
+      {showCreateModal && (
+        <CreateNoticeModal
+          schoolCode={schoolCode}
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={() => {
+            setShowCreateModal(false);
+            fetchNotices();
+          }}
+        />
+      )}
+
+      {showEditModal && selectedNotice && (
+        <EditNoticeModal
+          schoolCode={schoolCode}
+          notice={selectedNotice}
+          onClose={() => {
+            setShowEditModal(false);
+            setSelectedNotice(null);
+          }}
+          onSuccess={() => {
+            setShowEditModal(false);
+            setSelectedNotice(null);
+            fetchNotices();
+          }}
+        />
+      )}
     </div>
   );
 }
-
