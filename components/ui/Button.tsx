@@ -1,16 +1,12 @@
 'use client';
 
-import { ButtonHTMLAttributes, forwardRef } from 'react';
+import { forwardRef, ButtonHTMLAttributes } from 'react';
 import { motion } from 'framer-motion';
 
-// Exclude all props that conflict between HTML button and Framer Motion
-type ExcludedProps = 
-  | 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onDragEnter' | 'onDragExit' | 'onDragLeave' | 'onDragOver'
-  | 'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration'
-  | 'onTransitionEnd';
+type ExcludedProps = 'variant' | 'size';
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, ExcludedProps> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'dark';
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -19,10 +15,11 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const baseStyles = 'font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
     
     const variants = {
-      primary: 'bg-black text-white hover:bg-gray-800 focus:ring-black disabled:hover:bg-black',
-      secondary: 'bg-gray-100 text-black hover:bg-gray-200 focus:ring-gray-300 disabled:hover:bg-gray-100',
-      outline: 'border-2 border-black text-black hover:bg-black hover:text-white focus:ring-black disabled:hover:bg-transparent disabled:hover:text-black',
-      ghost: 'text-black hover:bg-gray-100 focus:ring-gray-300 disabled:hover:bg-transparent',
+      primary: 'bg-[#FFD66B] text-[#2B2B2B] hover:bg-[#F5C84B] focus:ring-[#FFD66B] shadow-lg shadow-[#FFD66B]/20 hover:shadow-xl hover:shadow-[#FFD66B]/30 disabled:hover:bg-[#FFD66B]',
+      secondary: 'bg-[#EDEDED] text-[#2B2B2B] hover:bg-[#E1E1DB] focus:ring-[#6B6B6B] shadow-md disabled:hover:bg-[#EDEDED]',
+      outline: 'border-2 border-[#FFD66B] text-[#2B2B2B] hover:bg-[#FFD66B] hover:text-[#2B2B2B] focus:ring-[#FFD66B] shadow-md hover:shadow-lg disabled:hover:bg-transparent disabled:hover:text-[#2B2B2B]',
+      ghost: 'text-[#2B2B2B] hover:bg-[#FFF2C2] hover:text-[#2B2B2B] focus:ring-[#FFD66B] disabled:hover:bg-transparent',
+      dark: 'bg-[#2B2B2B] text-[#FFFFFF] hover:bg-[#3A3A3A] focus:ring-[#FFD66B] shadow-lg shadow-[#2B2B2B]/20 hover:shadow-xl disabled:hover:bg-[#2B2B2B]',
     };
 
     const sizes = {
@@ -49,4 +46,3 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = 'Button';
 
 export default Button;
-

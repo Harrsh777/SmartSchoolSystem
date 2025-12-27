@@ -20,7 +20,7 @@ export async function PATCH(
     // Verify schedule belongs to exam and school
     const { data: existingSchedule, error: fetchError } = await supabase
       .from('exam_schedules')
-      .select('id, exam_id, school_code')
+      .select('id, exam_id, school_code, exam_date, class, section, start_time, end_time')
       .eq('id', id)
       .eq('exam_id', examId)
       .eq('school_code', school_code)
@@ -42,7 +42,7 @@ export async function PATCH(
         .single();
 
       if (exam) {
-        const examDate = updateData.exam_date ? new Date(updateData.exam_date) : new Date(existingSchedule.exam_date);
+        const examDate = updateData.exam_date ? new Date(String(updateData.exam_date)) : new Date(String((existingSchedule as { exam_date?: string }).exam_date || ''));
         const examStart = new Date(exam.start_date);
         const examEnd = new Date(exam.end_date);
         

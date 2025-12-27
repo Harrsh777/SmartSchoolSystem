@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, GraduationCap, Building2 } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Building2 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
 export default function ViewStudentPage({
@@ -20,6 +20,7 @@ export default function ViewStudentPage({
 
   useEffect(() => {
     fetchStudent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId, schoolCode]);
 
   const fetchStudent = async () => {

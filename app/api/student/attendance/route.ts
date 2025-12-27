@@ -42,8 +42,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch staff names for marked_by
+    interface AttendanceRecord {
+      marked_by?: string;
+      [key: string]: unknown;
+    }
     const attendanceWithStaff = await Promise.all(
-      (attendance || []).map(async (record: any) => {
+      (attendance || []).map(async (record: AttendanceRecord) => {
         if (record.marked_by) {
           const { data: staffData } = await supabase
             .from('staff')

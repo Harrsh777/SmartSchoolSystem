@@ -15,13 +15,13 @@ interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, ExcludedProps> 
 }
 
 export default function Card({ children, className = '', hover = false, ...props }: CardProps) {
-  const baseStyles = 'bg-white rounded-xl border border-gray-200 p-6 shadow-sm';
+  const baseStyles = 'bg-[#FFFFFF] rounded-2xl border border-[#E1E1DB] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)]';
   
   if (hover) {
     return (
       <motion.div
-        whileHover={{ y: -4 }}
-        className={`${baseStyles} transition-shadow hover:shadow-lg ${className}`}
+        whileHover={{ y: -6, scale: 1.01 }}
+        className={`${baseStyles} transition-all duration-300 hover:bg-[#FFF7DB] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:border-[#FFD66B] ${className}`}
         {...props}
       >
         {children}
@@ -35,4 +35,3 @@ export default function Card({ children, className = '', hover = false, ...props
     </div>
   );
 }
-

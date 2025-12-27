@@ -1,21 +1,26 @@
 'use client';
 
 import TutorialModal from '@/components/TutorialModal';
-import { BookOpen, Plus, Users, UserCheck, Edit, Trash2 } from 'lucide-react';
+import { Plus, Users, UserCheck, Edit, Trash2 } from 'lucide-react';
 
 interface ClassesTutorialProps {
   schoolCode: string;
   onClose: () => void;
 }
 
-export default function ClassesTutorial({ schoolCode, onClose }: ClassesTutorialProps) {
+export default function ClassesTutorial({ 
+  // schoolCode kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  schoolCode, 
+  onClose 
+}: ClassesTutorialProps) {
   const steps = [
     {
       title: 'Understanding the Classes Page',
       content: (
         <div className="space-y-4">
           <p className="text-gray-700">
-            The Classes page helps you manage your school's class structure. Classes are automatically 
+            The Classes page helps you manage your school&apos;s class structure. Classes are automatically 
             detected from your student data, but you can also create them manually.
           </p>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -55,7 +60,7 @@ export default function ClassesTutorial({ schoolCode, onClose }: ClassesTutorial
                 <div>
                   <h4 className="font-semibold text-green-900 mb-1">Add Class Button</h4>
                   <p className="text-green-800 text-sm">
-                    Click this to manually create a new class. You'll specify:
+                    Click this to manually create a new class. You&apos;ll specify:
                   </p>
                   <ul className="list-disc list-inside text-green-800 text-sm mt-2 space-y-1">
                     <li>Class name (e.g., 10, 9, 8)</li>
@@ -63,8 +68,8 @@ export default function ClassesTutorial({ schoolCode, onClose }: ClassesTutorial
                     <li>Academic Year (defaults to current year)</li>
                   </ul>
                   <p className="text-green-800 text-sm mt-2">
-                    <strong>Note:</strong> Classes are automatically detected from students, 
-                    so you usually don't need to create them manually.
+                    <strong>Note:</strong> Classes are automatically detected from students,
+                    so you usually don&apos;t need to create them manually.
                   </p>
                 </div>
               </div>
@@ -94,7 +99,7 @@ export default function ClassesTutorial({ schoolCode, onClose }: ClassesTutorial
                 <div>
                   <h4 className="font-semibold text-purple-900 mb-1">Assign Teacher Button</h4>
                   <p className="text-purple-800 text-sm">
-                    Click "Assign Teacher" to assign a class teacher to a class. You can:
+                    Click &quot;Assign Teacher&quot; to assign a class teacher to a class. You can:
                   </p>
                   <ul className="list-disc list-inside text-purple-800 text-sm mt-2 space-y-1">
                     <li>Search and select from available teachers</li>
@@ -123,7 +128,7 @@ export default function ClassesTutorial({ schoolCode, onClose }: ClassesTutorial
                 <h4 className="font-semibold text-orange-900">Edit Button</h4>
               </div>
               <p className="text-orange-800 text-sm">
-                Click "Edit" to modify class details like section or academic year. 
+                Click &quot;Edit&quot; to modify class details like section or academic year. 
                 Note that you cannot change the class name once created.
               </p>
             </div>
@@ -159,7 +164,7 @@ export default function ClassesTutorial({ schoolCode, onClose }: ClassesTutorial
               <li>Assign class teachers to help organize your school structure</li>
               <li>Click student counts to quickly view all students in a class</li>
               <li>Each class must have a unique combination of class, section, and academic year</li>
-              <li>You can't delete classes with students - remove students first if needed</li>
+              <li>You can&apos;t delete classes with students - remove students first if needed</li>
               <li>Use the search bar to quickly find specific classes</li>
             </ul>
           </div>

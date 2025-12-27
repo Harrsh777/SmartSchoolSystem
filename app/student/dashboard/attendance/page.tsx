@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { 
@@ -45,22 +45,7 @@ export default function StudentAttendancePage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  useEffect(() => {
-    const storedStudent = sessionStorage.getItem('student');
-    if (storedStudent) {
-      const studentData = JSON.parse(storedStudent);
-      setStudent(studentData);
-      fetchAttendance(studentData);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (student) {
-      fetchAttendance(student);
-    }
-  }, [startDate, endDate]);
-
-  const fetchAttendance = async (studentData: Student) => {
+  const fetchAttendance = useCallback(async (studentData: Student) => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -69,13 +54,13 @@ export default function StudentAttendancePage() {
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
 
-      const response = await fetch(`/api/student/attendance?${params.toString()}`);
+      const response = await fetch(`/api/attendance/student?${params.toString()}`);
       const result = await response.json();
 
       if (response.ok && result.data) {
         setAttendance(result.data);
-        if (result.stats) {
-          setStats(result.stats);
+        if (result.statistics) {
+          setStats(result.statistics);
         }
       }
     } catch (err) {
@@ -83,7 +68,21 @@ export default function StudentAttendancePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [startDate, endDate]);
+
+  useEffect(() => {
+    const storedStudent = sessionStorage.getItem('student');
+    if (storedStudent) {
+      const studentData = JSON.parse(storedStudent);
+      setStudent(studentData);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (student) {
+      fetchAttendance(student);
+    }
+  }, [startDate, endDate, student, fetchAttendance]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -293,7 +292,7 @@ export default function StudentAttendancePage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {record.staff?.full_name || 'N/A'}
+                      {record.marked_by_staff?.full_name || 'N/A'}
                     </td>
                   </tr>
                 ))}

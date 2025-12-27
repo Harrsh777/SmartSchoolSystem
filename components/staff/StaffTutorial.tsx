@@ -1,14 +1,19 @@
 'use client';
 
 import TutorialModal from '@/components/TutorialModal';
-import { UserCheck, Plus, Upload, Search, Eye, Edit } from 'lucide-react';
+import { Plus, Upload, Search, Eye, Edit } from 'lucide-react';
 
 interface StaffTutorialProps {
   schoolCode: string;
   onClose: () => void;
 }
 
-export default function StaffTutorial({ schoolCode, onClose }: StaffTutorialProps) {
+export default function StaffTutorial({ 
+  // schoolCode kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  schoolCode, 
+  onClose 
+}: StaffTutorialProps) {
   const steps = [
     {
       title: 'Understanding the Staff Page',
@@ -120,7 +125,7 @@ export default function StaffTutorial({ schoolCode, onClose }: StaffTutorialProp
                 <h4 className="font-semibold text-green-900">View Button</h4>
               </div>
               <p className="text-green-800 text-sm">
-                Click "View" to see complete staff details including personal information, 
+                Click &quot;View&quot; to see complete staff details including personal information, 
                 contact details, employment history, qualifications, and role assignments.
               </p>
             </div>
@@ -131,7 +136,7 @@ export default function StaffTutorial({ schoolCode, onClose }: StaffTutorialProp
                 <h4 className="font-semibold text-orange-900">Edit Button</h4>
               </div>
               <p className="text-orange-800 text-sm">
-                Click "Edit" to update staff information. You can modify roles, departments, 
+                Click &quot;Edit&quot; to update staff information. You can modify roles, departments, 
                 contact information, and other details. Staff ID and school code cannot be changed.
               </p>
             </div>

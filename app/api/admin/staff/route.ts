@@ -42,11 +42,17 @@ export async function GET(request: NextRequest) {
     let filteredStaff = staff || [];
     if (search) {
       const searchLower = search.toLowerCase();
-      filteredStaff = filteredStaff.filter((s: any) =>
-        s.full_name?.toLowerCase().includes(searchLower) ||
-        s.staff_id?.toLowerCase().includes(searchLower) ||
-        s.role?.toLowerCase().includes(searchLower) ||
-        s.school_code?.toLowerCase().includes(searchLower)
+      interface StaffWithSearch {
+        full_name?: string;
+        staff_id?: string;
+        role?: string;
+        [key: string]: unknown;
+      }
+      filteredStaff = filteredStaff.filter((s: StaffWithSearch) =>
+        String(s.full_name || '').toLowerCase().includes(searchLower) ||
+        String(s.staff_id || '').toLowerCase().includes(searchLower) ||
+        String(s.role || '').toLowerCase().includes(searchLower) ||
+        String(s.school_code || '').toLowerCase().includes(searchLower)
       );
     }
 

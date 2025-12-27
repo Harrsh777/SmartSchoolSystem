@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import { User, MapPin, Calendar, GraduationCap } from 'lucide-react';
+import { MapPin, Calendar, GraduationCap } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
 export default function PersonalInfoPage() {

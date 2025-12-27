@@ -4,12 +4,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import { GraduationCap, UserCheck, Building2, ArrowLeft, Shield, Lock } from 'lucide-react';
+import { GraduationCap, UserCheck, Building2, ArrowLeft, Shield, Lock, DollarSign } from 'lucide-react';
 import StudentLoginForm from '@/components/auth/StudentLoginForm';
 import TeacherLoginForm from '@/components/auth/TeacherLoginForm';
 import PrincipalLoginForm from '@/components/auth/PrincipalLoginForm';
 
-type Role = 'student' | 'teacher' | 'principal' | null;
+type Role = 'student' | 'teacher' | 'principal' | 'accountant' | null;
 
 interface RoleCardProps {
   role: {
@@ -167,6 +167,15 @@ export default function LoginPage() {
       hoverColor: 'purple-300',
     },
     {
+      id: 'accountant' as Role,
+      title: 'Login as Accountant',
+      icon: DollarSign,
+      gradient: 'from-emerald-400 to-teal-400',
+      description: 'Access fees management',
+      color: 'emerald',
+      hoverColor: 'emerald-300',
+    },
+    {
       id: 'principal' as Role,
       title: 'Login as Principal',
       icon: Building2,
@@ -227,6 +236,26 @@ export default function LoginPage() {
                   transition={{ duration: 0.3 }}
                 >
                   <TeacherLoginForm />
+                </motion.div>
+              )}
+
+              {selectedRole === 'accountant' && (
+                <motion.div
+                  key="accountant"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="text-center">
+                    <p className="text-gray-600 mb-4">Accountant login</p>
+                    <Link
+                      href="/accountant/login"
+                      className="inline-block px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                    >
+                      Go to Accountant Login
+                    </Link>
+                  </div>
                 </motion.div>
               )}
 

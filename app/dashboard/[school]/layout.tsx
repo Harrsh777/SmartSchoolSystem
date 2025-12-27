@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import { TranslationProvider } from '@/contexts/TranslationContext';
 import type { AcceptedSchool } from '@/lib/supabase';
 
 export default function SchoolDashboardLayout({
@@ -41,9 +42,11 @@ export default function SchoolDashboardLayout({
   }, [schoolCode]);
 
   return (
-    <DashboardLayout schoolName={schoolName}>
-      {children}
-    </DashboardLayout>
+    <TranslationProvider>
+      <DashboardLayout schoolName={schoolName}>
+        {children}
+      </DashboardLayout>
+    </TranslationProvider>
   );
 }
 

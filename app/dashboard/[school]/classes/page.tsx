@@ -31,6 +31,7 @@ export default function ClassesPage({
     fetchClasses();
     // Automatically detect and create classes from students
     autoDetectClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const autoDetectClasses = async () => {
@@ -41,7 +42,13 @@ export default function ClassesPage({
 
       if (detectResponse.ok && detectResult.data) {
         // Filter only new classes (that don't exist)
-        const newClasses = detectResult.data.filter((cls: any) => !cls.exists);
+        interface ClassData {
+          exists?: boolean;
+          class: string;
+          section: string;
+          [key: string]: unknown;
+        }
+        const newClasses = detectResult.data.filter((cls: ClassData) => !cls.exists);
         
         if (newClasses.length > 0) {
           // Automatically create them

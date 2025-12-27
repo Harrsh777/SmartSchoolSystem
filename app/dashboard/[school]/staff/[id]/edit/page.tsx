@@ -19,6 +19,7 @@ export default function EditStaffPage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [staff, setStaff] = useState<Staff | null>(null);
+  const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
   const [formData, setFormData] = useState({
     staff_id: '',
     full_name: '',
@@ -37,7 +38,21 @@ export default function EditStaffPage({
 
   useEffect(() => {
     fetchStaff();
+    fetchSubjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffId, schoolCode]);
+
+  const fetchSubjects = async () => {
+    try {
+      const response = await fetch(`/api/timetable/subjects?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setSubjects(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching subjects:', error);
+    }
+  };
 
   const fetchStaff = async () => {
     try {
@@ -209,14 +224,20 @@ export default function EditStaffPage({
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Designation
+                  Designation (Subject)
                 </label>
-                <Input
-                  type="text"
-                  value={formData.designation}
+                <select
+                  value={formData.designation || ''}
                   onChange={(e) => handleChange('designation', e.target.value)}
-                  placeholder="Job designation"
-                />
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                >
+                  <option value="">Select a subject</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.name}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

@@ -6,9 +6,16 @@ import Card from '@/components/ui/Card';
 import { Bell } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
+interface NoticeData {
+  publish_at?: string | null;
+  [key: string]: unknown;
+}
+
 export default function CommunicationPage() {
+  // student kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [student, setStudent] = useState<Student | null>(null);
-  const [notices, setNotices] = useState<any[]>([]);
+  const [notices, setNotices] = useState<NoticeData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,12 +29,21 @@ export default function CommunicationPage() {
 
   const fetchNotices = async (studentData: Student) => {
     try {
+      setLoading(true);
       const response = await fetch(
-        `/api/communication/notices?school_code=${studentData.school_code}&status=active`
+        `/api/communication/notices?school_code=${studentData.school_code}&status=Active`
       );
       const result = await response.json();
       if (response.ok && result.data) {
-        setNotices(result.data);
+        // Filter to show only published notices (publish_at is in the past or null)
+        const now = new Date();
+        const publishedNotices = result.data.filter((notice: NoticeData) => {
+          if (!notice.publish_at) return true; // If no publish_at, show immediately
+          return new Date(notice.publish_at) <= now;
+        });
+        setNotices(publishedNotices);
+      } else {
+        console.error('Error fetching notices:', result.error);
       }
     } catch (err) {
       console.error('Error fetching notices:', err);

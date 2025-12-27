@@ -82,7 +82,16 @@ export default function EditNoticeModal({
 
     setSaving(true);
     try {
-      const updateData: any = {
+      interface UpdateData {
+        title: string;
+        content: string;
+        category: string;
+        priority: string;
+        status?: string;
+        publish_at?: string | null;
+        [key: string]: unknown;
+      }
+      const updateData: UpdateData = {
         title: formData.title,
         content: formData.content,
         category: formData.category,
@@ -203,7 +212,7 @@ export default function EditNoticeModal({
                   </label>
                   <select
                     value={formData.status}
-                    onChange={(e) => handleChange('status', e.target.value as any)}
+                    onChange={(e) => handleChange('status', e.target.value as 'Active' | 'Inactive' | 'Archived')}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
                     disabled={notice.status === 'Archived'}
                   >

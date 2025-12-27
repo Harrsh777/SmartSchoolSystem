@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-export async function GET(request: NextRequest) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function GET(_request: NextRequest) {
   try {
     // Test if accepted_schools table exists and is accessible
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('accepted_schools')
       .select('count')
       .limit(1);
@@ -33,11 +34,11 @@ export async function GET(request: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Unknown error',
+        error: error instanceof Error ? error.message : 'Unknown error',
         message: 'Failed to connect to Supabase. Please check your environment variables.'
       },
       { status: 500 }

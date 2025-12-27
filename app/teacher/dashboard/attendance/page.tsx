@@ -10,10 +10,7 @@ import type { Staff, Student, Class } from '@/lib/supabase';
 
 type AttendanceStatus = 'present' | 'absent' | 'late';
 
-interface AttendanceRecord {
-  student_id: string;
-  status: AttendanceStatus;
-}
+// AttendanceRecord interface removed as it's not used
 
 export default function TeacherAttendancePage() {
   const router = useRouter();
@@ -22,11 +19,14 @@ export default function TeacherAttendancePage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
+  // existingAttendance kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [existingAttendance, setExistingAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [isMarked, setIsMarked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isClassTeacher, setIsClassTeacher] = useState(false);
 
   useEffect(() => {
     // Check if teacher is logged in
@@ -52,18 +52,28 @@ export default function TeacherAttendancePage() {
     if (assignedClass && selectedDate) {
       fetchExistingAttendance();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignedClass, selectedDate]);
 
   const fetchClassAndStudents = async (teacherData: Staff) => {
     try {
       setLoading(true);
       
-      // Fetch class assigned to this teacher
-      const classResponse = await fetch(`/api/classes/teacher?teacher_id=${teacherData.id}&school_code=${teacherData.school_code}`);
+      // Fetch class assigned to this teacher - pass both teacher_id and staff_id
+      const queryParams = new URLSearchParams({
+        school_code: teacherData.school_code,
+        teacher_id: teacherData.id,
+      });
+      if (teacherData.staff_id) {
+        queryParams.append('staff_id', teacherData.staff_id);
+      }
+      
+      const classResponse = await fetch(`/api/classes/teacher?${queryParams.toString()}`);
       const classResult = await classResponse.json();
       
       if (classResponse.ok && classResult.data) {
         setAssignedClass(classResult.data);
+        setIsClassTeacher(true);
         
         // Fetch students for this class
         const studentsResponse = await fetch(
@@ -83,8 +93,7 @@ export default function TeacherAttendancePage() {
         }
       } else {
         // Teacher is not assigned to any class
-        alert('You are not assigned as a class teacher. Please contact the principal.');
-        router.push('/teacher/dashboard');
+        setIsClassTeacher(false);
       }
     } catch (err) {
       console.error('Error fetching class and students:', err);
@@ -99,18 +108,23 @@ export default function TeacherAttendancePage() {
 
     try {
       const response = await fetch(
-        `/api/attendance?class_id=${assignedClass.id}&date=${selectedDate}&school_code=${teacher.school_code}`
+        `/api/attendance/class?class_id=${assignedClass.id}&date=${selectedDate}&school_code=${teacher.school_code}`
       );
       const result = await response.json();
 
-      if (response.ok && result.data) {
+      if (response.ok && result.data && result.data.length > 0) {
+        interface AttendanceRecordData {
+          student_id: string;
+          status: AttendanceStatus;
+          [key: string]: unknown;
+        }
         const existing: Record<string, AttendanceStatus> = {};
-        result.data.forEach((record: any) => {
+        result.data.forEach((record: AttendanceRecordData) => {
           existing[record.student_id] = record.status;
         });
         setExistingAttendance(existing);
         setAttendance(existing);
-        setIsMarked(Object.keys(existing).length > 0);
+        setIsMarked(true);
       } else {
         // No attendance marked yet
         const initialAttendance: Record<string, AttendanceStatus> = {};
@@ -122,6 +136,13 @@ export default function TeacherAttendancePage() {
       }
     } catch (err) {
       console.error('Error fetching existing attendance:', err);
+      // Initialize with default values on error
+      const initialAttendance: Record<string, AttendanceStatus> = {};
+      students.forEach((student) => {
+        initialAttendance[student.id] = 'present';
+      });
+      setAttendance(initialAttendance);
+      setIsMarked(false);
     }
   };
 
@@ -152,14 +173,17 @@ export default function TeacherAttendancePage() {
         status,
       }));
 
-      const response = await fetch('/api/attendance', {
-        method: 'POST',
+      // Use update endpoint if already marked, otherwise use mark endpoint
+      const endpoint = isMarked ? '/api/attendance/update' : '/api/attendance/mark';
+      
+      const response = await fetch(endpoint, {
+        method: isMarked ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: teacher.school_code,
           class_id: assignedClass.id,
-          date: selectedDate,
-          attendance: attendanceRecords,
+          attendance_date: selectedDate,
+          attendance_records: attendanceRecords,
           marked_by: teacher.id,
         }),
       });
@@ -172,7 +196,10 @@ export default function TeacherAttendancePage() {
         setTimeout(() => setSaveSuccess(false), 3000);
         fetchExistingAttendance();
       } else {
-        alert(result.error || 'Failed to save attendance');
+        const errorMessage = result.error || 'Failed to save attendance';
+        const errorDetails = result.details ? `: ${result.details}` : '';
+        alert(`${errorMessage}${errorDetails}`);
+        console.error('Attendance error:', result);
       }
     } catch (err) {
       console.error('Error saving attendance:', err);
@@ -182,6 +209,8 @@ export default function TeacherAttendancePage() {
     }
   };
 
+  // getStatusColor kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getStatusColor = (status: AttendanceStatus) => {
     switch (status) {
       case 'present':
@@ -201,13 +230,45 @@ export default function TeacherAttendancePage() {
     return counts;
   };
 
-  if (loading || !teacher || !assignedClass) {
+  if (loading || !teacher) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading attendance...</p>
         </div>
+      </div>
+    );
+  }
+
+  // If teacher is not a class teacher, show message
+  if (!isClassTeacher || !assignedClass) {
+    return (
+      <div className="space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-orange-100 rounded-lg">
+              <Calendar className="text-orange-600" size={24} />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Mark Attendance</h1>
+              <p className="text-gray-600">Mark attendance for your class students</p>
+            </div>
+          </div>
+        </motion.div>
+
+        <Card>
+          <div className="text-center py-12">
+            <Users className="mx-auto text-gray-400 mb-4" size={48} />
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Not Assigned as Class Teacher</h3>
+            <p className="text-gray-600 mb-4">
+              You are not assigned as a class teacher. Please contact the principal to be assigned to a class.
+            </p>
+          </div>
+        </Card>
       </div>
     );
   }

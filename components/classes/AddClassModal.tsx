@@ -9,20 +9,22 @@ import { X } from 'lucide-react';
 
 interface AddClassModalProps {
   schoolCode: string;
+  existingClass?: { id: string; class: string; section: string; academic_year: string };
   onClose: () => void;
   onSuccess: () => void;
 }
 
 export default function AddClassModal({
   schoolCode,
+  existingClass,
   onClose,
   onSuccess,
 }: AddClassModalProps) {
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
-    class: '',
-    section: '',
-    academic_year: new Date().getFullYear().toString(),
+    class: existingClass?.class || '',
+    section: existingClass?.section || '',
+    academic_year: existingClass?.academic_year || new Date().getFullYear().toString(),
   });
 
   const handleChange = (field: string, value: string) => {
@@ -46,8 +48,14 @@ export default function AddClassModal({
 
     setSaving(true);
     try {
-      const response = await fetch('/api/classes', {
-        method: 'POST',
+      // If editing, use PATCH; otherwise use POST
+      const url = existingClass 
+        ? `/api/classes/${existingClass.id}`
+        : '/api/classes';
+      const method = existingClass ? 'PATCH' : 'POST';
+      
+      const response = await fetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
@@ -60,11 +68,11 @@ export default function AddClassModal({
       if (response.ok) {
         onSuccess();
       } else {
-        alert(result.error || 'Failed to create class');
+        alert(result.error || `Failed to ${existingClass ? 'update' : 'create'} class`);
       }
     } catch (error) {
-      console.error('Error creating class:', error);
-      alert('Failed to create class. Please try again.');
+      console.error(`Error ${existingClass ? 'updating' : 'creating'} class:`, error);
+      alert(`Failed to ${existingClass ? 'update' : 'create'} class. Please try again.`);
     } finally {
       setSaving(false);
     }
@@ -79,7 +87,9 @@ export default function AddClassModal({
       >
         <Card className="relative">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-black">Add Class</h2>
+            <h2 className="text-2xl font-bold text-black">
+              {existingClass ? 'Modify Class' : 'Add Class'}
+            </h2>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
@@ -135,7 +145,7 @@ export default function AddClassModal({
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? 'Creating...' : 'Create Class'}
+                {saving ? (existingClass ? 'Updating...' : 'Creating...') : (existingClass ? 'Update Class' : 'Create Class')}
               </Button>
             </div>
           </form>

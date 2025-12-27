@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { 
   User, 
-  Users, 
   GraduationCap, 
   Calendar, 
   FileText, 
@@ -17,6 +16,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import type { Student, AcceptedSchool } from '@/lib/supabase';
+import TimetableView from '@/components/timetable/TimetableView';
 
 interface ClassTeacher {
   id: string;
@@ -32,16 +32,34 @@ interface ClassInfo {
   class: string;
   section: string;
   academic_year: string;
+  class_id?: string;
   class_teacher: ClassTeacher | null;
+}
+
+interface ExamData {
+  start_date?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface NoticeData {
+  [key: string]: unknown;
+}
+
+interface EventNotificationData {
+  [key: string]: unknown;
 }
 
 export default function StudentDashboardHome() {
   const [student, setStudent] = useState<Student | null>(null);
+  // school kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [school, setSchool] = useState<AcceptedSchool | null>(null);
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [upcomingExams, setUpcomingExams] = useState<any[]>([]);
-  const [recentNotices, setRecentNotices] = useState<any[]>([]);
+  const [upcomingExams, setUpcomingExams] = useState<ExamData[]>([]);
+  const [recentNotices, setRecentNotices] = useState<NoticeData[]>([]);
+  const [eventNotifications, setEventNotifications] = useState<EventNotificationData[]>([]);
 
   useEffect(() => {
     const storedStudent = sessionStorage.getItem('student');
@@ -52,6 +70,7 @@ export default function StudentDashboardHome() {
       fetchClassTeacher(studentData);
       fetchUpcomingExams(studentData);
       fetchRecentNotices(studentData);
+      fetchEventNotifications(studentData);
     }
   }, []);
 
@@ -83,6 +102,7 @@ export default function StudentDashboardHome() {
           class: result.data.class.class,
           section: result.data.class.section,
           academic_year: result.data.class.academic_year,
+          class_id: result.data.class.id,
           class_teacher: result.data.class_teacher,
         });
       }
@@ -94,13 +114,18 @@ export default function StudentDashboardHome() {
   const fetchUpcomingExams = async (studentData: Student) => {
     try {
       const response = await fetch(
-        `/api/examinations?school_code=${studentData.school_code}`
+        `/api/examinations?school_code=${studentData.school_code}&status=upcoming`
       );
       const result = await response.json();
       if (response.ok && result.data) {
         const today = new Date();
+        today.setHours(0, 0, 0, 0);
         const upcoming = result.data
-          .filter((exam: any) => new Date(exam.start_date) >= today)
+          .filter((exam: ExamData) => {
+            const examDate = new Date(exam.start_date);
+            examDate.setHours(0, 0, 0, 0);
+            return (exam.status === 'upcoming' || exam.status === 'ongoing') && examDate >= today;
+          })
           .slice(0, 3);
         setUpcomingExams(upcoming);
       }
@@ -120,6 +145,20 @@ export default function StudentDashboardHome() {
       }
     } catch (err) {
       console.error('Error fetching notices:', err);
+    }
+  };
+
+  const fetchEventNotifications = async (studentData: Student) => {
+    try {
+      const response = await fetch(
+        `/api/calendar/notifications?school_code=${studentData.school_code}&user_type=student&user_id=${studentData.id}&unread_only=true`
+      );
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setEventNotifications(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching event notifications:', err);
     }
   };
 
@@ -341,6 +380,20 @@ export default function StudentDashboardHome() {
         </motion.div>
       </div>
 
+      {/* Timetable */}
+      {classInfo?.class_id && student && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <TimetableView
+            schoolCode={student.school_code}
+            classId={classInfo.class_id}
+          />
+        </motion.div>
+      )}
+
       {/* Upcoming Exams */}
       {upcomingExams.length > 0 && (
         <motion.div
@@ -411,6 +464,55 @@ export default function StudentDashboardHome() {
                   </p>
                 </div>
               ))}
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Event Notifications */}
+      {eventNotifications.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
+          <Card>
+            <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
+              <Calendar size={20} />
+              New Events & Holidays
+            </h2>
+            <div className="space-y-3">
+              {eventNotifications.slice(0, 5).map((notification: EventNotificationData) => {
+                const event = notification.event;
+                if (!event) return null;
+                return (
+                  <div
+                    key={notification.id}
+                    className="p-3 bg-blue-50 border border-blue-200 rounded-lg"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            event.event_type === 'holiday' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {event.event_type === 'holiday' ? 'Holiday' : 'Event'}
+                          </span>
+                          <span className="text-sm text-gray-600">
+                            {new Date(event.event_date).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <h3 className="font-semibold text-gray-900">{event.title}</h3>
+                        {event.description && (
+                          <p className="text-sm text-gray-600 mt-1">{event.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </Card>
         </motion.div>

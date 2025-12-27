@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+// Get examinations
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    const classId = searchParams.get('class_id');
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -13,52 +15,62 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get school ID
-    const { data: schoolData, error: schoolError } = await supabase
-      .from('accepted_schools')
-      .select('id')
-      .eq('school_code', schoolCode)
-      .single();
-
-    if (schoolError || !schoolData) {
-      return NextResponse.json(
-        { error: 'School not found' },
-        { status: 404 }
-      );
-    }
-
-    // Fetch exams
-    const { data: exams, error: examsError } = await supabase
-      .from('exams')
-      .select('*')
+    let query = supabase
+      .from('examinations')
+      .select(`
+        *,
+        class:class_id (
+          id,
+          class,
+          section,
+          academic_year
+        ),
+        created_by_staff:created_by (
+          id,
+          full_name,
+          staff_id
+        ),
+        exam_subjects:exam_subjects (
+          id,
+          subject_id,
+          max_marks,
+          subject:subjects (
+            id,
+            name,
+            color
+          )
+        )
+      `)
       .eq('school_code', schoolCode)
       .order('created_at', { ascending: false });
 
-    if (examsError) {
+    if (classId) {
+      query = query.eq('class_id', classId);
+    }
+
+    const { data: examinations, error } = await query;
+
+    if (error) {
       return NextResponse.json(
-        { error: 'Failed to fetch exams', details: examsError.message },
+        { error: 'Failed to fetch examinations', details: error.message },
         { status: 500 }
       );
     }
 
-    // Get schedule counts for each exam
-    const examsWithCounts = await Promise.all(
-      (exams || []).map(async (exam) => {
-        const { count } = await supabase
-          .from('exam_schedules')
-          .select('*', { count: 'exact', head: true })
-          .eq('exam_id', exam.id);
+    // Calculate subjects count and total max marks
+    interface ExamWithSubjects {
+      exam_subjects?: Array<{ max_marks: number }>;
+      [key: string]: unknown;
+    }
+    const enrichedExams = (examinations || []).map((exam: ExamWithSubjects) => ({
+      ...exam,
+      subjects_count: exam.exam_subjects?.length || 0,
+      total_max_marks: exam.exam_subjects?.reduce((sum: number, es: { max_marks: number }) => sum + (es.max_marks || 0), 0) || 0,
+    }));
 
-        return {
-          ...exam,
-          schedule_count: count || 0,
-        };
-      })
-    );
-
-    return NextResponse.json({ data: examsWithCounts }, { status: 200 });
+    return NextResponse.json({ data: enrichedExams || [] }, { status: 200 });
   } catch (error) {
-    console.error('Error fetching exams:', error);
+    console.error('Error fetching examinations:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -66,25 +78,22 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Create examination
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, name, academic_year, start_date, end_date, description } = body;
+    const {
+      school_code,
+      class_id,
+      name,
+      exam_type,
+      subjects, // Array of { subject_id, max_marks }
+      created_by,
+    } = body;
 
-    if (!school_code || !name || !academic_year || !start_date || !end_date) {
+    if (!school_code || !class_id || !name || !subjects || !Array.isArray(subjects) || subjects.length === 0 || !created_by) {
       return NextResponse.json(
-        { error: 'School code, name, academic year, start date, and end date are required' },
-        { status: 400 }
-      );
-    }
-
-    // Validate dates
-    const start = new Date(start_date);
-    const end = new Date(end_date);
-    
-    if (start > end) {
-      return NextResponse.json(
-        { error: 'Start date must be before or equal to end date' },
+        { error: 'School code, class ID, name, subjects, and created_by are required' },
         { status: 400 }
       );
     }
@@ -103,52 +112,73 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for duplicate
-    const { data: existing } = await supabase
-      .from('exams')
-      .select('id')
-      .eq('school_code', school_code)
-      .eq('name', name)
-      .eq('academic_year', academic_year)
-      .single();
-
-    if (existing) {
-      return NextResponse.json(
-        { error: 'An exam with this name already exists for this academic year' },
-        { status: 400 }
-      );
+    // Calculate total max marks
+    interface SubjectInput {
+      max_marks: string | number;
     }
+    const totalMaxMarks = subjects.reduce((sum: number, s: SubjectInput) => sum + (parseInt(String(s.max_marks)) || 0), 0);
 
-    // Insert exam
-    const { data: newExam, error: insertError } = await supabase
-      .from('exams')
+    // Create examination
+    const { data: examination, error: examError } = await supabase
+      .from('examinations')
       .insert([{
         school_id: schoolData.id,
         school_code: school_code,
-        name: name,
-        academic_year: academic_year,
-        start_date: start_date,
-        end_date: end_date,
-        status: 'draft',
-        description: description || null,
+        class_id: class_id,
+        name: name.trim(),
+        exam_type: exam_type || null,
+        total_max_marks: totalMaxMarks,
+        created_by: created_by,
       }])
       .select()
       .single();
 
-    if (insertError) {
+    if (examError || !examination) {
       return NextResponse.json(
-        { error: 'Failed to create exam', details: insertError.message },
+        { error: 'Failed to create examination', details: examError?.message },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ data: newExam }, { status: 201 });
+    // Create exam subjects
+    const examSubjects = subjects.map((s: SubjectInput & { subject_id: string }) => ({
+      exam_id: examination.id,
+      subject_id: s.subject_id,
+      max_marks: parseInt(String(s.max_marks || '0')) || 0,
+    }));
+
+    const { data: insertedSubjects, error: subjectsError } = await supabase
+      .from('exam_subjects')
+      .insert(examSubjects)
+      .select(`
+        *,
+        subject:subjects (
+          id,
+          name,
+          color
+        )
+      `);
+
+    if (subjectsError) {
+      // Rollback examination creation
+      await supabase.from('examinations').delete().eq('id', examination.id);
+      return NextResponse.json(
+        { error: 'Failed to create exam subjects', details: subjectsError.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      data: {
+        ...examination,
+        exam_subjects: insertedSubjects || [],
+      },
+    }, { status: 201 });
   } catch (error) {
-    console.error('Error creating exam:', error);
+    console.error('Error creating examination:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
 }
-

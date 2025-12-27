@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import { Users, Mail, Phone, MapPin } from 'lucide-react';
+import { Users, Mail, Phone } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
 export default function ParentInfoPage() {

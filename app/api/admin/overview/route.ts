@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function GET(_request: NextRequest) {
   try {
     // Fetch all schools
@@ -20,12 +21,12 @@ export async function GET(_request: NextRequest) {
 
     // Helper to build count map from fetched records
     const buildCountMap = (
-      rows: any[] | null,
+      rows: Array<Record<string, unknown>> | null,
       key: string
     ): Record<string, number> => {
       const map: Record<string, number> = {};
       (rows || []).forEach((row) => {
-        const id = row[key];
+        const id = String(row[key] || '');
         map[id] = (map[id] || 0) + 1;
       });
       return map;
@@ -33,11 +34,11 @@ export async function GET(_request: NextRequest) {
 
     // Fetch all records and count them manually (more reliable than aggregation)
     // Only fetch if we have schools
-    let allStudents: any[] = [];
-    let allStaff: any[] = [];
-    let allClasses: any[] = [];
-    let allExams: any[] = [];
-    let allNotices: any[] = [];
+    let allStudents: Array<Record<string, unknown>> = [];
+    let allStaff: Array<Record<string, unknown>> = [];
+    let allClasses: Array<Record<string, unknown>> = [];
+    let allExams: Array<Record<string, unknown>> = [];
+    let allNotices: Array<Record<string, unknown>> = [];
 
     if (schoolIds.length > 0) {
       const [

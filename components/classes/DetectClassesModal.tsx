@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { X, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, AlertCircle } from 'lucide-react';
 
 interface DetectedClass {
   class: string;
@@ -32,6 +32,7 @@ export default function DetectClassesModal({
 
   useEffect(() => {
     fetchDetectedClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const fetchDetectedClasses = async () => {

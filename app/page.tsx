@@ -2,10 +2,9 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import Image from 'next/image';
 import Navbar from '@/components/Navbar';
-import { FiArrowUpRight, FiCheck, FiChevronLeft, FiChevronRight, FiStar, FiAward, FiTrendingUp } from 'react-icons/fi';
-import { MessageSquare, Lightbulb, Gamepad2, BookOpen, Users, Brain, Sparkles, Target, Zap, Shield } from 'lucide-react';
+import { FiArrowUpRight, FiCheck, FiStar, FiAward, FiTrendingUp } from 'react-icons/fi';
+import { MessageSquare, Lightbulb, Gamepad2, Users, Brain, Sparkles, Target, Zap, Shield } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Home() {
@@ -143,12 +142,12 @@ export default function Home() {
                   <motion.button
                     whileHover={{ scale: 1.02, y: -2 }}
                     whileTap={{ scale: 0.98 }}
-                    className="group relative bg-gradient-to-r from-purple-600 to-blue-600 text-white px-8 py-4 rounded-xl font-semibold text-base flex items-center gap-3 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
+                    className="group relative bg-gradient-to-r from-purple-400 to-blue-400 text-white px-8 py-4 rounded-xl font-semibold text-base flex items-center gap-3 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
                   >
                     <span className="relative z-10">Start Free Trial</span>
                     <FiArrowUpRight className="w-5 h-5 relative z-10 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
                     <motion.div
-                      className="absolute inset-0 bg-gradient-to-r from-purple-700 to-blue-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute inset-0 bg-gradient-to-r from-purple-500 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"
                       initial={false}
                     />
                   </motion.button>
@@ -157,9 +156,14 @@ export default function Home() {
                   <motion.button
                     whileHover={{ scale: 1.02, y: -2 }}
                     whileTap={{ scale: 0.98 }}
-                    className="group relative border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-xl font-semibold text-base hover:border-purple-300 hover:bg-purple-50/50 transition-all duration-300"
+                    className="group relative bg-gradient-to-r from-purple-400 to-blue-400 text-white px-8 py-4 rounded-xl font-semibold text-base flex items-center gap-3 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
                   >
                     <span className="relative z-10">Book a Demo</span>
+                    <FiArrowUpRight className="w-5 h-5 relative z-10 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-purple-500 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      initial={false}
+                    />
                   </motion.button>
                 </Link>
               </div>
@@ -281,7 +285,7 @@ export default function Home() {
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
                 whileHover={{ y: -10, transition: { duration: 0.2 } }}
-                onHoverStart={() => setHoveredFeature(index as any)}
+                onHoverStart={() => setHoveredFeature(index)}
                 onHoverEnd={() => setHoveredFeature(null)}
                 className={`relative group bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 border border-gray-200 hover:border-transparent transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/10 cursor-pointer ${
                   hoveredFeature === index ? 'scale-[1.02]' : ''
@@ -447,7 +451,7 @@ export default function Home() {
                   ))}
                 </div>
 
-                <p className="text-gray-300 mb-8 leading-relaxed italic">"{testimonial.content}"</p>
+                <p className="text-gray-300 mb-8 leading-relaxed italic">&quot;{testimonial.content}&quot;</p>
 
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-blue-500" />
@@ -486,19 +490,28 @@ export default function Home() {
                 <motion.button
                   whileHover={{ scale: 1.02, y: -2 }}
                   whileTap={{ scale: 0.98 }}
-                  className="group relative bg-gradient-to-r from-purple-600 to-blue-600 text-white px-10 py-5 rounded-xl font-semibold text-base flex items-center gap-3 shadow-xl hover:shadow-2xl hover:shadow-purple-500/30 transition-all duration-300"
+                  className="group relative bg-gradient-to-r from-purple-400 to-blue-400 text-white px-10 py-5 rounded-xl font-semibold text-base flex items-center gap-3 shadow-xl hover:shadow-2xl hover:shadow-purple-400/30 transition-all duration-300 overflow-hidden"
                 >
-                  <span>Start Your Free Trial</span>
-                  <FiArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                  <span className="relative z-10">Start Your Free Trial</span>
+                  <FiArrowUpRight className="w-5 h-5 relative z-10 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-r from-purple-500 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    initial={false}
+                  />
                 </motion.button>
               </Link>
               <Link href="/contact">
                 <motion.button
                   whileHover={{ scale: 1.02, y: -2 }}
                   whileTap={{ scale: 0.98 }}
-                  className="px-10 py-5 rounded-xl font-semibold text-base border-2 border-gray-300 text-gray-700 hover:border-purple-300 hover:bg-purple-50/50 transition-all duration-300"
+                  className="group relative bg-gradient-to-r from-purple-400 to-blue-400 text-white px-10 py-5 rounded-xl font-semibold text-base flex items-center gap-3 shadow-xl hover:shadow-2xl hover:shadow-purple-400/30 transition-all duration-300 overflow-hidden"
                 >
-                  Schedule a Demo
+                  <span className="relative z-10">Schedule a Demo</span>
+                  <FiArrowUpRight className="w-5 h-5 relative z-10 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-r from-purple-500 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    initial={false}
+                  />
                 </motion.button>
               </Link>
             </div>

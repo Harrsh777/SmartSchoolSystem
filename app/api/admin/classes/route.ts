@@ -38,8 +38,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Get student counts for each class
+    interface ClassData {
+      id: string;
+      class: string;
+      section: string;
+      [key: string]: unknown;
+    }
     const classesWithCounts = await Promise.all(
-      (classes || []).map(async (cls: any) => {
+      (classes || []).map(async (cls: ClassData) => {
         const { count } = await supabase
           .from('students')
           .select('*', { count: 'exact', head: true })

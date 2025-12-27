@@ -4,10 +4,15 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { Users, UserPlus, Upload, CheckCircle, ArrowRight, X } from 'lucide-react';
+import { Users, UserPlus, Upload, CheckCircle, ArrowRight } from 'lucide-react';
 
 interface StudentSetupGuideProps {
   onComplete: () => void;
+}
+
+interface DetailData {
+  type?: string;
+  [key: string]: unknown;
 }
 
 export default function StudentSetupGuide({ onComplete }: StudentSetupGuideProps) {
@@ -161,7 +166,7 @@ export default function StudentSetupGuide({ onComplete }: StudentSetupGuideProps
 
                 {currentStep === 2 && (
                   <div className="space-y-6">
-                    {currentStepData.details.map((detail: any, idx: number) => (
+                    {currentStepData.details.map((detail: DetailData, idx: number) => (
                       <div key={idx} className="border-l-4 border-gray-300 pl-4">
                         <div className="flex items-center gap-2 mb-2">
                           {detail.type === 'single' ? (

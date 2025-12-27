@@ -1,14 +1,19 @@
 'use client';
 
 import TutorialModal from '@/components/TutorialModal';
-import { Users, Plus, Upload, Search, Eye, Edit } from 'lucide-react';
+import { Plus, Upload, Search, Eye, Edit } from 'lucide-react';
 
 interface StudentsTutorialProps {
   schoolCode: string;
   onClose: () => void;
 }
 
-export default function StudentsTutorial({ schoolCode, onClose }: StudentsTutorialProps) {
+export default function StudentsTutorial({ 
+  // schoolCode kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  schoolCode, 
+  onClose 
+}: StudentsTutorialProps) {
   const steps = [
     {
       title: 'Understanding the Students Page',
@@ -47,7 +52,7 @@ export default function StudentsTutorial({ schoolCode, onClose }: StudentsTutori
                 <div>
                   <h4 className="font-semibold text-green-900 mb-1">Add Student Button</h4>
                   <p className="text-green-800 text-sm">
-                    Click this button to manually add a single student. You'll fill out a form with:
+                    Click this button to manually add a single student. You&apos;ll fill out a form with:
                   </p>
                   <ul className="list-disc list-inside text-green-800 text-sm mt-2 space-y-1">
                     <li>Admission number, name, class, section</li>
@@ -108,7 +113,7 @@ export default function StudentsTutorial({ schoolCode, onClose }: StudentsTutori
                 <h4 className="font-semibold text-green-900">View Button</h4>
               </div>
               <p className="text-green-800 text-sm">
-                Click "View" to see complete student details including personal information, 
+                Click &quot;View&quot; to see complete student details including personal information, 
                 parent contacts, academic details, and status.
               </p>
             </div>
@@ -119,7 +124,7 @@ export default function StudentsTutorial({ schoolCode, onClose }: StudentsTutori
                 <h4 className="font-semibold text-orange-900">Edit Button</h4>
               </div>
               <p className="text-orange-800 text-sm">
-                Click "Edit" to update any student information. You can modify all fields 
+                Click &quot;Edit&quot; to update any student information. You can modify all fields 
                 except the admission number and school code (which are system-generated).
               </p>
             </div>

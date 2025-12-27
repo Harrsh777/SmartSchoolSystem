@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -31,19 +30,47 @@ import {
   Search,
   Briefcase,
   TrendingUp,
-  Calendar,
-  DollarSign,
   Activity,
-  Sparkles,
+  Key,
+  HelpCircle,
+  DollarSign,
+  Shield,
 } from 'lucide-react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { AnimatePresence } from 'framer-motion';
 import type {
-  SchoolSignup,
   AcceptedSchool,
-  RejectedSchool,
   AdminEmployee,
 } from '@/lib/supabase';
+import SchoolSupervisionView from '@/components/admin/SchoolSupervisionView';
+
+interface SchoolSignup {
+  id: string;
+  school_name: string;
+  school_code: string;
+  email: string;
+  phone?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  status?: string;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+interface RejectedSchool {
+  id: string;
+  school_name: string;
+  school_code: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  status?: string;
+  created_at?: string;
+  [key: string]: unknown;
+}
 
 type ViewMode =
   | 'overview'
@@ -51,12 +78,14 @@ type ViewMode =
   | 'students'
   | 'staff'
   | 'classes'
+  | 'help-queries'
   | 'attendance'
   | 'exams'
   | 'fees'
   | 'communications'
   | 'employees'
-  | 'signups';
+  | 'signups'
+  | 'school-supervision';
 
 interface OverviewSchoolRow {
   id: string;
@@ -81,6 +110,42 @@ interface AdminOverview {
     exams: number;
   };
   schools: OverviewSchoolRow[];
+}
+
+interface EventData {
+  date?: string;
+  color?: string;
+  title?: string;
+  [key: string]: unknown;
+}
+
+interface DashboardStats {
+  attendanceRate?: number;
+  genderStats?: {
+    male?: number;
+    female?: number;
+    other?: number;
+    malePercent?: number;
+    femalePercent?: number;
+  };
+  newAdmissions?: number;
+  newAdmissionsList?: Array<{ name?: string; date?: string }>;
+  staffBreakdown?: {
+    teaching?: number;
+    nonTeaching?: number;
+    total?: number;
+  };
+}
+
+interface FinancialData {
+  totalRevenue?: number;
+  monthlyEarnings?: Array<{ month: string; earnings: number }>;
+  [key: string]: unknown;
+}
+
+interface EventsData {
+  upcomingEvents?: EventData[];
+  [key: string]: unknown;
 }
 
 export default function AdminDashboard() {
@@ -112,14 +177,57 @@ export default function AdminDashboard() {
   const [signupsViewMode, setSignupsViewMode] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all');
   
   // Data states for admin views
-  const [students, setStudents] = useState<any[]>([]);
-  const [staff, setStaff] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [exams, setExams] = useState<any[]>([]);
+  interface StudentData {
+    id: string;
+    admission_no: string;
+    student_name: string;
+    class: string;
+    section: string;
+    [key: string]: unknown;
+  }
+  interface StaffData {
+    id: string;
+    staff_id: string;
+    full_name: string;
+    role: string;
+    [key: string]: unknown;
+  }
+  interface ClassData {
+    id: string;
+    class: string;
+    section: string;
+    [key: string]: unknown;
+  }
+  interface ExamData {
+    id: string;
+    name: string;
+    [key: string]: unknown;
+  }
+  interface PasswordGenerationResult {
+    success?: boolean;
+    error?: string;
+    results?: Record<string, {
+      school_name?: string;
+      students?: { created: number; processed: number };
+      staff?: { created: number; processed: number };
+    }>;
+    totals?: {
+      schools?: number;
+      students?: { created: number; processed: number };
+      staff?: { created: number; processed: number };
+      totalPasswords?: number;
+    } | null;
+  }
+  const [students, setStudents] = useState<StudentData[]>([]);
+  const [staff, setStaff] = useState<StaffData[]>([]);
+  const [classes, setClasses] = useState<ClassData[]>([]);
+  const [exams, setExams] = useState<ExamData[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [loadingExams, setLoadingExams] = useState(false);
+  const [generatingPasswords, setGeneratingPasswords] = useState(false);
+  const [passwordGenerationResult, setPasswordGenerationResult] = useState<PasswordGenerationResult | null>(null);
   
   // Filter states
   const [studentSearch, setStudentSearch] = useState('');
@@ -137,12 +245,30 @@ export default function AdminDashboard() {
   const [isDesktop, setIsDesktop] = useState(false);
 
   // New dashboard data states
-  const [dashboardStats, setDashboardStats] = useState<any>(null);
-  const [financialData, setFinancialData] = useState<any>(null);
-  const [eventsData, setEventsData] = useState<any>(null);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [financialData, setFinancialData] = useState<FinancialData | null>(null);
+  const [eventsData, setEventsData] = useState<EventsData | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [loadingFinancial, setLoadingFinancial] = useState(false);
   const [loadingEvents, setLoadingEvents] = useState(false);
+  
+  // Help queries state
+  const [helpQueries, setHelpQueries] = useState<Array<{
+    id: string;
+    school_code: string;
+    query: string;
+    user_name: string;
+    user_role: string;
+    status: string;
+    created_at: string;
+    updated_at?: string;
+    admin_response?: string;
+  }>>([]);
+  const [loadingHelpQueries, setLoadingHelpQueries] = useState(false);
+  const [helpQueryStatusFilter, setHelpQueryStatusFilter] = useState('all');
+  const [helpQuerySchoolFilter, setHelpQuerySchoolFilter] = useState('all');
+  
+  // School supervision state - removed unused variables
 
   useEffect(() => {
     fetchAllData();
@@ -152,6 +278,7 @@ export default function AdminDashboard() {
     checkDesktop();
     window.addEventListener('resize', checkDesktop);
     return () => window.removeEventListener('resize', checkDesktop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -164,6 +291,7 @@ export default function AdminDashboard() {
     } else if (viewMode === 'exams') {
       fetchExams();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
 
   // Separate useEffects for filter changes
@@ -171,25 +299,38 @@ export default function AdminDashboard() {
     if (viewMode === 'students') {
       fetchStudents();
     }
-  }, [studentSchoolFilter, studentClassFilter, studentSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentSchoolFilter, studentClassFilter, studentSearch, viewMode]);
 
   useEffect(() => {
     if (viewMode === 'staff') {
       fetchStaff();
     }
-  }, [staffSchoolFilter, staffRoleFilter, staffSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staffSchoolFilter, staffRoleFilter, staffSearch, viewMode]);
 
   useEffect(() => {
     if (viewMode === 'classes') {
       fetchClasses();
     }
-  }, [classSchoolFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classSchoolFilter, viewMode]);
 
   useEffect(() => {
     if (viewMode === 'exams') {
       fetchExams();
+    } else if (viewMode === 'help-queries') {
+      fetchHelpQueries();
     }
-  }, [examSchoolFilter, examSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examSchoolFilter, examSearch, viewMode]);
+
+  useEffect(() => {
+    if (viewMode === 'help-queries') {
+      fetchHelpQueries();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [helpQueryStatusFilter, helpQuerySchoolFilter, viewMode]);
 
   const fetchAllSchools = async () => {
     try {
@@ -255,9 +396,13 @@ export default function AdminDashboard() {
       const employeesResult = await employeesResponse.json();
       if (employeesResponse.ok && employeesResult.data) {
         // Transform employee data to include schools count
-        const transformedEmployees = employeesResult.data.map((emp: any) => ({
+        interface EmployeeData {
+          employee_schools?: Array<{ accepted_schools: unknown }>;
+          [key: string]: unknown;
+        }
+        const transformedEmployees = employeesResult.data.map((emp: EmployeeData) => ({
           ...emp,
-          schools: emp.employee_schools?.map((es: any) => es.accepted_schools) || [],
+          schools: emp.employee_schools?.map((es: { accepted_schools: unknown }) => es.accepted_schools) || [],
         }));
         setEmployees(transformedEmployees);
       }
@@ -317,6 +462,7 @@ export default function AdminDashboard() {
       setLoadingEvents(false);
     }
   };
+
 
   const fetchStudents = async () => {
     try {
@@ -384,6 +530,55 @@ export default function AdminDashboard() {
       console.error('Error fetching classes:', error);
     } finally {
       setLoadingClasses(false);
+    }
+  };
+
+  const fetchHelpQueries = async () => {
+    try {
+      setLoadingHelpQueries(true);
+      const params = new URLSearchParams();
+      if (helpQueryStatusFilter !== 'all') {
+        params.append('status', helpQueryStatusFilter);
+      }
+      if (helpQuerySchoolFilter !== 'all') {
+        params.append('school_code', helpQuerySchoolFilter);
+      }
+
+      const response = await fetch(`/api/admin/help-queries?${params.toString()}`);
+      const result = await response.json();
+
+      if (response.ok && result.data) {
+        setHelpQueries(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching help queries:', error);
+    } finally {
+      setLoadingHelpQueries(false);
+    }
+  };
+
+  const updateHelpQueryStatus = async (id: string, status: string, adminResponse?: string) => {
+    try {
+      const response = await fetch('/api/admin/help-queries', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          status,
+          admin_response: adminResponse,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        fetchHelpQueries();
+      } else {
+        alert(result.error || 'Failed to update query status');
+      }
+    } catch (error) {
+      console.error('Error updating help query:', error);
+      alert('Failed to update query status');
     }
   };
 
@@ -502,13 +697,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const stats = {
-    pending: pendingSchools.length,
-    accepted: acceptedSchools.length,
-    rejected: rejectedSchools.length,
-    total: pendingSchools.length + acceptedSchools.length + rejectedSchools.length,
-  };
-
   const handleEmployeeInputChange = (field: string, value: string | string[]) => {
     setEmployeeForm((prev) => ({ ...prev, [field]: value }));
     if (employeeErrors[field]) {
@@ -553,9 +741,13 @@ export default function AdminDashboard() {
         const employeesResult = await employeesResponse.json();
         if (employeesResponse.ok && employeesResult.data) {
           // Transform employee data to include schools count
-          const transformedEmployees = employeesResult.data.map((emp: any) => ({
+          interface EmployeeData {
+            employee_schools?: Array<{ accepted_schools: unknown }>;
+            [key: string]: unknown;
+          }
+          const transformedEmployees = employeesResult.data.map((emp: EmployeeData) => ({
             ...emp,
-            schools: emp.employee_schools?.map((es: any) => es.accepted_schools) || [],
+            schools: emp.employee_schools?.map((es: { accepted_schools: unknown }) => es.accepted_schools) || [],
           }));
           setEmployees(transformedEmployees);
         }
@@ -574,13 +766,23 @@ export default function AdminDashboard() {
     }
   };
 
-  const renderSchoolCard = (school: SchoolSignup | AcceptedSchool | RejectedSchool | any, isRejected = false) => {
+  interface SchoolWithStatus extends Record<string, unknown> {
+    _status?: string;
+    status?: string;
+    rejection_reason?: string;
+    school_name?: string;
+  }
+  const renderSchoolCard = (school: SchoolSignup | AcceptedSchool | RejectedSchool | SchoolWithStatus, isRejected = false) => {
     // Determine status from _status property (for all view) or from school properties
-    const status = (school as any)._status || ('status' in school ? school.status : null) || (isRejected ? 'rejected' : 'accepted');
-    const rejectionReason = (isRejected || status === 'rejected') && 'rejection_reason' in school ? school.rejection_reason : null;
+    const schoolWithStatus = school as SchoolWithStatus;
+    const status = schoolWithStatus._status || ('status' in school ? (school as { status?: string }).status : null) || (isRejected ? 'rejected' : 'accepted');
+    const rejectionReason = (isRejected || status === 'rejected') && 'rejection_reason' in school ? String(school.rejection_reason || '') : null;
     const isPending = status === 'pending';
     const isAccepted = status === 'accepted';
     const isRejectedStatus = status === 'rejected';
+    const schoolName = 'school_name' in school ? String(school.school_name || '') : '';
+    const schoolCode = 'school_code' in school ? String(school.school_code || '') : '';
+    const schoolId = 'id' in school ? String(school.id || '') : '';
 
     return (
       <Card>
@@ -588,7 +790,7 @@ export default function AdminDashboard() {
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
               <div className="flex items-center space-x-3 mb-2">
-                <h3 className="text-2xl font-bold text-black">{school.school_name}</h3>
+                <h3 className="text-2xl font-bold text-black">{schoolName}</h3>
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                   isAccepted
                     ? 'bg-green-100 text-green-800'
@@ -600,17 +802,17 @@ export default function AdminDashboard() {
                 </span>
               </div>
               <p className="text-sm text-gray-500 mb-4">
-                {school.school_code && (
+                {schoolCode && (
                   <>
-                    School Code: <span className="font-semibold text-gray-700">{school.school_code}</span>
+                    School Code: <span className="font-semibold text-gray-700">{schoolCode}</span>
                     {' • '}
                   </>
                 )}
-                Established: <span className="font-semibold text-gray-700">{school.established_year}</span>
+                Established: <span className="font-semibold text-gray-700">{'established_year' in school ? String(school.established_year || 'N/A') : 'N/A'}</span>
                 {' • '}
-                Type: <span className="font-semibold text-gray-700">{school.school_type}</span>
+                Type: <span className="font-semibold text-gray-700">{'school_type' in school ? String(school.school_type || 'N/A') : 'N/A'}</span>
                 {' • '}
-                Affiliation: <span className="font-semibold text-gray-700">{school.affiliation}</span>
+                Affiliation: <span className="font-semibold text-gray-700">{'affiliation' in school ? String(school.affiliation || 'N/A') : 'N/A'}</span>
               </p>
               {rejectionReason && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -629,17 +831,17 @@ export default function AdminDashboard() {
                             <Button
                               variant="primary"
                               size="sm"
-                              onClick={() => openAcceptModal(school.id!, school.school_name)}
-                              disabled={updatingId === school.id}
+                              onClick={() => openAcceptModal(schoolId, schoolName)}
+                              disabled={updatingId === schoolId}
                             >
                               <CheckCircle size={18} className="mr-2" />
-                              {updatingId === school.id ? 'Updating...' : 'Approve'}
+                              {updatingId === schoolId ? 'Updating...' : 'Approve'}
                             </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => openRejectModal(school.id!)}
-                  disabled={updatingId === school.id}
+                  onClick={() => openRejectModal(schoolId)}
+                  disabled={updatingId === schoolId}
                   className="border-red-300 text-red-600 hover:bg-red-50"
                 >
                   <XCircle size={18} className="mr-2" />
@@ -657,9 +859,9 @@ export default function AdminDashboard() {
                 Address
               </h4>
               <p className="text-gray-600 text-sm">
-                {school.school_address}<br />
-                {school.city}, {school.state} {school.zip_code}<br />
-                {school.country}
+                {'school_address' in school ? String(school.school_address || '') : ''}<br />
+                {'city' in school ? String(school.city || '') : ''}, {'state' in school ? String(school.state || '') : ''} {'zip_code' in school ? String(school.zip_code || '') : ''}<br />
+                {'country' in school ? String(school.country || '') : ''}
               </p>
             </div>
 
@@ -672,11 +874,11 @@ export default function AdminDashboard() {
               <div className="space-y-2 text-sm text-gray-600">
                 <div className="flex items-center">
                   <Mail size={14} className="mr-2 text-gray-400" />
-                  {school.school_email}
+                  {'school_email' in school ? String(school.school_email || '') : ''}
                 </div>
                 <div className="flex items-center">
                   <Phone size={14} className="mr-2 text-gray-400" />
-                  {school.school_phone}
+                  {'school_phone' in school ? String(school.school_phone || '') : ''}
                 </div>
               </div>
             </div>
@@ -688,14 +890,14 @@ export default function AdminDashboard() {
                 Principal
               </h4>
               <div className="space-y-2 text-sm text-gray-600">
-                <p className="font-medium text-gray-800">{school.principal_name}</p>
+                <p className="font-medium text-gray-800">{'principal_name' in school ? String(school.principal_name || '') : ''}</p>
                 <div className="flex items-center">
                   <Mail size={14} className="mr-2 text-gray-400" />
-                  {school.principal_email}
+                  {'principal_email' in school ? String(school.principal_email || '') : ''}
                 </div>
                 <div className="flex items-center">
                   <Phone size={14} className="mr-2 text-gray-400" />
-                  {school.principal_phone}
+                  {'principal_phone' in school ? String(school.principal_phone || '') : ''}
                 </div>
               </div>
             </div>
@@ -707,7 +909,7 @@ export default function AdminDashboard() {
               </h4>
               <p className="text-sm text-gray-600">
                 {isAccepted && 'approved_at' in school && school.approved_at
-                  ? new Date(school.approved_at).toLocaleDateString('en-US', {
+                  ? new Date(String(school.approved_at)).toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
@@ -715,7 +917,7 @@ export default function AdminDashboard() {
                       minute: '2-digit',
                     })
                   : isRejectedStatus && 'rejected_at' in school && school.rejected_at
-                  ? new Date(school.rejected_at).toLocaleDateString('en-US', {
+                  ? new Date(String(school.rejected_at)).toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
@@ -723,7 +925,7 @@ export default function AdminDashboard() {
                       minute: '2-digit',
                     })
                   : 'created_at' in school && school.created_at
-                  ? new Date(school.created_at).toLocaleDateString('en-US', {
+                  ? new Date(String(school.created_at)).toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
@@ -740,9 +942,9 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#ECEDED]">
       {/* Header */}
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-40">
+      <nav className="bg-[#FFFFFF] border-b border-[#E1E1DB] sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="text-xl font-bold text-black">
@@ -751,18 +953,18 @@ export default function AdminDashboard() {
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
+                className="lg:hidden p-2 rounded-lg hover:bg-[#FFF2C2]"
               >
                 {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
               <button
                 onClick={fetchAllData}
-                className="p-2 text-gray-600 hover:text-black hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-[#6B6B6B] hover:text-[#2B2B2B] hover:bg-[#FFF2C2] rounded-lg transition-colors"
                 title="Refresh"
               >
                 <RefreshCw size={20} />
               </button>
-              <Link href="/" className="text-sm text-gray-600 hover:text-black">
+              <Link href="/" className="text-sm text-[#6B6B6B] hover:text-[#2B2B2B]">
                 Back to Home
               </Link>
             </div>
@@ -791,8 +993,8 @@ export default function AdminDashboard() {
                 initial={{ x: -280 }}
                 animate={{ x: 0 }}
                 exit={{ x: -280 }}
-                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-white border-r border-gray-200 z-50 lg:z-auto overflow-y-auto"
-                style={{ width: '280px' }}
+                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-[#2B2B2B] border-r border-[#3A3A3A] z-50 lg:z-auto overflow-y-auto"
+                style={{ background: 'linear-gradient(180deg, #2B2B2B 0%, #1F1F1F 100%)', width: '280px' }}
               >
                 <nav className="p-4 space-y-1">
                   {[
@@ -801,10 +1003,14 @@ export default function AdminDashboard() {
                     { id: 'students', label: 'Students', icon: GraduationCap },
                     { id: 'staff', label: 'Staff', icon: Users },
                     { id: 'classes', label: 'Classes', icon: Layers },
+                    { id: 'attendance', label: 'Attendance', icon: Activity },
                     { id: 'exams', label: 'Exams', icon: FileText },
+                    { id: 'fees', label: 'Fees', icon: DollarSign },
                     { id: 'communications', label: 'Communications', icon: Bell },
+                    { id: 'help-queries', label: 'Help Queries', icon: HelpCircle },
                     { id: 'employees', label: 'Employees', icon: User },
                     { id: 'signups', label: 'Signups', icon: Clock },
+                    { id: 'school-supervision', label: 'School Supervision', icon: Shield },
                   ].map((item) => {
                     const Icon = item.icon;
                     const active = viewMode === item.id;
@@ -817,11 +1023,11 @@ export default function AdminDashboard() {
                         }}
                         className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
                           active
-                            ? 'bg-black text-white'
-                            : 'text-gray-700 hover:bg-gray-100'
+                            ? 'bg-[#FFD66B] text-[#2B2B2B]'
+                            : 'text-[#CFCFCF] hover:text-[#FFFFFF] hover:bg-[#3A3A3A]'
                         }`}
                       >
-                        <Icon size={20} />
+                        <Icon size={20} className={active ? 'text-[#2B2B2B]' : 'text-[#AFAFAF]'} />
                         <span className="font-medium">{item.label}</span>
                       </button>
                     );
@@ -833,12 +1039,12 @@ export default function AdminDashboard() {
         </AnimatePresence>
 
         {/* Main Content */}
-        <main className="flex-1 lg:ml-0 bg-gray-50/50">
+        <main className="flex-1 lg:ml-0 bg-[#ECEDED]">
           {/* Top Header Section with Gradient */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600"
+            className="relative overflow-hidden bg-[#2B2B2B]"
           >
             {/* Animated Background Blobs */}
             <div className="absolute inset-0 overflow-hidden">
@@ -869,7 +1075,7 @@ export default function AdminDashboard() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="text-4xl sm:text-5xl font-bold text-white mb-2"
+                    className="text-4xl sm:text-5xl font-bold text-[#FFFFFF] mb-2"
                   >
                     Admin Dashboard
                   </motion.h1>
@@ -877,7 +1083,7 @@ export default function AdminDashboard() {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.2 }}
-                    className="text-indigo-100 text-lg"
+                    className="text-[#CFCFCF] text-lg"
                   >
                     School ERP Management System
                   </motion.p>
@@ -890,14 +1096,14 @@ export default function AdminDashboard() {
                 >
                   <div className="text-right hidden sm:block">
                     <p className="text-white font-semibold">Super Admin</p>
-                    <p className="text-indigo-200 text-sm">EduYan Platform</p>
+                    <p className="text-[#9A9A9A] text-sm">EduYan Platform</p>
                   </div>
                   <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/30 flex items-center justify-center">
                     <User className="text-white" size={24} />
                   </div>
-                  <div className="px-3 py-1.5 bg-green-500/20 backdrop-blur-sm border border-green-400/30 rounded-full">
-                    <span className="text-green-100 text-xs font-medium flex items-center gap-1">
-                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                  <div className="px-3 py-1.5 bg-[#7BC96F]/20 backdrop-blur-sm border border-[#7BC96F]/30 rounded-full">
+                    <span className="text-[#FFFFFF] text-xs font-medium flex items-center gap-1">
+                      <div className="w-2 h-2 bg-[#7BC96F] rounded-full animate-pulse" />
                       Active
                     </span>
                   </div>
@@ -906,7 +1112,7 @@ export default function AdminDashboard() {
                       setShowEmployeeModal(true);
                       setNewEmployeePassword(null);
                     }}
-                    className="bg-white/20 backdrop-blur-sm border border-white/30 text-white hover:bg-white/30"
+                    className="bg-[#FFD66B] border border-[#F5C84B] text-[#2B2B2B] hover:bg-[#F5C84B]"
                   >
                     <Plus size={18} className="mr-2" />
                     Add Employee
@@ -925,7 +1131,7 @@ export default function AdminDashboard() {
                 <motion.h2
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="text-2xl font-bold text-gray-900 mb-6"
+                  className="text-2xl font-bold text-[#2B2B2B] mb-6"
                 >
                   School Overview
                 </motion.h2>
@@ -935,29 +1141,29 @@ export default function AdminDashboard() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     whileHover={{ scale: 1.02, y: -4 }}
-                    className="group relative bg-white rounded-2xl p-6 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100 overflow-hidden"
+                    className="group relative bg-[#FFFFFF] rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:bg-[#FFF7DB] transition-all duration-300 border border-[#E1E1DB] overflow-hidden"
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400 to-blue-600 opacity-10 rounded-full -mr-16 -mt-16" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD66B] opacity-10 rounded-full -mr-16 -mt-16" />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
-                          <Users className="text-white" size={24} />
+                        <div className="w-14 h-14 rounded-xl bg-[#FFD66B] flex items-center justify-center shadow-lg">
+                          <Users className="text-[#2B2B2B]" size={24} />
                         </div>
-                        <TrendingUp className="text-blue-500" size={20} />
+                        <TrendingUp className="text-[#FFD66B]" size={20} />
                       </div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">Total Students</p>
+                      <p className="text-sm font-medium text-[#6B6B6B] mb-1">Total Students</p>
                       {loading ? (
-                        <div className="h-10 w-24 bg-gray-200 rounded animate-pulse" />
+                        <div className="h-10 w-24 bg-[#E1E1DB] rounded animate-pulse" />
                       ) : (
                         <motion.p
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-4xl font-bold text-gray-900"
+                          className="text-4xl font-bold text-[#2B2B2B]"
                         >
                           {overview?.totals.students?.toLocaleString() ?? 0}
                         </motion.p>
                       )}
-                      <p className="text-xs text-gray-500 mt-2">Across all schools</p>
+                      <p className="text-xs text-[#6B6B6B] mt-2">Across all schools</p>
                     </div>
                   </motion.div>
 
@@ -967,29 +1173,29 @@ export default function AdminDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
                     whileHover={{ scale: 1.02, y: -4 }}
-                    className="group relative bg-white rounded-2xl p-6 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100 overflow-hidden"
+                    className="group relative bg-[#FFFFFF] rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:bg-[#FFF7DB] transition-all duration-300 border border-[#E1E1DB] overflow-hidden"
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-400 to-emerald-600 opacity-10 rounded-full -mr-16 -mt-16" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#7BC96F] opacity-10 rounded-full -mr-16 -mt-16" />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
-                          <Briefcase className="text-white" size={24} />
+                        <div className="w-14 h-14 rounded-xl bg-[#7BC96F] flex items-center justify-center shadow-lg">
+                          <Briefcase className="text-[#FFFFFF]" size={24} />
                         </div>
-                        <TrendingUp className="text-green-500" size={20} />
+                        <TrendingUp className="text-[#7BC96F]" size={20} />
                       </div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">Total Staff</p>
+                      <p className="text-sm font-medium text-[#6B6B6B] mb-1">Total Staff</p>
                       {loading ? (
-                        <div className="h-10 w-24 bg-gray-200 rounded animate-pulse" />
+                        <div className="h-10 w-24 bg-[#E1E1DB] rounded animate-pulse" />
                       ) : (
                         <motion.p
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-4xl font-bold text-gray-900"
+                          className="text-4xl font-bold text-[#2B2B2B]"
                         >
                           {overview?.totals.staff?.toLocaleString() ?? 0}
                         </motion.p>
                       )}
-                      <p className="text-xs text-gray-500 mt-2">Teaching & non-teaching</p>
+                      <p className="text-xs text-[#6B6B6B] mt-2">Teaching & non-teaching</p>
                     </div>
                   </motion.div>
 
@@ -999,29 +1205,29 @@ export default function AdminDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
                     whileHover={{ scale: 1.02, y: -4 }}
-                    className="group relative bg-white rounded-2xl p-6 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100 overflow-hidden"
+                    className="group relative bg-[#FFFFFF] rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:bg-[#FFF7DB] transition-all duration-300 border border-[#E1E1DB] overflow-hidden"
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-400 to-purple-600 opacity-10 rounded-full -mr-16 -mt-16" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD66B] opacity-10 rounded-full -mr-16 -mt-16" />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg">
-                          <Building2 className="text-white" size={24} />
+                        <div className="w-14 h-14 rounded-xl bg-[#FFD66B] flex items-center justify-center shadow-lg">
+                          <Building2 className="text-[#2B2B2B]" size={24} />
                         </div>
-                        <TrendingUp className="text-purple-500" size={20} />
+                        <TrendingUp className="text-[#FFD66B]" size={20} />
                       </div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">Active Classes</p>
+                      <p className="text-sm font-medium text-[#6B6B6B] mb-1">Active Classes</p>
                       {loading ? (
-                        <div className="h-10 w-24 bg-gray-200 rounded animate-pulse" />
+                        <div className="h-10 w-24 bg-[#E1E1DB] rounded animate-pulse" />
                       ) : (
                         <motion.p
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-4xl font-bold text-gray-900"
+                          className="text-4xl font-bold text-[#2B2B2B]"
                         >
                           {overview?.totals.classes?.toLocaleString() ?? 0}
                         </motion.p>
                       )}
-                      <p className="text-xs text-gray-500 mt-2">Currently running</p>
+                      <p className="text-xs text-[#6B6B6B] mt-2">Currently running</p>
                     </div>
                   </motion.div>
 
@@ -1031,7 +1237,7 @@ export default function AdminDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
                     whileHover={{ scale: 1.02, y: -4 }}
-                    className="group relative bg-white rounded-2xl p-6 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100 overflow-hidden"
+                    className="group relative bg-[#FFFFFF] rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:bg-[#FFF7DB] transition-all duration-300 border border-[#E1E1DB] overflow-hidden"
                   >
                     <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-400 to-orange-600 opacity-10 rounded-full -mr-16 -mt-16" />
                     <div className="relative z-10">
@@ -1137,7 +1343,7 @@ export default function AdminDashboard() {
                       </div>
                       <div className="space-y-2 max-h-32 overflow-y-auto">
                         {dashboardStats?.newAdmissionsList && dashboardStats.newAdmissionsList.length > 0 ? (
-                          dashboardStats.newAdmissionsList.map((admission: any, idx: number) => (
+                          dashboardStats.newAdmissionsList.map((admission: { name?: string; date?: string }, idx: number) => (
                             <div key={idx} className="flex items-center justify-between text-sm py-1">
                               <span className="text-gray-700">{admission.name || 'New Student'}</span>
                               <span className="text-gray-500 text-xs">
@@ -1177,7 +1383,7 @@ export default function AdminDashboard() {
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ 
-                            width: dashboardStats?.staffBreakdown?.total 
+                            width: dashboardStats?.staffBreakdown?.total && dashboardStats?.staffBreakdown?.teaching
                               ? `${(dashboardStats.staffBreakdown.teaching / dashboardStats.staffBreakdown.total) * 100}%` 
                               : '0%' 
                           }}
@@ -1195,7 +1401,7 @@ export default function AdminDashboard() {
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ 
-                            width: dashboardStats?.staffBreakdown?.total 
+                            width: dashboardStats?.staffBreakdown?.total && dashboardStats?.staffBreakdown?.nonTeaching
                               ? `${(dashboardStats.staffBreakdown.nonTeaching / dashboardStats.staffBreakdown.total) * 100}%` 
                               : '0%' 
                           }}
@@ -1263,7 +1469,10 @@ export default function AdminDashboard() {
                               border: '1px solid #e5e7eb',
                               borderRadius: '8px',
                             }}
-                            formatter={(value: any) => `₹${value.toLocaleString('en-IN')}`}
+                            formatter={(value: number | string | undefined) => {
+                              if (value === undefined) return '₹0';
+                              return `₹${Number(value).toLocaleString('en-IN')}`;
+                            }}
                           />
                           <Bar 
                             dataKey="earnings" 
@@ -1314,7 +1523,13 @@ export default function AdminDashboard() {
                         const date = new Date();
                         date.setDate(date.getDate() - date.getDay() + idx);
                         const dateStr = date.toISOString().split('T')[0];
-                        const event = eventsData?.allEvents?.find((e: any) => e.date === dateStr);
+                        interface EventData {
+                          date?: string;
+                          color?: string;
+                          title?: string;
+                          [key: string]: unknown;
+                        }
+                        const event = (eventsData?.allEvents as EventData[] | undefined)?.find((e: EventData) => e.date === dateStr);
                         const isToday = dateStr === new Date().toISOString().split('T')[0];
                         
                         let bgColor = 'bg-gray-50';
@@ -1367,7 +1582,7 @@ export default function AdminDashboard() {
                     <h4 className="text-sm font-semibold text-gray-900 mb-4">Upcoming Events</h4>
                     <div className="space-y-3 max-h-80 overflow-y-auto">
                       {eventsData?.upcomingEvents && eventsData.upcomingEvents.length > 0 ? (
-                        eventsData.upcomingEvents.slice(0, 5).map((event: any, idx: number) => {
+                        eventsData.upcomingEvents.slice(0, 5).map((event: EventData, idx: number) => {
                           const dotColor = event.color === 'red' ? 'bg-red-500' : 
                                           event.color === 'green' ? 'bg-green-500' : 
                                           event.color === 'blue' ? 'bg-blue-500' : 'bg-purple-500';
@@ -1381,7 +1596,7 @@ export default function AdminDashboard() {
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-gray-900 truncate">{event.title}</p>
                                   <p className="text-xs text-gray-500 mt-1">
-                                    {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    {event.date ? new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                                   </p>
                                 </div>
                               </div>
@@ -1395,6 +1610,201 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
+            </motion.div>
+          )}
+
+          {/* Password Generation Section */}
+          {viewMode === 'overview' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.75 }}
+              className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 mb-8"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <Key className="text-indigo-600" size={24} />
+                    Password Management
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">Generate passwords for all existing students and staff</p>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="text-amber-600 mt-0.5" size={20} />
+                    <div>
+                      <p className="text-sm font-medium text-amber-900 mb-1">Important</p>
+                      <p className="text-sm text-amber-700">
+                        This will generate passwords for all students and staff who don&apos;t have passwords yet. 
+                        New passwords will be automatically generated during bulk import.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  <Button
+                    onClick={async () => {
+                      setGeneratingPasswords(true);
+                      setPasswordGenerationResult(null);
+                      try {
+                        const response = await fetch('/api/admin/generate-passwords-all', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({}),
+                        });
+                        const data = await response.json();
+                        if (response.ok) {
+                          setPasswordGenerationResult(data);
+                        } else {
+                          setPasswordGenerationResult({ error: data.error || 'Failed to generate passwords' });
+                        }
+                      } catch {
+                        setPasswordGenerationResult({ error: 'Network error. Please try again.' });
+                      } finally {
+                        setGeneratingPasswords(false);
+                      }
+                    }}
+                    disabled={generatingPasswords}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {generatingPasswords ? (
+                      <>
+                        <RefreshCw className="mr-2 animate-spin" size={18} />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Key className="mr-2" size={18} />
+                        Generate Passwords (All Users)
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      setGeneratingPasswords(true);
+                      setPasswordGenerationResult(null);
+                      try {
+                        const response = await fetch('/api/admin/generate-student-passwords-only', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({}),
+                        });
+                        const data = await response.json();
+                        if (response.ok) {
+                          setPasswordGenerationResult(data);
+                        } else {
+                          setPasswordGenerationResult({ error: data.error || 'Failed to generate passwords' });
+                        }
+                      } catch {
+                        setPasswordGenerationResult({ error: 'Network error. Please try again.' });
+                      } finally {
+                        setGeneratingPasswords(false);
+                      }
+                    }}
+                    disabled={generatingPasswords}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {generatingPasswords ? (
+                      <>
+                        <RefreshCw className="mr-2 animate-spin" size={18} />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <GraduationCap className="mr-2" size={18} />
+                        Generate Passwords (Students Only)
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {passwordGenerationResult && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`rounded-lg p-4 ${
+                      passwordGenerationResult.error
+                        ? 'bg-red-50 border border-red-200'
+                        : 'bg-green-50 border border-green-200'
+                    }`}
+                  >
+                    {passwordGenerationResult.error ? (
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="text-red-600 mt-0.5" size={20} />
+                        <div>
+                          <p className="text-sm font-medium text-red-900">Error</p>
+                          <p className="text-sm text-red-700">{passwordGenerationResult.error}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-start gap-3 mb-4">
+                          <CheckCircle className="text-green-600 mt-0.5" size={20} />
+                          <div>
+                            <p className="text-sm font-medium text-green-900">Password Generation Complete</p>
+                            <p className="text-sm text-green-700 mt-1">
+                              Processed {passwordGenerationResult.totals?.schools || 0} school(s)
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {passwordGenerationResult.totals && (
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                            <div className="bg-white rounded-lg p-3 border border-green-200">
+                              <p className="text-xs text-gray-600 mb-1">Students Created</p>
+                              <p className="text-2xl font-bold text-gray-900">
+                                {passwordGenerationResult.totals.students?.created || 0}
+                              </p>
+                            </div>
+                            <div className="bg-white rounded-lg p-3 border border-green-200">
+                              <p className="text-xs text-gray-600 mb-1">Staff Created</p>
+                              <p className="text-2xl font-bold text-gray-900">
+                                {passwordGenerationResult.totals.staff?.created || 0}
+                              </p>
+                            </div>
+                            <div className="bg-white rounded-lg p-3 border border-green-200">
+                              <p className="text-xs text-gray-600 mb-1">Total Passwords</p>
+                              <p className="text-2xl font-bold text-gray-900">
+                                {passwordGenerationResult.totals.totalPasswords || 0}
+                              </p>
+                            </div>
+                            <div className="bg-white rounded-lg p-3 border border-green-200">
+                              <p className="text-xs text-gray-600 mb-1">Schools Processed</p>
+                              <p className="text-2xl font-bold text-gray-900">
+                                {passwordGenerationResult.totals.schools || 0}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {passwordGenerationResult.results && Object.keys(passwordGenerationResult.results).length > 0 && (
+                          <div className="mt-4">
+                            <p className="text-sm font-medium text-gray-900 mb-2">Details by School:</p>
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                              {passwordGenerationResult.results && Object.entries(passwordGenerationResult.results).map(([schoolCode, data]) => {
+                                const schoolData = data as NonNullable<PasswordGenerationResult['results']>[string];
+                                return (
+                                  <div key={schoolCode} className="bg-white rounded-lg p-3 border border-gray-200">
+                                    <p className="text-sm font-semibold text-gray-900 mb-1">{schoolData.school_name || schoolCode}</p>
+                                    <div className="flex items-center gap-4 text-xs text-gray-600">
+                                      <span>Students: {schoolData.students?.created || 0}/{schoolData.students?.processed || 0}</span>
+                                      <span>Staff: {schoolData.staff?.created || 0}/{schoolData.staff?.processed || 0}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -1518,8 +1928,13 @@ export default function AdminDashboard() {
                       ...rejectedSchools.map(s => ({ ...s, _status: 'rejected' as const, _source: 'rejected' as const })),
                     ].sort((a, b) => {
                       // Sort by date (most recent first)
-                      const dateA = a.created_at || (a as any).approved_at || (a as any).rejected_at || '';
-                      const dateB = b.created_at || (b as any).approved_at || (b as any).rejected_at || '';
+                      interface SchoolWithDates extends Record<string, unknown> {
+                        created_at?: string;
+                        approved_at?: string;
+                        rejected_at?: string;
+                      }
+                      const dateA = (a as SchoolWithDates).created_at || (a as SchoolWithDates).approved_at || (a as SchoolWithDates).rejected_at || '';
+                      const dateB = (b as SchoolWithDates).created_at || (b as SchoolWithDates).approved_at || (b as SchoolWithDates).rejected_at || '';
                       return new Date(dateB).getTime() - new Date(dateA).getTime();
                     });
 
@@ -1715,15 +2130,18 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-sm text-gray-900">{student.student_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-600 font-mono">{student.admission_no}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">
-                              {student.accepted_schools?.school_name || student.school_code}
+                              {(() => {
+                                const school = student.accepted_schools as { school_name?: string } | undefined;
+                                return (school?.school_name || student.school_code || '') as string;
+                              })()}
                             </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{student.class} - {student.section}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{student.academic_year}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{String(student.class || '')} - {String(student.section || '')}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{String(student.academic_year || '')}</td>
                             <td className="px-4 py-3 text-sm">
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                student.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                                (student.status as string) === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                               }`}>
-                                {student.status || 'active'}
+                                {String(student.status || 'active')}
                               </span>
                             </td>
                           </tr>
@@ -1823,11 +2241,14 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-sm text-gray-900">{member.full_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-600 font-mono">{member.staff_id}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">
-                              {member.accepted_schools?.school_name || member.school_code}
+                              {(() => {
+                                const school = member.accepted_schools as { school_name?: string } | undefined;
+                                return (school?.school_name || String(member.school_code || '')) as string;
+                              })()}
                             </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{member.role}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{member.department || 'N/A'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{member.phone}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{String(member.role || '')}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{String(member.department || 'N/A')}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{String(member.phone || 'N/A')}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1903,14 +2324,159 @@ export default function AdminDashboard() {
                         {classes.map((cls) => (
                           <tr key={cls.id} className="hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-3 text-sm text-gray-900">
-                              {cls.accepted_schools?.school_name || cls.school_code}
+                              {(() => {
+                                const school = cls.accepted_schools as { school_name?: string } | undefined;
+                                return school?.school_name || String(cls.school_code || '');
+                              })()}
                             </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{cls.class}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{cls.section}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{cls.academic_year}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600 font-semibold">{cls.student_count || 0}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{String(cls.class || '')}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{String(cls.section || '')}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{String(cls.academic_year || '')}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 font-semibold">{Number(cls.student_count) || 0}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">
-                              {cls.staff?.full_name || 'Not assigned'}
+                              {(() => {
+                                const staff = cls.staff as { full_name?: string } | undefined;
+                                return staff?.full_name || 'Not assigned';
+                              })()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
+            </motion.div>
+          )}
+
+          {/* Help Queries View */}
+          {viewMode === 'help-queries' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-black">Help Queries</h2>
+                  <p className="text-gray-600 mt-1">View and manage help queries from schools</p>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <Card>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <select
+                    value={helpQueryStatusFilter}
+                    onChange={(e) => setHelpQueryStatusFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                  <select
+                    value={helpQuerySchoolFilter}
+                    onChange={(e) => setHelpQuerySchoolFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="all">All Schools</option>
+                    {acceptedSchools.map((school) => (
+                      <option key={school.id} value={school.school_code}>
+                        {school.school_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </Card>
+
+              {/* Help Queries Table */}
+              {loadingHelpQueries ? (
+                <Card>
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading help queries...</p>
+                  </div>
+                </Card>
+              ) : helpQueries.length === 0 ? (
+                <Card>
+                  <div className="text-center py-12">
+                    <HelpCircle className="mx-auto mb-4 text-gray-400" size={48} />
+                    <p className="text-gray-600 text-lg">No help queries found</p>
+                  </div>
+                </Card>
+              ) : (
+                <Card>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">School Code</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">User</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Role</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Query</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Date & Time</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {helpQueries.map((query) => (
+                          <tr key={query.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{query.school_code}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{query.user_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{query.user_role}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600 max-w-md">
+                              <div className="line-clamp-2">{query.query}</div>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                query.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                query.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                query.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {query.status.replace('_', ' ').toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {new Date(query.created_at).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <div className="flex items-center gap-2">
+                                {query.status === 'pending' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updateHelpQueryStatus(query.id, 'in_progress')}
+                                  >
+                                    Start
+                                  </Button>
+                                )}
+                                {query.status === 'in_progress' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updateHelpQueryStatus(query.id, 'resolved')}
+                                  >
+                                    Resolve
+                                  </Button>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    const response = prompt('Enter admin response (optional):');
+                                    if (response !== null) {
+                                      updateHelpQueryStatus(query.id, 'resolved', response);
+                                    }
+                                  }}
+                                >
+                                  Respond
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1999,21 +2565,24 @@ export default function AdminDashboard() {
                           <tr key={exam.id} className="hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-3 text-sm text-gray-900 font-medium">{exam.name}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">
-                              {exam.accepted_schools?.school_name || exam.school_code}
+                              {(() => {
+                                const school = exam.accepted_schools as { school_name?: string } | undefined;
+                                return school?.school_name || String(exam.school_code || '');
+                              })()}
                             </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{exam.academic_year}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{String(exam.academic_year || '')}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">
-                              {new Date(exam.start_date).toLocaleDateString()}
+                              {new Date(String(exam.start_date || '')).toLocaleDateString()}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">
-                              {new Date(exam.end_date).toLocaleDateString()}
+                              {new Date(String(exam.end_date || '')).toLocaleDateString()}
                             </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{exam.schedule_count || 0}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{Number(exam.schedule_count) || 0}</td>
                             <td className="px-4 py-3 text-sm">
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                exam.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                                String(exam.status || '') === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                               }`}>
-                                {exam.status || 'draft'}
+                                {String(exam.status || 'draft')}
                               </span>
                             </td>
                           </tr>
@@ -2023,6 +2592,44 @@ export default function AdminDashboard() {
                   </div>
                 </Card>
               )}
+            </motion.div>
+          )}
+
+          {viewMode === 'attendance' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
+            >
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Attendance Management</h2>
+              </div>
+              <Card>
+                <div className="text-center py-12">
+                  <Activity className="mx-auto mb-4 text-gray-400" size={48} />
+                  <p className="text-gray-600 text-lg">Attendance management coming soon</p>
+                  <p className="text-sm text-gray-500 mt-2">View and manage student and staff attendance</p>
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
+          {viewMode === 'fees' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
+            >
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Fees Management</h2>
+              </div>
+              <Card>
+                <div className="text-center py-12">
+                  <DollarSign className="mx-auto mb-4 text-gray-400" size={48} />
+                  <p className="text-gray-600 text-lg">Fees management coming soon</p>
+                  <p className="text-sm text-gray-500 mt-2">View and manage fee transactions across all schools</p>
+                </div>
+              </Card>
             </motion.div>
           )}
 
@@ -2042,6 +2649,15 @@ export default function AdminDashboard() {
             </motion.div>
           )}
 
+          {viewMode === 'school-supervision' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <SchoolSupervisionView acceptedSchools={acceptedSchools} />
+            </motion.div>
+          )}
+
           {viewMode === 'employees' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -2056,7 +2672,7 @@ export default function AdminDashboard() {
                   <div className="text-center py-12">
                     <User className="mx-auto mb-4 text-gray-400" size={48} />
                     <p className="text-gray-600 text-lg">No employees created yet</p>
-                    <p className="text-sm text-gray-500 mt-2">Click "Add Employee" to create internal employees</p>
+                    <p className="text-sm text-gray-500 mt-2">Click &quot;Add Employee&quot; to create internal employees</p>
                   </div>
                 </Card>
               ) : (
@@ -2079,10 +2695,14 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-sm text-gray-900">{employee.full_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">{employee.email || 'N/A'}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">
-                              {employee.schools?.length || 0} school(s)
+                              {(() => {
+                                const emp = employee as { schools?: unknown[] };
+                                const schools = emp.schools;
+                                return (schools?.length || 0) + ' school(s)';
+                              })()}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">
-                              {employee.created_at ? new Date(employee.created_at).toLocaleDateString() : 'N/A'}
+                              {employee.created_at ? new Date(String(employee.created_at)).toLocaleDateString() : 'N/A'}
                             </td>
                           </tr>
                         ))}
@@ -2294,8 +2914,9 @@ export default function AdminDashboard() {
                         >
                           <input
                             type="checkbox"
-                            checked={employeeForm.school_ids.includes(school.id)}
+                            checked={school.id ? employeeForm.school_ids.includes(school.id) : false}
                             onChange={(e) => {
+                              if (!school.id) return;
                               if (e.target.checked) {
                                 handleEmployeeInputChange('school_ids', [
                                   ...employeeForm.school_ids,

@@ -5,6 +5,8 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    // studentId kept for potential future use
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const studentId = searchParams.get('student_id');
     const classValue = searchParams.get('class');
     const section = searchParams.get('section');

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { UserCheck, Search, Mail, Phone, Plus, Upload, HelpCircle } from 'lucide-react';
+import { UserCheck, Search, Mail, Phone, Plus, Upload, HelpCircle, Calendar, Key } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
 import StaffTutorial from '@/components/staff/StaffTutorial';
 
@@ -21,9 +21,12 @@ export default function StaffPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [showTutorial, setShowTutorial] = useState(false);
+  const [generatingPasswords, setGeneratingPasswords] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStaff();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const fetchStaff = async () => {
@@ -56,6 +59,74 @@ export default function StaffPage({
 
   const uniqueDepartments = Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort();
 
+  const handleGeneratePasswords = async () => {
+    if (!confirm('Are you sure you want to generate passwords for all staff members? This will create passwords for staff who don\'t have one.')) {
+      return;
+    }
+
+    try {
+      setGeneratingPasswords(true);
+      const response = await fetch('/api/staff/generate-passwords', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          regenerate_all: false, // Only generate for staff without passwords
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        alert(`Password generation completed!\n\nTotal staff: ${result.results.total}\nPasswords created: ${result.results.created}\nPasswords updated: ${result.results.updated}\nErrors: ${result.results.errors.length}`);
+        // Refresh staff list to show updated password status
+        fetchStaff();
+      } else {
+        alert(`Error: ${result.error || 'Failed to generate passwords'}`);
+      }
+    } catch (err) {
+      console.error('Error generating passwords:', err);
+      alert('An error occurred while generating passwords. Please try again.');
+    } finally {
+      setGeneratingPasswords(false);
+    }
+  };
+
+  const handleResetPassword = async (staffId: string) => {
+    if (!confirm(`Are you sure you want to reset the password for this staff member? A new password will be generated and displayed.`)) {
+      return;
+    }
+
+    try {
+      setResettingPassword(staffId);
+      const response = await fetch('/api/staff/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          staff_id: staffId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        alert(`Password reset successfully!\n\nStaff: ${result.data.staff_name}\nStaff ID: ${result.data.staff_id}\n\nNew Password: ${result.data.password}\n\nPlease save this password securely.`);
+      } else {
+        alert(`Error: ${result.error || result.details || 'Failed to reset password'}`);
+      }
+    } catch (err) {
+      console.error('Error resetting password:', err);
+      alert('An error occurred while resetting password. Please try again.');
+    } finally {
+      setResettingPassword(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -85,6 +156,30 @@ export default function StaffPage({
             >
               <HelpCircle size={18} className="mr-2" />
               Tutorial
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/dashboard/${schoolCode}/attendance/staff`)}
+            >
+              <Calendar size={18} className="mr-2" />
+              Staff Attendance
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleGeneratePasswords}
+              disabled={generatingPasswords || staff.length === 0}
+            >
+              {generatingPasswords ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black mr-2" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Key size={18} className="mr-2" />
+                  Generate Passwords
+                </>
+              )}
             </Button>
             <Button
               variant="outline"
@@ -212,6 +307,18 @@ export default function StaffPage({
                     className="flex-1 px-3 py-2 text-sm border-2 border-gray-300 hover:border-black rounded-lg transition-colors"
                   >
                     Edit
+                  </button>
+                  <button 
+                    onClick={() => handleResetPassword(member.staff_id)}
+                    disabled={resettingPassword === member.staff_id}
+                    className="px-3 py-2 text-sm bg-yellow-100 hover:bg-yellow-200 text-yellow-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Reset Password"
+                  >
+                    {resettingPassword === member.staff_id ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 mx-auto" />
+                    ) : (
+                      <Key size={14} />
+                    )}
                   </button>
                 </div>
               </Card>

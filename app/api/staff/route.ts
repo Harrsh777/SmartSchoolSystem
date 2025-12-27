@@ -63,12 +63,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Auto-generate staff_id if not provided
+    let generatedStaffId = staffData.staff_id;
+    if (!generatedStaffId) {
+      // Get the highest staff_id number for this school
+      const { data: existingStaff } = await supabase
+        .from('staff')
+        .select('staff_id')
+        .eq('school_code', school_code)
+        .order('staff_id', { ascending: false })
+        .limit(1);
+
+      let nextNumber = 1;
+      if (existingStaff && existingStaff.length > 0) {
+        // Extract number from staff_id (e.g., "STF001" -> 1, "STF123" -> 123)
+        const lastId = existingStaff[0].staff_id;
+        const match = lastId.match(/(\d+)$/);
+        if (match) {
+          nextNumber = parseInt(match[1]) + 1;
+        }
+      }
+      generatedStaffId = `STF${String(nextNumber).padStart(3, '0')}`;
+    }
+
     // Check for duplicate staff_id
     const { data: existing } = await supabase
       .from('staff')
       .select('staff_id')
       .eq('school_code', school_code)
-      .eq('staff_id', staffData.staff_id)
+      .eq('staff_id', generatedStaffId)
       .single();
 
     if (existing) {
@@ -78,25 +101,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Generate UUID if not provided
+    const generatedUuid = staffData.uuid || crypto.randomUUID();
+
     // Insert staff with school_code
     const { data: newStaff, error: insertError } = await supabase
       .from('staff')
       .insert([{
         school_id: schoolData.id,
         school_code: school_code,
-        staff_id: staffData.staff_id,
+        staff_id: generatedStaffId,
         full_name: staffData.full_name,
         role: staffData.role,
         department: staffData.department || null,
         designation: staffData.designation || null,
         email: staffData.email || null,
-        phone: staffData.phone,
+        phone: staffData.phone || staffData.contact1 || null,
         date_of_joining: staffData.date_of_joining,
         employment_type: staffData.employment_type || null,
         qualification: staffData.qualification || null,
         experience_years: staffData.experience_years || null,
         gender: staffData.gender || null,
         address: staffData.address || null,
+        // New fields
+        dob: staffData.dob || null,
+        adhar_no: staffData.adhar_no || null,
+        blood_group: staffData.blood_group || null,
+        religion: staffData.religion || null,
+        category: staffData.category || null,
+        nationality: staffData.nationality || 'Indian',
+        contact1: staffData.contact1 || staffData.phone || null,
+        contact2: staffData.contact2 || null,
+        employee_code: staffData.employee_code || generatedStaffId || null,
+        dop: staffData.dop || null,
+        short_code: staffData.short_code || null,
+        rfid: staffData.rfid || null,
+        uuid: generatedUuid,
+        alma_mater: staffData.alma_mater || null,
+        major: staffData.major || null,
+        website: staffData.website || null,
       }])
       .select()
       .single();

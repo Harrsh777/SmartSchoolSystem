@@ -43,10 +43,11 @@ export default function TutorialModal({ title, steps, onClose }: TutorialModalPr
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-3xl"
+        className="w-full max-w-3xl flex flex-col"
+        style={{ maxHeight: '90vh' }}
       >
-        <Card className="relative">
-          <div className="flex items-center justify-between mb-6">
+        <Card className="relative flex flex-col overflow-hidden" style={{ maxHeight: '90vh', height: '100%' }}>
+          <div className="flex items-center justify-between mb-6 flex-shrink-0 px-1">
             <div>
               <h2 className="text-2xl font-bold text-black">{title}</h2>
               <p className="text-sm text-gray-600 mt-1">
@@ -62,7 +63,7 @@ export default function TutorialModal({ title, steps, onClose }: TutorialModalPr
           </div>
 
           {/* Progress Steps */}
-          <div className="mb-6">
+          <div className="mb-6 flex-shrink-0 px-1">
             <div className="flex items-center justify-between mb-2">
               {steps.map((_, index) => (
                 <div key={index} className="flex items-center flex-1">
@@ -95,27 +96,28 @@ export default function TutorialModal({ title, steps, onClose }: TutorialModalPr
           </div>
 
           {/* Step Content */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="min-h-[300px]"
-            >
-              <div className="mb-6">
-                <h3 className="text-xl font-bold text-black mb-4">
-                  {steps[currentStep].title}
-                </h3>
-                <div className="prose prose-sm max-w-none text-gray-700">
-                  {steps[currentStep].content}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-1" style={{ maxHeight: 'calc(90vh - 280px)' }}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentStep}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <div className="pb-4">
+                  <h3 className="text-xl font-bold text-black mb-4">
+                    {steps[currentStep].title}
+                  </h3>
+                  <div className="prose prose-sm max-w-none text-gray-700">
+                    {steps[currentStep].content}
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          </AnimatePresence>
+              </motion.div>
+            </AnimatePresence>
+          </div>
 
           {/* Navigation */}
-          <div className="flex justify-between pt-6 border-t border-gray-200">
+          <div className="flex justify-between pt-6 mt-4 border-t border-gray-200 flex-shrink-0 bg-white sticky bottom-0 px-1">
             <Button
               variant="outline"
               onClick={prevStep}

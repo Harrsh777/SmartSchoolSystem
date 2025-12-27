@@ -20,6 +20,7 @@ export default function ViewStaffPage({
 
   useEffect(() => {
     fetchStaff();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffId, schoolCode]);
 
   const fetchStaff = async () => {

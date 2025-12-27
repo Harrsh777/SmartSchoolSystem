@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, ArrowRight, Download, Upload, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Download, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import Stepper from '@/components/students/Stepper';
 import UploadZone from '@/components/students/UploadZone';
 import PreviewTable from '@/components/students/PreviewTable';

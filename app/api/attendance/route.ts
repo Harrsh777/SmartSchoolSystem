@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     // Verify teacher is the class teacher
     const { data: classData, error: classError } = await supabase
       .from('classes')
-      .select('class_teacher_id')
+      .select('class_teacher_id, class_teacher_staff_id')
       .eq('id', class_id)
       .eq('school_code', school_code)
       .single();
@@ -81,7 +81,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (classData.class_teacher_id !== marked_by) {
+    // Get teacher's staff_id to verify
+    const { data: teacherData } = await supabase
+      .from('staff')
+      .select('id, staff_id')
+      .eq('id', marked_by)
+      .eq('school_code', school_code)
+      .single();
+
+    // Check if teacher is the class teacher by either class_teacher_id or class_teacher_staff_id
+    const isClassTeacher = 
+      classData.class_teacher_id === marked_by ||
+      (teacherData?.staff_id && classData.class_teacher_staff_id === teacherData.staff_id);
+
+    if (!isClassTeacher) {
       return NextResponse.json(
         { error: 'Only the assigned class teacher can mark attendance' },
         { status: 403 }
@@ -89,7 +102,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare attendance records for upsert
-    const attendanceRecords = attendance.map((record: any) => ({
+    interface AttendanceInput {
+      student_id: string;
+      status: string;
+      remarks?: string;
+      [key: string]: unknown;
+    }
+    const attendanceRecords = attendance.map((record: AttendanceInput) => ({
       school_id: schoolData.id,
       school_code: school_code,
       class_id: class_id,

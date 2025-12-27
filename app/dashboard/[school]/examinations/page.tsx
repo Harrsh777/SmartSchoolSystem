@@ -5,12 +5,36 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { Plus, Calendar, Edit, Trash2, Eye } from 'lucide-react';
-import CreateExamModal from '@/components/examinations/CreateExamModal';
-import type { Exam } from '@/lib/supabase';
+import { Plus, Trash2, BookOpen, Users } from 'lucide-react';
 
-interface ExamWithCount extends Exam {
-  schedule_count?: number;
+interface Exam {
+  id: string;
+  name: string;
+  exam_type: string | null;
+  total_max_marks: number;
+  created_at: string;
+  class: {
+    id: string;
+    class: string;
+    section: string;
+    academic_year: string;
+  } | null;
+  created_by_staff: {
+    id: string;
+    full_name: string;
+    staff_id: string;
+  } | null;
+  exam_subjects: Array<{
+    id: string;
+    subject_id: string;
+    max_marks: number;
+    subject: {
+      id: string;
+      name: string;
+      color: string;
+    };
+  }>;
+  subjects_count: number;
 }
 
 export default function ExaminationsPage({
@@ -20,12 +44,12 @@ export default function ExaminationsPage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
-  const [exams, setExams] = useState<ExamWithCount[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     fetchExams();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const fetchExams = async () => {
@@ -45,7 +69,7 @@ export default function ExaminationsPage({
   };
 
   const handleDelete = async (examId: string) => {
-    if (!confirm('Are you sure you want to delete this exam? This action cannot be undone.')) {
+    if (!confirm('Are you sure you want to delete this exam? This will delete all associated marks. This action cannot be undone.')) {
       return;
     }
 
@@ -58,6 +82,7 @@ export default function ExaminationsPage({
 
       if (response.ok) {
         fetchExams();
+        alert('Examination deleted successfully');
       } else {
         alert(result.error || 'Failed to delete exam');
       }
@@ -65,12 +90,6 @@ export default function ExaminationsPage({
       console.error('Error deleting exam:', error);
       alert('Failed to delete exam. Please try again.');
     }
-  };
-
-  const formatDateRange = (start: string, end: string) => {
-    const startDate = new Date(start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const endDate = new Date(end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    return `${startDate} - ${endDate}`;
   };
 
   if (loading) {
@@ -94,119 +113,116 @@ export default function ExaminationsPage({
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-black mb-2">Examinations</h1>
-            <p className="text-gray-600">Schedule exams and manage timetables</p>
+            <p className="text-gray-600">Create and manage examinations for classes</p>
           </div>
-          <Button onClick={() => setShowCreateModal(true)}>
+          <Button onClick={() => router.push(`/dashboard/${schoolCode}/examinations/create`)}>
             <Plus size={18} className="mr-2" />
-            Create New Exam
+            Create Examination
           </Button>
         </div>
       </motion.div>
 
-      {/* Exams Table */}
+      {/* Exams Grid */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <Card>
-          {exams.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading examinations...</p>
+            </div>
+          </div>
+        ) : exams.length === 0 ? (
+          <Card>
             <div className="text-center py-12">
-              <Calendar className="mx-auto text-gray-400 mb-4" size={48} />
+              <BookOpen className="mx-auto text-gray-400 mb-4" size={48} />
               <p className="text-gray-600 text-lg mb-2">No examinations found</p>
               <p className="text-gray-500 text-sm mb-6">
-                Create your first exam to get started
+                Create your first examination to get started
               </p>
-              <Button onClick={() => setShowCreateModal(true)}>
+              <Button onClick={() => router.push(`/dashboard/${schoolCode}/examinations/create`)}>
                 <Plus size={18} className="mr-2" />
-                Create New Exam
+                Create Examination
               </Button>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Exam Name</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Academic Year</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Date Range</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Schedules</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Status</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {exams.map((exam) => (
-                    <tr
-                      key={exam.id}
-                      className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="py-4 px-4 font-medium text-black">{exam.name}</td>
-                      <td className="py-4 px-4 text-gray-700">{exam.academic_year}</td>
-                      <td className="py-4 px-4 text-gray-700">
-                        {formatDateRange(exam.start_date, exam.end_date)}
-                      </td>
-                      <td className="py-4 px-4 text-gray-700">
-                        {exam.schedule_count || 0} schedule(s)
-                      </td>
-                      <td className="py-4 px-4">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                          exam.status === 'scheduled' 
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {exam.status}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => router.push(`/dashboard/${schoolCode}/examinations/${exam.id}/schedule`)}
-                            className="text-blue-600 hover:text-blue-800"
-                            title="View Schedule"
-                          >
-                            <Eye size={18} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              // Edit functionality can be added later
-                              alert('Edit functionality coming soon');
-                            }}
-                            className="text-gray-600 hover:text-black"
-                            title="Edit"
-                          >
-                            <Edit size={18} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(exam.id!)}
-                            className="text-red-600 hover:text-red-800"
-                            title="Delete"
-                            disabled={(exam.schedule_count || 0) > 0}
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      </motion.div>
+          </Card>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {exams.map((exam) => (
+              <Card key={exam.id} hover>
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-black mb-1">{exam.name}</h3>
+                    {exam.exam_type && (
+                      <p className="text-sm text-gray-600">{exam.exam_type}</p>
+                    )}
+                  </div>
 
-      {/* Create Exam Modal */}
-      {showCreateModal && (
-        <CreateExamModal
-          schoolCode={schoolCode}
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={() => {
-            setShowCreateModal(false);
-            fetchExams();
-          }}
-        />
-      )}
+                  <div className="space-y-2 text-sm">
+                    {exam.class ? (
+                      <div className="flex items-center gap-2 text-gray-700">
+                        <Users size={16} className="text-gray-500" />
+                        <span>
+                          Class {exam.class.class} - Section {exam.class.section}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-gray-500 text-xs">
+                        <Users size={16} />
+                        <span>Class information not available</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-gray-700">
+                      <BookOpen size={16} className="text-gray-500" />
+                      <span>{exam.subjects_count} Subject{exam.subjects_count !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="text-gray-700">
+                      <span className="font-semibold">Total Max Marks:</span> {exam.total_max_marks}
+                    </div>
+                    {exam.created_by_staff ? (
+                      <div className="text-gray-600 text-xs">
+                        Created by {exam.created_by_staff.full_name}
+                      </div>
+                    ) : (
+                      <div className="text-gray-500 text-xs">
+                        Creator information not available
+                      </div>
+                    )}
+                    <div className="text-gray-500 text-xs">
+                      {new Date(exam.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-gray-200 flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`/dashboard/${schoolCode}/examinations/${exam.id}/marks`)}
+                      className="flex-1"
+                    >
+                      View Marks
+                    </Button>
+                    <button
+                      onClick={() => handleDelete(exam.id)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 }

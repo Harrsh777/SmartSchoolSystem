@@ -19,7 +19,7 @@ export async function GET(
 
     // Verify exam belongs to school
     const { data: exam, error: examError } = await supabase
-      .from('exams')
+      .from('examinations')
       .select('id')
       .eq('id', examId)
       .eq('school_code', schoolCode)
@@ -38,8 +38,7 @@ export async function GET(
       .select('*')
       .eq('exam_id', examId)
       .eq('school_code', schoolCode)
-      .order('exam_date', { ascending: true })
-      .order('start_time', { ascending: true });
+      .order('exam_date', { ascending: true });
 
     if (schedulesError) {
       return NextResponse.json(
@@ -65,11 +64,11 @@ export async function POST(
   try {
     const { examId } = await params;
     const body = await request.json();
-    const { school_code, class: className, section, subject, exam_date, start_time, end_time, room, notes } = body;
+    const { school_code, schedules } = body;
 
-    if (!school_code || !className || !section || !subject || !exam_date || !start_time || !end_time) {
+    if (!school_code || !schedules || !Array.isArray(schedules)) {
       return NextResponse.json(
-        { error: 'All required fields must be provided' },
+        { error: 'School code and schedules array are required' },
         { status: 400 }
       );
     }
@@ -90,8 +89,8 @@ export async function POST(
 
     // Verify exam belongs to school
     const { data: exam, error: examError } = await supabase
-      .from('exams')
-      .select('id, start_date, end_date')
+      .from('examinations')
+      .select('id')
       .eq('id', examId)
       .eq('school_code', school_code)
       .single();
@@ -103,86 +102,51 @@ export async function POST(
       );
     }
 
-    // Validate exam date is within exam date range
-    const examDate = new Date(exam_date);
-    const examStart = new Date(exam.start_date);
-    const examEnd = new Date(exam.end_date);
-    
-    if (examDate < examStart || examDate > examEnd) {
-      return NextResponse.json(
-        { error: `Exam date must be between ${exam.start_date} and ${exam.end_date}` },
-        { status: 400 }
-      );
+    // Prepare schedule records
+    interface ScheduleData {
+      class_id?: string;
+      subject_id?: string;
+      exam_date?: string;
+      start_time?: string;
+      end_time?: string;
+      max_marks?: number;
+      [key: string]: unknown;
     }
+    const recordsToInsert = schedules.map((schedule: ScheduleData) => ({
+      exam_id: examId,
+      school_id: schoolData.id,
+      school_code: school_code,
+      exam_date: schedule.exam_date,
+      exam_name: schedule.exam_name,
+      start_time: schedule.start_time || null,
+      end_time: schedule.end_time || null,
+      duration_minutes: schedule.duration_minutes || null,
+      max_marks: schedule.max_marks || null,
+      instructions: schedule.instructions || null,
+    }));
 
-    // Validate time
-    if (end_time <= start_time) {
-      return NextResponse.json(
-        { error: 'End time must be after start time' },
-        { status: 400 }
-      );
-    }
-
-    // Check for conflicts (overlapping exams for same class+section on same date)
-    const { data: conflictingSchedules } = await supabase
+    // Insert schedules (using upsert to handle duplicates)
+    const { data: insertedSchedules, error: insertError } = await supabase
       .from('exam_schedules')
-      .select('id, subject, start_time, end_time')
-      .eq('school_code', school_code)
-      .eq('class', className)
-      .eq('section', section)
-      .eq('exam_date', exam_date);
-
-    if (conflictingSchedules) {
-      for (const schedule of conflictingSchedules) {
-        const existingStart = schedule.start_time;
-        const existingEnd = schedule.end_time;
-        
-        // Check if times overlap
-        if (
-          (start_time >= existingStart && start_time < existingEnd) ||
-          (end_time > existingStart && end_time <= existingEnd) ||
-          (start_time <= existingStart && end_time >= existingEnd)
-        ) {
-          return NextResponse.json(
-            { 
-              error: `Conflict detected: ${schedule.subject} is already scheduled from ${existingStart} to ${existingEnd} on this date`,
-              conflict: true
-            },
-            { status: 400 }
-          );
-        }
-      }
-    }
-
-    // Insert schedule
-    const { data: newSchedule, error: insertError } = await supabase
-      .from('exam_schedules')
-      .insert([{
-        exam_id: examId,
-        school_id: schoolData.id,
-        school_code: school_code,
-        class: className.toUpperCase(),
-        section: section.toUpperCase(),
-        subject: subject,
-        exam_date: exam_date,
-        start_time: start_time,
-        end_time: end_time,
-        room: room || null,
-        notes: notes || null,
-      }])
-      .select()
-      .single();
+      .upsert(recordsToInsert, {
+        onConflict: 'exam_id,exam_date',
+      })
+      .select();
 
     if (insertError) {
+      console.error('Error inserting schedules:', insertError);
       return NextResponse.json(
-        { error: 'Failed to create schedule', details: insertError.message },
+        { error: 'Failed to save schedules', details: insertError.message },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ data: newSchedule }, { status: 201 });
+    return NextResponse.json({
+      message: 'Schedules saved successfully',
+      data: insertedSchedules,
+    }, { status: 201 });
   } catch (error) {
-    console.error('Error creating schedule:', error);
+    console.error('Error saving schedules:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -190,3 +154,42 @@ export async function POST(
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ examId: string }> }
+) {
+  try {
+    const { examId } = await params;
+    const searchParams = request.nextUrl.searchParams;
+    const schoolCode = searchParams.get('school_code');
+
+    if (!schoolCode) {
+      return NextResponse.json(
+        { error: 'School code is required' },
+        { status: 400 }
+      );
+    }
+
+    // Delete all schedules for this exam
+    const { error: deleteError } = await supabase
+      .from('exam_schedules')
+      .delete()
+      .eq('exam_id', examId)
+      .eq('school_code', schoolCode);
+
+    if (deleteError) {
+      return NextResponse.json(
+        { error: 'Failed to delete schedules', details: deleteError.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ message: 'Schedules deleted successfully' }, { status: 200 });
+  } catch (error) {
+    console.error('Error deleting schedules:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

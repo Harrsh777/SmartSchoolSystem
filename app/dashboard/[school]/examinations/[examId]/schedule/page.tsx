@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, Plus, Calendar, Edit, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus } from 'lucide-react';
 import ScheduleTable from '@/components/examinations/ScheduleTable';
 import AddScheduleModal from '@/components/examinations/AddScheduleModal';
 import EditScheduleModal from '@/components/examinations/EditScheduleModal';
@@ -31,6 +31,7 @@ export default function ExamSchedulePage({
   useEffect(() => {
     fetchExam();
     fetchSchedules();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examId, schoolCode]);
 
   const fetchExam = async () => {

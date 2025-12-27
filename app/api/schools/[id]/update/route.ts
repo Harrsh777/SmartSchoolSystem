@@ -10,6 +10,7 @@ export async function PATCH(
     const body = await request.json();
 
     // Remove fields that shouldn't be updated (school_code, password, timestamps, etc.)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _, password, school_code, approved_at, approved_by, created_at, ...updateData } = body;
 
     // Update the school information
@@ -32,13 +33,14 @@ export async function PATCH(
     }
 
     // Remove password from response
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: __, ...schoolData } = data;
 
     return NextResponse.json(
       {
         success: true,
         message: 'School information updated successfully',
-        school: schoolData,
+        data: schoolData,
       },
       { status: 200 }
     );

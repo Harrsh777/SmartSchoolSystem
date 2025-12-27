@@ -29,6 +29,8 @@ export default function AddScheduleModal({
   onSuccess,
 }: AddScheduleModalProps) {
   const [step, setStep] = useState(1);
+  // loading kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [classes, setClasses] = useState<ClassData[]>([]);
@@ -48,10 +50,13 @@ export default function AddScheduleModal({
     notes: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // warnings kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [warnings, setWarnings] = useState<string[]>([]);
 
   useEffect(() => {
     fetchClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const fetchClasses = async () => {

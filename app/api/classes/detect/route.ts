@@ -116,14 +116,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Filter out classes that already exist
+    interface ClassData {
+      class: string;
+      exists?: boolean;
+      [key: string]: unknown;
+    }
     const classesToInsert = classes
-      .filter((cls: any) => !cls.exists)
-      .map((cls: any) => ({
+      .filter((cls: ClassData) => !cls.exists)
+      .map((cls: ClassData) => ({
         school_id: schoolData.id,
         school_code: school_code,
-        class: cls.class.toUpperCase(),
-        section: cls.section.toUpperCase(),
-        academic_year: cls.academic_year,
+        class: String(cls.class || '').toUpperCase(),
+        section: String(cls.section || '').toUpperCase(),
+        academic_year: String(cls.academic_year || ''),
       }));
 
     if (classesToInsert.length === 0) {

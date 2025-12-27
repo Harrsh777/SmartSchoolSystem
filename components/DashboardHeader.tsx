@@ -15,6 +15,8 @@ interface DashboardHeaderProps {
 
 export default function DashboardHeader({
   schoolCode,
+  // role kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   role,
   roleLabel,
   iconBgColor,

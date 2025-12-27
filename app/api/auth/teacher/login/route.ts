@@ -63,7 +63,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Return success with teacher data (exclude sensitive info)
-    const { password_hash, ...teacherProfile } = teacher as any;
+    interface TeacherWithPassword extends Record<string, unknown> {
+      password_hash?: string;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password_hash, ...teacherProfile } = teacher as TeacherWithPassword;
 
     return NextResponse.json({
       success: true,

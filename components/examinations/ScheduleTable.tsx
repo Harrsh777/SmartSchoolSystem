@@ -13,6 +13,8 @@ interface ScheduleTableProps {
 
 export default function ScheduleTable({
   schedules,
+  // exam kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   exam,
   onEdit,
   onDelete,

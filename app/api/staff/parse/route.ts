@@ -6,7 +6,7 @@ type ValidationStatus = 'valid' | 'warning' | 'error';
 
 export interface StaffRow {
   rowIndex: number;
-  data: any;
+  data: Record<string, unknown>;
   status: ValidationStatus;
   errors: string[];
   warnings: string[];
@@ -58,21 +58,42 @@ export async function POST(request: NextRequest) {
 
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i]);
-      const rowData: any = {};
+      const rowData: Record<string, unknown> = {};
 
       headers.forEach((header, idx) => {
         rowData[header] = values[idx]?.trim() || '';
       });
 
-      // Parse and normalize date_of_joining
+      // Parse and normalize dates
       let dateOfJoining = '';
-      if (rowData.date_of_joining) {
-        const parsedDate = parseDate(rowData.date_of_joining);
+      if (rowData.doj || rowData.date_of_joining) {
+        const dateStr = String(rowData.doj || rowData.date_of_joining || '');
+        const parsedDate = parseDate(dateStr);
         if (parsedDate) {
           dateOfJoining = parsedDate;
         } else {
-          // Keep original if parsing fails (will be caught in validation)
-          dateOfJoining = rowData.date_of_joining;
+          dateOfJoining = dateStr;
+        }
+      }
+
+      let dateOfBirth = '';
+      if (rowData.dob) {
+        const dobStr = String(rowData.dob || '');
+        const parsedDate = parseDate(dobStr);
+        if (parsedDate) {
+          dateOfBirth = parsedDate;
+        } else {
+          dateOfBirth = dobStr;
+        }
+      }
+
+      let dateOfPromotion = '';
+      if (rowData.dop) {
+        const parsedDate = parseDate(String(rowData.dop || ''));
+        if (parsedDate) {
+          dateOfPromotion = parsedDate;
+        } else {
+          dateOfPromotion = String(rowData.dop || '');
         }
       }
 
@@ -80,23 +101,40 @@ export async function POST(request: NextRequest) {
       const staffData = {
         school_id: schoolId,
         school_code: schoolCode,
-        staff_id: rowData.staff_id || '',
-        full_name: rowData.full_name || '',
+        staff_id: rowData.staff_id || rowData.employee_code || '',
+        full_name: rowData.name || rowData.full_name || '',
         role: rowData.role || '',
         department: rowData.department || undefined,
         designation: rowData.designation || undefined,
         email: rowData.email || undefined,
-        phone: rowData.phone || '',
+        phone: rowData.phone || rowData.contact1 || '',
         date_of_joining: dateOfJoining,
         employment_type: rowData.employment_type || undefined,
         qualification: rowData.qualification || undefined,
-        experience_years: rowData.experience_years ? parseInt(rowData.experience_years) : undefined,
+        experience_years: rowData.experience_years ? parseInt(String(rowData.experience_years)) : undefined,
         gender: rowData.gender || undefined,
         address: rowData.address || undefined,
+        // New fields
+        dob: dateOfBirth || undefined,
+        adhar_no: rowData.adhar_no || rowData.aadhaar_number || undefined,
+        blood_group: rowData.blood_group || undefined,
+        religion: rowData.religion || undefined,
+        category: rowData.category || undefined,
+        nationality: rowData.nationality || 'Indian',
+        contact1: rowData.contact1 || rowData.phone || undefined,
+        contact2: rowData.contact2 || undefined,
+        employee_code: rowData.employee_code || rowData.staff_id || undefined,
+        dop: dateOfPromotion || undefined,
+        short_code: rowData.short_code || undefined,
+        rfid: rowData.rfid || undefined,
+        uuid: rowData.uuid || undefined,
+        alma_mater: rowData.alma_mater || undefined,
+        major: rowData.major || undefined,
+        website: rowData.website || undefined,
       };
 
       // Validate row
-      const validation = validateRow(staffData, i);
+      const validation = validateRow(staffData);
       
       rows.push({
         rowIndex: i,
@@ -110,16 +148,17 @@ export async function POST(request: NextRequest) {
     // Check for duplicate staff_ids within file
     const staffIds = new Map<string, number[]>();
     rows.forEach((row, idx) => {
-      if (row.data.staff_id) {
-        if (!staffIds.has(row.data.staff_id)) {
-          staffIds.set(row.data.staff_id, []);
+      const staffId = String(row.data.staff_id || '');
+      if (staffId) {
+        if (!staffIds.has(staffId)) {
+          staffIds.set(staffId, []);
         }
-        staffIds.get(row.data.staff_id)!.push(idx);
+        staffIds.get(staffId)!.push(idx);
       }
     });
 
     // Mark duplicates as errors
-    staffIds.forEach((indices, staffId) => {
+    staffIds.forEach((indices) => {
       if (indices.length > 1) {
         indices.forEach(idx => {
           if (rows[idx].status !== 'error') {
@@ -162,7 +201,7 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-function validateRow(data: any, rowIndex: number): {
+function validateRow(data: Record<string, unknown>): {
   status: ValidationStatus;
   errors: string[];
   warnings: string[];
@@ -171,19 +210,33 @@ function validateRow(data: any, rowIndex: number): {
   const warnings: string[] = [];
 
   // Required fields
-  if (!data.staff_id?.trim()) errors.push('Staff ID is required');
-  if (!data.full_name?.trim()) errors.push('Full name is required');
-  if (!data.role?.trim()) errors.push('Role is required');
-  if (!data.phone?.trim()) errors.push('Phone is required');
-  if (!data.date_of_joining?.trim()) errors.push('Date of joining is required');
+  const staffId = String(data.staff_id || '');
+  const employeeCode = String(data.employee_code || '');
+  const fullName = String(data.full_name || '');
+  const role = String(data.role || '');
+  const phone = String(data.phone || '');
+  const contact1 = String(data.contact1 || '');
+  const dateOfJoining = String(data.date_of_joining || '');
+  const department = String(data.department || '');
+  const designation = String(data.designation || '');
+  if (!staffId.trim() && !employeeCode.trim()) {
+    errors.push('Staff ID or Employee Code is required');
+  }
+  if (!fullName.trim()) errors.push('Name/Full Name is required');
+  if (!role.trim()) errors.push('Role is required');
+  if (!phone.trim() && !contact1.trim()) {
+    errors.push('Phone or Contact1 is required');
+  }
+  if (!dateOfJoining.trim()) errors.push('Date of joining (DOJ) is required');
+  if (!department.trim()) errors.push('Department is required');
+  if (!designation.trim()) errors.push('Designation is required');
 
   // Date validation
-  if (data.date_of_joining) {
-    if (!isValidDateFormat(data.date_of_joining)) {
-      errors.push('Invalid date format. Supported formats: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD');
+  if (dateOfJoining) {
+    if (!isValidDateFormat(dateOfJoining)) {
+      errors.push('Invalid date of joining format. Supported formats: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD');
     } else {
-      // Validate that the date is not in the future
-      const date = new Date(data.date_of_joining);
+      const date = new Date(dateOfJoining);
       if (!isNaN(date.getTime())) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -194,19 +247,101 @@ function validateRow(data: any, rowIndex: number): {
     }
   }
 
+  // Date of birth validation
+  const dobStr = String(data.dob || '');
+  if (dobStr) {
+    if (!isValidDateFormat(dobStr)) {
+      errors.push('Invalid date of birth format. Supported formats: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD');
+    } else {
+      const dob = new Date(dobStr);
+      const today = new Date();
+      if (!isNaN(dob.getTime()) && dob > today) {
+        errors.push('Date of birth cannot be in the future');
+      }
+    }
+  }
+
+  // Date of promotion validation
+  const dopStr = String(data.dop || '');
+  if (dopStr) {
+    if (!isValidDateFormat(dopStr)) {
+      warnings.push('Invalid date of promotion format. Supported formats: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD');
+    } else {
+      const dop = new Date(dopStr);
+      const today = new Date();
+      if (!isNaN(dop.getTime()) && dop > today) {
+        warnings.push('Date of promotion is in the future');
+      }
+      if (dateOfJoining) {
+        const doj = new Date(dateOfJoining);
+        if (!isNaN(dop.getTime()) && !isNaN(doj.getTime()) && dop < doj) {
+          warnings.push('Date of promotion is before date of joining');
+        }
+      }
+    }
+  }
+
   // Email validation
-  if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+  const email = String(data.email || '');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     warnings.push('Invalid email format');
   }
 
+  // Contact validation
+  const contact1Str = String(data.contact1 || '');
+  const contact2Str = String(data.contact2 || '');
+  if (contact1Str && !/^[0-9+\-\s()]+$/.test(contact1Str)) {
+    warnings.push('Contact1 may contain invalid characters');
+  }
+  if (contact2Str && !/^[0-9+\-\s()]+$/.test(contact2Str)) {
+    warnings.push('Contact2 may contain invalid characters');
+  }
+
+  // Aadhaar validation (12 digits)
+  const adharNo = String(data.adhar_no || '');
+  if (adharNo) {
+    const aadhaar = adharNo.replace(/\s|-/g, '');
+    if (!/^\d{12}$/.test(aadhaar)) {
+      warnings.push('Aadhaar number should be 12 digits');
+    }
+  }
+
+  // Blood group validation
+  const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+  const bloodGroup = String(data.blood_group || '');
+  if (bloodGroup && !validBloodGroups.includes(bloodGroup.toUpperCase())) {
+    warnings.push(`Invalid blood group. Valid values: ${validBloodGroups.join(', ')}`);
+  }
+
+  // Gender validation
+  const validGenders = ['Male', 'Female', 'Other', 'male', 'female', 'other'];
+  const gender = String(data.gender || '');
+  if (gender && !validGenders.includes(gender)) {
+    warnings.push('Invalid gender. Valid values: Male, Female, Other');
+  }
+
   // Experience years validation
-  if (data.experience_years && (isNaN(data.experience_years) || data.experience_years < 0)) {
+  const experienceYears = typeof data.experience_years === 'number' 
+    ? data.experience_years 
+    : (data.experience_years ? Number(data.experience_years) : NaN);
+  if (!isNaN(experienceYears) && (isNaN(experienceYears) || experienceYears < 0)) {
     warnings.push('Invalid experience years');
+  }
+
+  // Website URL validation
+  const website = String(data.website || '');
+  if (website) {
+    try {
+      new URL(website);
+    } catch {
+      warnings.push('Invalid website URL format');
+    }
   }
 
   // Role validation (warning for unknown roles, but allow custom)
   const commonRoles = ['Principal', 'Teacher', 'Helper', 'Driver', 'Conductor', 'Administration'];
-  if (data.role && !commonRoles.some(r => data.role.toLowerCase().includes(r.toLowerCase()))) {
+  const roleStr = String(data.role || '');
+  if (roleStr && !commonRoles.some(r => roleStr.toLowerCase().includes(r.toLowerCase()))) {
     warnings.push('Uncommon role - please verify');
   }
 

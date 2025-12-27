@@ -48,7 +48,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (status && status !== 'all') {
-      query = query.eq('status', status);
+      // Handle case-insensitive status matching
+      const statusUpper = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+      query = query.eq('status', statusUpper);
     }
 
     const { data: notices, error: noticesError } = await query;
@@ -64,12 +66,32 @@ export async function GET(request: NextRequest) {
     let filteredNotices = notices || [];
     if (search) {
       const searchLower = search.toLowerCase();
+      interface NoticeWithSearch {
+        title: string;
+        content: string;
+        [key: string]: unknown;
+      }
       filteredNotices = filteredNotices.filter(
-        (notice: any) =>
+        (notice: NoticeWithSearch) =>
           notice.title.toLowerCase().includes(searchLower) ||
           notice.content.toLowerCase().includes(searchLower)
       );
     }
+
+    // Filter by publish_at date (only show published notices if status is Active)
+    // For principal/admin views, show all notices regardless of publish_at
+    // For students/staff, only show notices that are published (publish_at <= now)
+    const now = new Date();
+    interface NoticeData {
+      status?: string;
+      publish_at?: string | null;
+      [key: string]: unknown;
+    }
+    filteredNotices = filteredNotices.filter((notice: NoticeData) => {
+      if (notice.status !== 'Active') return true; // Show drafts/archived for principal
+      if (!notice.publish_at) return true; // If no publish_at, show immediately
+      return new Date(notice.publish_at) <= now; // Only show if publish_at is in the past
+    });
 
     return NextResponse.json({ data: filteredNotices }, { status: 200 });
   } catch (error) {

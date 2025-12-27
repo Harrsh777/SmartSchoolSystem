@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+// Permission checks can be added here if needed
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
     // Get optional filters
     const classFilter = searchParams.get('class');
     const sectionFilter = searchParams.get('section');
+    const statusFilter = searchParams.get('status');
 
     // Build query
     let query = supabase
@@ -44,6 +46,22 @@ export async function GET(request: NextRequest) {
     if (sectionFilter) {
       query = query.eq('section', sectionFilter);
     }
+    if (statusFilter && statusFilter !== 'all') {
+      // Map status filter to database values
+      const statusMap: Record<string, string> = {
+        'active': 'active',
+        'deactivated': 'deactivated',
+        'transferred': 'transferred',
+        'alumni': 'alumni',
+        'deleted': 'deleted',
+      };
+      const dbStatus = statusMap[statusFilter] || statusFilter;
+      query = query.eq('status', dbStatus);
+    } else if (!statusFilter) {
+      // Default to active if no status specified
+      query = query.eq('status', 'active');
+    }
+    // If statusFilter is 'all', don't filter by status
 
     // Execute query
     const { data: students, error: studentsError } = await query.order('created_at', { ascending: false });
@@ -106,7 +124,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert student with school_code
+    // Check for duplicate Aadhaar number if provided
+    if (studentData.aadhaar_number) {
+      const { data: existingAadhaar } = await supabase
+        .from('students')
+        .select('aadhaar_number')
+        .eq('aadhaar_number', studentData.aadhaar_number)
+        .single();
+
+      if (existingAadhaar) {
+        return NextResponse.json(
+          { error: 'Aadhaar number already exists' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Check for duplicate RFID if provided
+    if (studentData.rfid) {
+      const { data: existingRfid } = await supabase
+        .from('students')
+        .select('rfid')
+        .eq('school_code', school_code)
+        .eq('rfid', studentData.rfid)
+        .single();
+
+      if (existingRfid) {
+        return NextResponse.json(
+          { error: 'RFID already exists for this school' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Check for duplicate roll number in same class and section if provided
+    if (studentData.roll_number && studentData.class && studentData.section) {
+      const { data: existingRoll } = await supabase
+        .from('students')
+        .select('roll_number')
+        .eq('school_code', school_code)
+        .eq('class', studentData.class)
+        .eq('section', studentData.section)
+        .eq('roll_number', studentData.roll_number)
+        .single();
+
+      if (existingRoll) {
+        return NextResponse.json(
+          { error: 'Roll number already exists in this class and section' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Insert student with all fields
     const { data: newStudent, error: insertError } = await supabase
       .from('students')
       .insert([{
@@ -116,12 +186,47 @@ export async function POST(request: NextRequest) {
         student_name: studentData.student_name,
         class: studentData.class,
         section: studentData.section,
+        first_name: studentData.first_name || null,
+        last_name: studentData.last_name || null,
         date_of_birth: studentData.date_of_birth || null,
         gender: studentData.gender || null,
+        blood_group: studentData.blood_group || null,
+        email: studentData.email || null,
+        student_contact: studentData.student_contact || null,
+        address: studentData.address || null,
+        city: studentData.city || null,
+        state: studentData.state || null,
+        pincode: studentData.pincode || null,
+        roll_number: studentData.roll_number || null,
+        date_of_admission: studentData.date_of_admission || null,
+        last_class: studentData.last_class || null,
+        last_school_name: studentData.last_school_name || null,
+        last_school_percentage: studentData.last_school_percentage || null,
+        last_school_result: studentData.last_school_result || null,
+        medium: studentData.medium || null,
+        schooling_type: studentData.schooling_type || null,
+        aadhaar_number: studentData.aadhaar_number || null,
+        rfid: studentData.rfid || null,
+        pen_no: studentData.pen_no || null,
+        apaar_no: studentData.apaar_no || null,
+        sr_no: studentData.sr_no || null,
         parent_name: studentData.parent_name || null,
         parent_phone: studentData.parent_phone || null,
         parent_email: studentData.parent_email || null,
-        address: studentData.address || null,
+        father_name: studentData.father_name || null,
+        father_occupation: studentData.father_occupation || null,
+        father_contact: studentData.father_contact || null,
+        mother_name: studentData.mother_name || null,
+        mother_occupation: studentData.mother_occupation || null,
+        mother_contact: studentData.mother_contact || null,
+        staff_relation: studentData.staff_relation || null,
+        religion: studentData.religion || null,
+        category: studentData.category || null,
+        nationality: studentData.nationality || 'Indian',
+        house: studentData.house || null,
+        transport_type: studentData.transport_type || null,
+        rte: studentData.rte || false,
+        new_admission: studentData.new_admission !== undefined ? studentData.new_admission : true,
         academic_year: new Date().getFullYear().toString(),
         status: 'active',
       }])

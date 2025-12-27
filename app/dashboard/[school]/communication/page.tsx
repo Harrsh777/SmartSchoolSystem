@@ -4,7 +4,7 @@ import { use, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { Plus, Search, Bell, FileText, AlertCircle, Edit2, Archive } from 'lucide-react';
+import { Plus, Bell } from 'lucide-react';
 import NoticeStats from '@/components/communication/NoticeStats';
 import NoticeFilters from '@/components/communication/NoticeFilters';
 import NoticeCard from '@/components/communication/NoticeCard';
@@ -32,6 +32,7 @@ export default function CommunicationPage({
 
   useEffect(() => {
     fetchNotices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode, filters]);
 
   const fetchNotices = async () => {

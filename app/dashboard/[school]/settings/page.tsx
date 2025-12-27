@@ -42,6 +42,7 @@ export default function SchoolSettingsPage({
 
   useEffect(() => {
     fetchSchoolData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const fetchSchoolData = async () => {

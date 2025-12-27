@@ -40,7 +40,7 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
     }
   };
 
-  const handleCellEdit = (rowIndex: number, field: string, currentValue: string) => {
+  const handleCellEdit = (rowIndex: number, field: string) => {
     setEditingCell({ row: rowIndex, field });
   };
 

@@ -3,79 +3,31 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase credentials are missing. Please check your .env.local file.');
-}
-
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Database types
-export interface SchoolSignup {
-  id?: string;
-  school_name: string;
-  school_code: string;
-  school_address: string;
-  city: string;
-  state: string;
-  zip_code: string;
-  country: string;
-  school_email: string;
-  school_phone: string;
-  principal_name: string;
-  principal_email: string;
-  principal_phone: string;
-  established_year: string;
-  school_type: string;
-  affiliation: string;
-  status: 'pending' | 'approved' | 'rejected';
-  created_at?: string;
-  updated_at?: string;
-}
+// =====================================================
+// TYPE DEFINITIONS
+// =====================================================
 
 export interface AcceptedSchool {
   id?: string;
   school_name: string;
   school_code: string;
-  school_address: string;
-  city: string;
-  state: string;
-  zip_code: string;
-  country: string;
-  school_email: string;
-  school_phone: string;
-  principal_name: string;
-  principal_email: string;
-  principal_phone: string;
-  established_year: string;
-  school_type: string;
-  affiliation: string;
-  password: string;
-  approved_at?: string;
-  approved_by?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface RejectedSchool {
-  id?: string;
-  school_name: string;
-  school_code: string;
-  school_address: string;
-  city: string;
-  state: string;
-  zip_code: string;
-  country: string;
-  school_email: string;
-  school_phone: string;
-  principal_name: string;
-  principal_email: string;
-  principal_phone: string;
-  established_year: string;
-  school_type: string;
-  affiliation: string;
-  rejection_reason: string;
-  rejected_at?: string;
-  rejected_by?: string;
+  school_address?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  country?: string;
+  school_email?: string;
+  school_phone?: string;
+  principal_name?: string;
+  principal_email?: string;
+  principal_phone?: string;
+  established_year?: string;
+  school_type?: string;
+  affiliation?: string;
+  logo_url?: string;
+  status?: 'pending' | 'accepted' | 'rejected';
   created_at?: string;
   updated_at?: string;
 }
@@ -85,13 +37,13 @@ export interface Student {
   school_id: string;
   school_code: string;
   admission_no: string;
-  student_name: string; // Keep for backward compatibility
+  student_name: string;
   first_name?: string;
   last_name?: string;
   class: string;
   section: string;
   date_of_birth?: string;
-  gender?: string;
+  gender?: 'Male' | 'Female' | 'Other';
   address?: string;
   city?: string;
   state?: string;
@@ -112,25 +64,24 @@ export interface Student {
   last_school_result?: string;
   medium?: string;
   schooling_type?: string;
+  transport_type?: string;
+  staff_relation?: string;
+  new_admission?: boolean;
   roll_number?: string;
   rfid?: string;
   pen_no?: string;
   apaar_no?: string;
   rte?: boolean;
-  new_admission?: boolean;
   // Parent/Guardian Information
-  parent_name?: string; // Keep for backward compatibility
-  parent_phone?: string; // Keep for backward compatibility
-  parent_email?: string; // Keep for backward compatibility
+  parent_name?: string; // Deprecated, use father_name/mother_name
+  parent_phone?: string; // Deprecated, use father_contact/mother_contact
+  parent_email?: string; // Deprecated
   father_name?: string;
   father_occupation?: string;
   father_contact?: string;
   mother_name?: string;
   mother_occupation?: string;
   mother_contact?: string;
-  staff_relation?: string;
-  transport_type?: string;
-  // Academic
   academic_year: string;
   status: 'active' | 'inactive' | 'graduated' | 'transferred';
   created_at?: string;
@@ -154,6 +105,24 @@ export interface Staff {
   experience_years?: number;
   gender?: string;
   address?: string;
+  // New fields from schema update
+  dob?: string; // Date of birth
+  adhar_no?: string; // Aadhaar number
+  blood_group?: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
+  religion?: string;
+  category?: string;
+  nationality?: string;
+  contact1?: string; // Primary contact
+  contact2?: string; // Secondary contact
+  employee_code?: string; // Employee code (maps to staff_id if not provided)
+  dop?: string; // Date of promotion
+  short_code?: string; // Short code identifier
+  rfid?: string; // RFID card number
+  uuid?: string; // Additional UUID field
+  alma_mater?: string; // University/institution
+  major?: string; // Subject specialization
+  website?: string;
+  is_active?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -175,6 +144,62 @@ export interface ClassWithDetails extends Class {
   class_teacher?: {
     id: string;
     full_name: string;
+    staff_id: string;
+  };
+}
+
+export interface Examination {
+  id?: string;
+  school_id: string;
+  school_code: string;
+  exam_name: string;
+  academic_year: string;
+  start_date: string;
+  end_date: string;
+  status: 'upcoming' | 'ongoing' | 'completed';
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Mark {
+  id?: string;
+  exam_id: string;
+  student_id: string;
+  class_id: string;
+  school_id: string;
+  school_code: string;
+  admission_no: string;
+  max_marks: number;
+  marks_obtained: number;
+  grade?: string;
+  percentage?: number;
+  remarks?: string;
+  entered_by: string;
+  entered_by_name?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MarkWithStudent extends Mark {
+  student?: {
+    id: string;
+    admission_no: string;
+    student_name: string;
+    class: string;
+    section: string;
+    roll_number?: string;
+  };
+}
+
+export interface MarkWithExam extends Mark {
+  examination?: {
+    id: string;
+    exam_name: string;
+    academic_year: string;
+    start_date: string;
+    end_date: string;
+    status: string;
   };
 }
 
@@ -182,12 +207,12 @@ export interface Exam {
   id?: string;
   school_id: string;
   school_code: string;
-  name: string;
+  exam_name: string;
+  exam_type: string;
   academic_year: string;
-  start_date: string;
-  end_date: string;
-  status: 'draft' | 'scheduled';
-  description?: string;
+  start_date?: string;
+  end_date?: string;
+  status?: 'upcoming' | 'ongoing' | 'completed';
   created_at?: string;
   updated_at?: string;
 }
@@ -195,19 +220,14 @@ export interface Exam {
 export interface ExamSchedule {
   id?: string;
   exam_id: string;
-  school_id: string;
-  school_code: string;
   class: string;
   section: string;
   subject: string;
   exam_date: string;
-  start_time: string;
-  end_time: string;
-  room?: string;
-  invigilator_id?: string;
-  notes?: string;
+  exam_time?: string;
+  duration?: number;
+  max_marks?: number;
   created_at?: string;
-  updated_at?: string;
 }
 
 export interface Notice {
@@ -215,31 +235,15 @@ export interface Notice {
   school_id: string;
   school_code: string;
   title: string;
-  content: string;
-  category: 'Examination' | 'General' | 'Holiday' | 'Event' | 'Urgent';
-  priority: 'High' | 'Medium' | 'Low';
-  status: 'Active' | 'Draft' | 'Archived';
-  publish_at?: string;
+  message: string;
+  category?: string;
+  priority?: 'High' | 'Medium' | 'Low';
+  target_audience?: string;
   created_by?: string;
   created_at?: string;
   updated_at?: string;
 }
 
-export interface StudentAttendance {
-  id?: string;
-  school_id: string;
-  school_code: string;
-  class_id: string;
-  student_id: string;
-  attendance_date: string;
-  status: 'present' | 'absent' | 'late';
-  marked_by: string;
-  notes?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-// Admin employees (super admin / internal staff)
 export interface AdminEmployee {
   id?: string;
   emp_id: string;
@@ -255,3 +259,29 @@ export interface EmployeeSchool {
   school_id: string;
 }
 
+export interface Fee {
+  id?: string;
+  school_id: string;
+  school_code: string;
+  student_id: string;
+  admission_no: string;
+  amount: number;
+  payment_mode: 'cash' | 'online' | 'cheque' | 'card' | 'bank_transfer';
+  receipt_no: string;
+  payment_date: string;
+  collected_by: string; // staff.id
+  collected_by_name?: string; // Denormalized staff name
+  remarks?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface FeeWithStudent extends Fee {
+  student?: {
+    id: string;
+    admission_no: string;
+    student_name: string;
+    class: string;
+    section: string;
+  };
+}

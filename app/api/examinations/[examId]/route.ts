@@ -17,24 +17,47 @@ export async function GET(
       );
     }
 
-    // Fetch exam
+    // Fetch examination with related data
     const { data: exam, error: examError } = await supabase
-      .from('exams')
-      .select('*')
+      .from('examinations')
+      .select(`
+        *,
+        class:class_id (
+          id,
+          class,
+          section,
+          academic_year
+        ),
+        created_by_staff:created_by (
+          id,
+          full_name,
+          staff_id
+        ),
+        exam_subjects:exam_subjects (
+          id,
+          subject_id,
+          max_marks,
+          subject:subjects (
+            id,
+            name,
+            color
+          )
+        )
+      `)
       .eq('id', examId)
       .eq('school_code', schoolCode)
       .single();
 
     if (examError || !exam) {
       return NextResponse.json(
-        { error: 'Exam not found' },
+        { error: 'Examination not found' },
         { status: 404 }
       );
     }
 
     return NextResponse.json({ data: exam }, { status: 200 });
   } catch (error) {
-    console.error('Error fetching exam:', error);
+    console.error('Error fetching examination:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -58,9 +81,9 @@ export async function PATCH(
       );
     }
 
-    // Verify exam belongs to this school
+    // Verify examination belongs to this school
     const { data: existingExam, error: fetchError } = await supabase
-      .from('exams')
+      .from('examinations')
       .select('id, school_code')
       .eq('id', examId)
       .eq('school_code', school_code)
@@ -68,27 +91,14 @@ export async function PATCH(
 
     if (fetchError || !existingExam) {
       return NextResponse.json(
-        { error: 'Exam not found or access denied' },
+        { error: 'Examination not found or access denied' },
         { status: 404 }
       );
     }
 
-    // Validate dates if provided
-    if (updateData.start_date && updateData.end_date) {
-      const start = new Date(updateData.start_date);
-      const end = new Date(updateData.end_date);
-
-      if (start > end) {
-        return NextResponse.json(
-          { error: 'Start date must be before or equal to end date' },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Update exam
+    // Update examination
     const { data: updatedExam, error: updateError } = await supabase
-      .from('exams')
+      .from('examinations')
       .update(updateData)
       .eq('id', examId)
       .eq('school_code', school_code)
@@ -97,14 +107,14 @@ export async function PATCH(
 
     if (updateError) {
       return NextResponse.json(
-        { error: 'Failed to update exam', details: updateError.message },
+        { error: 'Failed to update examination', details: updateError.message },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ data: updatedExam }, { status: 200 });
   } catch (error) {
-    console.error('Error updating exam:', error);
+    console.error('Error updating examination:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -128,9 +138,9 @@ export async function DELETE(
       );
     }
 
-    // Verify exam belongs to this school
+    // Verify examination belongs to this school
     const { data: existingExam, error: fetchError } = await supabase
-      .from('exams')
+      .from('examinations')
       .select('id, school_code')
       .eq('id', examId)
       .eq('school_code', schoolCode)
@@ -138,46 +148,49 @@ export async function DELETE(
 
     if (fetchError || !existingExam) {
       return NextResponse.json(
-        { error: 'Exam not found or access denied' },
+        { error: 'Examination not found or access denied' },
         { status: 404 }
       );
     }
 
-    // Check if exam has schedules
-    const { count } = await supabase
-      .from('exam_schedules')
-      .select('*', { count: 'exact', head: true })
+    // Delete related exam_subjects first (cascade may not be set up)
+    await supabase
+      .from('exam_subjects')
+      .delete()
       .eq('exam_id', examId);
 
-    if (count && count > 0) {
-      return NextResponse.json(
-        {
-          error: `Cannot delete exam. It has ${count} schedule(s). Please delete schedules first.`,
-        },
-        { status: 400 }
-      );
-    }
+    // Delete related marks (student_subject_marks table)
+    await supabase
+      .from('student_subject_marks')
+      .delete()
+      .eq('exam_id', examId);
 
-    // Delete exam
+    // Delete related exam summary records
+    await supabase
+      .from('student_exam_summary')
+      .delete()
+      .eq('exam_id', examId);
+
+    // Delete the examination
     const { error: deleteError } = await supabase
-      .from('exams')
+      .from('examinations')
       .delete()
       .eq('id', examId)
       .eq('school_code', schoolCode);
 
     if (deleteError) {
       return NextResponse.json(
-        { error: 'Failed to delete exam', details: deleteError.message },
+        { error: 'Failed to delete examination', details: deleteError.message },
         { status: 500 }
       );
     }
 
     return NextResponse.json(
-      { success: true, message: 'Exam deleted successfully' },
+      { success: true, message: 'Examination deleted successfully' },
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error deleting exam:', error);
+    console.error('Error deleting examination:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -36,6 +36,8 @@ export default function StudentsPage({
     const params = new URLSearchParams(window.location.search);
     const classParam = params.get('class');
     const sectionParam = params.get('section');
+    // yearParam kept for potential future use
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const yearParam = params.get('year');
     
     if (classParam) {
@@ -44,6 +46,7 @@ export default function StudentsPage({
     if (sectionParam) {
       setSearchQuery(prev => prev ? `${prev} ${sectionParam}` : sectionParam);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const fetchStudents = async () => {

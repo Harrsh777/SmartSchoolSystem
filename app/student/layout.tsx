@@ -15,11 +15,15 @@ import {
   Bell, 
   Menu, 
   X, 
-  LogOut 
+  LogOut,
+  Key,
+  Image
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/Button';
 import type { Student, AcceptedSchool } from '@/lib/supabase';
+import { useSessionTimeout } from '@/hooks/useSessionTimeout';
+import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 
 interface StudentLayoutProps {
   children: React.ReactNode;
@@ -35,6 +39,8 @@ const menuItems = [
   { icon: FileText, label: 'Examinations', path: '/student/dashboard/examinations' },
   { icon: DollarSign, label: 'Fees', path: '/student/dashboard/fees' },
   { icon: Bell, label: 'Communication', path: '/student/dashboard/communication' },
+  { icon: Image, label: 'Gallery', path: '/student/dashboard/gallery' },
+  { icon: Key, label: 'Change Password', path: '/student/dashboard/change-password' },
 ];
 
 export default function StudentLayout({ children }: StudentLayoutProps) {
@@ -45,6 +51,13 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Session timeout (10 minutes)
+  const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
+    timeoutMinutes: 10,
+    warningMinutes: 9,
+    loginPath: '/login',
+  });
 
   useEffect(() => {
     const checkDesktop = () => {
@@ -230,6 +243,14 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
           </div>
         </main>
       </div>
+
+      {/* Session Timeout Modal */}
+      <SessionTimeoutModal
+        isOpen={showWarning}
+        timeRemaining={timeRemaining}
+        onStayLoggedIn={resetTimer}
+        onLogout={handleLogout}
+      />
     </div>
   );
 }

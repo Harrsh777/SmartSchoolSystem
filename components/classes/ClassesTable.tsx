@@ -1,7 +1,6 @@
 'use client';
 
 import Card from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
 import { Users, User, Edit, Trash2 } from 'lucide-react';
 import type { ClassWithDetails } from '@/lib/supabase';
 
@@ -15,6 +14,8 @@ interface ClassesTableProps {
 
 export default function ClassesTable({
   classes,
+  // schoolCode kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   schoolCode,
   onAssignTeacher,
   onDelete,

@@ -117,7 +117,7 @@ export default function ImportStaffPage({
     });
   };
 
-  const validateRow = (data: Partial<Staff>, rowIndex: number, allRows: StaffRow[]): {
+  const validateRow = (data: Partial<Staff>): {
     status: ValidationStatus;
     errors: string[];
     warnings: string[];

@@ -39,6 +39,7 @@ export default function AssignTeacherModal({
 
   useEffect(() => {
     fetchTeachers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const fetchTeachers = async () => {

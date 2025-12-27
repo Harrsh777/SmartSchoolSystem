@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Return school data (excluding password for security)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...schoolData } = school;
 
     return NextResponse.json(

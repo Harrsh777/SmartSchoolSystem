@@ -2,23 +2,31 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, Settings, Menu, X, LogOut } from 'lucide-react';
+import Link from 'next/link';
+import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, Settings, Menu, X, LogOut, Home, Key, Image } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/Button';
 import type { Staff, AcceptedSchool } from '@/lib/supabase';
+import { useSessionTimeout } from '@/hooks/useSessionTimeout';
+import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 
 interface TeacherLayoutProps {
   children: React.ReactNode;
 }
 
 const baseSidebarItems = [
-  { id: 'students', label: 'Students', icon: GraduationCap, path: '/teacher/dashboard#students' },
-  { id: 'staff', label: 'Staff', icon: Users, path: '/teacher/dashboard#staff' },
-  { id: 'classes', label: 'Classes', icon: UserCheck, path: '/teacher/dashboard#classes' },
-  { id: 'attendance', label: 'Class Attendance', icon: Calendar, path: '/teacher/dashboard/attendance', requiresClassTeacher: true },
-  { id: 'calendar', label: 'Calendar', icon: Calendar, path: '/teacher/dashboard#calendar' },
-  { id: 'examinations', label: 'Examinations', icon: FileText, path: '/teacher/dashboard#examinations' },
-  { id: 'communication', label: 'Communication', icon: Bell, path: '/teacher/dashboard#communication' },
-  { id: 'settings', label: 'Settings', icon: Settings, path: '/teacher/dashboard#settings' },
+  { id: 'home', label: 'Home', icon: Home, path: '/teacher/dashboard' },
+  { id: 'attendance', label: 'Mark Attendance', icon: Calendar, path: '/teacher/dashboard/attendance' },
+  { id: 'my-attendance', label: 'My Attendance', icon: Calendar, path: '/teacher/dashboard/attendance-staff' },
+  { id: 'marks', label: 'Marks Entry', icon: FileText, path: '/teacher/dashboard/marks', requiresClassTeacher: true },
+  { id: 'classes', label: 'Classes', icon: UserCheck, path: '/teacher/dashboard/classes' },
+  { id: 'students', label: 'All Students', icon: GraduationCap, path: '/teacher/dashboard/students' },
+  { id: 'staff', label: 'All Staff', icon: Users, path: '/teacher/dashboard/staff' },
+  { id: 'examinations', label: 'Examinations', icon: FileText, path: '/teacher/dashboard/examinations' },
+  { id: 'communication', label: 'Communication', icon: Bell, path: '/teacher/dashboard/communication' },
+  { id: 'gallery', label: 'Gallery', icon: Image, path: '/teacher/dashboard/gallery' },
+  { id: 'change-password', label: 'Change Password', icon: Key, path: '/teacher/dashboard/change-password' },
+  { id: 'settings', label: 'Settings', icon: Settings, path: '/teacher/dashboard/settings' },
 ];
 
 export default function TeacherLayout({ children }: TeacherLayoutProps) {
@@ -27,8 +35,25 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const [teacher, setTeacher] = useState<Staff | null>(null);
   const [school, setSchool] = useState<AcceptedSchool | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isClassTeacher, setIsClassTeacher] = useState(false);
+
+  // Session timeout (10 minutes)
+  const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
+    timeoutMinutes: 10,
+    warningMinutes: 9,
+    loginPath: '/login',
+  });
+
+  useEffect(() => {
+    const checkDesktop = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
 
   useEffect(() => {
     // Check if teacher is logged in
@@ -44,25 +69,40 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       const teacherData = JSON.parse(storedTeacher);
       setTeacher(teacherData);
       fetchSchoolName(teacherData.school_code);
-      checkIfClassTeacher(teacherData.id);
+      // Pass teacherData to checkIfClassTeacher so it has access to staff_id
+      checkIfClassTeacher(teacherData.id, teacherData.school_code, teacherData);
     } catch (err) {
       console.error('Error parsing teacher data:', err);
       router.push('/login');
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  const checkIfClassTeacher = async (teacherId: string) => {
+  const checkIfClassTeacher = async (teacherId: string, schoolCode: string, teacherData?: Staff) => {
     try {
-      const response = await fetch(`/api/classes/check-teacher?teacher_id=${teacherId}`);
+      // Pass both teacher_id and staff_id to check both fields
+      const queryParams = new URLSearchParams({
+        school_code: schoolCode,
+        teacher_id: teacherId,
+      });
+      const staffId = teacherData?.staff_id || teacher?.staff_id;
+      if (staffId) {
+        queryParams.append('staff_id', staffId);
+      }
+      
+      const response = await fetch(`/api/classes/teacher?${queryParams.toString()}`);
       const result = await response.json();
       
-      if (response.ok && result.isClassTeacher) {
+      if (response.ok && result.data) {
         setIsClassTeacher(true);
+      } else {
+        setIsClassTeacher(false);
       }
     } catch (err) {
       console.error('Error checking class teacher status:', err);
+      setIsClassTeacher(false);
     }
   };
 
@@ -82,22 +122,6 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     }
   };
 
-  const scrollToSection = (sectionId: string) => {
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    setSidebarOpen(false);
-  };
-
-  const handleNavClick = (item: typeof baseSidebarItems[0]) => {
-    if (item.path.startsWith('/teacher/dashboard/')) {
-      router.push(item.path);
-      setSidebarOpen(false);
-    } else {
-      scrollToSection(item.id);
-    }
-  };
 
   // Filter sidebar items based on class teacher status
   const sidebarItems = baseSidebarItems.filter(item => {
@@ -175,45 +199,56 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
 
       <div className="flex">
         {/* Sidebar */}
-        <aside
-          className={`
-            fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-64 bg-white border-r border-gray-200 z-40 lg:z-auto
-            transform transition-transform duration-300 ease-in-out
-            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          `}
-        >
-          <nav className="p-4 space-y-1">
-            {sidebarItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.path || (item.path.includes('#') && pathname === '/teacher/dashboard');
-              
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item)}
-                  className={`
-                    w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
-                    ${isActive
-                      ? 'bg-purple-50 text-purple-700 font-semibold border-l-4 border-purple-600'
-                      : 'text-gray-700 hover:bg-gray-100'
-                    }
-                  `}
-                >
-                  <Icon size={20} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
+        <AnimatePresence>
+          {(sidebarOpen || isDesktop) && (
+            <>
+              {/* Mobile Overlay */}
+              {sidebarOpen && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setSidebarOpen(false)}
+                  className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+                />
+              )}
 
-        {/* Mobile Overlay */}
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 bg-black/50 z-30 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
+              {/* Sidebar */}
+              <motion.aside
+                initial={{ x: -280 }}
+                animate={{ x: 0 }}
+                exit={{ x: -280 }}
+                className={`fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-white border-r border-gray-200 z-50 lg:z-auto overflow-y-auto ${
+                  sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+                }`}
+                style={{ width: '280px' }}
+              >
+                <nav className="p-4 space-y-1">
+                  {sidebarItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = pathname === item.path || (item.path === '/teacher/dashboard' && pathname === '/teacher/dashboard');
+                    
+                    return (
+                      <Link
+                        key={item.id}
+                        href={item.path}
+                        onClick={() => setSidebarOpen(false)}
+                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                          isActive
+                            ? 'bg-black text-white'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <Icon size={20} />
+                        <span className="font-medium">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </motion.aside>
+            </>
+          )}
+        </AnimatePresence>
 
         {/* Main Content */}
         <main className="flex-1 lg:ml-0">
@@ -222,6 +257,14 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
           </div>
         </main>
       </div>
+
+      {/* Session Timeout Modal */}
+      <SessionTimeoutModal
+        isOpen={showWarning}
+        timeRemaining={timeRemaining}
+        onStayLoggedIn={resetTimer}
+        onLogout={handleLogout}
+      />
     </div>
   );
 }

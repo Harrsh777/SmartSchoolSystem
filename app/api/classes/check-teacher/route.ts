@@ -5,20 +5,28 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const teacherId = searchParams.get('teacher_id');
+    const staffId = searchParams.get('staff_id');
 
-    if (!teacherId) {
+    if (!teacherId && !staffId) {
       return NextResponse.json(
-        { error: 'Teacher ID is required' },
+        { error: 'Either teacher_id or staff_id is required' },
         { status: 400 }
       );
     }
 
     // Check if this teacher is assigned as a class teacher
-    const { data: classes, error } = await supabase
+    // Check by both class_teacher_id (UUID) and class_teacher_staff_id (text)
+    let query = supabase
       .from('classes')
-      .select('id')
-      .eq('class_teacher_id', teacherId)
-      .limit(1);
+      .select('id');
+
+    if (teacherId) {
+      query = query.eq('class_teacher_id', teacherId);
+    } else if (staffId) {
+      query = query.eq('class_teacher_staff_id', staffId);
+    }
+
+    const { data: classes, error } = await query.limit(1);
 
     if (error) {
       return NextResponse.json(

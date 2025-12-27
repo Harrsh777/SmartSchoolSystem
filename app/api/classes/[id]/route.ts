@@ -77,17 +77,20 @@ export async function PATCH(
     }
 
     // Build update object
-    const updateObject: any = {
+    interface UpdateObject extends Record<string, unknown> {
+      updated_at?: string;
+    }
+    const updateObject: UpdateObject = {
       ...updateData,
     };
 
     // If class_teacher_id is provided, update it (can be null to remove teacher)
     if (class_teacher_id !== undefined) {
       if (class_teacher_id) {
-        // Verify the teacher belongs to the same school
+        // Verify the teacher belongs to the same school and get staff_id
         const { data: teacher, error: teacherError } = await supabase
           .from('staff')
-          .select('id, role, school_code')
+          .select('id, staff_id, role, school_code')
           .eq('id', class_teacher_id)
           .eq('school_code', school_code)
           .eq('role', 'Teacher')
@@ -99,8 +102,14 @@ export async function PATCH(
             { status: 400 }
           );
         }
+        // Also set the staff_id for easier querying
+        updateObject.class_teacher_id = class_teacher_id;
+        updateObject.class_teacher_staff_id = teacher.staff_id;
+      } else {
+        // Remove teacher assignment
+        updateObject.class_teacher_id = null;
+        updateObject.class_teacher_staff_id = null;
       }
-      updateObject.class_teacher_id = class_teacher_id || null;
     }
 
     // Update class
@@ -148,7 +157,8 @@ export async function DELETE(
       );
     }
 
-    // Check if class has students
+    // Check if class has students (count not used but kept for future use)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { count: studentCount } = await supabase
       .from('students')
       .select('*', { count: 'exact', head: true })

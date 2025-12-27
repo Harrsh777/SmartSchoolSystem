@@ -27,10 +27,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch classes
+    // Fetch classes (including class_teacher_staff_id)
     const { data: classes, error: classesError } = await supabase
       .from('classes')
-      .select('*')
+      .select('*, class_teacher_staff_id')
       .eq('school_code', schoolCode)
       .order('class', { ascending: true })
       .order('section', { ascending: true })
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
         if (cls.class_teacher_id) {
           const { data: teacher } = await supabase
             .from('staff')
-            .select('id, full_name')
+            .select('id, full_name, staff_id')
             .eq('id', cls.class_teacher_id)
             .single();
           
@@ -68,11 +68,18 @@ export async function GET(request: NextRequest) {
             classTeacher = teacher;
           }
         }
+        
+        // Get class_teacher_staff_id from the class record (or from teacher if not set)
+        interface ClassWithTeacherId extends Record<string, unknown> {
+          class_teacher_staff_id?: string;
+        }
+        const classTeacherStaffId = (cls as ClassWithTeacherId).class_teacher_staff_id || classTeacher?.staff_id;
 
         return {
           ...cls,
           student_count: count || 0,
           class_teacher: classTeacher,
+          class_teacher_staff_id: classTeacherStaffId,
         };
       })
     );

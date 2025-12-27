@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     // Get schedule counts for each exam
     const examsWithCounts = await Promise.all(
-      (exams || []).map(async (exam: any) => {
+      (exams || []).map(async (exam: { id: string; [key: string]: unknown }) => {
         const { count } = await supabase
           .from('exam_schedules')
           .select('*', { count: 'exact', head: true })
@@ -52,10 +52,15 @@ export async function GET(request: NextRequest) {
     let filteredExams = examsWithCounts;
     if (search) {
       const searchLower = search.toLowerCase();
-      filteredExams = filteredExams.filter((e: any) =>
-        e.name?.toLowerCase().includes(searchLower) ||
-        e.school_code?.toLowerCase().includes(searchLower) ||
-        e.academic_year?.toLowerCase().includes(searchLower)
+      interface ExamWithSearch {
+        name?: string;
+        school_code?: string;
+        [key: string]: unknown;
+      }
+      filteredExams = filteredExams.filter((e: ExamWithSearch) =>
+        String(e.name || '').toLowerCase().includes(searchLower) ||
+        String(e.school_code || '').toLowerCase().includes(searchLower) ||
+        String(e.academic_year || '').toLowerCase().includes(searchLower)
       );
     }
 

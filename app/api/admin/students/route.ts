@@ -42,11 +42,17 @@ export async function GET(request: NextRequest) {
     let filteredStudents = students || [];
     if (search) {
       const searchLower = search.toLowerCase();
-      filteredStudents = filteredStudents.filter((s: any) =>
-        s.student_name?.toLowerCase().includes(searchLower) ||
-        s.admission_no?.toLowerCase().includes(searchLower) ||
-        s.class?.toLowerCase().includes(searchLower) ||
-        s.school_code?.toLowerCase().includes(searchLower)
+      interface StudentWithSearch {
+        student_name?: string;
+        admission_no?: string;
+        class?: string;
+        [key: string]: unknown;
+      }
+      filteredStudents = filteredStudents.filter((s: StudentWithSearch) =>
+        String(s.student_name || '').toLowerCase().includes(searchLower) ||
+        String(s.admission_no || '').toLowerCase().includes(searchLower) ||
+        String(s.class || '').toLowerCase().includes(searchLower) ||
+        String(s.school_code || '').toLowerCase().includes(searchLower)
       );
     }
 

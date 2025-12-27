@@ -35,6 +35,7 @@ export default function EditStudentPage({
 
   useEffect(() => {
     fetchStudent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId, schoolCode]);
 
   const fetchStudent = async () => {

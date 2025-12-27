@@ -124,9 +124,11 @@ export default function CreateNoticeModal({
       const result = await response.json();
 
       if (response.ok) {
+        alert('Notice published successfully! It will be visible to all students and staff.');
         onSuccess();
       } else {
-        alert(result.error || 'Failed to publish notice');
+        alert(result.error || result.details || 'Failed to publish notice. Please check the console for details.');
+        console.error('Error publishing notice:', result);
       }
     } catch (error) {
       console.error('Error publishing notice:', error);

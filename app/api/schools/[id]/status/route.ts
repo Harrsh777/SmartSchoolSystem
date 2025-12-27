@@ -61,7 +61,7 @@ export async function PATCH(
     // If approved, save to accepted_schools table with generated school code and password
     if (status === 'approved') {
       // Generate password based on school name
-      const generatedPassword = generatePassword(schoolData.school_name);
+      const generatedPassword = generatePassword();
       
       // Retry mechanism for handling potential duplicate school codes (race conditions)
       let insertedData = null;
