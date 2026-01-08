@@ -16,7 +16,13 @@ import {
   Trash2,
   Loader2,
   AlertCircle,
+  Folder,
+  ArrowLeft,
+  Lock,
+  Search,
+  Filter,
 } from 'lucide-react';
+import React from 'react';
 
 interface Permission {
   id: string;
@@ -63,11 +69,54 @@ export default function RoleManagementPage({
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [staffFilter, setStaffFilter] = useState<'all' | 'teaching' | 'non-teaching' | 'rest'>('all');
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+  
+  // For module-based permissions modal
+  interface SubModule {
+    id: string;
+    name: string;
+    view_access: boolean;
+    edit_access: boolean;
+    supports_view_access: boolean;
+    supports_edit_access: boolean;
+  }
+  interface Module {
+    id: string;
+    name: string;
+    sub_modules: SubModule[];
+  }
+  interface Category {
+    id: string;
+    name: string;
+    description: string | null;
+  }
+  const [modules, setModules] = useState<Module[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [loadingModules, setLoadingModules] = useState(false);
+  const [modalError, setModalError] = useState('');
 
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
+
+  // Close filter dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.filter-dropdown-container')) {
+        setFilterDropdownOpen(false);
+      }
+    };
+
+    if (filterDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [filterDropdownOpen]);
 
   const fetchData = async () => {
     try {
@@ -134,45 +183,211 @@ export default function RoleManagementPage({
     }
   };
 
-  const handleManageRoles = (staffMember: StaffMember) => {
+  const handleManageRoles = async (staffMember: StaffMember) => {
     setSelectedStaff(staffMember);
-    // Initialize with current roles
-    const currentRoleIds = new Set(staffMember.roles.map(r => r.id));
-    setSelectedPermissions(currentRoleIds);
+    setLoadingModules(true);
     setRoleModalOpen(true);
+    setModalError('');
+    
+    try {
+      // Fetch staff permissions (modules/sub-modules) - use staff UUID
+      const response = await fetch(`/api/rbac/staff-permissions/${staffMember.id}`);
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        setModules(result.data.modules || []);
+        setCategories(result.data.categories || []);
+        if (result.data.category) {
+          setSelectedCategory(result.data.category);
+        } else if (result.data.categories && result.data.categories.length > 0) {
+          setSelectedCategory(result.data.categories[0]);
+        }
+      } else {
+        setModalError(result.error || 'Failed to load permissions');
+      }
+    } catch (err) {
+      console.error('Error fetching staff permissions:', err);
+      setModalError('Failed to load permissions');
+    } finally {
+      setLoadingModules(false);
+    }
+  };
+  
+  const handleToggleViewAccess = (moduleId: string, subModuleId: string) => {
+    setModules((prevModules) =>
+      prevModules.map((module) => {
+        if (module.id === moduleId) {
+          return {
+            ...module,
+            sub_modules: module.sub_modules.map((subModule) => {
+              if (subModule.id === subModuleId) {
+                return {
+                  ...subModule,
+                  view_access: !subModule.view_access,
+                };
+              }
+              return subModule;
+            }),
+          };
+        }
+        return module;
+      })
+    );
+  };
+
+  const handleToggleEditAccess = (moduleId: string, subModuleId: string) => {
+    setModules((prevModules) =>
+      prevModules.map((module) => {
+        if (module.id === moduleId) {
+          return {
+            ...module,
+            sub_modules: module.sub_modules.map((subModule) => {
+              if (subModule.id === subModuleId) {
+                return {
+                  ...subModule,
+                  edit_access: !subModule.edit_access,
+                };
+              }
+              return subModule;
+            }),
+          };
+        }
+        return module;
+      })
+    );
+  };
+  
+  const handleToggleModuleViewAccess = (moduleId: string) => {
+    setModules((prevModules) =>
+      prevModules.map((module) => {
+        if (module.id === moduleId) {
+          const allEnabled = module.sub_modules
+            .filter((sm) => sm.supports_view_access)
+            .every((sm) => sm.view_access);
+          const newValue = !allEnabled;
+          return {
+            ...module,
+            sub_modules: module.sub_modules.map((subModule) => {
+              if (subModule.supports_view_access) {
+                return {
+                  ...subModule,
+                  view_access: newValue,
+                };
+              }
+              return subModule;
+            }),
+          };
+        }
+        return module;
+      })
+    );
+  };
+  
+  const handleToggleModuleEditAccess = (moduleId: string) => {
+    setModules((prevModules) =>
+      prevModules.map((module) => {
+        if (module.id === moduleId) {
+          const allEnabled = module.sub_modules
+            .filter((sm) => sm.supports_edit_access)
+            .every((sm) => sm.edit_access);
+          const newValue = !allEnabled;
+          return {
+            ...module,
+            sub_modules: module.sub_modules.map((subModule) => {
+              if (subModule.supports_edit_access) {
+                return {
+                  ...subModule,
+                  edit_access: newValue,
+                };
+              }
+              return subModule;
+            }),
+          };
+        }
+        return module;
+      })
+    );
+  };
+  
+  const handleCategoryChange = async (categoryId: string) => {
+    const category = categories.find((c) => c.id === categoryId);
+    if (category && selectedStaff) {
+      setSelectedCategory(category);
+      setLoadingModules(true);
+      setModalError('');
+      
+      try {
+        // Fetch staff permissions for new category - use staff UUID
+        const response = await fetch(`/api/rbac/staff-permissions/${selectedStaff.id}?category_id=${categoryId}`);
+        const result = await response.json();
+        
+        if (response.ok && result.data) {
+          setModules(result.data.modules || []);
+        } else {
+          setModalError(result.error || 'Failed to load permissions');
+        }
+      } catch (err) {
+        console.error('Error fetching staff permissions:', err);
+        setModalError('Failed to load permissions');
+      } finally {
+        setLoadingModules(false);
+      }
+    }
   };
 
   const handleSaveStaffRoles = async () => {
-    if (!selectedStaff) return;
+    if (!selectedStaff || !selectedCategory) return;
 
     try {
       setSaving(true);
       setError('');
       setSuccess('');
 
-      const roleIds = Array.from(selectedPermissions).map((roleId) => roleId);
+      // Get current user for assigned_by
+      const currentUser = sessionStorage.getItem('staff');
+      let assignedBy = null;
+      if (currentUser) {
+        try {
+          const userData = JSON.parse(currentUser);
+          assignedBy = userData.id;
+        } catch {
+          // Ignore parse errors
+        }
+      }
 
-      const response = await fetch(`/api/rbac/staff/${selectedStaff.id}/roles`, {
+      const permissions = modules.flatMap((module) =>
+        module.sub_modules.map((subModule) => ({
+          sub_module_id: subModule.id,
+          view_access: subModule.view_access,
+          edit_access: subModule.edit_access,
+        }))
+      );
+
+      const response = await fetch(`/api/rbac/staff-permissions/${selectedStaff.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role_ids: roleIds }),
+        body: JSON.stringify({
+          category_id: selectedCategory.id,
+          permissions: permissions,
+          assigned_by: assignedBy,
+        }),
       });
 
       const result = await response.json();
 
       if (response.ok) {
-        setSuccess('Roles assigned successfully!');
+        setSuccess('Permissions updated successfully!');
         setRoleModalOpen(false);
         setSelectedStaff(null);
-        setSelectedPermissions(new Set());
+        setModules([]);
         fetchData(); // Refresh data
         setTimeout(() => setSuccess(''), 3000);
       } else {
-        setError(result.error || 'Failed to assign roles');
+        setError(result.error || 'Failed to update permissions');
       }
     } catch (err) {
-      console.error('Error saving roles:', err);
-      setError('Failed to save roles');
+      console.error('Error saving permissions:', err);
+      setError('Failed to save permissions');
     } finally {
       setSaving(false);
     }
@@ -296,6 +511,44 @@ export default function RoleManagementPage({
     }
   };
 
+  // Filter staff by type
+  const getStaffByType = (type: 'all' | 'teaching' | 'non-teaching' | 'rest') => {
+    const teachingRoles = ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'];
+    const nonTeachingRoles = ['Accountant', 'Clerk', 'Librarian', 'Admin Staff', 'Admin', 'Super Admin'];
+    const supportingRoles = ['Driver', 'Support Staff', 'Helper', 'Security'];
+
+    return staff.filter(member => {
+      const designation = (member.designation || '').toLowerCase();
+      const role = designation;
+
+      switch (type) {
+        case 'teaching':
+          return teachingRoles.some(r => designation.includes(r.toLowerCase()) || role.includes(r.toLowerCase()));
+        case 'non-teaching':
+          return nonTeachingRoles.some(r => designation.includes(r.toLowerCase()) || role.includes(r.toLowerCase()));
+        case 'rest':
+          return !teachingRoles.some(r => designation.includes(r.toLowerCase()) || role.includes(r.toLowerCase())) &&
+                 !nonTeachingRoles.some(r => designation.includes(r.toLowerCase()) || role.includes(r.toLowerCase())) &&
+                 !supportingRoles.some(r => designation.includes(r.toLowerCase()) || role.includes(r.toLowerCase()));
+        default:
+          return true;
+      }
+    });
+  };
+
+  // Filter and search staff
+  const filteredStaff = getStaffByType(staffFilter).filter(member => {
+    if (!searchQuery.trim()) return true;
+    
+    const query = searchQuery.toLowerCase();
+    return (
+      member.full_name?.toLowerCase().includes(query) ||
+      member.staff_id?.toLowerCase().includes(query) ||
+      member.email?.toLowerCase().includes(query) ||
+      member.designation?.toLowerCase().includes(query)
+    );
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -307,20 +560,14 @@ export default function RoleManagementPage({
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <Shield className="text-indigo-600" size={32} />
-            Role & Permission Management
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Manage staff roles and permissions for {schoolCode}
-          </p>
-        </div>
-        <Button onClick={() => setPermissionModalOpen(true)}>
-          <Plus size={18} className="mr-2" />
-          Create Role
-        </Button>
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+          <Shield className="text-indigo-600" size={32} />
+          Role & Permission Management
+        </h1>
+        <p className="text-gray-600 mt-2">
+          Manage staff roles and permissions for {schoolCode}
+        </p>
       </div>
 
       {/* Success/Error Messages */}
@@ -347,15 +594,106 @@ export default function RoleManagementPage({
 
       {/* Staff List - Full Width */}
       <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Users size={28} />
-            All Staff Members ({staff.length})
-          </h2>
-          <Button onClick={() => setPermissionModalOpen(true)}>
-            <Plus size={18} className="mr-2" />
-            Create Role
-          </Button>
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-[#0F172A] flex items-center gap-2">
+              <Users size={28} className="text-[#2F6FED]" />
+              All Staff Members ({filteredStaff.length})
+            </h2>
+          </div>
+          
+          {/* Search and Filter Bar */}
+          <div className="flex items-center gap-3">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#64748B] size-4" />
+              <input
+                type="text"
+                placeholder="Search staff by name, ID, email, or designation..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E5E7EB] rounded-lg text-[#0F172A] placeholder-[#64748B] text-sm focus:outline-none focus:ring-2 focus:ring-[#2F6FED] focus:border-transparent transition-all"
+              />
+            </div>
+            
+            {/* Filter Dropdown */}
+            <div className="relative filter-dropdown-container">
+              <button
+                onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                className="px-4 py-2.5 bg-white border border-[#E5E7EB] rounded-lg text-[#0F172A] text-sm font-medium hover:bg-[#F1F5F9] transition-colors flex items-center gap-2"
+              >
+                <Filter size={16} className="text-[#64748B]" />
+                <span>
+                  {staffFilter === 'all' && 'All Staff'}
+                  {staffFilter === 'teaching' && 'Teaching'}
+                  {staffFilter === 'non-teaching' && 'Non-Teaching'}
+                  {staffFilter === 'rest' && 'Rest of Staff'}
+                </span>
+              </button>
+              
+              {filterDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white border border-[#E5E7EB] rounded-lg shadow-lg z-10">
+                  <div className="py-1">
+                    {(['all', 'teaching', 'non-teaching', 'rest'] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        onClick={() => {
+                          setStaffFilter(filter);
+                          setFilterDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                          staffFilter === filter
+                            ? 'bg-[#EAF1FF] text-[#2F6FED] font-medium'
+                            : 'text-[#0F172A] hover:bg-[#F1F5F9]'
+                        }`}
+                      >
+                        {filter === 'all' && 'All Staff'}
+                        {filter === 'teaching' && 'Teaching'}
+                        {filter === 'non-teaching' && 'Non-Teaching'}
+                        {filter === 'rest' && 'Rest of Staff'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Filter Dropdown with proper state */}
+            <div className="relative group">
+              <button
+                className="px-4 py-2.5 bg-white border border-[#E5E7EB] rounded-lg text-[#0F172A] text-sm font-medium hover:bg-[#F1F5F9] transition-colors flex items-center gap-2"
+              >
+                <Filter size={16} className="text-[#64748B]" />
+                <span>
+                  {staffFilter === 'all' && 'All Staff'}
+                  {staffFilter === 'teaching' && 'Teaching'}
+                  {staffFilter === 'non-teaching' && 'Non-Teaching'}
+                  {staffFilter === 'rest' && 'Rest of Staff'}
+                </span>
+              </button>
+              
+              <div className="absolute right-0 mt-2 w-48 bg-white border border-[#E5E7EB] rounded-lg shadow-lg z-10 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="py-1">
+                  {(['all', 'teaching', 'non-teaching', 'rest'] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      onClick={() => setStaffFilter(filter)}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                        staffFilter === filter
+                          ? 'bg-[#EAF1FF] text-[#2F6FED] font-medium'
+                          : 'text-[#0F172A] hover:bg-[#F1F5F9]'
+                      }`}
+                    >
+                      {filter === 'all' && 'All Staff'}
+                      {filter === 'teaching' && 'Teaching'}
+                      {filter === 'non-teaching' && 'Non-Teaching'}
+                      {filter === 'rest' && 'Rest of Staff'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         {staff.length === 0 ? (
           <div className="text-center py-12">
@@ -368,32 +706,40 @@ export default function RoleManagementPage({
               You can add staff members through the Staff Management section.
             </p>
           </div>
+        ) : filteredStaff.length === 0 ? (
+          <div className="text-center py-12">
+            <Users className="mx-auto text-[#64748B] mb-4" size={48} />
+            <p className="text-[#0F172A] text-lg font-semibold mb-2">No staff members found</p>
+            <p className="text-[#64748B] text-sm">
+              {searchQuery ? 'Try adjusting your search or filter criteria.' : 'No staff members match the selected filter.'}
+            </p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {staff.map((member) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+            {filteredStaff.map((member) => (
             <motion.div
               key={member.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-400 hover:shadow-lg transition-all bg-white"
+              className="p-5 border-2 border-[#E5E7EB] rounded-xl hover:border-[#2F6FED] hover:shadow-lg transition-all bg-white"
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">{member.full_name}</h3>
-                  <p className="text-sm text-gray-600 mt-1">{member.email || 'No email'}</p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <h3 className="font-bold text-lg text-[#0F172A]">{member.full_name}</h3>
+                  <p className="text-sm text-[#64748B] mt-1">{member.email || 'No email'}</p>
+                  <p className="text-xs text-[#64748B] mt-1">
                     {member.designation || 'No designation'} • ID: {member.staff_id}
                   </p>
                 </div>
               </div>
               {member.roles.length > 0 ? (
                 <div className="mb-4">
-                  <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Assigned Roles:</p>
+                  <p className="text-xs font-semibold text-[#64748B] mb-2 uppercase tracking-wide">Assigned Roles:</p>
                   <div className="flex flex-wrap gap-2">
                     {member.roles.map((role) => (
                       <span
                         key={role.id}
-                        className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full font-medium"
+                        className="px-3 py-1 bg-[#EAF1FF] text-[#2F6FED] text-xs rounded-full font-medium"
                       >
                         {role.name}
                       </span>
@@ -402,14 +748,14 @@ export default function RoleManagementPage({
                 </div>
               ) : (
                 <div className="mb-4">
-                  <p className="text-xs text-gray-400 italic">No roles assigned</p>
+                  <p className="text-xs text-[#64748B] italic">No roles assigned</p>
                 </div>
               )}
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => handleManageRoles(member)}
-                className="w-full"
+                className="w-full border-[#2F6FED] text-[#2F6FED] hover:bg-[#EAF1FF]"
               >
                 <Edit size={14} className="mr-2" />
                 Assign Roles
@@ -420,209 +766,240 @@ export default function RoleManagementPage({
         )}
       </Card>
 
-      {/* Roles List */}
-      <Card className="p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <Shield size={28} />
-          Available Roles ({roles.length})
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {roles.map((role) => (
-            <motion.div
-              key={role.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-400 hover:shadow-lg transition-all bg-white"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">{role.name}</h3>
-                  {role.description && (
-                    <p className="text-sm text-gray-600 mt-1">{role.description}</p>
-                  )}
-                </div>
-              </div>
-              {role.permissions && role.permissions.length > 0 ? (
-                <div className="mb-4">
-                  <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Permissions:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {role.permissions.map((perm) => (
-                      <span
-                        key={perm.id}
-                        className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full"
-                      >
-                        {perm.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-4">
-                  <p className="text-xs text-gray-400 italic">No permissions assigned</p>
-                </div>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleEditRolePermissions(role)}
-                  className="flex-1"
-                >
-                  <Edit size={14} className="mr-1" />
-                  Edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleDeleteRole(role.id)}
-                  className="text-red-600 border-red-300 hover:bg-red-50"
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Role Assignment Modal */}
+      {/* Role Assignment Modal - Module-based Permissions */}
       {roleModalOpen && selectedStaff && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-lg shadow-xl flex flex-col"
+            style={{ width: '26cm', height: '18cm', maxHeight: '90vh', maxWidth: '90vw' }}
           >
-            <div className="p-6 border-b border-gray-200">
+            {/* Header with Buttons */}
+            <div className="p-4 border-b border-gray-200">
+              {/* Top Row: Staff Name and Action Buttons */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-teal-700">{selectedStaff.full_name}</h2>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setRoleModalOpen(false);
+                      setSelectedStaff(null);
+                      setModules([]);
+                      setSelectedCategory(null);
+                    }}
+                    className="border-yellow-500 text-yellow-700 hover:bg-yellow-50"
+                  >
+                    <ArrowLeft size={16} className="mr-2" />
+                    ← BACK
+                  </Button>
+                  <Button
+                    onClick={handleSaveStaffRoles}
+                    disabled={saving || !selectedCategory}
+                    className="bg-orange-500 hover:bg-orange-600 text-white"
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 size={16} className="mr-2 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <Folder size={16} className="mr-2" />
+                        UPDATE
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Second Row: Device Guard and Category */}
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Assign Roles to {selectedStaff.full_name}
-                </h2>
-                <button
-                  onClick={() => {
-                    setRoleModalOpen(false);
-                    setSelectedStaff(null);
-                    setSelectedPermissions(new Set());
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X size={24} />
-                </button>
+                <div className="flex items-center gap-3">
+                  {/* Device Guard Settings Button (Premium) */}
+                  <button className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors shadow-sm text-sm">
+                    <Shield size={16} className="text-gray-600" />
+                    <span className="text-xs font-medium text-gray-700">DEVICE GUARD SETTINGS</span>
+                    <span className="px-1.5 py-0.5 bg-green-500 text-white text-xs font-semibold rounded">PREMIUM</span>
+                  </button>
+                </div>
+                {/* Category Selector */}
+                <div className="flex items-center gap-2">
+                  <Folder size={14} className="text-gray-400" />
+                  <select
+                    value={selectedCategory?.id || ''}
+                    onChange={(e) => handleCategoryChange(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  >
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
-            <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">
-              {roles.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">No roles available. Create a role first.</p>
+
+            {/* Error Message */}
+            {modalError && (
+              <div className="mx-4 mt-2 p-2 bg-red-50 border border-red-200 text-red-800 text-xs rounded">
+                {modalError}
+              </div>
+            )}
+
+            {/* Permissions Table */}
+            <div className="overflow-y-auto flex-1" style={{ height: 'calc(18cm - 200px)' }}>
+              {loadingModules ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                </div>
+              ) : modules.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                  No modules found
                 </div>
               ) : (
-                roles.map((role) => {
-                  const isSelected = selectedPermissions.has(role.id);
-                  const currentlyHasRole = selectedStaff.roles.some((r) => r.id === role.id);
-                  
-                  // Group permissions by view/edit
-                  const viewPermissions = role.permissions?.filter(p => p.key.startsWith('view_')) || [];
-                  const managePermissions = role.permissions?.filter(p => p.key.startsWith('manage_')) || [];
-                  
-                  return (
-                    <label
-                      key={role.id}
-                      className={`flex items-start gap-3 p-5 border-2 rounded-xl cursor-pointer transition-all ${
-                        isSelected
-                          ? 'border-indigo-500 bg-indigo-50 shadow-md'
-                          : 'border-gray-200 hover:border-indigo-300 hover:shadow-sm'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          const newSet = new Set(selectedPermissions);
-                          if (e.target.checked) {
-                            newSet.add(role.id);
-                          } else {
-                            newSet.delete(role.id);
-                          }
-                          setSelectedPermissions(newSet);
-                        }}
-                        className="mt-1 w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="font-bold text-lg text-gray-900">{role.name}</span>
-                          {currentlyHasRole && (
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
-                              Currently Assigned
-                            </span>
-                          )}
+                <table className="w-full">
+                  <thead className="bg-orange-100 border-b border-orange-200 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900">MODULE</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900">SUB MODULE</th>
+                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-900">VIEW ACCESS</th>
+                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-900">EDIT ACCESS</th>
+                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-900">
+                        <div className="flex items-center justify-center gap-1">
+                          <span>IP Access</span>
+                          <span className="px-1 py-0.5 bg-green-500 text-white text-xs font-semibold rounded">PREMIUM</span>
+                          <Shield size={12} className="text-gray-600" />
                         </div>
-                        {role.description && (
-                          <p className="text-sm text-gray-600 mb-3">{role.description}</p>
-                        )}
-                        {role.permissions && role.permissions.length > 0 && (
-                          <div className="space-y-2">
-                            {viewPermissions.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-1">View Access:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {viewPermissions.map((perm) => (
-                                    <span
-                                      key={perm.id}
-                                      className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full"
-                                    >
-                                      {perm.name.replace('View ', '')}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {modules.map((module, modIdx) => (
+                      <React.Fragment key={module.id}>
+                        {/* Module Row */}
+                        <tr className="bg-gray-50">
+                          <td className="px-3 py-2 text-xs font-semibold text-gray-900">
+                            {modIdx + 1}. {module.name}
+                          </td>
+                          <td className="px-3 py-2"></td>
+                          <td className="px-3 py-2 text-center">
+                            {module.sub_modules.some((sm) => sm.supports_view_access) && (
+                              <button
+                                onClick={() => handleToggleModuleViewAccess(module.id)}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                                  module.sub_modules
+                                    .filter((sm) => sm.supports_view_access)
+                                    .every((sm) => sm.view_access)
+                                    ? 'bg-orange-500'
+                                    : 'bg-gray-300'
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                    module.sub_modules
+                                      .filter((sm) => sm.supports_view_access)
+                                      .every((sm) => sm.view_access)
+                                      ? 'translate-x-5'
+                                      : 'translate-x-0.5'
+                                  }`}
+                                />
+                              </button>
                             )}
-                            {managePermissions.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-1">Edit/Manage Access:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {managePermissions.map((perm) => (
-                                    <span
-                                      key={perm.id}
-                                      className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full"
-                                    >
-                                      {perm.name.replace('Manage ', '')}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {module.sub_modules.some((sm) => sm.supports_edit_access) && (
+                              <button
+                                onClick={() => handleToggleModuleEditAccess(module.id)}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                                  module.sub_modules
+                                    .filter((sm) => sm.supports_edit_access)
+                                    .every((sm) => sm.edit_access)
+                                    ? 'bg-orange-500'
+                                    : 'bg-gray-300'
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                    module.sub_modules
+                                      .filter((sm) => sm.supports_edit_access)
+                                      .every((sm) => sm.edit_access)
+                                      ? 'translate-x-5'
+                                      : 'translate-x-0.5'
+                                  }`}
+                                />
+                              </button>
                             )}
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                  );
-                })
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              disabled
+                              className="relative inline-flex h-5 w-9 items-center rounded-full bg-gray-300 opacity-50 cursor-not-allowed"
+                            >
+                              <span className="inline-block h-3.5 w-3.5 transform rounded-full bg-white translate-x-0.5" />
+                            </button>
+                          </td>
+                        </tr>
+                        {/* Sub-module Rows */}
+                        {module.sub_modules.map((subModule, subIdx) => (
+                          <tr key={subModule.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-1"></td>
+                            <td className="px-3 py-1 text-xs text-gray-700">
+                              {modIdx + 1}.{subIdx + 1} {subModule.name}
+                            </td>
+                            <td className="px-3 py-1 text-center">
+                              {subModule.supports_view_access ? (
+                                <button
+                                  onClick={() => handleToggleViewAccess(module.id, subModule.id)}
+                                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                                    subModule.view_access ? 'bg-orange-500' : 'bg-gray-300'
+                                  }`}
+                                >
+                                  <span
+                                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                      subModule.view_access ? 'translate-x-5' : 'translate-x-0.5'
+                                    }`}
+                                  />
+                                </button>
+                              ) : (
+                                <span className="text-gray-400 text-xs">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1 text-center">
+                              {subModule.supports_edit_access ? (
+                                <button
+                                  onClick={() => handleToggleEditAccess(module.id, subModule.id)}
+                                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                                    subModule.edit_access ? 'bg-orange-500' : 'bg-gray-300'
+                                  }`}
+                                >
+                                  <span
+                                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                      subModule.edit_access ? 'translate-x-5' : 'translate-x-0.5'
+                                    }`}
+                                  />
+                                </button>
+                              ) : (
+                                <span className="text-gray-400 text-xs">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1 text-center">
+                              <button
+                                disabled
+                                className="relative inline-flex h-5 w-9 items-center rounded-full bg-gray-300 opacity-50 cursor-not-allowed"
+                              >
+                                <span className="inline-block h-3.5 w-3.5 transform rounded-full bg-white translate-x-0.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
               )}
-            </div>
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setRoleModalOpen(false);
-                  setSelectedStaff(null);
-                  setSelectedPermissions(new Set());
-                }}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleSaveStaffRoles} disabled={saving}>
-                {saving ? (
-                  <>
-                    <Loader2 size={18} className="mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save size={18} className="mr-2" />
-                    Save
-                  </>
-                )}
-              </Button>
             </div>
           </motion.div>
         </div>

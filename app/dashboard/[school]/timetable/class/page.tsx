@@ -128,6 +128,8 @@ export default function ClassTimetablePage({
   const [saving, setSaving] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedClass, setSelectedClass] = useState<{ id: string; class: string; section: string } | null>(null);
+  const [selectedClassName, setSelectedClassName] = useState<string>('');
+  const [selectedSection, setSelectedSection] = useState<string>('');
   interface ClassData {
     id: string;
     class: string;
@@ -162,6 +164,20 @@ export default function ClassTimetablePage({
     fetchClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode, periodGroup]);
+
+  useEffect(() => {
+    // Update selectedClass when class name or section changes
+    if (selectedClassName && selectedSection) {
+      const cls = classes.find(c => c.class === selectedClassName && c.section === selectedSection);
+      if (cls) {
+        setSelectedClass({ id: cls.id, class: cls.class, section: cls.section });
+      } else {
+        setSelectedClass(null);
+      }
+    } else {
+      setSelectedClass(null);
+    }
+  }, [selectedClassName, selectedSection, classes]);
 
   useEffect(() => {
     if (selectedClass) {
@@ -232,7 +248,7 @@ export default function ClassTimetablePage({
     try {
       setLoading(true);
       const [subjectsRes, slotsRes] = await Promise.all([
-        fetch(`/api/timetable/subjects?school_code=${schoolCode}`),
+        fetch(`/api/timetable/subjects?school_code=${schoolCode}&class_id=${selectedClass.id}`),
         fetch(`/api/timetable/slots?school_code=${schoolCode}&class_id=${selectedClass.id}`),
       ]);
 
@@ -488,12 +504,12 @@ export default function ClassTimetablePage({
       return (
         <td
           ref={setNodeRef}
-          className="px-4 py-6 text-center bg-gray-100 border border-gray-200"
+          className="px-4 py-6 text-center bg-[#F1F5F9] border border-[#E5E7EB]"
         >
-          <div className="text-sm font-medium text-gray-600">
+          <div className="text-sm font-medium text-[#64748B]">
             {period.period_name}
           </div>
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-[#64748B] mt-1">
             {period.period_start_time} - {period.period_end_time}
           </div>
         </td>
@@ -503,12 +519,12 @@ export default function ClassTimetablePage({
     return (
       <td
         ref={setNodeRef}
-        className={`px-4 py-6 text-center border border-gray-200 min-w-[120px] ${
-          isOver ? 'bg-blue-50 border-blue-300' : 'bg-white hover:bg-gray-50'
+        className={`px-4 py-6 text-center border border-[#E5E7EB] min-w-[120px] ${
+          isOver ? 'bg-[#EAF1FF] border-[#2F6FED]' : 'bg-white hover:bg-[#F1F5F9]'
         } ${isSaving ? 'opacity-50' : ''}`}
       >
         {isSaving ? (
-          <Loader2 className="w-5 h-5 animate-spin mx-auto text-gray-400" />
+          <Loader2 className="w-5 h-5 animate-spin mx-auto text-[#64748B]" />
         ) : slot?.subject ? (
           <div className="relative group">
             <div
@@ -520,7 +536,7 @@ export default function ClassTimetablePage({
               {slot.subject.name}
             </div>
             {slot.teachers && slot.teachers.length > 0 && (
-              <div className="mt-1 text-xs text-gray-600">
+              <div className="mt-1 text-xs text-[#64748B]">
                 {slot.teachers.length} teacher{slot.teachers.length !== 1 ? 's' : ''}
               </div>
             )}
@@ -530,7 +546,7 @@ export default function ClassTimetablePage({
                   e.stopPropagation();
                   handleAddTeachers(day, period.period_order);
                 }}
-                className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white flex items-center justify-center gap-1 transition-colors shadow-sm"
+                className="text-xs px-2 py-1 bg-[#2F6FED] hover:bg-[#1E3A8A] rounded text-white flex items-center justify-center gap-1 transition-colors shadow-sm"
                 title="Add/Edit Teachers"
               >
                 <UserPlus size={12} />
@@ -549,7 +565,7 @@ export default function ClassTimetablePage({
             </div>
           </div>
         ) : (
-          <div className="text-xs text-gray-400">Drop subject</div>
+          <div className="text-xs text-[#64748B]">Drop subject</div>
         )}
       </td>
     );
@@ -560,8 +576,8 @@ export default function ClassTimetablePage({
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Class Time Table</h1>
-            <p className="text-gray-600">Create timetables for classes using period groups</p>
+            <h1 className="text-3xl font-bold text-[#0F172A] mb-2">Class Time Table</h1>
+            <p className="text-[#64748B]">Create timetables for classes using period groups</p>
           </div>
           <Button
             variant="outline"
@@ -573,7 +589,7 @@ export default function ClassTimetablePage({
         </div>
         <Card>
           <div className="text-center py-12">
-            <p className="text-gray-600 mb-4">No period group found. Please create one first.</p>
+            <p className="text-[#64748B] mb-4">No period group found. Please create one first.</p>
             <Button onClick={() => router.push(`/dashboard/${schoolCode}/timetable/group-wise`)}>
               Create Period Group
             </Button>
@@ -594,7 +610,7 @@ export default function ClassTimetablePage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-black mb-2">Class Time Table</h1>
-          <p className="text-gray-600">Drag and drop subjects to create class timetables</p>
+          <p className="text-[#64748B]">Drag and drop subjects to create class timetables</p>
         </div>
         <div className="flex gap-3">
           <select
@@ -604,9 +620,11 @@ export default function ClassTimetablePage({
               if (group) {
                 setPeriodGroup(group);
                 setSelectedClass(null); // Reset selected class when group changes
+                setSelectedClassName(''); // Reset class selection
+                setSelectedSection(''); // Reset section selection
               }
             }}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+            className="px-4 py-2.5 border border-[#E5E7EB] rounded-lg text-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-[#2F6FED] focus:border-transparent transition-all bg-white"
           >
             {periodGroups.map(g => (
               <option key={g.id} value={g.id}>{g.group_name}</option>
@@ -622,37 +640,68 @@ export default function ClassTimetablePage({
         </div>
       </div>
 
-      {/* Class Selector and Save Button */}
+      {/* Class and Section Selectors and Save Button */}
       <Card>
-        <div className="flex items-center gap-4">
-          <label className="text-sm font-semibold text-gray-700">Select Class:</label>
-          <select
-            value={selectedClass?.id || ''}
-            onChange={(e) => {
-              const cls = classes.find(c => c.id === e.target.value);
-              if (cls) setSelectedClass({ id: cls.id, class: cls.class, section: cls.section });
-            }}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-            disabled={!periodGroup || classes.length === 0}
-          >
-            <option value="">
-              {!periodGroup 
-                ? 'Select a period group first' 
-                : classes.length === 0 
-                ? 'No classes assigned to this period group' 
-                : 'Select a class'}
-            </option>
-            {classes.map(cls => (
-              <option key={cls.id} value={cls.id}>
-                Class {cls.class} - Section {cls.section}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-semibold text-[#0F172A] whitespace-nowrap">Class:</label>
+            <select
+              value={selectedClassName}
+              onChange={(e) => {
+                setSelectedClassName(e.target.value);
+                setSelectedSection(''); // Reset section when class changes
+              }}
+              className="px-4 py-2.5 border border-[#E5E7EB] rounded-lg text-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-[#2F6FED] focus:border-transparent transition-all bg-white min-w-[150px]"
+              disabled={!periodGroup || classes.length === 0}
+            >
+              <option value="">
+                {!periodGroup 
+                  ? 'Select period group first' 
+                  : classes.length === 0 
+                  ? 'No classes available' 
+                  : 'Select Class'}
               </option>
-            ))}
-          </select>
+              {Array.from(new Set(classes.map(c => c.class))).sort().map(className => (
+                <option key={className} value={className}>
+                  {className}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-semibold text-[#0F172A] whitespace-nowrap">Section:</label>
+            <select
+              value={selectedSection}
+              onChange={(e) => setSelectedSection(e.target.value)}
+              className="px-4 py-2.5 border border-[#E5E7EB] rounded-lg text-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-[#2F6FED] focus:border-transparent transition-all bg-white min-w-[150px]"
+              disabled={!periodGroup || classes.length === 0 || !selectedClassName}
+            >
+              <option value="">
+                {!selectedClassName 
+                  ? 'Select class first' 
+                  : classes.filter(c => c.class === selectedClassName).length === 0
+                  ? 'No sections available'
+                  : 'Select Section'}
+              </option>
+              {Array.from(new Set(
+                classes
+                  .filter(c => c.class === selectedClassName)
+                  .map(c => c.section)
+              )).sort().map(section => (
+                <option key={section} value={section}>
+                  {section}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex-1" /> {/* Spacer */}
+          
           <Button
             onClick={handleSaveTimetable}
             disabled={savingAll || !selectedClass || !periodGroup}
-            className="min-w-[140px]"
-            variant={selectedClass ? "default" : "outline"}
+            className="min-w-[140px] bg-[#2F6FED] hover:bg-[#1E3A8A] text-white disabled:bg-[#E5E7EB] disabled:text-[#64748B]"
           >
             {savingAll ? (
               <>
@@ -684,7 +733,7 @@ export default function ClassTimetablePage({
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Subjects */}
             <Card>
-              <h2 className="text-lg font-bold text-black mb-4">Subjects</h2>
+              <h2 className="text-lg font-bold text-[#0F172A] mb-4">Subjects</h2>
               <SortableContext items={subjects.map(s => s.id)} strategy={rectSortingStrategy}>
                 <div className="space-y-2">
                   {subjects.map(subject => (
@@ -705,13 +754,13 @@ export default function ClassTimetablePage({
                   <table className="w-full border-collapse">
                     <thead>
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200">
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-[#0F172A] bg-[#F1F5F9] border border-[#E5E7EB]">
                           Time
                         </th>
                         {days.map(day => (
                           <th
                             key={day}
-                            className="px-4 py-3 text-center text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200 min-w-[120px]"
+                            className="px-4 py-3 text-center text-sm font-semibold text-[#0F172A] bg-[#F1F5F9] border border-[#E5E7EB] min-w-[120px]"
                           >
                             {day}
                           </th>
@@ -721,9 +770,9 @@ export default function ClassTimetablePage({
                     <tbody>
                       {allPeriods.map(period => (
                         <tr key={period.id}>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-700 bg-gray-50 border border-gray-200">
+                          <td className="px-4 py-3 text-sm font-medium text-[#0F172A] bg-[#F1F5F9] border border-[#E5E7EB]">
                             {period.period_start_time} - {period.period_end_time}
-                            <div className="text-xs text-gray-500 mt-1">
+                            <div className="text-xs text-[#64748B] mt-1">
                               {period.period_name}
                             </div>
                           </td>

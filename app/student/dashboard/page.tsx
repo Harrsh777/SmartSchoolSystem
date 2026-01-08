@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { 
@@ -37,8 +38,14 @@ interface ClassInfo {
 }
 
 interface ExamData {
+  id?: string;
+  name?: string;
+  exam_name?: string;
+  title?: string;
   start_date?: string;
+  end_date?: string;
   status?: string;
+  academic_year?: string;
   [key: string]: unknown;
 }
 
@@ -51,6 +58,7 @@ interface EventNotificationData {
 }
 
 export default function StudentDashboardHome() {
+  const router = useRouter();
   const [student, setStudent] = useState<Student | null>(null);
   // school kept for potential future use
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -122,15 +130,20 @@ export default function StudentDashboardHome() {
         today.setHours(0, 0, 0, 0);
         const upcoming = result.data
           .filter((exam: ExamData) => {
+            if (!exam.start_date) return false;
             const examDate = new Date(exam.start_date);
             examDate.setHours(0, 0, 0, 0);
             return (exam.status === 'upcoming' || exam.status === 'ongoing') && examDate >= today;
           })
           .slice(0, 3);
         setUpcomingExams(upcoming);
+      } else {
+        // If no exams found, set empty array
+        setUpcomingExams([]);
       }
     } catch (err) {
       console.error('Error fetching exams:', err);
+      setUpcomingExams([]);
     }
   };
 
@@ -195,7 +208,11 @@ export default function StudentDashboardHome() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <Card hover>
+          <Card 
+            hover 
+            className="cursor-pointer"
+            onClick={() => router.push('/student/dashboard/attendance')}
+          >
             <div className="flex items-center space-x-4">
               <div className="bg-green-500 p-3 rounded-lg">
                 <CheckCircle className="text-white" size={24} />
@@ -229,7 +246,11 @@ export default function StudentDashboardHome() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <Card hover>
+          <Card 
+            hover 
+            className="cursor-pointer"
+            onClick={() => router.push('/student/dashboard/communication')}
+          >
             <div className="flex items-center space-x-4">
               <div className="bg-purple-500 p-3 rounded-lg">
                 <Bell className="text-white" size={24} />
@@ -246,7 +267,11 @@ export default function StudentDashboardHome() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          <Card hover>
+          <Card 
+            hover 
+            className="cursor-pointer"
+            onClick={() => router.push('/student/dashboard/fees')}
+          >
             <div className="flex items-center space-x-4">
               <div className="bg-orange-500 p-3 rounded-lg">
                 <DollarSign className="text-white" size={24} />
@@ -414,14 +439,21 @@ export default function StudentDashboardHome() {
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="font-semibold text-black">{exam.name}</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {new Date(exam.start_date).toLocaleDateString()} - {new Date(exam.end_date).toLocaleDateString()}
-                      </p>
+                      <h3 className="font-semibold text-black">
+                        {exam.name || exam.exam_name || exam.title || 'Exam'}
+                      </h3>
+                      {exam.start_date && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          {new Date(exam.start_date).toLocaleDateString()}
+                          {exam.end_date && ` - ${new Date(exam.end_date).toLocaleDateString()}`}
+                        </p>
+                      )}
                     </div>
-                    <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                      {exam.academic_year}
-                    </span>
+                    {exam.academic_year && (
+                      <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                        {exam.academic_year}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}

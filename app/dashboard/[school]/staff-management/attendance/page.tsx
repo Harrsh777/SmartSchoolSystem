@@ -36,6 +36,7 @@ export default function StaffAttendancePage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isMarked, setIsMarked] = useState(false);
 
   useEffect(() => {
     fetchStaff();
@@ -130,6 +131,13 @@ export default function StaffAttendancePage({
     setSaveSuccess(false);
 
     try {
+      // Check if there are any attendance records to save
+      if (Object.keys(attendance).length === 0) {
+        alert('Please mark attendance for at least one staff member');
+        setSaving(false);
+        return;
+      }
+
       const attendanceRecords = Object.entries(attendance).map(([staffId, status]) => {
         return {
           staff_id: staffId,
@@ -163,12 +171,13 @@ export default function StaffAttendancePage({
       } else {
         const errorMessage = result.error || 'Failed to save attendance';
         const errorDetails = result.details ? `: ${result.details}` : '';
+        console.error('Attendance error response:', result);
+        console.error('Response status:', response.status);
         alert(`${errorMessage}${errorDetails}`);
-        console.error('Attendance error:', result);
       }
     } catch (err) {
       console.error('Error saving attendance:', err);
-      alert('Failed to save attendance');
+      alert(`Failed to save attendance: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setSaving(false);
     }

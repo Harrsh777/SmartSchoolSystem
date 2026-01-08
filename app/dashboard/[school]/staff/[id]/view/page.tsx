@@ -5,7 +5,25 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Briefcase, GraduationCap } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  User, 
+  Mail, 
+  Phone, 
+  MapPin, 
+  Calendar, 
+  Briefcase, 
+  GraduationCap,
+  Building2,
+  FileText,
+  CreditCard,
+  Globe,
+  Award,
+  Clock,
+  Heart,
+  Shield,
+  Hash
+} from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
 
 export default function ViewStaffPage({
@@ -32,11 +50,11 @@ export default function ViewStaffPage({
       if (response.ok && result.data) {
         setStaff(result.data);
       } else {
-        router.push(`/dashboard/${schoolCode}/staff`);
+        router.push(`/dashboard/${schoolCode}/staff-management/directory`);
       }
     } catch (err) {
       console.error('Error fetching staff:', err);
-      router.push(`/dashboard/${schoolCode}/staff`);
+      router.push(`/dashboard/${schoolCode}/staff-management/directory`);
     } finally {
       setLoading(false);
     }
@@ -58,8 +76,8 @@ export default function ViewStaffPage({
       <Card>
         <div className="text-center py-12">
           <p className="text-gray-600 text-lg mb-4">Staff member not found</p>
-          <Button onClick={() => router.push(`/dashboard/${schoolCode}/staff`)}>
-            Back to Staff
+          <Button onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/directory`)}>
+            Back to Staff Directory
           </Button>
         </div>
       </Card>
@@ -81,11 +99,12 @@ export default function ViewStaffPage({
 
   return (
     <div className="space-y-8">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
-            onClick={() => router.push(`/dashboard/${schoolCode}/staff`)}
+            onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/directory`)}
           >
             <ArrowLeft size={18} className="mr-2" />
             Back
@@ -100,14 +119,67 @@ export default function ViewStaffPage({
         </Button>
       </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <Card>
-          <div className="space-y-8">
-            <div>
-              <h2 className="text-xl font-bold text-black mb-6 flex items-center">
+      {/* Staff Information */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Profile Card */}
+        <Card className="p-6 bg-gradient-to-br from-teal-50 to-blue-50 border-teal-200">
+          <div className="text-center mb-6">
+            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-teal-500 to-blue-600 flex items-center justify-center text-white text-5xl font-bold mx-auto mb-4 shadow-lg">
+              {staff.full_name?.[0]?.toUpperCase() || '?'}
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">{staff.full_name}</h2>
+            <p className="text-gray-600">Staff ID: {staff.staff_id}</p>
+            {staff.employee_code && (
+              <p className="text-gray-500 text-sm mt-1">Employee Code: {staff.employee_code}</p>
+            )}
+            <span className={`inline-block mt-3 px-4 py-1 rounded-full text-sm font-semibold ${
+              staff.is_active !== false
+                ? 'bg-green-100 text-green-700'
+                : 'bg-red-100 text-red-700'
+            }`}>
+              {staff.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
+            </span>
+          </div>
+          <div className="space-y-3 pt-6 border-t border-teal-200">
+            {staff.role && (
+              <div className="flex items-center gap-3 text-gray-700">
+                <Briefcase size={18} className="text-teal-600" />
+                <span>{staff.role}</span>
+              </div>
+            )}
+            {staff.designation && (
+              <div className="flex items-center gap-3 text-gray-700">
+                <Award size={18} className="text-teal-600" />
+                <span>{staff.designation}</span>
+              </div>
+            )}
+            {staff.department && (
+              <div className="flex items-center gap-3 text-gray-700">
+                <Building2 size={18} className="text-teal-600" />
+                <span>{staff.department}</span>
+              </div>
+            )}
+            {staff.email && (
+              <div className="flex items-center gap-3 text-gray-700">
+                <Mail size={18} className="text-teal-600" />
+                <span className="truncate">{staff.email}</span>
+              </div>
+            )}
+            {staff.phone && (
+              <div className="flex items-center gap-3 text-gray-700">
+                <Phone size={18} className="text-teal-600" />
+                <span>{staff.phone}</span>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Basic Information */}
+          <Card>
+            <div className="space-y-6">
+              <h2 className="text-xl font-bold text-black mb-4 flex items-center">
                 <User size={24} className="mr-2" />
                 Basic Information
               </h2>
@@ -116,24 +188,32 @@ export default function ViewStaffPage({
                   <label className="text-sm font-semibold text-gray-600">Staff ID</label>
                   <p className="text-lg font-medium text-black mt-1">{staff.staff_id}</p>
                 </div>
+                {staff.employee_code && (
+                  <div>
+                    <label className="text-sm font-semibold text-gray-600">Employee Code</label>
+                    <p className="text-lg font-medium text-black mt-1">{staff.employee_code}</p>
+                  </div>
+                )}
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Full Name</label>
                   <p className="text-lg font-medium text-black mt-1">{staff.full_name}</p>
                 </div>
-                <div>
-                  <label className="text-sm font-semibold text-gray-600">Role</label>
-                  <p className="text-lg font-medium text-black mt-1">{staff.role}</p>
-                </div>
-                {staff.department && (
+                {staff.role && (
                   <div>
-                    <label className="text-sm font-semibold text-gray-600">Department</label>
-                    <p className="text-lg font-medium text-black mt-1">{staff.department}</p>
+                    <label className="text-sm font-semibold text-gray-600">Role</label>
+                    <p className="text-lg font-medium text-black mt-1">{staff.role}</p>
                   </div>
                 )}
                 {staff.designation && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600">Designation</label>
                     <p className="text-lg font-medium text-black mt-1">{staff.designation}</p>
+                  </div>
+                )}
+                {staff.department && (
+                  <div>
+                    <label className="text-sm font-semibold text-gray-600">Department</label>
+                    <p className="text-lg font-medium text-black mt-1">{staff.department}</p>
                   </div>
                 )}
                 <div>
@@ -143,18 +223,57 @@ export default function ViewStaffPage({
                   </label>
                   <p className="text-lg font-medium text-black mt-1">{formatDate(staff.date_of_joining)}</p>
                 </div>
+                {staff.dop && (
+                  <div>
+                    <label className="text-sm font-semibold text-gray-600 flex items-center">
+                      <Calendar size={16} className="mr-1" />
+                      Date of Promotion
+                    </label>
+                    <p className="text-lg font-medium text-black mt-1">{formatDate(staff.dop)}</p>
+                  </div>
+                )}
                 {staff.gender && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600">Gender</label>
                     <p className="text-lg font-medium text-black mt-1">{staff.gender}</p>
                   </div>
                 )}
+                {staff.dob && (
+                  <div>
+                    <label className="text-sm font-semibold text-gray-600 flex items-center">
+                      <Calendar size={16} className="mr-1" />
+                      Date of Birth
+                    </label>
+                    <p className="text-lg font-medium text-black mt-1">{formatDate(staff.dob)}</p>
+                  </div>
+                )}
+                {staff.blood_group && (
+                  <div>
+                    <label className="text-sm font-semibold text-gray-600 flex items-center">
+                      <Heart size={16} className="mr-1" />
+                      Blood Group
+                    </label>
+                    <p className="text-lg font-medium text-black mt-1">{staff.blood_group}</p>
+                  </div>
+                )}
+                {staff.short_code && (
+                  <div>
+                    <label className="text-sm font-semibold text-gray-600 flex items-center">
+                      <Hash size={16} className="mr-1" />
+                      Short Code
+                    </label>
+                    <p className="text-lg font-medium text-black mt-1">{staff.short_code}</p>
+                  </div>
+                )}
               </div>
             </div>
+          </Card>
 
-            {(staff.email || staff.phone) && (
-              <div className="border-t border-gray-200 pt-8">
-                <h2 className="text-xl font-bold text-black mb-6 flex items-center">
+          {/* Contact Information */}
+          {(staff.email || staff.phone || staff.contact1 || staff.contact2) && (
+            <Card>
+              <div className="space-y-6">
+                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
                   <Phone size={24} className="mr-2" />
                   Contact Information
                 </h2>
@@ -168,22 +287,45 @@ export default function ViewStaffPage({
                       <p className="text-lg font-medium text-black mt-1">{staff.email}</p>
                     </div>
                   )}
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600 flex items-center">
-                      <Phone size={16} className="mr-1" />
-                      Phone
-                    </label>
-                    <p className="text-lg font-medium text-black mt-1">{staff.phone}</p>
-                  </div>
+                  {staff.phone && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600 flex items-center">
+                        <Phone size={16} className="mr-1" />
+                        Phone
+                      </label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.phone}</p>
+                    </div>
+                  )}
+                  {staff.contact1 && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600 flex items-center">
+                        <Phone size={16} className="mr-1" />
+                        Primary Contact
+                      </label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.contact1}</p>
+                    </div>
+                  )}
+                  {staff.contact2 && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600 flex items-center">
+                        <Phone size={16} className="mr-1" />
+                        Secondary Contact
+                      </label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.contact2}</p>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+            </Card>
+          )}
 
-            {(staff.qualification || staff.experience_years || staff.employment_type) && (
-              <div className="border-t border-gray-200 pt-8">
-                <h2 className="text-xl font-bold text-black mb-6 flex items-center">
+          {/* Employment Details */}
+          {(staff.employment_type || staff.qualification || staff.experience_years || staff.alma_mater || staff.major) && (
+            <Card>
+              <div className="space-y-6">
+                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
                   <Briefcase size={24} className="mr-2" />
-                  Employment Details
+                  Employment & Education Details
                 </h2>
                 <div className="grid md:grid-cols-2 gap-6">
                   {staff.employment_type && (
@@ -203,27 +345,145 @@ export default function ViewStaffPage({
                   )}
                   {staff.experience_years !== null && staff.experience_years !== undefined && (
                     <div>
-                      <label className="text-sm font-semibold text-gray-600">Experience</label>
+                      <label className="text-sm font-semibold text-gray-600 flex items-center">
+                        <Clock size={16} className="mr-1" />
+                        Experience
+                      </label>
                       <p className="text-lg font-medium text-black mt-1">{staff.experience_years} years</p>
+                    </div>
+                  )}
+                  {staff.alma_mater && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600 flex items-center">
+                        <GraduationCap size={16} className="mr-1" />
+                        Alma Mater
+                      </label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.alma_mater}</p>
+                    </div>
+                  )}
+                  {staff.major && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Subject Specialization</label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.major}</p>
                     </div>
                   )}
                 </div>
               </div>
-            )}
+            </Card>
+          )}
 
-            {staff.address && (
-              <div className="border-t border-gray-200 pt-8">
-                <h2 className="text-xl font-bold text-black mb-6 flex items-center">
+          {/* Personal Details */}
+          {(staff.religion || staff.category || staff.nationality || staff.adhar_no || staff.rfid || staff.uuid) && (
+            <Card>
+              <div className="space-y-6">
+                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
+                  <FileText size={24} className="mr-2" />
+                  Personal & Identification Details
+                </h2>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {staff.religion && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Religion</label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.religion}</p>
+                    </div>
+                  )}
+                  {staff.category && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Category</label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.category}</p>
+                    </div>
+                  )}
+                  {staff.nationality && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Nationality</label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.nationality}</p>
+                    </div>
+                  )}
+                  {staff.adhar_no && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600 flex items-center">
+                        <CreditCard size={16} className="mr-1" />
+                        Aadhaar Number
+                      </label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.adhar_no}</p>
+                    </div>
+                  )}
+                  {staff.rfid && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600 flex items-center">
+                        <Shield size={16} className="mr-1" />
+                        RFID Card Number
+                      </label>
+                      <p className="text-lg font-medium text-black mt-1">{staff.rfid}</p>
+                    </div>
+                  )}
+                  {staff.uuid && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600 flex items-center">
+                        <Hash size={16} className="mr-1" />
+                        UUID
+                      </label>
+                      <p className="text-lg font-medium text-black mt-1 font-mono text-sm">{staff.uuid}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Address */}
+          {staff.address && (
+            <Card>
+              <div className="space-y-6">
+                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
                   <MapPin size={24} className="mr-2" />
                   Address
                 </h2>
-                <p className="text-gray-700">{staff.address}</p>
+                <p className="text-gray-700 text-lg">{staff.address}</p>
               </div>
-            )}
-          </div>
-        </Card>
-      </motion.div>
+            </Card>
+          )}
+
+          {/* Additional Information */}
+          {(staff.website || staff.created_at || staff.updated_at) && (
+            <Card>
+              <div className="space-y-6">
+                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
+                  <Building2 size={24} className="mr-2" />
+                  Additional Information
+                </h2>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {staff.website && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600 flex items-center">
+                        <Globe size={16} className="mr-1" />
+                        Website
+                      </label>
+                      <p className="text-lg font-medium text-black mt-1">
+                        <a href={staff.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          {staff.website}
+                        </a>
+                      </p>
+                    </div>
+                  )}
+                  {staff.created_at && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Created At</label>
+                      <p className="text-lg font-medium text-black mt-1">{formatDate(staff.created_at)}</p>
+                    </div>
+                  )}
+                  {staff.updated_at && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Last Updated</label>
+                      <p className="text-lg font-medium text-black mt-1">{formatDate(staff.updated_at)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
-

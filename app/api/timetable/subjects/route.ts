@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    const classId = searchParams.get('class_id');
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -14,11 +15,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: subjects, error } = await supabase
+    // If class_id is provided, fetch subjects for that class OR global subjects (class_id is null)
+    // Otherwise, fetch all subjects
+    let query = supabase
       .from('subjects')
       .select('*')
-      .eq('school_code', schoolCode)
-      .order('name', { ascending: true });
+      .eq('school_code', schoolCode);
+
+    if (classId) {
+      // Get subjects for this class OR global subjects (class_id is null)
+      query = query.or(`class_id.eq.${classId},class_id.is.null`);
+    }
+
+    const { data: subjects, error } = await query.order('name', { ascending: true });
 
     if (error) {
       return NextResponse.json(

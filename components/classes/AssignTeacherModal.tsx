@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { X, Search, CheckCircle2 } from 'lucide-react';
@@ -101,14 +101,16 @@ export default function AssignTeacherModal({
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ duration: 0.2 }}
         className="w-full max-w-md"
       >
-        <Card className="relative">
+        <Card className="relative bg-[#FFFFFF] shadow-[0_10px_30px_rgba(0,0,0,0.08)] border border-[#E1E1DB]">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-black">Assign Class Teacher</h2>
+            <h2 className="text-2xl font-bold text-[#1e3a8a]">Assign Class Teacher</h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-[#64748B] hover:text-[#1e3a8a] transition-colors p-1 rounded-lg hover:bg-[#EAF1FF]"
             >
               <X size={24} />
             </button>
@@ -116,59 +118,61 @@ export default function AssignTeacherModal({
 
           {loading ? (
             <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading teachers...</p>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e3a8a] mx-auto mb-4"></div>
+              <p className="text-[#64748B]">Loading teachers...</p>
             </div>
           ) : (
             <>
               <div className="mb-4">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#64748B]" size={18} />
                   <input
                     type="text"
                     placeholder="Search teachers..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#FFFFFF] border border-[#E1E1DB] rounded-lg text-[#0F172A] placeholder-[#64748B] focus:outline-none focus:ring-2 focus:ring-[#60A5FA] focus:border-transparent transition-all"
                   />
                 </div>
               </div>
 
               {filteredTeachers.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-600">No teachers found</p>
+                  <p className="text-[#64748B]">No teachers found</p>
                 </div>
               ) : (
-                <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg mb-6">
+                <div className="max-h-64 overflow-y-auto border border-[#E1E1DB] rounded-lg mb-6 bg-[#F8FAFC]">
                   <div className="p-2">
-                    <label className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer">
+                    <label className="flex items-center gap-3 p-3 hover:bg-[#EAF1FF] rounded-lg cursor-pointer transition-colors">
                       <input
                         type="radio"
                         name="teacher"
                         checked={selectedTeacherId === null}
                         onChange={() => setSelectedTeacherId(null)}
-                        className="w-4 h-4 text-black border-gray-300 focus:ring-black"
+                        className="w-4 h-4 text-[#2F6FED] border-[#E1E1DB] focus:ring-[#60A5FA]"
                       />
                       <div>
-                        <p className="font-medium text-gray-900">No Teacher</p>
-                        <p className="text-sm text-gray-500">Remove assigned teacher</p>
+                        <p className="font-medium text-[#0F172A]">No Teacher</p>
+                        <p className="text-sm text-[#64748B]">Remove assigned teacher</p>
                       </div>
                     </label>
                     {filteredTeachers.map((teacher) => (
                       <label
                         key={teacher.id}
-                        className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer"
+                        className={`flex items-center gap-3 p-3 hover:bg-[#EAF1FF] rounded-lg cursor-pointer transition-colors ${
+                          selectedTeacherId === teacher.id ? 'bg-[#DBEAFE]' : ''
+                        }`}
                       >
                         <input
                           type="radio"
                           name="teacher"
                           checked={selectedTeacherId === teacher.id}
                           onChange={() => setSelectedTeacherId(teacher.id)}
-                          className="w-4 h-4 text-black border-gray-300 focus:ring-black"
+                          className="w-4 h-4 text-[#2F6FED] border-[#E1E1DB] focus:ring-[#60A5FA]"
                         />
                         <div className="flex-1">
-                          <p className="font-medium text-gray-900">{teacher.full_name}</p>
-                          <p className="text-sm text-gray-500">
+                          <p className="font-medium text-[#0F172A]">{teacher.full_name}</p>
+                          <p className="text-sm text-[#64748B]">
                             {teacher.role}
                             {teacher.department && ` • ${teacher.department}`}
                           </p>
@@ -179,18 +183,34 @@ export default function AssignTeacherModal({
                 </div>
               )}
 
-              {showSuccess && (
-                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-800">
-                  <CheckCircle2 size={20} />
-                  <span className="font-medium">Class teacher assigned successfully</span>
-                </div>
-              )}
+              <AnimatePresence>
+                {showSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="mb-4 p-3 bg-[#DBEAFE] border border-[#60A5FA] rounded-lg flex items-center gap-2 text-[#1e3a8a]"
+                  >
+                    <CheckCircle2 size={20} className="text-[#2F6FED]" />
+                    <span className="font-medium">Class teacher assigned successfully</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <Button type="button" variant="outline" onClick={onClose}>
+              <div className="flex justify-end gap-3 pt-4 border-t border-[#E1E1DB]">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={onClose}
+                  className="border-[#E1E1DB] text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#1e3a8a]"
+                >
                   Cancel
                 </Button>
-                <Button onClick={handleSubmit} disabled={saving || showSuccess}>
+                <Button 
+                  onClick={handleSubmit} 
+                  disabled={saving || showSuccess}
+                  className="bg-[#2F6FED] hover:bg-[#1e3a8a] text-[#FFFFFF] disabled:opacity-50"
+                >
                   {saving ? 'Saving...' : 'Save'}
                 </Button>
               </div>
@@ -201,4 +221,3 @@ export default function AssignTeacherModal({
     </div>
   );
 }
-

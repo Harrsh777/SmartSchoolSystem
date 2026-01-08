@@ -10,11 +10,11 @@ import bcrypt from 'bcryptjs';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, staff_id, current_password, new_password } = body;
+    const { school_code, id, current_password, new_password } = body;
 
-    if (!school_code || !staff_id || !current_password || !new_password) {
+    if (!school_code || !id || !current_password || !new_password) {
       return NextResponse.json(
-        { error: 'All fields are required' },
+        { error: 'All fields are required (school_code, id (UUID), current_password, new_password)' },
         { status: 400 }
       );
     }
@@ -26,12 +26,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify staff exists
+    // Verify staff exists by UUID
     const { data: staffData, error: staffError } = await supabase
       .from('staff')
       .select('id, staff_id, full_name, school_code')
       .eq('school_code', school_code)
-      .eq('staff_id', staff_id)
+      .eq('id', id)
       .single();
 
     if (staffError || !staffData) {
@@ -41,12 +41,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get current login record
+    // Get current login record (staff_login.staff_id should reference staff.id UUID)
     const { data: loginData, error: loginError } = await supabase
       .from('staff_login')
       .select('password_hash')
       .eq('school_code', school_code)
-      .eq('staff_id', staff_id)
+      .eq('staff_id', staffData.id) // Use UUID
       .single();
 
     if (loginError || !loginData) {
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq('school_code', school_code)
-      .eq('staff_id', staff_id);
+      .eq('staff_id', staffData.id); // Use UUID
 
     if (updateError) {
       return NextResponse.json(

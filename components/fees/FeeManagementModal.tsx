@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, Users, User, AlertCircle, ExternalLink } from 'lucide-react';
+import { X, Calendar, Users, User, AlertCircle, ExternalLink, Settings, CreditCard } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface FeeManagementModalProps {
@@ -11,10 +11,12 @@ interface FeeManagementModalProps {
 }
 
 const menuItems = [
+  { id: 'configuration', label: 'Fee Configuration', icon: Settings, path: '/fees/configuration' },
   { id: 'basics', label: 'Fee Basics', icon: Calendar, path: '/fees/basics', description: 'Fee Schedule' },
-  { id: 'fine', label: 'Fee Fine', icon: AlertCircle, path: '/fees/fine' },
   { id: 'class-wise', label: 'Class-wise Fee', icon: Users, path: '/fees/class-wise' },
   { id: 'student-wise', label: 'Student-wise Fee', icon: User, path: '/fees/student-wise' },
+  { id: 'mapper', label: 'Student Class & Fee Schedule Mapper', icon: AlertCircle, path: '/fees/mapper' },
+  { id: 'pending-cheque', label: 'Pending cheque', icon: CreditCard, path: '/fees/pending-cheque' },
 ];
 
 export default function FeeManagementModal({ isOpen, onClose, schoolCode }: FeeManagementModalProps) {

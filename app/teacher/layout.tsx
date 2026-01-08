@@ -3,7 +3,39 @@
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, Settings, Menu, X, LogOut, Home, Key, Image } from 'lucide-react';
+import { 
+  GraduationCap, 
+  Users, 
+  UserCheck, 
+  Calendar, 
+  FileText, 
+  Bell, 
+  Settings, 
+  Menu, 
+  X, 
+  LogOut, 
+  Home, 
+  Key, 
+  Image,
+  Building2,
+  Shield,
+  BookOpen,
+  DollarSign,
+  Library,
+  Bus,
+  MessageSquare,
+  FileBarChart,
+  CalendarDays,
+  Award,
+  BookMarked,
+  CalendarX,
+  TrendingUp,
+  DoorOpen,
+  ChevronDown,
+  ExternalLink,
+  Search,
+  Lock
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/Button';
 import type { Staff, AcceptedSchool } from '@/lib/supabase';
@@ -14,19 +46,38 @@ interface TeacherLayoutProps {
   children: React.ReactNode;
 }
 
-const baseSidebarItems = [
-  { id: 'home', label: 'Home', icon: Home, path: '/teacher/dashboard' },
-  { id: 'attendance', label: 'Mark Attendance', icon: Calendar, path: '/teacher/dashboard/attendance' },
-  { id: 'my-attendance', label: 'My Attendance', icon: Calendar, path: '/teacher/dashboard/attendance-staff' },
-  { id: 'marks', label: 'Marks Entry', icon: FileText, path: '/teacher/dashboard/marks', requiresClassTeacher: true },
-  { id: 'classes', label: 'Classes', icon: UserCheck, path: '/teacher/dashboard/classes' },
-  { id: 'students', label: 'All Students', icon: GraduationCap, path: '/teacher/dashboard/students' },
-  { id: 'staff', label: 'All Staff', icon: Users, path: '/teacher/dashboard/staff' },
-  { id: 'examinations', label: 'Examinations', icon: FileText, path: '/teacher/dashboard/examinations' },
-  { id: 'communication', label: 'Communication', icon: Bell, path: '/teacher/dashboard/communication' },
-  { id: 'gallery', label: 'Gallery', icon: Image, path: '/teacher/dashboard/gallery' },
-  { id: 'change-password', label: 'Change Password', icon: Key, path: '/teacher/dashboard/change-password' },
-  { id: 'settings', label: 'Settings', icon: Settings, path: '/teacher/dashboard/settings' },
+// Teacher-specific menu items (always shown)
+const teacherBaseItems = [
+  { id: 'home', label: 'Home', icon: Home, path: '/teacher/dashboard', permission: null, viewPermission: null },
+  { id: 'attendance', label: 'Mark Attendance', icon: Calendar, path: '/teacher/dashboard/attendance', permission: null, viewPermission: null },
+  { id: 'my-attendance', label: 'My Attendance', icon: Calendar, path: '/teacher/dashboard/attendance-staff', permission: null, viewPermission: null },
+  { id: 'marks', label: 'Marks Entry', icon: FileText, path: '/teacher/dashboard/marks', requiresClassTeacher: true, permission: null, viewPermission: null },
+  { id: 'classes', label: 'Classes', icon: UserCheck, path: '/teacher/dashboard/classes', permission: null, viewPermission: null },
+  { id: 'apply-leave', label: 'Apply for Leave', icon: CalendarX, path: '/teacher/dashboard/apply-leave', permission: null, viewPermission: null },
+  { id: 'my-leaves', label: 'My Leaves', icon: Calendar, path: '/teacher/dashboard/my-leaves', permission: null, viewPermission: null },
+];
+
+// All menu items from main dashboard (mapped to teacher paths)
+const dashboardMenuItems = [
+  { icon: Building2, label: 'Institute Info', path: '/teacher/dashboard/institute-info', permission: null, viewPermission: null },
+  { icon: Key, label: 'Password Manager', path: '/teacher/dashboard/password', permission: 'manage_passwords', viewPermission: 'manage_passwords' },
+  { icon: UserCheck, label: 'Staff Management', path: '/teacher/dashboard/staff-management', permission: 'manage_staff', viewPermission: 'view_staff' },
+  { icon: BookOpen, label: 'Classes', path: '/teacher/dashboard/classes', permission: 'manage_classes', viewPermission: 'view_classes' },
+  { icon: GraduationCap, label: 'Student Management', path: '/teacher/dashboard/students', permission: 'manage_students', viewPermission: 'view_students' },
+  { icon: CalendarDays, label: 'Timetable', path: '/teacher/dashboard/timetable', permission: 'manage_timetable', viewPermission: 'view_timetable' },
+  { icon: CalendarDays, label: 'Event/Calendar', path: '/teacher/dashboard/calendar', permission: 'manage_events', viewPermission: 'view_events' },
+  { icon: FileText, label: 'Examinations', path: '/teacher/dashboard/examinations', permission: 'manage_exams', viewPermission: 'view_exams' },
+  { icon: DollarSign, label: 'Fees', path: '/teacher/dashboard/fees', permission: 'manage_fees', viewPermission: 'view_fees' },
+  { icon: Library, label: 'Library', path: '/teacher/dashboard/library', permission: 'manage_library', viewPermission: 'view_library' },
+  { icon: Bus, label: 'Transport', path: '/teacher/dashboard/transport', permission: 'manage_transport', viewPermission: 'view_transport' },
+  { icon: MessageSquare, label: 'Communication', path: '/teacher/dashboard/communication', permission: 'manage_communication', viewPermission: 'view_communication' },
+  { icon: FileBarChart, label: 'Report', path: '/teacher/dashboard/reports', permission: 'view_reports', viewPermission: 'view_reports' },
+  { icon: Image, label: 'Gallery', path: '/teacher/dashboard/gallery', permission: null, viewPermission: null },
+  { icon: Award, label: 'Certificate Management', path: '/teacher/dashboard/certificates', permission: 'manage_certificates', viewPermission: 'view_certificates' },
+  { icon: BookMarked, label: 'Digital Diary', path: '/teacher/dashboard/homework', permission: 'manage_homework', viewPermission: 'view_homework' },
+  { icon: TrendingUp, label: 'Expense/income', path: '/teacher/dashboard/expense-income', permission: 'manage_finances', viewPermission: 'view_finances' },
+  { icon: DoorOpen, label: 'Gate pass', path: '/teacher/dashboard/gate-pass', permission: 'manage_gate_pass', viewPermission: 'view_gate_pass' },
+  { icon: Settings, label: 'Settings', path: '/teacher/dashboard/settings', permission: null, viewPermission: null },
 ];
 
 export default function TeacherLayout({ children }: TeacherLayoutProps) {
@@ -38,6 +89,8 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const [isDesktop, setIsDesktop] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isClassTeacher, setIsClassTeacher] = useState(false);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [staffPermissions, setStaffPermissions] = useState<any>(null);
 
   // Session timeout (10 minutes)
   const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
@@ -69,8 +122,8 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       const teacherData = JSON.parse(storedTeacher);
       setTeacher(teacherData);
       fetchSchoolName(teacherData.school_code);
-      // Pass teacherData to checkIfClassTeacher so it has access to staff_id
       checkIfClassTeacher(teacherData.id, teacherData.school_code, teacherData);
+      fetchStaffPermissions(teacherData.id);
     } catch (err) {
       console.error('Error parsing teacher data:', err);
       router.push('/login');
@@ -80,9 +133,141 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
+  const fetchStaffPermissions = async (staffId: string) => {
+    try {
+      // Fetch detailed permissions
+      const response = await fetch(`/api/rbac/staff-permissions/${staffId}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setStaffPermissions(result.data);
+        
+        // Extract enabled sub-modules and map to permission keys
+        const enabledPermissions = new Set<string>();
+        result.data.modules?.forEach((module: any) => {
+          module.sub_modules?.forEach((subModule: any) => {
+            if (subModule.view_access || subModule.edit_access) {
+              // Map sub-module names to permission keys
+              const permKeys = mapSubModuleToPermissions(subModule.name);
+              permKeys.forEach(key => enabledPermissions.add(key));
+            }
+          });
+        });
+        setPermissions(Array.from(enabledPermissions));
+      }
+    } catch (error) {
+      console.error('Error fetching staff permissions:', error);
+    }
+  };
+
+  const mapSubModuleToPermissions = (subModuleName: string): string[] => {
+    // Map sub-module names to permission keys
+    // This mapping should match the actual sub-module names in the database
+    const mapping: Record<string, string[]> = {
+      // Password Management
+      'Reset Password': ['manage_passwords'],
+      
+      // Staff Management
+      'Staff Directory': ['view_staff'],
+      'Add Staff': ['manage_staff', 'view_staff'],
+      'Bulk Staff import': ['manage_staff', 'view_staff'],
+      'Bulk Photo Upload': ['manage_staff', 'view_staff'],
+      'Staff Attendance': ['view_staff'],
+      'Student Attendance Marking Report': ['view_staff'],
+      'Quick Staff Search': ['view_staff'],
+      
+      // Classes
+      'Add/Modify Class': ['manage_classes', 'view_classes'],
+      'Add/Modify Subjects': ['manage_classes', 'view_classes'],
+      'Assign Teachers': ['manage_classes', 'view_classes'],
+      
+      // Timetable
+      'Teacher Workload': ['view_timetable'],
+      'Group wise Timetable': ['view_timetable'],
+      'Class Time Table': ['manage_timetable', 'view_timetable'],
+      'Teacher Time Table': ['view_timetable'],
+      
+      // Student Management
+      'Add student': ['manage_students', 'view_students'],
+      'Bulk Student Import': ['manage_students', 'view_students'],
+      'Bulk Photo Upload': ['manage_students', 'view_students'],
+      'Student Directory': ['view_students'],
+      'New Admission Report': ['view_students'],
+      'Student Attendance': ['view_students'],
+      'Student Report': ['view_students'],
+      'Student Info. Update Settings on App': ['manage_students', 'view_students'],
+      'Student Form Config': ['manage_students', 'view_students'],
+      'Student Sibling': ['view_students'],
+      'Student Attendance Report': ['view_students'],
+      'PTM Attendance': ['view_students'],
+      'Quick Student Search': ['view_students'],
+      
+      // Examinations
+      'Exams': ['view_exams', 'manage_exams'],
+      'Report Card, Teacher Report Card, Template Selection': ['view_exams', 'manage_exams'],
+      'Staff Marks Entry Report': ['view_exams'],
+      'Grade Scale': ['view_exams', 'manage_exams'],
+      
+      // Fee Management
+      'Fee Configuration, Receipt Template': ['view_fees', 'manage_fees'],
+      'Fee Basics (Fee Schedule, Fee Component, Fee Fine)': ['view_fees', 'manage_fees'],
+      'Fee Discount': ['view_fees', 'manage_fees'],
+      'Class-wise Fee, Student-wise Fee, Fee Receipts': ['view_fees', 'manage_fees'],
+      'Pending cheques': ['view_fees', 'manage_fees'],
+      'Fee Report, Student Fee Collection Report': ['view_fees'],
+      'Fee Invoice': ['view_fees', 'manage_fees'],
+      'Fee Mapper': ['view_fees', 'manage_fees'],
+      'Receive online fee payment notification': ['view_fees'],
+      'Quick Fee Search': ['view_fees'],
+      
+      // Library
+      'Library Basics': ['view_library', 'manage_library'],
+      'Catalogue': ['view_library', 'manage_library'],
+      'Transactions': ['view_library', 'manage_library'],
+      'Library Dashboard': ['view_library'],
+      
+      // Transport
+      'Transport Basics': ['view_transport', 'manage_transport'],
+      'Vehicles': ['view_transport', 'manage_transport'],
+      'Routes': ['view_transport', 'manage_transport'],
+      'Student Route Mapping': ['view_transport', 'manage_transport'],
+      'Vehicle expenses': ['view_transport', 'manage_transport'],
+      'GPS Tracking': ['view_transport'],
+      
+      // Communication
+      'Notice/Circular': ['view_communication', 'manage_communication'],
+      'Survey': ['view_communication', 'manage_communication'],
+      'Incident Log': ['view_communication', 'manage_communication'],
+      'Child Activity': ['view_communication', 'manage_communication'],
+      'Whatsapp': ['view_communication', 'manage_communication'],
+      
+      // Reports
+      'Report': ['view_reports'],
+      
+      // Certificate Management
+      'Template Selection': ['view_certificates', 'manage_certificates'],
+      'Manage Certificate': ['view_certificates', 'manage_certificates'],
+      'Classwise student certificate': ['view_certificates', 'manage_certificates'],
+      'Certificate Send to Student': ['view_certificates', 'manage_certificates'],
+      
+      // Digital Diary
+      'Create Diary': ['view_homework', 'manage_homework'],
+      'Daily Dairy Report': ['view_homework'],
+      'Daily Dairy Report(all classes or all batches)': ['view_homework'],
+      
+      // Income and Expenditure
+      'Add/Edit Category': ['view_finances', 'manage_finances'],
+      'Add/Edit Payee': ['view_finances', 'manage_finances'],
+      'Manage Income': ['view_finances', 'manage_finances'],
+      'Manage Expenditure': ['view_finances', 'manage_finances'],
+      
+      // Gate Pass
+      'Gate Pass Management': ['view_gate_pass', 'manage_gate_pass'],
+    };
+    return mapping[subModuleName] || [];
+  };
+
   const checkIfClassTeacher = async (teacherId: string, schoolCode: string, teacherData?: Staff) => {
     try {
-      // Pass both teacher_id and staff_id to check both fields
       const queryParams = new URLSearchParams({
         school_code: schoolCode,
         teacher_id: teacherId,
@@ -122,20 +307,44 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     }
   };
 
+  const hasPermission = (item: typeof dashboardMenuItems[0]): boolean => {
+    // Always visible items (no permission required)
+    if (!item.permission && !item.viewPermission) return true;
+    
+    // Check if staff has view or edit permission
+    if (item.viewPermission && permissions.includes(item.viewPermission)) return true;
+    if (item.permission && permissions.includes(item.permission)) return true;
+    
+    // If no permissions loaded yet, show item (will be disabled once permissions load)
+    if (permissions.length === 0 && !staffPermissions) return true;
+    
+    return false;
+  };
 
   // Filter sidebar items based on class teacher status
-  const sidebarItems = baseSidebarItems.filter(item => {
+  const filteredTeacherItems = teacherBaseItems.filter(item => {
     if (item.requiresClassTeacher) {
       return isClassTeacher;
     }
     return true;
   });
 
+  // Combine teacher items with dashboard items
+  const allMenuItems = [
+    ...filteredTeacherItems,
+    ...dashboardMenuItems,
+  ];
+
+  const isActive = (path: string) => {
+    if (path === '/teacher/dashboard' && pathname === '/teacher/dashboard') return true;
+    return pathname === path || pathname.startsWith(path + '/');
+  };
+
   if (loading || !teacher) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-[#ECEDED]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e3a8a] mx-auto mb-4"></div>
           <p className="text-gray-600">Loading dashboard...</p>
         </div>
       </div>
@@ -143,43 +352,34 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white/95 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#ECEDED]">
+      {/* Top Navigation - Matching Main Dashboard */}
+      <nav className="bg-[#FFFFFF]/80 backdrop-blur-lg border-b border-[#E1E1DB] sticky top-0 z-40 shadow-sm">
+        <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center space-x-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
+                className="lg:hidden p-2 rounded-xl hover:bg-[#DBEAFE] transition-all"
               >
-                {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+                {sidebarOpen ? <X size={24} className="text-[#1e3a8a]" /> : <Menu size={24} className="text-[#1e3a8a]" />}
               </button>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-400 rounded-lg flex items-center justify-center">
-                  <UserCheck className="text-white" size={20} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {school?.school_name || teacher.school_code}
-                  </p>
-                  <p className="text-xs text-gray-500">Staff Portal</p>
-                </div>
-              </div>
+              <Link href="/" className="text-xl font-bold text-[#1e3a8a]">
+                Edu<span className="text-[#5A7A9A]">-Yan</span>
+              </Link>
+              <div className="hidden sm:block h-6 w-px bg-[#E1E1DB]" />
+              <span className="hidden sm:block text-[#1e3a8a] font-semibold">{school?.school_name || teacher.school_code}</span>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center space-x-3">
               <div className="hidden sm:flex items-center gap-3">
                 <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">{teacher.full_name}</p>
-                  <p className="text-xs text-gray-500">{teacher.role}</p>
+                  <p className="text-sm font-medium text-[#1e3a8a]">{teacher.full_name}</p>
+                  <p className="text-xs text-[#5A7A9A]">{teacher.role || 'Teacher'}</p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-semibold">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold">
                   {teacher.full_name.split(' ').map(n => n[0]).join('').substring(0, 2)}
                 </div>
               </div>
-              <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
-                {teacher.role}
-              </span>
               <Button
                 variant="outline"
                 size="sm"
@@ -188,6 +388,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                   sessionStorage.removeItem('role');
                   router.push('/login');
                 }}
+                className="border-[#E1E1DB] hover:bg-[#DBEAFE]"
               >
                 <LogOut size={18} className="mr-2" />
                 <span className="hidden sm:inline">Logout</span>
@@ -195,10 +396,10 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
             </div>
           </div>
         </div>
-      </header>
+      </nav>
 
       <div className="flex">
-        {/* Sidebar */}
+        {/* Sidebar - Matching Main Dashboard */}
         <AnimatePresence>
           {(sidebarOpen || isDesktop) && (
             <>
@@ -213,35 +414,83 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                 />
               )}
 
-              {/* Sidebar */}
+              {/* Sidebar - Modern, Clean, Professional */}
               <motion.aside
                 initial={{ x: -280 }}
                 animate={{ x: 0 }}
                 exit={{ x: -280 }}
-                className={`fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-white border-r border-gray-200 z-50 lg:z-auto overflow-y-auto ${
-                  sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-                }`}
-                style={{ width: '280px' }}
+                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-[#1e3a8a] border-r border-[#2c4a6b] z-50 lg:z-auto overflow-y-auto overflow-x-visible shadow-2xl"
+                style={{ width: '280px', background: 'linear-gradient(180deg, #1e3a8a 0%, #0f1b2e 100%)' }}
               >
-                <nav className="p-4 space-y-1">
-                  {sidebarItems.map((item) => {
+                <nav className="p-5 space-y-1.5 overflow-visible">
+                  {/* Header Section */}
+                  <div className="mb-6 px-4 py-3.5 bg-[#2c4a6b] rounded-2xl border border-[#2c4a6b] backdrop-blur-sm">
+                    <h3 className="text-[#FFFFFF] font-bold text-base uppercase tracking-widest">
+                      Teacher Portal
+                    </h3>
+                    <p className="text-[#B8D4E8] text-xs mt-1">Dashboard Menu</p>
+                  </div>
+                  
+                  {/* Menu Items */}
+                  {allMenuItems.map((item, index) => {
                     const Icon = item.icon;
-                    const isActive = pathname === item.path || (item.path === '/teacher/dashboard' && pathname === '/teacher/dashboard');
+                    const active = isActive(item.path);
+                    const enabled = hasPermission(item as typeof dashboardMenuItems[0]);
+                    const isTeacherItem = index < filteredTeacherItems.length;
                     
                     return (
-                      <Link
-                        key={item.id}
-                        href={item.path}
-                        onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                          isActive
-                            ? 'bg-black text-white'
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        <Icon size={20} />
-                        <span className="font-medium">{item.label}</span>
-                      </Link>
+                      <div key={item.id || item.label} className="relative sidebar-menu-item">
+                        <div className="flex items-center gap-1">
+                          {enabled ? (
+                            <Link
+                              href={item.path}
+                              onClick={() => setSidebarOpen(false)}
+                              className={`group flex-1 flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 ${
+                                active
+                                  ? 'bg-[#60A5FA] text-[#FFFFFF] shadow-xl shadow-[#60A5FA]/20 scale-[1.02]'
+                                  : 'text-[#B8D4E8] hover:text-[#FFFFFF] hover:bg-[#2c4a6b]'
+                              }`}
+                            >
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
+                                active 
+                                  ? 'bg-[#3B82F6] text-[#FFFFFF]' 
+                                  : 'bg-[#2c4a6b] text-[#B8D4E8] group-hover:bg-[#3d5a7f] group-hover:text-[#FFFFFF]'
+                              }`}>
+                                {index + 1}
+                              </span>
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                                active 
+                                  ? 'bg-[#3B82F6] shadow-lg' 
+                                  : 'bg-transparent group-hover:bg-[#2c4a6b] group-hover:scale-110 group-hover:shadow-md'
+                              }`}>
+                                <Icon size={20} className={active ? 'text-[#FFFFFF]' : 'text-[#9BB8D4] group-hover:text-[#FFFFFF]'} />
+                              </div>
+                              <span className="font-semibold text-sm tracking-wide flex-1 text-left">
+                                {item.label}
+                              </span>
+                              {active && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+                              )}
+                            </Link>
+                          ) : (
+                            <div className="group flex-1 flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 text-[#7FA3C4] opacity-60 cursor-not-allowed relative">
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 bg-[#2c4a6b] text-[#7FA3C4]`}>
+                                {index + 1}
+                              </span>
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-transparent`}>
+                                <Icon size={20} className="text-[#7FA3C4]" />
+                              </div>
+                              <span className="font-semibold text-sm tracking-wide flex-1 text-left">
+                                {item.label}
+                              </span>
+                              <Lock size={16} className="text-[#7FA3C4]" />
+                              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-[#2c4a6b] text-[#FFFFFF] text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 border border-[#3d5a7f]">
+                                This option is not enabled
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     );
                   })}
                 </nav>
@@ -268,4 +517,3 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     </div>
   );
 }
-

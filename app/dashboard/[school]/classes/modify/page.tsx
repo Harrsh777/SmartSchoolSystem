@@ -89,16 +89,23 @@ export default function ModifyClassesPage({
     );
   });
 
+  // Calculate total classes and sections
+  const totalClasses = new Set(classes.map(cls => cls.class)).size;
+  const totalSections = new Set(classes.map(cls => `${cls.class}-${cls.section}`)).size;
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+      <div className="flex items-center justify-center py-12 bg-[#F8FAFC] min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#2F6FED] mx-auto mb-4"></div>
+          <p className="text-[#64748B]">Loading classes...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6 bg-[#F8FAFC] min-h-screen">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -108,55 +115,90 @@ export default function ModifyClassesPage({
           <Button
             variant="outline"
             onClick={() => router.push(`/dashboard/${schoolCode}/classes/overview`)}
+            className="border-[#E5E7EB] text-[#64748B] hover:bg-[#F1F5F9]"
           >
             <ArrowLeft size={18} className="mr-2" />
             Back
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-              <Plus size={32} />
+            <h1 className="text-3xl font-bold text-[#0F172A] mb-2 flex items-center gap-3">
+              <Plus size={32} className="text-[#2F6FED]" />
               Add/Modify Classes
             </h1>
-            <p className="text-gray-600">Add new classes or modify existing ones</p>
+            <p className="text-[#64748B]">Add new classes or modify existing ones</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
             onClick={() => setShowBulkAddModal(true)}
+            className="border-[#2F6FED] text-[#2F6FED] hover:bg-[#EAF1FF]"
           >
             <Layers size={18} className="mr-2" />
             Bulk Add Classes
           </Button>
-          <Button onClick={() => {
-            setEditingClass(null);
-            setShowAddModal(true);
-          }}>
+          <Button 
+            onClick={() => {
+              setEditingClass(null);
+              setShowAddModal(true);
+            }}
+            className="bg-[#2F6FED] hover:bg-[#1E3A8A] text-white"
+          >
             <Plus size={18} className="mr-2" />
             Add Class
           </Button>
         </div>
       </motion.div>
 
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-white">
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-[#64748B] mb-1">Total Classes</p>
+                <p className="text-3xl font-bold text-[#0F172A]">{totalClasses}</p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-[#EAF1FF] flex items-center justify-center">
+                <Layers className="text-[#2F6FED]" size={24} />
+              </div>
+            </div>
+          </div>
+        </Card>
+        <Card className="bg-white">
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-[#64748B] mb-1">Total Sections</p>
+                <p className="text-3xl font-bold text-[#0F172A]">{totalSections}</p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-[#E0F2FE] flex items-center justify-center">
+                <Layers className="text-[#38BDF8]" size={24} />
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
       {/* Search */}
-      <Card>
+      <Card className="bg-white">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#64748B]" size={20} />
           <Input
             type="text"
             placeholder="Search classes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-10 border-[#E5E7EB] focus:ring-[#2F6FED]"
           />
         </div>
       </Card>
 
       {/* Classes Table */}
-      <Card>
+      <Card className="bg-white">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-teal-700 text-white">
+            <thead className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] text-white">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold">Class</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold">Section</th>
@@ -164,25 +206,25 @@ export default function ModifyClassesPage({
                 <th className="px-4 py-3 text-left text-sm font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-[#E5E7EB] bg-white">
               {filteredClasses.length > 0 ? (
                 filteredClasses.map((classItem) => (
-                  <tr key={classItem.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{classItem.class}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{classItem.section}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{classItem.academic_year}</td>
+                  <tr key={classItem.id} className="hover:bg-[#F1F5F9] transition-colors">
+                    <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{classItem.class}</td>
+                    <td className="px-4 py-3 text-sm text-[#0F172A]">{classItem.section}</td>
+                    <td className="px-4 py-3 text-sm text-[#64748B]">{classItem.academic_year}</td>
                     <td className="px-4 py-3 text-sm">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleEdit(classItem)}
-                          className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                          className="p-2 text-[#F97316] hover:bg-[#FFEDD5] rounded-lg transition-colors"
                           title="Edit"
                         >
                           <Edit size={16} />
                         </button>
                         <button
                           onClick={() => handleDelete(classItem.id!)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-2 text-[#EF4444] hover:bg-[#FEE2E2] rounded-lg transition-colors"
                           title="Delete"
                         >
                           <Trash2 size={16} />
@@ -193,8 +235,8 @@ export default function ModifyClassesPage({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
-                    No classes found
+                  <td colSpan={4} className="px-4 py-8 text-center text-[#64748B]">
+                    {searchQuery ? 'No classes found matching your search' : 'No classes found'}
                   </td>
                 </tr>
               )}

@@ -108,23 +108,23 @@ function RoleCard({ role, index, onSelect }: RoleCardProps) {
         </AnimatePresence>
 
         {/* Content */}
-        <div className="relative p-8 md:p-10 text-center">
+        <div className="relative p-4 md:p-5 text-center">
           {/* Icon with gradient badge */}
           <motion.div
             whileHover={{ scale: 1.1, rotate: 5 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
-            className={`inline-flex p-5 rounded-2xl mb-6 bg-gradient-to-br ${role.gradient} text-white shadow-lg group-hover:shadow-xl transition-shadow duration-300`}
+            className={`inline-flex p-3 rounded-xl mb-3 bg-gradient-to-br ${role.gradient} text-white shadow-lg group-hover:shadow-xl transition-shadow duration-300`}
           >
-            <Icon size={36} className="relative z-10" />
+            <Icon size={24} className="relative z-10" />
           </motion.div>
 
           {/* Title */}
-          <h3 className="text-2xl font-semibold text-gray-900 mb-3 group-hover:text-gray-950 transition-colors">
+          <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-2 group-hover:text-gray-950 transition-colors">
             {role.title}
           </h3>
 
           {/* Description */}
-          <p className="text-sm text-gray-600 leading-relaxed">
+          <p className="text-xs text-gray-600 leading-relaxed">
             {role.description}
           </p>
 
@@ -307,7 +307,7 @@ export default function LoginPage() {
         </motion.div>
 
         {/* Role Selection Cards */}
-        <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 mb-12">
+        <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-4 mb-12">
           {roles.map((role, index) => (
             <RoleCard
               key={role.id}

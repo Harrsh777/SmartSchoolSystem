@@ -52,10 +52,10 @@ export async function GET(request: NextRequest) {
       return createdDate >= threeDaysAgo;
     }) || [];
 
-    // Fetch staff for role breakdown
+    // Fetch staff for role breakdown and gender stats
     const { data: allStaff } = await supabase
       .from('staff')
-      .select('role')
+      .select('role, gender')
       .eq('school_code', schoolCode);
 
     const teachingStaff = allStaff?.filter(s => 
@@ -64,6 +64,12 @@ export async function GET(request: NextRequest) {
       s.role?.toLowerCase().includes('lecturer')
     ).length || 0;
     const nonTeachingStaff = (allStaff?.length || 0) - teachingStaff;
+
+    // Calculate staff gender split
+    const totalStaff = allStaff?.length || 0;
+    const staffMaleCount = allStaff?.filter(s => s.gender?.toLowerCase() === 'male').length || 0;
+    const staffFemaleCount = allStaff?.filter(s => s.gender?.toLowerCase() === 'female').length || 0;
+    const staffOtherCount = totalStaff - staffMaleCount - staffFemaleCount;
 
     // Calculate attendance rate for today
     const today = new Date().toISOString().split('T')[0];
@@ -84,8 +90,9 @@ export async function GET(request: NextRequest) {
           male: maleCount,
           female: femaleCount,
           other: otherCount,
-          malePercent: totalStudents > 0 ? Math.round((maleCount / totalStudents) * 100) : 0,
-          femalePercent: totalStudents > 0 ? Math.round((femaleCount / totalStudents) * 100) : 0,
+          malePercent: totalStudents > 0 ? Math.round((maleCount / totalStudents) * 100 * 10) / 10 : 0,
+          femalePercent: totalStudents > 0 ? Math.round((femaleCount / totalStudents) * 100 * 10) / 10 : 0,
+          otherPercent: totalStudents > 0 ? Math.round((otherCount / totalStudents) * 100 * 10) / 10 : 0,
         },
         newAdmissions: newAdmissions.length,
         newAdmissionsList: newAdmissions.slice(0, 5).map(s => ({
@@ -97,6 +104,15 @@ export async function GET(request: NextRequest) {
           teaching: teachingStaff,
           nonTeaching: nonTeachingStaff,
           total: allStaff?.length || 0,
+        },
+        staffGenderStats: {
+          total: totalStaff,
+          male: staffMaleCount,
+          female: staffFemaleCount,
+          other: staffOtherCount,
+          malePercent: totalStaff > 0 ? Math.round((staffMaleCount / totalStaff) * 100 * 10) / 10 : 0,
+          femalePercent: totalStaff > 0 ? Math.round((staffFemaleCount / totalStaff) * 100 * 10) / 10 : 0,
+          otherPercent: totalStaff > 0 ? Math.round((staffOtherCount / totalStaff) * 100 * 10) / 10 : 0,
         },
         attendanceRate,
         todayAttendance: {

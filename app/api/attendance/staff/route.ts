@@ -90,11 +90,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, staff_id, attendance_date, status, check_in_time, check_out_time, remarks, marked_by } = body;
+    const { school_code, id, attendance_date, status, check_in_time, check_out_time, remarks, marked_by } = body;
 
-    if (!school_code || !staff_id || !attendance_date || !status) {
+    if (!school_code || !id || !attendance_date || !status) {
       return NextResponse.json(
-        { error: 'School code, staff ID, date, and status are required' },
+        { error: 'School code, staff ID (UUID), date, and status are required' },
         { status: 400 }
       );
     }
@@ -122,11 +122,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify staff exists and belongs to school
+    // Verify staff exists and belongs to school (using UUID)
     const { data: staffData, error: staffError } = await supabase
       .from('staff')
       .select('id, school_code')
-      .eq('id', staff_id)
+      .eq('id', id)
       .eq('school_code', school_code)
       .single();
 
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
       .from('staff_attendance')
       .select('id')
       .eq('school_code', school_code)
-      .eq('staff_id', staff_id)
+      .eq('staff_id', staffData.id) // Use UUID
       .eq('attendance_date', attendance_date)
       .single();
 
@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
         .insert([{
           school_id: schoolData.id,
           school_code: school_code,
-          staff_id: staff_id,
+          staff_id: staffData.id, // Use UUID
           attendance_date: attendance_date,
           status: status,
           check_in_time: check_in_time || null,
@@ -275,6 +275,31 @@ export async function PUT(request: NextRequest) {
       marked_by: marked_by || null,
     }));
 
+    // Verify all staff IDs exist before upserting
+    const staffIds = [...new Set(records.map(r => r.staff_id))];
+    const { data: staffData, error: staffCheckError } = await supabase
+      .from('staff')
+      .select('id')
+      .eq('school_code', school_code)
+      .in('id', staffIds);
+
+    if (staffCheckError) {
+      return NextResponse.json(
+        { error: 'Failed to verify staff members', details: staffCheckError.message },
+        { status: 500 }
+      );
+    }
+
+    const validStaffIds = new Set(staffData?.map(s => s.id) || []);
+    const invalidStaffIds = staffIds.filter(id => !validStaffIds.has(id));
+    
+    if (invalidStaffIds.length > 0) {
+      return NextResponse.json(
+        { error: `Invalid staff IDs: ${invalidStaffIds.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
     // Use upsert to insert or update records
     const { data: inserted, error: insertError } = await supabase
       .from('staff_attendance')
@@ -294,6 +319,7 @@ export async function PUT(request: NextRequest) {
       `);
 
     if (insertError) {
+      console.error('Upsert error:', insertError);
       return NextResponse.json(
         { error: 'Failed to bulk mark attendance', details: insertError.message },
         { status: 500 }

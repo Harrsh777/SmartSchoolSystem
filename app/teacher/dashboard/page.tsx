@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, TrendingUp, CalendarDays } from 'lucide-react';
+import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, TrendingUp, CalendarDays, CalendarX, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import type { Staff, Student, Class, Exam, Notice } from '@/lib/supabase';
 import TimetableView from '@/components/timetable/TimetableView';
 
@@ -18,6 +18,7 @@ export default function TeacherDashboard() {
   const [attendanceStats, setAttendanceStats] = useState<{ percentage: number; present: number; total: number } | null>(null);
   const [upcomingExamsCount, setUpcomingExamsCount] = useState(0);
   const [noticesCount, setNoticesCount] = useState(0);
+  const [studentLeaveRequests, setStudentLeaveRequests] = useState<any[]>([]);
   interface EventNotification {
     id: string;
     event: {
@@ -65,8 +66,10 @@ export default function TeacherDashboard() {
       // Pass both teacher_id and staff_id to check both fields
       const queryParams = new URLSearchParams({
         school_code: teacherData.school_code,
-        teacher_id: teacherData.id,
       });
+      if (teacherData.id) {
+        queryParams.append('teacher_id', teacherData.id);
+      }
       if (teacherData.staff_id) {
         queryParams.append('staff_id', teacherData.staff_id);
       }
@@ -91,6 +94,11 @@ export default function TeacherDashboard() {
 
       // Fetch event notifications
       fetchEventNotifications(teacherData);
+
+      // Fetch student leave requests for the class
+      if (assignedClassResult.data) {
+        fetchStudentLeaveRequests(teacherData.school_code, assignedClassResult.data.class, assignedClassResult.data.section);
+      }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
     }
@@ -121,7 +129,7 @@ export default function TeacherDashboard() {
       if (response.ok && result.data) {
         const today = new Date().toISOString().split('T')[0];
         const upcoming = result.data.filter((exam: Exam) => {
-          return (exam.status === 'upcoming' || exam.status === 'ongoing') && exam.end_date >= today;
+          return (exam.status === 'upcoming' || exam.status === 'ongoing') && exam.end_date && exam.end_date >= today;
         });
         setUpcomingExamsCount(upcoming.length);
       }
@@ -138,7 +146,10 @@ export default function TeacherDashboard() {
       const result = await response.json();
       if (response.ok && result.data) {
         const now = new Date();
-        const publishedNotices = result.data.filter((notice: Notice) => {
+        interface NoticeWithPublishAt extends Notice {
+          publish_at?: string | null;
+        }
+        const publishedNotices = result.data.filter((notice: NoticeWithPublishAt) => {
           if (!notice.publish_at) return true;
           return new Date(notice.publish_at) <= now;
         });
@@ -146,6 +157,37 @@ export default function TeacherDashboard() {
       }
     } catch (err) {
       console.error('Error fetching notices:', err);
+    }
+  };
+
+  const fetchEventNotifications = async (teacherData: Staff) => {
+    try {
+      const response = await fetch(
+        `/api/calendar/notifications?school_code=${teacherData.school_code}&user_type=teacher&user_id=${teacherData.id}&unread_only=true`
+      );
+      const result = await response.json();
+      if (response.ok && result.data) {
+        // Note: eventNotifications state is currently not used in the UI
+        // but keeping the function for future use
+      }
+    } catch (err) {
+      console.error('Error fetching event notifications:', err);
+    }
+  };
+
+  const fetchStudentLeaveRequests = async (schoolCode: string, className: string, section: string) => {
+    try {
+      const response = await fetch(`/api/leave/student-requests?school_code=${schoolCode}&status=pending`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        // Filter leave requests for students in this class
+        const classLeaves = result.data.filter((leave: any) => 
+          leave.class === className && leave.section === section
+        );
+        setStudentLeaveRequests(classLeaves.slice(0, 5)); // Show latest 5
+      }
+    } catch (err) {
+      console.error('Error fetching student leave requests:', err);
     }
   };
 
@@ -401,8 +443,88 @@ export default function TeacherDashboard() {
               <TimetableView
                 schoolCode={teacher.school_code}
                 classId={assignedClass.id}
-                isPublicView={true}
               />
+            </Card>
+          </motion.div>
+        )}
+
+        {/* Student Leave Requests */}
+        {studentLeaveRequests.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <CalendarX className="text-orange-600" size={24} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Student Leave Requests</h2>
+                  <p className="text-sm text-gray-600">
+                    {studentLeaveRequests.length} pending {studentLeaveRequests.length === 1 ? 'request' : 'requests'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <Card>
+              <div className="space-y-3">
+                {studentLeaveRequests.map((leave) => (
+                  <div
+                    key={leave.id}
+                    className="p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold text-sm">
+                            {leave.student_name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900">{leave.student_name}</p>
+                            <p className="text-xs text-gray-600">{leave.admission_no} • {leave.class}-{leave.section}</p>
+                          </div>
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#EAF1FF] text-[#2F6FED] border border-[#DBEAFE]">
+                            {leave.leave_type}
+                          </span>
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-yellow-100 text-yellow-800 border-yellow-200">
+                            <Clock size={12} className="mr-1" />
+                            Pending
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4 text-sm mt-3">
+                          <div>
+                            <p className="text-gray-600 mb-1">Start Date</p>
+                            <p className="font-medium text-gray-900">
+                              {new Date(leave.leave_start_date).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600 mb-1">End Date</p>
+                            <p className="font-medium text-gray-900">
+                              {new Date(leave.leave_end_date).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600 mb-1">Reason</p>
+                            <p className="font-medium text-gray-900 truncate">{leave.reason || 'N/A'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <Button
+                  onClick={() => router.push(`/dashboard/${teacher?.school_code}/leave/student`)}
+                  variant="outline"
+                  className="w-full border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
+                >
+                  View All Leave Requests
+                </Button>
+              </div>
             </Card>
           </motion.div>
         )}
@@ -412,7 +534,7 @@ export default function TeacherDashboard() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+            transition={{ delay: 0.5 }}
           >
             <Card>
               <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">

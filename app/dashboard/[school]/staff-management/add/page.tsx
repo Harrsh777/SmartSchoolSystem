@@ -195,7 +195,7 @@ export default function AddStaffPage({
   };
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 10rem)', maxHeight: 'calc(100vh - 10rem)' }}>
+    <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0 mb-6">
         <div className="flex items-center gap-4">
@@ -217,11 +217,11 @@ export default function AddStaffPage({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex-1 min-h-0 flex flex-col overflow-hidden"
+        className="flex-1 flex flex-col min-h-0"
       >
-        <Card className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <Card className="flex flex-col h-full min-h-0">
           <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
-            <div className="flex-1 overflow-y-auto pr-2 space-y-8 pb-4 min-h-0">
+            <div className="space-y-8 pb-4 overflow-y-auto flex-1 pr-2" style={{ maxHeight: 'calc(100vh - 20rem)' }}>
               {/* Required Information */}
               <div>
                 <h2 className="text-xl font-bold text-black mb-4 pb-2 border-b border-gray-200">

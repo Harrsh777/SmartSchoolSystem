@@ -258,7 +258,7 @@ export default function TimetablePage({
     try {
       setLoading(true);
       const [subjectsRes, slotsRes] = await Promise.all([
-        fetch(`/api/timetable/subjects?school_code=${schoolCode}`),
+        fetch(`/api/timetable/subjects?school_code=${schoolCode}&class_id=${selectedClass.id}`),
         fetch(`/api/timetable/slots?school_code=${schoolCode}&class_id=${selectedClass.id}`),
       ]);
 

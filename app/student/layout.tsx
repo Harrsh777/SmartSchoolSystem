@@ -17,7 +17,8 @@ import {
   X, 
   LogOut,
   Key,
-  Image
+  Image,
+  CalendarX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/Button';
@@ -39,6 +40,8 @@ const menuItems = [
   { icon: FileText, label: 'Examinations', path: '/student/dashboard/examinations' },
   { icon: DollarSign, label: 'Fees', path: '/student/dashboard/fees' },
   { icon: Bell, label: 'Communication', path: '/student/dashboard/communication' },
+  { icon: CalendarX, label: 'Apply for Leave', path: '/student/dashboard/apply-leave' },
+  { icon: Calendar, label: 'My Leaves', path: '/student/dashboard/my-leaves' },
   { icon: Image, label: 'Gallery', path: '/student/dashboard/gallery' },
   { icon: Key, label: 'Change Password', path: '/student/dashboard/change-password' },
 ];
@@ -55,9 +58,16 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
   // Session timeout (10 minutes)
   const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
     timeoutMinutes: 10,
-    warningMinutes: 9,
+    warningMinutes: 1,
     loginPath: '/login',
   });
+
+  // Format time remaining as MM:SS
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   useEffect(() => {
     const checkDesktop = () => {
@@ -115,20 +125,9 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
 
   if (loading || !student) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-[#ECEDED]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading || !student) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e3a8a] mx-auto mb-4"></div>
           <p className="text-gray-600">Loading dashboard...</p>
         </div>
       </div>
@@ -136,37 +135,56 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top Navigation */}
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-40">
+    <div className="min-h-screen bg-[#ECEDED]">
+      {/* Top Navigation - Matching Principal Dashboard */}
+      <nav className="bg-[#FFFFFF]/80 backdrop-blur-lg border-b border-[#E1E1DB] sticky top-0 z-40 shadow-sm">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
+                className="lg:hidden p-2 rounded-xl hover:bg-[#DBEAFE] transition-all"
               >
-                {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+                {sidebarOpen ? <X size={24} className="text-[#1e3a8a]" /> : <Menu size={24} className="text-[#1e3a8a]" />}
               </button>
-              <Link href="/" className="text-xl font-bold text-black">
-                Edu<span className="text-gray-600">-Yan</span>
+              <Link href="/" className="text-xl font-bold text-[#1e3a8a]">
+                Edu<span className="text-[#5A7A9A]">-Yan</span>
               </Link>
-              <div className="hidden sm:block h-6 w-px bg-gray-300" />
-              <span className="hidden sm:block text-gray-700 font-medium">
+              <div className="hidden sm:block h-6 w-px bg-[#E1E1DB]" />
+              <span className="hidden sm:block text-[#1e3a8a] font-semibold">
                 {school?.school_name || student.school_code}
               </span>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
+              {/* Session Timer */}
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 transition-all ${
+                timeRemaining <= 60 
+                  ? 'bg-red-50 border-red-300 text-red-700' 
+                  : timeRemaining <= 300
+                  ? 'bg-yellow-50 border-yellow-300 text-yellow-700'
+                  : 'bg-blue-50 border-blue-300 text-blue-700'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${
+                  timeRemaining <= 60 
+                    ? 'bg-red-500 animate-pulse' 
+                    : timeRemaining <= 300
+                    ? 'bg-yellow-500'
+                    : 'bg-blue-500'
+                }`} />
+                <span className="font-mono font-bold text-sm">
+                  {formatTime(timeRemaining)}
+                </span>
+              </div>
               <div className="hidden sm:flex items-center gap-3">
                 <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">{student.student_name}</p>
-                  <p className="text-xs text-gray-500">Admission: {student.admission_no}</p>
+                  <p className="text-sm font-medium text-[#1e3a8a]">{student.student_name}</p>
+                  <p className="text-xs text-[#5A7A9A]">Admission: {student.admission_no}</p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center text-white font-semibold">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold">
                   {student.student_name.split(' ').map(n => n[0]).join('').substring(0, 2)}
                 </div>
               </div>
-              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+              <span className="px-3 py-1 bg-[#DBEAFE] text-[#1e3a8a] rounded-full text-sm font-medium border border-[#E1E1DB]">
                 Student
               </span>
               <Button
@@ -177,6 +195,7 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
                   sessionStorage.removeItem('role');
                   router.push('/login');
                 }}
+                className="border-[#E1E1DB] hover:bg-[#DBEAFE]"
               >
                 <LogOut size={18} className="mr-2" />
                 <span className="hidden sm:inline">Logout</span>
@@ -187,7 +206,7 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
       </nav>
 
       <div className="flex">
-        {/* Sidebar */}
+        {/* Sidebar - Matching Principal Dashboard */}
         <AnimatePresence>
           {(sidebarOpen || isDesktop) && (
             <>
@@ -202,32 +221,63 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
                 />
               )}
 
-              {/* Sidebar */}
+              {/* Sidebar - Modern, Clean, Professional */}
               <motion.aside
                 initial={{ x: -280 }}
                 animate={{ x: 0 }}
                 exit={{ x: -280 }}
-                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-white border-r border-gray-200 z-50 lg:z-auto overflow-y-auto"
-                style={{ width: '280px' }}
+                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-[#1e3a8a] border-r border-[#2c4a6b] z-50 lg:z-auto overflow-y-auto overflow-x-visible shadow-2xl"
+                style={{ width: '280px', background: 'linear-gradient(180deg, #1e3a8a 0%, #0f1b2e 100%)' }}
               >
-                <nav className="p-4 space-y-1">
-                  {menuItems.map((item) => {
+                <nav className="p-5 space-y-1.5 overflow-visible">
+                  {/* Header Section */}
+                  <div className="mb-6 px-4 py-3.5 bg-[#2c4a6b] rounded-2xl border border-[#2c4a6b] backdrop-blur-sm">
+                    <h3 className="text-[#FFFFFF] font-bold text-base uppercase tracking-widest">
+                      Student Portal
+                    </h3>
+                    <p className="text-[#B8D4E8] text-xs mt-1">Dashboard Menu</p>
+                  </div>
+                  
+                  {/* Menu Items */}
+                  {menuItems.map((item, index) => {
                     const Icon = item.icon;
                     const active = isActive(item.path);
+                    
                     return (
-                      <Link
-                        key={item.label}
-                        href={item.path}
-                        onClick={() => setSidebarOpen(false)}
-                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                          active
-                            ? 'bg-black text-white'
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        <Icon size={20} />
-                        <span className="font-medium">{item.label}</span>
-                      </Link>
+                      <div key={item.label} className="relative sidebar-menu-item">
+                        <div className="flex items-center gap-1">
+                          <Link
+                            href={item.path}
+                            onClick={() => setSidebarOpen(false)}
+                            className={`group flex-1 flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 ${
+                              active
+                                ? 'bg-[#60A5FA] text-[#FFFFFF] shadow-xl shadow-[#60A5FA]/20 scale-[1.02]'
+                                : 'text-[#B8D4E8] hover:text-[#FFFFFF] hover:bg-[#2c4a6b]'
+                            }`}
+                          >
+                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
+                              active 
+                                ? 'bg-[#3B82F6] text-[#FFFFFF]' 
+                                : 'bg-[#2c4a6b] text-[#B8D4E8] group-hover:bg-[#3d5a7f] group-hover:text-[#FFFFFF]'
+                            }`}>
+                              {index + 1}
+                            </span>
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                              active 
+                                ? 'bg-[#3B82F6] shadow-lg' 
+                                : 'bg-transparent group-hover:bg-[#2c4a6b] group-hover:scale-110 group-hover:shadow-md'
+                            }`}>
+                              <Icon size={20} className={active ? 'text-[#FFFFFF]' : 'text-[#9BB8D4] group-hover:text-[#FFFFFF]'} />
+                            </div>
+                            <span className="font-semibold text-sm tracking-wide flex-1 text-left">
+                              {item.label}
+                            </span>
+                            {active && (
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+                            )}
+                          </Link>
+                        </div>
+                      </div>
                     );
                   })}
                 </nav>
@@ -254,4 +304,3 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
     </div>
   );
 }
-

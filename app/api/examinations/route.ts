@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
     const classId = searchParams.get('class_id');
+    const status = searchParams.get('status');
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -48,9 +49,17 @@ export async function GET(request: NextRequest) {
       query = query.eq('class_id', classId);
     }
 
+    // Handle status filter - we'll do client-side filtering if columns don't exist
+    // Note: We'll apply status filter after fetching to handle missing columns gracefully
+
     const { data: examinations, error } = await query;
 
     if (error) {
+      console.error('Examinations query error:', error);
+      // If error is due to missing columns, return empty array instead of error
+      if (error.message?.includes('column') || error.message?.includes('does not exist')) {
+        return NextResponse.json({ data: [] }, { status: 200 });
+      }
       return NextResponse.json(
         { error: 'Failed to fetch examinations', details: error.message },
         { status: 500 }
@@ -60,13 +69,32 @@ export async function GET(request: NextRequest) {
     // Calculate subjects count and total max marks
     interface ExamWithSubjects {
       exam_subjects?: Array<{ max_marks: number }>;
+      name?: string;
+      exam_name?: string;
+      start_date?: string;
+      end_date?: string;
+      status?: string;
       [key: string]: unknown;
     }
-    const enrichedExams = (examinations || []).map((exam: ExamWithSubjects) => ({
+    
+    let enrichedExams = (examinations || []).map((exam: ExamWithSubjects) => ({
       ...exam,
+      name: exam.name || exam.exam_name || 'Exam',
       subjects_count: exam.exam_subjects?.length || 0,
       total_max_marks: exam.exam_subjects?.reduce((sum: number, es: { max_marks: number }) => sum + (es.max_marks || 0), 0) || 0,
     }));
+
+    // If status filter was 'upcoming', do additional client-side filtering
+    if (status === 'upcoming') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      enrichedExams = enrichedExams.filter((exam: ExamWithSubjects) => {
+        if (!exam.start_date) return false;
+        const examDate = new Date(exam.start_date);
+        examDate.setHours(0, 0, 0, 0);
+        return examDate >= today && (exam.status === 'upcoming' || exam.status === 'ongoing' || !exam.status);
+      });
+    }
 
     return NextResponse.json({ data: enrichedExams || [] }, { status: 200 });
   } catch (error) {

@@ -1,341 +1,244 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
-import { Save, X, CheckCircle, AlertCircle } from 'lucide-react';
-import type { AcceptedSchool } from '@/lib/supabase';
+import {
+  Folder,
+  Receipt,
+  Lock,
+  Calendar,
+  Users,
+  Search,
+  Fingerprint,
+  MessageCircle,
+  Layout,
+  ArrowLeft,
+  X,
+  Settings as SettingsIcon,
+  Award,
+  Shield,
+  FileText,
+  Globe,
+  UserCog,
+  Home,
+  Eye,
+} from 'lucide-react';
 
-export default function SchoolSettingsPage({
+interface SettingCard {
+  id: string;
+  title: string;
+  icon: typeof Folder;
+  badge?: 'PRO' | 'PREMIUM';
+  onClick?: () => void;
+}
+
+export default function SettingsPage({
   params,
 }: {
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
-  const [school, setSchool] = useState<AcceptedSchool | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<Partial<AcceptedSchool>>({
-    school_name: '',
-    school_code: '',
-    school_address: '',
-    city: '',
-    state: '',
-    zip_code: '',
-    country: '',
-    school_email: '',
-    school_phone: '',
-    principal_name: '',
-    principal_email: '',
-    principal_phone: '',
-    established_year: '',
-    school_type: '',
-    affiliation: '',
-  });
+  const [showModal, setShowModal] = useState(false);
 
-  useEffect(() => {
-    fetchSchoolData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode]);
+  const settingsCards: SettingCard[] = [
+    {
+      id: 'academic-year',
+      title: 'Default academic year settings',
+      icon: Folder,
+    },
+    {
+      id: 'admission',
+      title: 'Admission Settings',
+      icon: Folder,
+      badge: 'PRO',
+    },
+    {
+      id: 'fee',
+      title: 'Fee Settings',
+      icon: Receipt,
+      badge: 'PRO',
+    },
+    {
+      id: 'employee-id',
+      title: 'Employee ID Automation',
+      icon: Folder,
+      badge: 'PRO',
+    },
+    {
+      id: 'module-reorder',
+      title: 'Module Re-Ordering',
+      icon: Folder,
+    },
+    {
+      id: 'calendar-language',
+      title: 'Change Calendar Language',
+      icon: Folder,
+    },
+    {
+      id: 'student-sorting',
+      title: 'Student Sorting',
+      icon: Folder,
+    },
+    {
+      id: 'password-security',
+      title: 'Password & Security',
+      icon: Lock,
+    },
+    {
+      id: 'dashboard-settings',
+      title: 'Home Dashboard Settings',
+      icon: Folder,
+    },
+    {
+      id: 'search-student',
+      title: 'Search student settings',
+      icon: Folder,
+    },
+    {
+      id: 'biometric',
+      title: 'Biometric ID Settings',
+      icon: Fingerprint,
+    },
+    {
+      id: 'whatsapp',
+      title: 'WhatsApp number settings',
+      icon: MessageCircle,
+    },
+    {
+      id: 'mis-report',
+      title: 'MIS Report',
+      icon: Folder,
+      badge: 'PREMIUM',
+    },
+    {
+      id: 'chat-settings',
+      title: 'Chat settings',
+      icon: MessageCircle,
+    },
+    {
+      id: 'leave-management',
+      title: 'Leave Management Settings',
+      icon: Folder,
+    },
+  ];
 
-  const fetchSchoolData = async () => {
-    try {
-      setLoading(true);
-      // Get from sessionStorage first
-      const storedSchool = sessionStorage.getItem('school');
-      if (storedSchool) {
-        const schoolData = JSON.parse(storedSchool);
-        if (schoolData.school_code === schoolCode) {
-          setSchool(schoolData);
-          setFormData(schoolData);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // If not in sessionStorage, fetch from API
-      const response = await fetch(`/api/schools/accepted`);
-      const result = await response.json();
-      
-      if (response.ok && result.data) {
-        const schoolData = result.data.find((s: AcceptedSchool) => s.school_code === schoolCode);
-        if (schoolData) {
-          setSchool(schoolData);
-          setFormData(schoolData);
-          sessionStorage.setItem('school', JSON.stringify(schoolData));
+  const handleCardClick = (card: SettingCard) => {
+    // Handle different settings based on card ID
+    switch (card.id) {
+      case 'password-security':
+        router.push(`/dashboard/${schoolCode}/password`);
+        break;
+      case 'academic-year':
+        // Open academic year settings modal/page
+        setShowModal(true);
+        break;
+      default:
+        // For PRO/PREMIUM features, show upgrade modal or handle accordingly
+        if (card.badge) {
+          alert(`${card.title} is a ${card.badge} feature. Please upgrade to access.`);
         } else {
-          setError('School not found');
+          // Open respective settings modal/page
+          setShowModal(true);
         }
-      }
-    } catch (err) {
-      console.error('Error fetching school:', err);
-      setError('Failed to load school information');
-    } finally {
-      setLoading(false);
+        break;
     }
   };
-
-  const handleSave = async () => {
-    if (!school?.id) return;
-
-    try {
-      setSaving(true);
-      setError('');
-      setSuccess('');
-
-      const response = await fetch(`/api/schools/${school.id}/update`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        setSchool(result.school);
-        setFormData(result.school);
-        sessionStorage.setItem('school', JSON.stringify(result.school));
-        setIsEditing(false);
-        setSuccess('School information updated successfully!');
-        setTimeout(() => setSuccess(''), 3000);
-      } else {
-        setError(result.error || 'Failed to update school information');
-      }
-    } catch (err) {
-      console.error('Error updating school:', err);
-      setError('An error occurred while updating');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    if (school) {
-      setFormData(school);
-      setIsEditing(false);
-      setError('');
-      setSuccess('');
-    }
-  };
-
-  const handleChange = (field: keyof AcceptedSchool, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading school information...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !school) {
-    return (
-      <Card>
-        <div className="text-center py-12">
-          <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-          <p className="text-gray-600 text-lg">{error}</p>
-          <Button
-            variant="outline"
-            className="mt-4"
-            onClick={() => router.push('/login')}
-          >
-            Back to Login
-          </Button>
-        </div>
-      </Card>
-    );
-  }
-
-  if (!school) return null;
 
   return (
-    <div className="space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
+    <div className="min-h-screen bg-[#F5F5F0]">
+      {/* Header */}
+      <div className="bg-orange-500 text-white px-6 py-5 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-black mb-2">School Information</h1>
-          <p className="text-gray-600">Manage your school details and information</p>
+          <h1 className="text-3xl font-bold">Settings</h1>
+          <p className="text-orange-100 text-sm mt-1">Please select any option you want to setup!</p>
         </div>
-        {!isEditing ? (
-          <Button onClick={() => setIsEditing(true)}>
-            Edit Information
-          </Button>
-        ) : (
-          <div className="flex space-x-2">
-            <Button variant="outline" onClick={handleCancel}>
-              <X size={18} className="mr-2" />
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={handleSave} disabled={saving}>
-              <Save size={18} className="mr-2" />
-              {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </div>
-        )}
-      </motion.div>
-
-      {success && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center space-x-2"
+        <button
+          onClick={() => router.push(`/dashboard/${schoolCode}`)}
+          className="text-white hover:bg-orange-600 rounded-lg p-2 transition-colors"
         >
-          <CheckCircle size={20} />
-          <span>{success}</span>
-        </motion.div>
-      )}
-
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center space-x-2"
-        >
-          <AlertCircle size={20} />
-          <span>{error}</span>
-        </motion.div>
-      )}
-
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* School Basic Information */}
-        <Card>
-          <h2 className="text-xl font-bold text-black mb-6">School Information</h2>
-          <div className="space-y-4">
-            <Input
-              label="School Name"
-              value={formData.school_name || ''}
-              onChange={(e) => handleChange('school_name', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="School Code"
-              value={formData.school_code || ''}
-              disabled
-              className="bg-gray-100"
-            />
-            <Input
-              label="School Type"
-              value={formData.school_type || ''}
-              onChange={(e) => handleChange('school_type', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="Affiliation"
-              value={formData.affiliation || ''}
-              onChange={(e) => handleChange('affiliation', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="Established Year"
-              value={formData.established_year || ''}
-              onChange={(e) => handleChange('established_year', e.target.value)}
-              disabled={!isEditing}
-            />
-          </div>
-        </Card>
-
-        {/* Address Information */}
-        <Card>
-          <h2 className="text-xl font-bold text-black mb-6">Address Information</h2>
-          <div className="space-y-4">
-            <Input
-              label="School Address"
-              value={formData.school_address || ''}
-              onChange={(e) => handleChange('school_address', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="City"
-              value={formData.city || ''}
-              onChange={(e) => handleChange('city', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="State"
-              value={formData.state || ''}
-              onChange={(e) => handleChange('state', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="Zip Code"
-              value={formData.zip_code || ''}
-              onChange={(e) => handleChange('zip_code', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="Country"
-              value={formData.country || ''}
-              onChange={(e) => handleChange('country', e.target.value)}
-              disabled={!isEditing}
-            />
-          </div>
-        </Card>
-
-        {/* Contact Information */}
-        <Card>
-          <h2 className="text-xl font-bold text-black mb-6">Contact Information</h2>
-          <div className="space-y-4">
-            <Input
-              label="School Email"
-              type="email"
-              value={formData.school_email || ''}
-              onChange={(e) => handleChange('school_email', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="School Phone"
-              type="tel"
-              value={formData.school_phone || ''}
-              onChange={(e) => handleChange('school_phone', e.target.value)}
-              disabled={!isEditing}
-            />
-          </div>
-        </Card>
-
-        {/* Principal Information */}
-        <Card>
-          <h2 className="text-xl font-bold text-black mb-6">Principal Information</h2>
-          <div className="space-y-4">
-            <Input
-              label="Principal Name"
-              value={formData.principal_name || ''}
-              onChange={(e) => handleChange('principal_name', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="Principal Email"
-              type="email"
-              value={formData.principal_email || ''}
-              onChange={(e) => handleChange('principal_email', e.target.value)}
-              disabled={!isEditing}
-            />
-            <Input
-              label="Principal Phone"
-              type="tel"
-              value={formData.principal_phone || ''}
-              onChange={(e) => handleChange('principal_phone', e.target.value)}
-              disabled={!isEditing}
-            />
-          </div>
-        </Card>
+          <X size={24} />
+        </button>
       </div>
+
+      {/* Settings Grid */}
+      <div className="p-6 bg-[#F5F5F0] min-h-screen">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 max-w-7xl mx-auto">
+          {settingsCards.map((card, index) => {
+            const Icon = card.icon;
+            return (
+              <motion.div
+                key={card.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                onClick={() => handleCardClick(card)}
+                className="cursor-pointer group"
+              >
+                <Card className="p-4 hover:shadow-md transition-all bg-white border border-gray-200 relative h-full flex flex-col items-center justify-center cursor-pointer">
+                  {/* Badge */}
+                  {card.badge && (
+                    <div className={`absolute top-2 right-2 px-2 py-0.5 rounded text-xs font-semibold ${
+                      card.badge === 'PRO' 
+                        ? 'bg-orange-500 text-white' 
+                        : 'bg-green-500 text-white'
+                    }`}>
+                      {card.badge}
+                    </div>
+                  )}
+
+                  {/* Icon */}
+                  <div className="flex items-center justify-center mb-3">
+                    {card.id === 'password-security' ? (
+                      <div className="relative">
+                        <Lock className="text-orange-600" size={40} />
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center">
+                          <Eye className="text-white" size={10} />
+                        </div>
+                      </div>
+                    ) : card.id === 'fee' ? (
+                      <Receipt className="text-amber-700" size={40} />
+                    ) : (
+                      <Folder className="text-amber-700" size={40} />
+                    )}
+                  </div>
+
+                  {/* Title */}
+                  <h3 className="text-xs font-medium text-gray-800 text-center line-clamp-2">
+                    {card.title}
+                  </h3>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Settings Modal Placeholder */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+          >
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-600">Settings configuration will be implemented here.</p>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

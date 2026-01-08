@@ -9,21 +9,21 @@ import { hashPassword } from '@/lib/password-generator';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, staff_id } = body;
+    const { school_code, id } = body;
 
-    if (!school_code || !staff_id) {
+    if (!school_code || !id) {
       return NextResponse.json(
-        { error: 'School code and staff ID are required' },
+        { error: 'School code and staff ID (UUID) are required' },
         { status: 400 }
       );
     }
 
-    // Verify staff exists
+    // Verify staff exists by UUID
     const { data: staffData, error: staffError } = await supabase
       .from('staff')
       .select('id, staff_id, full_name, school_code')
       .eq('school_code', school_code)
-      .eq('staff_id', staff_id)
+      .eq('id', id)
       .single();
 
     if (staffError || !staffData) {
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       .upsert(
         {
           school_code: school_code,
-          staff_id: staff_id,
+          staff_id: staffData.id, // Use UUID
           password_hash: hash,
           plain_password: password, // Store plain text password
           is_active: true,
@@ -67,7 +67,8 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Password reset successfully',
       data: {
-        staff_id: staff_id,
+        id: staffData.id,
+        staff_id: staffData.staff_id, // Display staff_id for reference
         staff_name: staffData.full_name,
         password: password, // Return plain text password
       },

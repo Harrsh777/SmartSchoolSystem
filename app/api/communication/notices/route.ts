@@ -49,8 +49,18 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== 'all') {
       // Handle case-insensitive status matching
-      const statusUpper = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
-      query = query.eq('status', statusUpper);
+      // Map 'active' to 'Active' for database
+      const statusValue = status.toLowerCase() === 'active' ? 'Active' : status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+      query = query.eq('status', statusValue);
+    }
+
+    // Handle limit parameter
+    const limitParam = searchParams.get('limit');
+    if (limitParam) {
+      const limit = parseInt(limitParam, 10);
+      if (!isNaN(limit) && limit > 0) {
+        query = query.limit(limit);
+      }
     }
 
     const { data: notices, error: noticesError } = await query;

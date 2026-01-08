@@ -20,7 +20,7 @@ export function useSessionTimeout({
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
   const [showWarning, setShowWarning] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState(timeoutMinutes * 60);
 
   const clearTimeouts = () => {
     if (timeoutRef.current) {
@@ -41,26 +41,28 @@ export function useSessionTimeout({
     clearTimeouts();
     lastActivityRef.current = Date.now();
     setShowWarning(false);
+    setTimeRemaining(timeoutMinutes * 60); // Initialize with full time
 
-    // Set warning timer (show warning at warningMinutes)
-    const warningDelay = (timeoutMinutes - warningMinutes) * 60 * 1000;
-    warningTimeoutRef.current = setTimeout(() => {
-      setShowWarning(true);
-      // Update countdown every second
-      countdownIntervalRef.current = setInterval(() => {
-        const elapsed = Date.now() - lastActivityRef.current;
-        const remaining = timeoutMinutes * 60 * 1000 - elapsed;
-        const secondsRemaining = Math.max(0, Math.floor(remaining / 1000));
-        setTimeRemaining(secondsRemaining);
+    // Update countdown every second from the start
+    countdownIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - lastActivityRef.current;
+      const remaining = timeoutMinutes * 60 * 1000 - elapsed;
+      const secondsRemaining = Math.max(0, Math.floor(remaining / 1000));
+      setTimeRemaining(secondsRemaining);
 
-        if (secondsRemaining === 0) {
-          if (countdownIntervalRef.current) {
-            clearInterval(countdownIntervalRef.current);
-            countdownIntervalRef.current = null;
-          }
+      // Show warning when 1 minute remaining
+      if (secondsRemaining <= 60 && secondsRemaining > 0) {
+        setShowWarning(true);
+      }
+
+      if (secondsRemaining === 0) {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
         }
-      }, 1000);
-    }, warningDelay);
+        handleLogout();
+      }
+    }, 1000);
 
     // Set logout timer (logout at timeoutMinutes)
     const logoutDelay = timeoutMinutes * 60 * 1000;
