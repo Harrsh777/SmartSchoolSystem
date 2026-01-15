@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { ArrowLeft, CheckCircle, XCircle, Clock, Calendar } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { Staff } from '@/lib/supabase';
 
 interface AttendanceRecord {
@@ -25,6 +26,7 @@ export default function StaffAttendancePage({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceRecord>>({});
@@ -135,6 +137,7 @@ export default function StaffAttendancePage({
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveSuccess(false);
     try {
       const records = Object.values(attendanceRecords);
       
@@ -151,7 +154,10 @@ export default function StaffAttendancePage({
       const result = await response.json();
 
       if (response.ok) {
-        alert(`Successfully saved attendance for ${records.length} staff members`);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+        // Refresh attendance data
+        fetchAttendanceForDate();
       } else {
         alert(result.error || 'Failed to save attendance');
       }
@@ -218,6 +224,28 @@ export default function StaffAttendancePage({
           </div>
         </div>
       </div>
+
+      {/* Success Alert */}
+      <AnimatePresence>
+        {saveSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2 shadow-sm"
+          >
+            <CheckCircle size={20} className="text-green-600 flex-shrink-0" />
+            <span className="font-medium">
+              Staff attendance has been marked successfully for {new Date(attendanceDate).toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}!
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Date and Filters */}
       <Card>

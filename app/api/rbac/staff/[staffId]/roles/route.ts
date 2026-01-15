@@ -43,7 +43,10 @@ export async function GET(
     }
 
     const roles = (data || [])
-      .map((sr) => sr.role)
+      .map((sr: any) => {
+        const role = Array.isArray(sr.role) ? sr.role[0] : sr.role;
+        return role;
+      })
       .filter((role): role is { id: string; name: string; description: string | null } => role !== null && role !== undefined);
 
     return NextResponse.json({ data: roles }, { status: 200 });

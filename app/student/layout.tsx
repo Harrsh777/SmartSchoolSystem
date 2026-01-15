@@ -55,10 +55,10 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
   const [isDesktop, setIsDesktop] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Session timeout (10 minutes)
+  // Session timeout (15 minutes)
   const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
-    timeoutMinutes: 10,
-    warningMinutes: 1,
+    timeoutMinutes: 15,
+    warningMinutes: 14,
     loginPath: '/login',
   });
 

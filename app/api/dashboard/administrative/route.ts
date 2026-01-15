@@ -54,12 +54,13 @@ export async function GET(request: NextRequest) {
       .eq('school_code', schoolCode);
 
     // Calculate staff attendance breakdown
+    // Valid statuses from staff_attendance: 'present', 'absent', 'late', 'half_day', 'leave', 'holiday'
     const staffStats = {
       present: staffAttendance?.filter(a => a.status === 'present').length || 0,
       absent: staffAttendance?.filter(a => a.status === 'absent').length || 0,
-      halfday: staffAttendance?.filter(a => a.status === 'halfday' || a.status === 'half_day').length || 0,
+      halfday: staffAttendance?.filter(a => a.status === 'half_day' || a.status === 'halfday').length || 0,
       leave: staffAttendance?.filter(a => a.status === 'leave').length || 0,
-      customLeaves: staffAttendance?.filter(a => a.status === 'custom_leave' || a.status === 'custom leave').length || 0,
+      customLeaves: staffAttendance?.filter(a => a.status === 'late' || a.status === 'holiday').length || 0, // Group late and holiday as custom leaves
       notMarked: (totalStaff || 0) - (staffAttendance?.length || 0),
       total: totalStaff || 0,
     };

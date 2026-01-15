@@ -6,45 +6,43 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, Filter, Search, ArrowLeft, Users, TrendingUp, TrendingDown, RefreshCw, AlertCircle } from 'lucide-react';
-
-type AttendanceStatus = 'present' | 'absent' | 'late';
-
-interface AttendanceRecord {
-  id: string;
-  student_id: string;
-  class_id: string;
-  attendance_date: string;
-  status: AttendanceStatus;
-  remarks?: string | null;
-  marked_by?: string | null;
-  created_at: string;
-  student?: {
-    id: string;
-    admission_no: string;
-    student_name: string;
-    first_name?: string;
-    last_name?: string;
-    class: string;
-    section?: string;
-  };
-  class?: {
-    id: string;
-    class: string;
-    section?: string;
-    academic_year?: string;
-  };
-  marked_by_staff?: {
-    id: string;
-    full_name: string;
-    staff_id: string;
-  };
-}
+import { Calendar, CheckCircle, X, Minus, Power, Filter, ArrowLeft, Users, RefreshCw, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Class {
   id: string;
   class: string;
   section?: string;
+}
+
+interface StudentAttendanceData {
+  student_id: string;
+  roll_number: string;
+  student_name: string;
+  admission_no: string;
+  attendance: Record<string, string>; // date -> status
+}
+
+interface ClassAttendanceData {
+  class: {
+    id: string;
+    class: string;
+    section: string;
+    academic_year: string;
+  };
+  student_attendance: StudentAttendanceData[];
+}
+
+interface AttendanceResponse {
+  month: string;
+  dates: string[];
+  classes?: ClassAttendanceData[];
+  class?: {
+    id: string;
+    class: string;
+    section: string;
+    academic_year: string;
+  };
+  student_attendance?: StudentAttendanceData[];
 }
 
 export default function StudentAttendancePage({
@@ -55,12 +53,14 @@ export default function StudentAttendancePage({
   const { school: schoolCode } = use(params);
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [selectedClass, setSelectedClass] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'today' | 'all'>('today');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [attendanceData, setAttendanceData] = useState<AttendanceResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,16 +69,30 @@ export default function StudentAttendancePage({
   }, [schoolCode]);
 
   useEffect(() => {
-    fetchAttendance();
+    if (selectedMonth) {
+      fetchAttendance();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, selectedClass, viewMode, schoolCode]);
+  }, [selectedMonth, selectedClass, schoolCode]);
 
   const fetchClasses = async () => {
     try {
       const response = await fetch(`/api/classes?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setClasses(result.data);
+        const sortedClasses = result.data.sort((a: Class, b: Class) => {
+          if (a.class !== b.class) {
+            // Sort classes numerically if possible, otherwise alphabetically
+            const aNum = parseInt(a.class);
+            const bNum = parseInt(b.class);
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+              return aNum - bNum;
+            }
+            return a.class.localeCompare(b.class);
+          }
+          return (a.section || '').localeCompare(b.section || '');
+        });
+        setClasses(sortedClasses);
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
@@ -88,104 +102,66 @@ export default function StudentAttendancePage({
   const fetchAttendance = async () => {
     try {
       setLoading(true);
+      setError(null);
       const params = new URLSearchParams({
         school_code: schoolCode,
+        month: selectedMonth,
+        class_id: selectedClass,
       });
 
-      if (viewMode === 'today') {
-        const today = new Date().toISOString().split('T')[0];
-        params.append('date', today);
-      } else {
-        if (selectedDate) {
-          params.append('date', selectedDate);
-        }
-      }
-
-      if (selectedClass !== 'all') {
-        params.append('class_id', selectedClass);
-      }
-
-      const response = await fetch(`/api/attendance/overview?${params}`);
+      const response = await fetch(`/api/attendance/student-monthly?${params}`);
       const result = await response.json();
 
-      if (response.ok) {
-        if (result.data && Array.isArray(result.data)) {
-          console.log('Fetched attendance records:', result.data.length);
-          // Normalize the data structure to handle both naming conventions
-          const normalizedData = result.data.map((record: any) => ({
-            ...record,
-            student: record.student || record.students,
-            class: record.class || record.classes,
-            marked_by_staff: record.marked_by_staff || record.staff,
-          }));
-          setAttendance(normalizedData);
-          setError(null);
-        } else {
-          console.warn('No attendance data received:', result);
-          setAttendance([]);
-          setError(null);
-        }
+      if (response.ok && result.data) {
+        setAttendanceData(result.data);
       } else {
-        const errorMsg = result.error || result.details || 'Failed to fetch attendance records';
-        console.error('Error fetching attendance:', errorMsg, result);
-        setError(errorMsg);
-        setAttendance([]);
+        setError(result.error || 'Failed to fetch attendance');
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to fetch attendance records';
       console.error('Error fetching attendance:', err);
-      setError(errorMsg);
-      setAttendance([]);
+      setError('Failed to load attendance data');
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusColor = (status: AttendanceStatus) => {
+  const getStatusIcon = (status: string) => {
     switch (status) {
       case 'present':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return <CheckCircle className="text-green-600" size={16} />;
       case 'absent':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return <X className="text-red-600" size={16} />;
+      case 'not_marked':
+        return <Minus className="text-gray-400" size={16} />;
       case 'late':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return <Minus className="text-yellow-600" size={16} />;
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return <Minus className="text-gray-400" size={16} />;
     }
   };
 
-  const getStatusCounts = () => {
-    const counts = {
-      present: 0,
-      absent: 0,
-      late: 0,
-      total: attendance.length,
-    };
-
-    attendance.forEach((record) => {
-      if (record.status === 'present') counts.present++;
-      else if (record.status === 'absent') counts.absent++;
-      else if (record.status === 'late') counts.late++;
-    });
-
-    return counts;
+  const getMonthName = (monthStr: string) => {
+    const [year, month] = monthStr.split('-').map(Number);
+    const date = new Date(year, month - 1, 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
-  const filteredAttendance = attendance.filter((record) => {
-    const matchesSearch =
-      record.student?.student_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.student?.admission_no?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.student?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.student?.last_name?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const date = new Date(year, month - 1, 1);
+    date.setMonth(date.getMonth() + (direction === 'next' ? 1 : -1));
+    setSelectedMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+  };
 
-  const counts = getStatusCounts();
-  const attendancePercentage = counts.total > 0 
-    ? Math.round((counts.present / counts.total) * 100) 
-    : 0;
+  const formatMonthForInput = (monthStr: string) => {
+    return monthStr;
+  };
 
-  if (loading && attendance.length === 0) {
+  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedMonth(e.target.value);
+  };
+
+  if (loading && !attendanceData) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
@@ -195,6 +171,75 @@ export default function StudentAttendancePage({
       </div>
     );
   }
+
+  const renderAttendanceTable = (classData: ClassAttendanceData | null, dates: string[]) => {
+    if (!classData && !attendanceData) return null;
+
+    const students = classData?.student_attendance || attendanceData?.student_attendance || [];
+    const classInfo = classData?.class || attendanceData?.class;
+
+    if (students.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <Users size={48} className="mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-600">No students found for this class</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="overflow-x-auto w-full">
+        <table className="min-w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase border-r border-gray-200">
+                Roll No.
+              </th>
+              <th className="sticky left-[80px] z-10 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase border-r border-gray-200 min-w-[200px]">
+                Student Name
+              </th>
+              {dates.map((date) => {
+                const day = parseInt(date.split('-')[2]);
+                return (
+                  <th
+                    key={date}
+                    className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase border-r border-gray-200 min-w-[40px]"
+                  >
+                    {day}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {students.map((student) => (
+              <tr key={student.student_id} className="hover:bg-gray-50">
+                <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">
+                  {student.roll_number || '-'}
+                </td>
+                <td className="sticky left-[80px] z-10 bg-white px-4 py-3 text-sm text-gray-900 border-r border-gray-200">
+                  {student.student_name || student.admission_no || '-'}
+                </td>
+                {dates.map((date) => {
+                  const status = student.attendance[date] || 'not_marked';
+                  return (
+                    <td
+                      key={date}
+                      className="px-2 py-3 text-center border-r border-gray-200"
+                    >
+                      <div className="flex items-center justify-center">
+                        {getStatusIcon(status)}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -206,9 +251,9 @@ export default function StudentAttendancePage({
         <div>
           <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
             <Calendar size={32} />
-            Student Attendance
+            View Attendance
           </h1>
-          <p className="text-gray-600">View and manage student attendance records</p>
+          <p className="text-gray-600">View student attendance for the past month</p>
         </div>
         <Button
           variant="outline"
@@ -219,89 +264,56 @@ export default function StudentAttendancePage({
         </Button>
       </motion.div>
 
-      {/* Filters and View Mode */}
+      {/* Filters */}
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Calendar className="text-gray-400" size={20} />
-              <label className="text-sm font-medium text-gray-700">View:</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setViewMode('today');
-                    setError(null);
-                  }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    viewMode === 'today'
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => {
-                    setViewMode('all');
-                    setError(null);
-                  }}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    viewMode === 'all'
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  All Records
-                </button>
-              </div>
-            </div>
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          <div className="flex items-center gap-2">
+            <Filter className="text-gray-400" size={20} />
+            <label className="text-sm font-medium text-gray-700">Class Section:</label>
+            <select
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="all">All Classes</option>
+              {classes.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.class}{cls.section ? `-${cls.section}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            {viewMode === 'all' && (
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-700">Date:</label>
-                <Input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-auto"
-                />
-              </div>
-            )}
-
+          <div className="flex items-center gap-2">
+            <Calendar className="text-gray-400" size={20} />
+            <label className="text-sm font-medium text-gray-700">Month:</label>
             <div className="flex items-center gap-2">
-              <Filter className="text-gray-400" size={20} />
-              <label className="text-sm font-medium text-gray-700">Class:</label>
-              <select
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              <button
+                onClick={() => navigateMonth('prev')}
+                className="p-1 hover:bg-gray-100 rounded"
+                title="Previous month"
               >
-                <option value="all">All Classes</option>
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.class}{cls.section ? `-${cls.section}` : ''}
-                  </option>
-                ))}
-              </select>
+                <ChevronLeft size={20} />
+              </button>
+              <Input
+                type="month"
+                value={formatMonthForInput(selectedMonth)}
+                onChange={handleMonthChange}
+                className="w-auto"
+              />
+              <button
+                onClick={() => navigateMonth('next')}
+                className="p-1 hover:bg-gray-100 rounded"
+                title="Next month"
+              >
+                <ChevronRight size={20} />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-1 max-w-md">
-            <Search className="text-gray-400" size={20} />
-            <Input
-              type="text"
-              placeholder="Search by name or admission number..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1"
-            />
-          </div>
           <Button
             variant="outline"
-            onClick={() => {
-              setError(null);
-              fetchAttendance();
-            }}
+            onClick={fetchAttendance}
             disabled={loading}
             className="flex items-center gap-2"
           >
@@ -310,151 +322,53 @@ export default function StudentAttendancePage({
           </Button>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800">
             <AlertCircle size={20} />
             <span>{error}</span>
           </div>
         )}
-
-        {/* Statistics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-green-50 rounded-lg p-4 text-center border border-green-200">
-            <p className="text-2xl font-bold text-green-600">{counts.present}</p>
-            <p className="text-sm text-gray-600 mt-1">Present</p>
-          </div>
-          <div className="bg-red-50 rounded-lg p-4 text-center border border-red-200">
-            <p className="text-2xl font-bold text-red-600">{counts.absent}</p>
-            <p className="text-sm text-gray-600 mt-1">Absent</p>
-          </div>
-          <div className="bg-yellow-50 rounded-lg p-4 text-center border border-yellow-200">
-            <p className="text-2xl font-bold text-yellow-600">{counts.late}</p>
-            <p className="text-sm text-gray-600 mt-1">Late</p>
-          </div>
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-4 text-center text-white">
-            <p className="text-2xl font-bold">{attendancePercentage}%</p>
-            <p className="text-sm text-orange-100 mt-1">Attendance</p>
-          </div>
-        </div>
       </Card>
 
-      {/* Attendance Records Table */}
-      <Card>
-        <div className="overflow-x-auto">
-          {filteredAttendance.length > 0 ? (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Admission No.
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Student Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Class
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Marked By
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Remarks
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredAttendance.map((record) => (
-                  <motion.tr
-                    key={record.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(record.attendance_date).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {record.student?.admission_no || 'N/A'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                      {record.student?.student_name || 
-                       `${record.student?.first_name || ''} ${record.student?.last_name || ''}`.trim() || 
-                       'N/A'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {record.student?.class || record.class?.class || 'N/A'}
-                      {record.student?.section || record.class?.section ? `-${record.student?.section || record.class?.section}` : ''}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(record.status)}`}
-                      >
-                        {record.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {record.marked_by_staff?.full_name || record.marked_by || 'N/A'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
-                      {record.remarks || '-'}
-                    </td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Attendance Table */}
+      {attendanceData && (
+        <Card className="overflow-hidden">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900">
+              {selectedClass === 'all' ? 'All Classes' : classes.find(c => c.id === selectedClass)?.class + (classes.find(c => c.id === selectedClass)?.section ? `-${classes.find(c => c.id === selectedClass)?.section}` : '')}
+            </h2>
+            <span className="text-sm text-gray-600">{getMonthName(selectedMonth)}</span>
+          </div>
+
+          {selectedClass === 'all' && attendanceData.classes ? (
+            <div className="space-y-8">
+              {attendanceData.classes.map((classData) => (
+                <div key={classData.class.id}>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    {classData.class.class}{classData.class.section ? `-${classData.class.section}` : ''}
+                  </h3>
+                  {renderAttendanceTable(classData, attendanceData.dates)}
+                </div>
+              ))}
+            </div>
           ) : (
-            <div className="text-center py-12">
-              <Users size={48} className="mx-auto mb-4 text-gray-400" />
-              <p className="text-lg font-semibold text-gray-900 mb-2">No attendance records found</p>
-              <p className="text-sm text-gray-600">
-                {viewMode === 'today'
-                  ? 'No attendance has been marked for today yet.'
-                  : `No attendance records found for the selected date and filters.`}
-              </p>
-            </div>
+            renderAttendanceTable(
+              attendanceData.classes?.[0] || null,
+              attendanceData.dates || []
+            )
           )}
-        </div>
+        </Card>
+      )}
 
-        {/* Summary Footer */}
-        {filteredAttendance.length > 0 && (
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <div className="flex items-center justify-between text-sm text-gray-600">
-              <div className="flex items-center gap-4">
-                <span>
-                  <span className="font-semibold text-gray-900">Total Records:</span> {filteredAttendance.length}
-                </span>
-                <span>
-                  <span className="font-semibold text-gray-900">Attendance Rate:</span>{' '}
-                  <span className={`font-bold ${attendancePercentage >= 75 ? 'text-green-600' : attendancePercentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {attendancePercentage}%
-                  </span>
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                {attendancePercentage >= 75 ? (
-                  <TrendingUp className="text-green-600" size={18} />
-                ) : (
-                  <TrendingDown className="text-red-600" size={18} />
-                )}
-                <span className="text-xs text-gray-500">
-                  {attendancePercentage >= 75 ? 'Good' : attendancePercentage >= 50 ? 'Average' : 'Needs Attention'}
-                </span>
-              </div>
-            </div>
+      {!attendanceData && !loading && (
+        <Card>
+          <div className="text-center py-12">
+            <Calendar size={48} className="mx-auto mb-4 text-gray-400" />
+            <p className="text-gray-600 text-lg mb-2">No attendance data found</p>
+            <p className="text-gray-500 text-sm">Select a month and class to view attendance</p>
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }

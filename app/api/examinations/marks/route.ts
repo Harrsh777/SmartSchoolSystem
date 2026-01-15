@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       })
       .select(`
         *,
-        subject:subject_id (
+        subject:subjects (
           id,
           name,
           color

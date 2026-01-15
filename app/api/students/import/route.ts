@@ -151,11 +151,11 @@ export async function POST(request: NextRequest) {
         // Generate passwords for successfully inserted students
         const loginRecords = [];
         for (const student of insertedStudents || []) {
-          const { password, hash } = await generateAndHashPassword();
+          const { password, hashedPassword } = await generateAndHashPassword();
           loginRecords.push({
             school_code: school_code,
             admission_no: student.admission_no,
-            password_hash: hash,
+            password_hash: hashedPassword,
             plain_password: password, // Store plain text password
             is_active: true,
           });
@@ -189,13 +189,13 @@ export async function POST(request: NextRequest) {
 
     for (const student of existingStudentsWithoutPasswords) {
       try {
-        const { password, hash } = await generateAndHashPassword();
+        const { password, hashedPassword } = await generateAndHashPassword();
         const { error: loginInsertError } = await supabase
           .from('student_login')
           .insert({
             school_code: school_code,
             admission_no: student.admission_no,
-            password_hash: hash,
+            password_hash: hashedPassword,
             plain_password: password, // Store plain text password
             is_active: true,
           });

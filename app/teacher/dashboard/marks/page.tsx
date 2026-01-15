@@ -37,6 +37,43 @@ export default function MarksEntryPage() {
   const [submitting, setSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const fetchStudentsWithMarks = useCallback(async () => {
+    if (!selectedExam || !classId || !schoolCode) return;
+    
+    try {
+      setLoading(true);
+      const response = await fetch(
+        `/api/marks/class?exam_id=${selectedExam}&class_id=${classId}&school_code=${schoolCode}`
+      );
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        setStudents(result.data);
+        // Initialize marks state
+        const marksState: Record<string, { marks_obtained: number; remarks?: string }> = {};
+        result.data.forEach((student: StudentWithMark) => {
+          if (student.mark) {
+            marksState[student.id] = {
+              marks_obtained: student.mark.marks_obtained,
+              remarks: student.mark.remarks || '',
+            };
+            setMaxMarks(student.mark.max_marks);
+          } else {
+            marksState[student.id] = {
+              marks_obtained: 0,
+              remarks: '',
+            };
+          }
+        });
+        setMarks(marksState);
+      }
+    } catch (err) {
+      console.error('Error fetching students:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedExam, classId, schoolCode]);
+
   useEffect(() => {
     const storedTeacher = sessionStorage.getItem('teacher');
     if (storedTeacher) {
@@ -81,41 +118,6 @@ export default function MarksEntryPage() {
       setLoading(false);
     }
   };
-
-  const fetchStudentsWithMarks = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(
-        `/api/marks/class?exam_id=${selectedExam}&class_id=${classId}&school_code=${schoolCode}`
-      );
-      const result = await response.json();
-      
-      if (response.ok && result.data) {
-        setStudents(result.data);
-        // Initialize marks state
-        const marksState: Record<string, { marks_obtained: number; remarks?: string }> = {};
-        result.data.forEach((student: StudentWithMark) => {
-          if (student.mark) {
-            marksState[student.id] = {
-              marks_obtained: student.mark.marks_obtained,
-              remarks: student.mark.remarks || '',
-            };
-            setMaxMarks(student.mark.max_marks);
-          } else {
-            marksState[student.id] = {
-              marks_obtained: 0,
-              remarks: '',
-            };
-          }
-        });
-        setMarks(marksState);
-      }
-    } catch (err) {
-      console.error('Error fetching students:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedExam, classId, schoolCode]);
 
   const handleMarksChange = (studentId: string, field: 'marks_obtained' | 'remarks', value: string | number) => {
     setMarks(prev => ({

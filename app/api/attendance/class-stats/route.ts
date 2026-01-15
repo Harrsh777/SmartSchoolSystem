@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
     const classId = searchParams.get('class_id');
+    const date = searchParams.get('date'); // Optional: specific date, defaults to today
 
     if (!schoolCode || !classId) {
       return NextResponse.json(
@@ -14,19 +15,49 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get current month start and end dates
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    // Use provided date or default to today
+    const targetDate = date || new Date().toISOString().split('T')[0];
 
-    // Fetch attendance for the class in the current month
+    // First, get the total number of students in the class
+    const { data: classData, error: classError } = await supabase
+      .from('classes')
+      .select('class, section, academic_year')
+      .eq('id', classId)
+      .eq('school_code', schoolCode)
+      .single();
+
+    if (classError || !classData) {
+      return NextResponse.json(
+        { error: 'Class not found', details: classError?.message },
+        { status: 404 }
+      );
+    }
+
+    // Get all students in this class
+    const { data: students, error: studentsError } = await supabase
+      .from('students')
+      .select('id')
+      .eq('school_code', schoolCode)
+      .eq('class', classData.class)
+      .eq('section', classData.section)
+      .eq('academic_year', classData.academic_year);
+
+    if (studentsError) {
+      return NextResponse.json(
+        { error: 'Failed to fetch students', details: studentsError.message },
+        { status: 500 }
+      );
+    }
+
+    const totalStudents = students?.length || 0;
+
+    // Fetch attendance for today (or specified date)
     const { data: attendance, error: attendanceError } = await supabase
       .from('student_attendance')
-      .select('status, attendance_date')
+      .select('student_id, status')
       .eq('school_code', schoolCode)
       .eq('class_id', classId)
-      .gte('attendance_date', startOfMonth)
-      .lte('attendance_date', endOfMonth);
+      .eq('attendance_date', targetDate);
 
     if (attendanceError) {
       return NextResponse.json(
@@ -35,16 +66,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Calculate statistics
-    const total = attendance?.length || 0;
+    // Calculate statistics based on students, not attendance records
     const present = attendance?.filter(a => a.status === 'present').length || 0;
     const absent = attendance?.filter(a => a.status === 'absent').length || 0;
     const late = attendance?.filter(a => a.status === 'late').length || 0;
+    
+    // If attendance is marked for today, use that; otherwise, total is number of students
+    const total = totalStudents > 0 ? totalStudents : (attendance?.length || 0);
     const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
-
-    // Get unique dates to count days with attendance
-    const uniqueDates = new Set(attendance?.map(a => a.attendance_date) || []);
-    const daysWithAttendance = uniqueDates.size;
 
     return NextResponse.json({
       data: {
@@ -53,11 +82,8 @@ export async function GET(request: NextRequest) {
         absent,
         late,
         percentage,
-        daysWithAttendance,
-        period: {
-          start: startOfMonth,
-          end: endOfMonth,
-        },
+        date: targetDate,
+        isMarked: (attendance?.length || 0) > 0,
       },
     }, { status: 200 });
   } catch (error) {

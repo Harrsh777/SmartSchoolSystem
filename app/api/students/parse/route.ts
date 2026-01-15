@@ -261,11 +261,12 @@ export async function POST(request: NextRequest) {
     // Check for duplicate Aadhaar numbers within file
     const aadhaarNos = new Map<string, number[]>();
     rows.forEach((row, idx) => {
-      if (row.data.aadhaar_number) {
-        if (!aadhaarNos.has(row.data.aadhaar_number)) {
-          aadhaarNos.set(row.data.aadhaar_number, []);
+      const aadhaarNumber = row.data.aadhaar_number;
+      if (aadhaarNumber && typeof aadhaarNumber === 'string') {
+        if (!aadhaarNos.has(aadhaarNumber)) {
+          aadhaarNos.set(aadhaarNumber, []);
         }
-        aadhaarNos.get(row.data.aadhaar_number)!.push(idx);
+        aadhaarNos.get(aadhaarNumber)!.push(idx);
       }
     });
 

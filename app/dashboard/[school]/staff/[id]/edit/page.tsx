@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Camera, Upload, X } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
 
 export default function EditStaffPage({
@@ -20,6 +20,9 @@ export default function EditStaffPage({
   const [saving, setSaving] = useState(false);
   const [staff, setStaff] = useState<Staff | null>(null);
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [formData, setFormData] = useState({
     staff_id: '',
     full_name: '',
@@ -77,6 +80,10 @@ export default function EditStaffPage({
           gender: result.data.gender || '',
           address: result.data.address || '',
         });
+        // Set photo preview if exists
+        if (result.data.photo_url) {
+          setPhotoPreview(result.data.photo_url);
+        }
       } else {
         router.push(`/dashboard/${schoolCode}/staff`);
       }
@@ -120,6 +127,86 @@ export default function EditStaffPage({
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+      setPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    // Reset file input
+    const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  };
+
+  const handlePhotoUpload = async () => {
+    if (!photoFile || !staffId) return;
+
+    setUploadingPhoto(true);
+    try {
+      // Get current admin's staff_id for authentication
+      const storedStaff = sessionStorage.getItem('staff');
+      let uploadedByStaffId = '';
+      if (storedStaff) {
+        try {
+          const staffData = JSON.parse(storedStaff);
+          uploadedByStaffId = staffData.staff_id || '';
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('file', photoFile);
+      formData.append('school_code', schoolCode);
+      formData.append('staff_id', staffId);
+      if (uploadedByStaffId) {
+        formData.append('uploaded_by_staff_id', uploadedByStaffId);
+      }
+
+      const response = await fetch('/api/staff/photos/individual', {
+        method: 'POST',
+        headers: uploadedByStaffId ? {
+          'x-staff-id': uploadedByStaffId,
+        } : {},
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.data) {
+        // Update staff state with new photo URL
+        if (staff) {
+          setStaff({ ...staff, photo_url: result.data.public_url });
+        }
+        setPhotoFile(null);
+        alert('Photo uploaded successfully!');
+      } else {
+        alert(result.error || 'Failed to upload photo');
+      }
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      alert('Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   if (loading) {
@@ -170,6 +257,67 @@ export default function EditStaffPage({
       >
         <Card>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Profile Photo Section */}
+            <div className="pb-6 border-b border-gray-200">
+              <label className="block text-sm font-semibold text-gray-700 mb-4">
+                Profile Photo
+              </label>
+              <div className="flex items-start gap-6">
+                <div className="relative">
+                  {photoPreview ? (
+                    <div className="relative">
+                      <img
+                        src={photoPreview}
+                        alt="Profile preview"
+                        className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-32 h-32 rounded-lg bg-gray-100 border-2 border-gray-200 flex items-center justify-center">
+                      <Camera className="text-gray-400" size={32} />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoChange}
+                    className="hidden"
+                    id="photo-upload"
+                  />
+                  <label
+                    htmlFor="photo-upload"
+                    className="inline-block px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium cursor-pointer transition-colors mb-2"
+                  >
+                    <Upload size={16} className="inline mr-2" />
+                    {photoPreview ? 'Change Photo' : 'Upload Photo'}
+                  </label>
+                  {photoFile && (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-600 mb-2">{photoFile.name}</p>
+                      <Button
+                        type="button"
+                        onClick={handlePhotoUpload}
+                        disabled={uploadingPhoto}
+                        size="sm"
+                      >
+                        {uploadingPhoto ? 'Uploading...' : 'Save Photo'}
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-2">Max 5MB. Supported: JPG, PNG, GIF</p>
+                </div>
+              </div>
+            </div>
+
             <div className="grid md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">

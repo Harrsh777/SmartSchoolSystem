@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import AssignTeacherModal from '@/components/classes/AssignTeacherModal';
+import AssignSubjectsModal from '@/components/classes/AssignSubjectsModal';
 
 interface ClassOverviewData {
   id: string;
@@ -61,6 +62,7 @@ export default function ClassOverviewPage({
   });
   const [loading, setLoading] = useState(true);
   const [editingTeacher, setEditingTeacher] = useState<{ classId: string; currentTeacher: { id: string; full_name: string; staff_id: string } | null } | null>(null);
+  const [assigningSubjects, setAssigningSubjects] = useState<{ classId: string; className: string; section: string } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(22);
   const [searchQuery, setSearchQuery] = useState('');
@@ -106,6 +108,19 @@ export default function ClassOverviewPage({
 
   const handleViewTimetable = (classId: string) => {
     router.push(`/dashboard/${schoolCode}/timetable/class?class_id=${classId}`);
+  };
+
+  const handleAssignSubjects = (classItem: ClassOverviewData) => {
+    setAssigningSubjects({
+      classId: classItem.id,
+      className: classItem.class,
+      section: classItem.section,
+    });
+  };
+
+  const handleSubjectsAssigned = () => {
+    setAssigningSubjects(null);
+    fetchClassOverview();
   };
 
   // Calculate statistics
@@ -423,9 +438,18 @@ export default function ClassOverviewPage({
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-semibold text-[#2F6FED]">
-                          {classItem.total_subjects}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-[#2F6FED]">
+                            {classItem.total_subjects}
+                          </span>
+                          <button
+                            onClick={() => handleAssignSubjects(classItem)}
+                            className="text-xs text-[#F97316] hover:text-[#EA580C] font-medium transition-colors"
+                            title="Assign subjects to this class"
+                          >
+                            Edit
+                          </button>
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {classItem.has_timetable ? (
@@ -534,6 +558,18 @@ export default function ClassOverviewPage({
           currentTeacher={editingTeacher.currentTeacher}
           onClose={() => setEditingTeacher(null)}
           onSuccess={handleTeacherAssigned}
+        />
+      )}
+
+      {/* Assign Subjects Modal */}
+      {assigningSubjects && (
+        <AssignSubjectsModal
+          schoolCode={schoolCode}
+          classId={assigningSubjects.classId}
+          className={assigningSubjects.className}
+          section={assigningSubjects.section}
+          onClose={() => setAssigningSubjects(null)}
+          onSuccess={handleSubjectsAssigned}
         />
       )}
     </div>

@@ -15,6 +15,7 @@ import {
   Mail,
   Phone,
   MapPin,
+  Award,
 } from 'lucide-react';
 import type { Student, AcceptedSchool } from '@/lib/supabase';
 import TimetableView from '@/components/timetable/TimetableView';
@@ -57,6 +58,24 @@ interface EventNotificationData {
   [key: string]: unknown;
 }
 
+interface MarkData {
+  id: string;
+  exam_id: string;
+  marks_obtained: number;
+  max_marks: number;
+  percentage?: number;
+  grade?: string;
+  remarks?: string;
+  examinations?: {
+    id: string;
+    exam_name: string;
+    academic_year: string;
+    start_date: string;
+    end_date: string;
+    status: string;
+  };
+}
+
 export default function StudentDashboardHome() {
   const router = useRouter();
   const [student, setStudent] = useState<Student | null>(null);
@@ -68,6 +87,16 @@ export default function StudentDashboardHome() {
   const [upcomingExams, setUpcomingExams] = useState<ExamData[]>([]);
   const [recentNotices, setRecentNotices] = useState<NoticeData[]>([]);
   const [eventNotifications, setEventNotifications] = useState<EventNotificationData[]>([]);
+  const [attendanceStats, setAttendanceStats] = useState<{
+    total: number;
+    present: number;
+    absent: number;
+    late: number;
+    percentage: number;
+  } | null>(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [examMarks, setExamMarks] = useState<MarkData[]>([]);
+  const [marksLoading, setMarksLoading] = useState(false);
 
   useEffect(() => {
     const storedStudent = sessionStorage.getItem('student');
@@ -79,6 +108,8 @@ export default function StudentDashboardHome() {
       fetchUpcomingExams(studentData);
       fetchRecentNotices(studentData);
       fetchEventNotifications(studentData);
+      fetchMonthlyAttendance(studentData);
+      fetchExamMarks(studentData);
     }
   }, []);
 
@@ -175,6 +206,77 @@ export default function StudentDashboardHome() {
     }
   };
 
+  const fetchMonthlyAttendance = async (studentData: Student) => {
+    try {
+      setAttendanceLoading(true);
+      // Get first and last day of current month
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      
+      const startDate = firstDay.toISOString().split('T')[0];
+      const endDate = lastDay.toISOString().split('T')[0];
+
+      const response = await fetch(
+        `/api/attendance/student?school_code=${studentData.school_code}&student_id=${studentData.id}&start_date=${startDate}&end_date=${endDate}`
+      );
+      const result = await response.json();
+      
+      if (response.ok && result.statistics) {
+        setAttendanceStats(result.statistics);
+      } else {
+        setAttendanceStats({
+          total: 0,
+          present: 0,
+          absent: 0,
+          late: 0,
+          percentage: 0,
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching monthly attendance:', err);
+      setAttendanceStats({
+        total: 0,
+        present: 0,
+        absent: 0,
+        late: 0,
+        percentage: 0,
+      });
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  const fetchExamMarks = async (studentData: Student) => {
+    try {
+      setMarksLoading(true);
+      const response = await fetch(
+        `/api/marks?school_code=${studentData.school_code}&student_id=${studentData.id}`
+      );
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        // Sort by exam date (most recent first) and limit to 5 most recent
+        const sortedMarks = (result.data as MarkData[])
+          .filter((mark: MarkData) => mark.examinations) // Only show marks with exam details
+          .sort((a: MarkData, b: MarkData) => {
+            const dateA = a.examinations?.end_date || '';
+            const dateB = b.examinations?.end_date || '';
+            return dateB.localeCompare(dateA);
+          })
+          .slice(0, 5);
+        setExamMarks(sortedMarks);
+      } else {
+        setExamMarks([]);
+      }
+    } catch (err) {
+      console.error('Error fetching exam marks:', err);
+      setExamMarks([]);
+    } finally {
+      setMarksLoading(false);
+    }
+  };
+
   if (loading || !student) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -193,11 +295,24 @@ export default function StudentDashboardHome() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div>
-          <h1 className="text-3xl font-bold text-black mb-2">Welcome, {student.student_name}!</h1>
-          <p className="text-gray-600">
-            {student.class} - {student.section} • Academic Year {student.academic_year}
-          </p>
+        <div className="flex items-center gap-4">
+          {student.photo_url ? (
+            <img
+              src={student.photo_url}
+              alt={student.student_name || 'Student'}
+              className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl">
+              {student.student_name?.charAt(0).toUpperCase() || 'S'}
+            </div>
+          )}
+          <div>
+            <h1 className="text-3xl font-bold text-black mb-2">Welcome, {student.student_name}!</h1>
+            <p className="text-gray-600">
+              {student.class} - {student.section} • Academic Year {student.academic_year}
+            </p>
+          </div>
         </div>
       </motion.div>
 
@@ -217,9 +332,22 @@ export default function StudentDashboardHome() {
               <div className="bg-green-500 p-3 rounded-lg">
                 <CheckCircle className="text-white" size={24} />
               </div>
-              <div>
-                <p className="text-sm text-gray-600">Attendance</p>
-                <p className="text-2xl font-bold text-black">View</p>
+              <div className="flex-1">
+                <p className="text-sm text-gray-600">Attendance (This Month)</p>
+                {attendanceLoading ? (
+                  <p className="text-lg font-bold text-black">Loading...</p>
+                ) : attendanceStats ? (
+                  <div>
+                    <p className="text-2xl font-bold text-black">
+                      {attendanceStats.percentage}%
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {attendanceStats.present}/{attendanceStats.total} present
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-lg font-bold text-black">N/A</p>
+                )}
               </div>
             </div>
           </Card>
@@ -297,6 +425,24 @@ export default function StudentDashboardHome() {
               <User size={20} />
               Personal Information
             </h2>
+            <div className="space-y-4">
+              {/* Student Photo */}
+              {student.photo_url ? (
+                <div className="flex justify-center mb-4">
+                  <img
+                    src={student.photo_url}
+                    alt={student.student_name || 'Student'}
+                    className="w-32 h-32 rounded-full object-cover border-4 border-gray-200 shadow-lg"
+                  />
+                </div>
+              ) : (
+                <div className="flex justify-center mb-4">
+                  <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-4xl shadow-lg">
+                    {student.student_name?.charAt(0).toUpperCase() || 'S'}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -461,6 +607,126 @@ export default function StudentDashboardHome() {
           </Card>
         </motion.div>
       )}
+
+      {/* Exam Results */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+      >
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-black flex items-center gap-2">
+              <Award size={20} />
+              Exam Results
+            </h2>
+            {examMarks.length > 0 && (
+              <button
+                onClick={() => router.push('/student/dashboard/examinations')}
+                className="text-sm text-gray-600 hover:text-black transition-colors"
+              >
+                View All →
+              </button>
+            )}
+          </div>
+          {marksLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-2"></div>
+              <p className="text-gray-600 text-sm">Loading results...</p>
+            </div>
+          ) : examMarks.length === 0 ? (
+            <div className="text-center py-8">
+              <Award className="mx-auto mb-4 text-gray-400" size={48} />
+              <p className="text-gray-600 text-lg">No exam results available</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Your exam results will appear here once they are published.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {examMarks.map((mark) => {
+                const exam = mark.examinations;
+                if (!exam) return null;
+                
+                const percentage = mark.percentage || (mark.max_marks > 0 
+                  ? Math.round((mark.marks_obtained / mark.max_marks) * 100) 
+                  : 0);
+                const isPass = percentage >= 40;
+                
+                return (
+                  <div
+                    key={mark.id}
+                    className="p-4 border border-gray-200 rounded-lg hover:border-black transition-colors"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h3 className="font-semibold text-black text-lg">{exam.exam_name}</h3>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {new Date(exam.end_date).toLocaleDateString('en-US', {
+                            month: 'long',
+                            year: 'numeric',
+                          })}
+                        </p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        exam.status === 'completed' 
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {exam.status}
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-3 border-t border-gray-200">
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Marks</p>
+                        <p className={`text-lg font-bold ${isPass ? 'text-green-600' : 'text-red-600'}`}>
+                          {mark.marks_obtained} / {mark.max_marks}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Percentage</p>
+                        <p className={`text-lg font-bold ${isPass ? 'text-green-600' : 'text-red-600'}`}>
+                          {percentage}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Grade</p>
+                        {mark.grade ? (
+                          <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-medium ${
+                            mark.grade === 'A+' || mark.grade === 'A' ? 'bg-green-100 text-green-800' :
+                            mark.grade === 'B+' || mark.grade === 'B' ? 'bg-blue-100 text-blue-800' :
+                            mark.grade === 'C' ? 'bg-yellow-100 text-yellow-800' :
+                            mark.grade === 'D' ? 'bg-orange-100 text-orange-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {mark.grade}
+                          </span>
+                        ) : (
+                          <p className="text-sm text-gray-500">-</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Status</p>
+                        <p className={`text-sm font-medium ${isPass ? 'text-green-600' : 'text-red-600'}`}>
+                          {isPass ? 'Passed' : 'Failed'}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {mark.remarks && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-sm text-gray-600">Remarks:</p>
+                        <p className="text-sm text-gray-900 mt-1">{mark.remarks}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </motion.div>
 
       {/* Recent Notices */}
       {recentNotices.length > 0 && (

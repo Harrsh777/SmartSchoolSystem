@@ -11,9 +11,8 @@ interface LeaveManagementModalProps {
 }
 
 const menuItems = [
+  { id: 'dashboard', label: 'Leave Dashboard', icon: Calendar, path: '/leave/dashboard' },
   { id: 'basics', label: 'Leave Basics', icon: Settings, path: '/leave/basics' },
-  { id: 'staff', label: 'Staff Leave', icon: User, path: '/leave/staff' },
-  { id: 'student', label: 'Student Leave', icon: Users, path: '/leave/student' },
 ];
 
 export default function LeaveManagementModal({ isOpen, onClose, schoolCode }: LeaveManagementModalProps) {

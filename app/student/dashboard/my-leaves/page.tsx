@@ -22,6 +22,7 @@ interface LeaveRequest {
   leave_applied_date: string;
   leave_start_date: string;
   leave_end_date: string;
+  total_days?: number;
   reason?: string;
   status: 'pending' | 'approved' | 'rejected';
   rejected_reason?: string;
@@ -191,7 +192,14 @@ export default function MyLeavesPage() {
                       <div>
                         <p className="text-[#64748B] mb-1">Total Days</p>
                         <p className="font-medium text-[#2F6FED]">
-                          {Math.ceil((new Date(leave.leave_end_date).getTime() - new Date(leave.leave_start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1} Days
+                          {(() => {
+                            const days = leave.total_days || (() => {
+                              const start = new Date(leave.leave_start_date);
+                              const end = new Date(leave.leave_end_date);
+                              return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                            })();
+                            return `${days} ${days === 1 ? 'Day' : 'Days'}`;
+                          })()}
                         </p>
                       </div>
                     </div>

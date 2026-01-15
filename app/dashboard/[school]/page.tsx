@@ -565,7 +565,6 @@ export default function DashboardPage({
       { label: 'Classes', path: '/classes', icon: BookOpen, color: '#F97316', subItems: [
         { label: 'Classes Overview', path: '/classes/overview', icon: BookOpen },
         { label: 'Modify Classes', path: '/classes/modify', icon: BookOpen },
-        { label: 'Assign Teachers', path: '/classes/assign-teachers', icon: UserCheck },
       ]},
       { label: 'Timetable', path: '/timetable', icon: CalendarDays, color: '#F97316', subItems: [
         { label: 'Class Timetable', path: '/timetable/class', icon: CalendarDays },

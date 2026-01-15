@@ -38,11 +38,47 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { AnimatePresence } from 'framer-motion';
-import type {
-  AcceptedSchool,
-  AdminEmployee,
-} from '@/lib/supabase';
 import SchoolSupervisionView from '@/components/admin/SchoolSupervisionView';
+
+interface AcceptedSchool {
+  id: string;
+  school_name: string;
+  school_code: string;
+  school_address?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  country?: string;
+  school_email?: string;
+  school_phone?: string;
+  principal_name?: string;
+  principal_email?: string;
+  principal_phone?: string;
+  established_year?: number;
+  school_type?: string;
+  affiliation?: string;
+  approved_at?: string;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+interface AdminEmployee {
+  id: string;
+  emp_id: string;
+  full_name: string;
+  email: string | null;
+  created_at: string;
+  employee_schools?: Array<{
+    school_id: string;
+    accepted_schools?: {
+      id: string;
+      school_name: string;
+      school_code: string;
+    };
+  }>;
+  schools?: unknown[];
+  [key: string]: unknown;
+}
 
 interface SchoolSignup {
   id: string;
@@ -942,29 +978,29 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#ECEDED]">
+    <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
       {/* Header */}
-      <nav className="bg-[#FFFFFF] border-b border-[#E1E1DB] sticky top-0 z-40">
+      <nav className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl border-b border-white/60 dark:border-gray-700/50 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <Link href="/" className="text-xl font-bold text-black">
-              EduYan Admin
+            <Link href="/" className="text-xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white">
+              EduCore Admin
             </Link>
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden p-2 rounded-lg hover:bg-[#FFF2C2]"
+                className="lg:hidden p-2 rounded-lg hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] transition-colors"
               >
-                {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+                {sidebarOpen ? <X size={24} className="text-[#5A7A95] dark:text-[#6B9BB8]" /> : <Menu size={24} className="text-[#5A7A95] dark:text-[#6B9BB8]" />}
               </button>
               <button
                 onClick={fetchAllData}
-                className="p-2 text-[#6B6B6B] hover:text-[#2B2B2B] hover:bg-[#FFF2C2] rounded-lg transition-colors"
+                className="p-2 text-gray-600 dark:text-gray-400 hover:text-[#5A7A95] dark:hover:text-[#6B9BB8] hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] rounded-lg transition-colors"
                 title="Refresh"
               >
                 <RefreshCw size={20} />
               </button>
-              <Link href="/" className="text-sm text-[#6B6B6B] hover:text-[#2B2B2B]">
+              <Link href="/" className="text-sm text-[#5A7A95] dark:text-[#6B9BB8] hover:text-[#6B9BB8] dark:hover:text-[#7DB5D3] transition-colors">
                 Back to Home
               </Link>
             </div>
@@ -993,8 +1029,8 @@ export default function AdminDashboard() {
                 initial={{ x: -280 }}
                 animate={{ x: 0 }}
                 exit={{ x: -280 }}
-                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-[#2B2B2B] border-r border-[#3A3A3A] z-50 lg:z-auto overflow-y-auto"
-                style={{ background: 'linear-gradient(180deg, #2B2B2B 0%, #1F1F1F 100%)', width: '280px' }}
+                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-gradient-to-b from-[#5A7A95] to-[#567C8D] dark:from-[#0f172a] dark:to-[#1e293b] border-r border-[#6B9BB8]/30 dark:border-gray-700/50 z-50 lg:z-auto overflow-y-auto shadow-xl"
+                style={{ width: '280px' }}
               >
                 <nav className="p-4 space-y-1">
                   {[
@@ -1023,11 +1059,11 @@ export default function AdminDashboard() {
                         }}
                         className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
                           active
-                            ? 'bg-[#FFD66B] text-[#2B2B2B]'
-                            : 'text-[#CFCFCF] hover:text-[#FFFFFF] hover:bg-[#3A3A3A]'
+                            ? 'bg-gradient-to-r from-[#6B9BB8] to-[#7DB5D3] text-white shadow-lg shadow-[#6B9BB8]/30'
+                            : 'text-[#C8D9E6] hover:text-white hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156]'
                         }`}
                       >
-                        <Icon size={20} className={active ? 'text-[#2B2B2B]' : 'text-[#AFAFAF]'} />
+                        <Icon size={20} className={active ? 'text-white' : 'text-[#C8D9E6]'} />
                         <span className="font-medium">{item.label}</span>
                       </button>
                     );
@@ -1039,86 +1075,201 @@ export default function AdminDashboard() {
         </AnimatePresence>
 
         {/* Main Content */}
-        <main className="flex-1 lg:ml-0 bg-[#ECEDED]">
-          {/* Top Header Section with Gradient */}
+        <main className="flex-1 lg:ml-0 bg-[#F5EFEB] dark:bg-[#0f172a]">
+          {/* Top Header Section with Admin Illustration */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="relative overflow-hidden bg-[#2B2B2B]"
+            className="relative overflow-hidden bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] dark:from-[#0f172a] dark:via-[#1e293b] dark:to-[#2F4156]"
           >
-            {/* Animated Background Blobs */}
+            {/* Decorative Blob Gradients */}
             <div className="absolute inset-0 overflow-hidden">
-              <motion.div
-                className="absolute -top-20 -right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl"
-                animate={{
-                  scale: [1, 1.2, 1],
-                  x: [0, 50, 0],
-                  y: [0, 30, 0],
-                }}
-                transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-              />
-              <motion.div
-                className="absolute -bottom-20 -left-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl"
-                animate={{
-                  scale: [1.2, 1, 1.2],
-                  x: [0, -50, 0],
-                  y: [0, -30, 0],
-                }}
-                transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
-              />
+              <div className="absolute top-20 right-0 w-[500px] h-[500px] bg-gradient-to-br from-purple-300/30 via-blue-300/30 to-cyan-300/30 rounded-full mix-blend-multiply filter blur-[80px] opacity-50 animate-pulse"></div>
+              <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-gradient-to-br from-teal-300/25 via-green-300/25 to-emerald-300/25 rounded-full mix-blend-multiply filter blur-[100px] opacity-40 animate-pulse" style={{ animationDelay: '2s' }}></div>
             </div>
 
             <div className="relative z-10 p-6 sm:p-8 lg:p-10">
-              <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                {/* Left Side - Text Content */}
                 <div>
-                  <motion.h1
+                  <motion.div
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="text-4xl sm:text-5xl font-bold text-[#FFFFFF] mb-2"
+                    className="inline-flex items-center gap-2 bg-white/20 dark:bg-[#1e293b]/30 backdrop-blur-sm rounded-full px-4 py-1.5 mb-6 border border-white/30"
+                  >
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span className="text-xs font-bold text-white tracking-wide uppercase">Super Admin Portal</span>
+                  </motion.div>
+                  <motion.h1
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-4 leading-tight"
                   >
                     Admin Dashboard
                   </motion.h1>
                   <motion.p
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="text-[#CFCFCF] text-lg"
+                    transition={{ delay: 0.3 }}
+                    className="text-[#C8D9E6] dark:text-gray-300 text-lg mb-6"
                   >
-                    School ERP Management System
+                    Comprehensive School ERP Management System
                   </motion.p>
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4 }}
+                    className="flex flex-wrap items-center gap-4"
+                  >
+                    <div className="flex items-center gap-3 bg-white/10 dark:bg-[#1e293b]/30 backdrop-blur-sm rounded-xl px-4 py-2 border border-white/20">
+                      <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
+                        <User className="text-white" size={20} />
+                      </div>
+                      <div>
+                        <p className="text-white font-semibold text-sm">Super Admin</p>
+                        <p className="text-[#C8D9E6] text-xs">EduCore Platform</p>
+                      </div>
+                    </div>
+                    <div className="px-4 py-2 bg-green-500/20 backdrop-blur-sm border border-green-400/30 rounded-full">
+                      <span className="text-white text-xs font-medium flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                        Active
+                      </span>
+                    </div>
+                  </motion.div>
                 </div>
+
+                {/* Right Side - Admin Illustration */}
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 }}
-                  className="flex items-center gap-4"
+                  className="hidden lg:flex items-center justify-center relative"
                 >
-                  <div className="text-right hidden sm:block">
-                    <p className="text-white font-semibold">Super Admin</p>
-                    <p className="text-[#9A9A9A] text-sm">EduYan Platform</p>
+                  <div className="relative w-full max-w-md">
+                    {/* Main Admin Character */}
+                    <motion.div
+                      initial={{ scale: 0.8, y: 20 }}
+                      animate={{ scale: 1, y: 0 }}
+                      transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
+                      className="relative z-10"
+                    >
+                      {/* Admin Figure with Suit */}
+                      <div className="relative mb-8 flex justify-center">
+                        <div className="relative">
+                          {/* Head */}
+                          <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#C8D9E6] to-white flex items-center justify-center shadow-2xl relative z-20 mb-4">
+                            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] flex items-center justify-center">
+                              <Shield className="text-white" size={40} />
+                            </div>
+                          </div>
+                          
+                          {/* Suit/Torso */}
+                          <div className="absolute top-24 left-1/2 -translate-x-1/2 w-40 h-32 bg-gradient-to-br from-[#567C8D] to-[#5A7A95] rounded-2xl shadow-xl border-4 border-[#6B9BB8]/30">
+                            {/* Tie */}
+                            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-3 h-16 bg-gradient-to-b from-red-500 to-red-600 rounded-full"></div>
+                          </div>
+
+                          {/* Floating Admin Elements */}
+                          <motion.div
+                            animate={{ y: [0, -10, 0], rotate: [0, 5, 0] }}
+                            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                            className="absolute -top-4 -left-4"
+                          >
+                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
+                              <BarChart2 className="text-white" size={24} />
+                            </div>
+                          </motion.div>
+
+                          <motion.div
+                            animate={{ y: [0, 10, 0], rotate: [0, -5, 0] }}
+                            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+                            className="absolute -top-4 -right-4"
+                          >
+                            <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
+                              <TrendingUp className="text-white" size={20} />
+                            </div>
+                          </motion.div>
+                        </div>
+                      </div>
+
+                      {/* Control Panel/Desk */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.6 }}
+                        className="relative"
+                      >
+                        {/* Dashboard Screen */}
+                        <div className="w-full max-w-xs mx-auto bg-gradient-to-br from-[#567C8D] to-[#5A7A95] rounded-xl p-6 shadow-2xl border-4 border-[#6B9BB8]/30 mb-4">
+                          <div className="bg-white/10 rounded-lg p-3 mb-2">
+                            <div className="flex gap-1 mb-2">
+                              <div className="w-2 h-2 rounded-full bg-red-400"></div>
+                              <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
+                              <div className="w-2 h-2 rounded-full bg-green-400"></div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="h-8 bg-white/20 rounded"></div>
+                              <div className="h-8 bg-white/20 rounded"></div>
+                              <div className="h-8 bg-white/20 rounded"></div>
+                            </div>
+                            <div className="h-12 bg-white/20 rounded mt-2"></div>
+                          </div>
+                        </div>
+
+                        {/* Stats Cards */}
+                        <div className="flex items-center justify-center gap-3 mb-4">
+                          <motion.div
+                            animate={{ scale: [1, 1.05, 1] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                            className="w-16 h-20 bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-sm rounded-lg shadow-xl border-2 border-[#6B9BB8] flex flex-col items-center justify-center"
+                          >
+                            <Users className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
+                            <span className="text-xs font-bold text-[#5A7A95] dark:text-[#6B9BB8] mt-1">1.2K</span>
+                          </motion.div>
+                          <motion.div
+                            animate={{ scale: [1, 1.05, 1] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
+                            className="w-16 h-20 bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-sm rounded-lg shadow-xl border-2 border-[#6B9BB8] flex flex-col items-center justify-center"
+                          >
+                            <Building2 className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
+                            <span className="text-xs font-bold text-[#5A7A95] dark:text-[#6B9BB8] mt-1">45</span>
+                          </motion.div>
+                          <motion.div
+                            animate={{ scale: [1, 1.05, 1] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+                            className="w-16 h-20 bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-sm rounded-lg shadow-xl border-2 border-[#6B9BB8] flex flex-col items-center justify-center"
+                          >
+                            <Activity className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
+                            <span className="text-xs font-bold text-[#5A7A95] dark:text-[#6B9BB8] mt-1">98%</span>
+                          </motion.div>
+                        </div>
+                      </motion.div>
+                    </motion.div>
                   </div>
-                  <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/30 flex items-center justify-center">
-                    <User className="text-white" size={24} />
-                  </div>
-                  <div className="px-3 py-1.5 bg-[#7BC96F]/20 backdrop-blur-sm border border-[#7BC96F]/30 rounded-full">
-                    <span className="text-[#FFFFFF] text-xs font-medium flex items-center gap-1">
-                      <div className="w-2 h-2 bg-[#7BC96F] rounded-full animate-pulse" />
-                      Active
-                    </span>
-                  </div>
-                  <Button
-                    onClick={() => {
-                      setShowEmployeeModal(true);
-                      setNewEmployeePassword(null);
-                    }}
-                    className="bg-[#FFD66B] border border-[#F5C84B] text-[#2B2B2B] hover:bg-[#F5C84B]"
-                  >
-                    <Plus size={18} className="mr-2" />
-                    Add Employee
-                  </Button>
                 </motion.div>
               </div>
+
+              {/* Action Button Row */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="max-w-7xl mx-auto mt-8 flex justify-end"
+              >
+                <Button
+                  onClick={() => {
+                    setShowEmployeeModal(true);
+                    setNewEmployeePassword(null);
+                  }}
+                  className="bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-xl text-[#5A7A95] dark:text-[#6B9BB8] hover:bg-white dark:hover:bg-[#2F4156] border border-white/30 dark:border-gray-700/50 shadow-lg hover:shadow-xl transition-all"
+                >
+                  <Plus size={18} className="mr-2" />
+                  Add Employee
+                </Button>
+              </motion.div>
             </div>
           </motion.div>
 
@@ -1131,7 +1282,7 @@ export default function AdminDashboard() {
                 <motion.h2
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="text-2xl font-bold text-[#2B2B2B] mb-6"
+                  className="text-2xl font-bold text-navy dark:text-skyblue mb-6"
                 >
                   School Overview
                 </motion.h2>
@@ -1141,29 +1292,29 @@ export default function AdminDashboard() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     whileHover={{ scale: 1.02, y: -4 }}
-                    className="group relative bg-[#FFFFFF] rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:bg-[#FFF7DB] transition-all duration-300 border border-[#E1E1DB] overflow-hidden"
+                    className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(90,122,149,0.15)] hover:bg-white dark:hover:bg-[#2F4156] transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden"
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD66B] opacity-10 rounded-full -mr-16 -mt-16" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#6B9BB8]/20 to-[#7DB5D3]/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-[#FFD66B] flex items-center justify-center shadow-lg">
-                          <Users className="text-[#2B2B2B]" size={24} />
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg shadow-[#6B9BB8]/30">
+                          <Users className="text-white" size={24} />
                         </div>
-                        <TrendingUp className="text-[#FFD66B]" size={20} />
+                        <TrendingUp className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={20} />
                       </div>
-                      <p className="text-sm font-medium text-[#6B6B6B] mb-1">Total Students</p>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Students</p>
                       {loading ? (
-                        <div className="h-10 w-24 bg-[#E1E1DB] rounded animate-pulse" />
+                        <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                       ) : (
                         <motion.p
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-4xl font-bold text-[#2B2B2B]"
+                          className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
                         >
                           {overview?.totals.students?.toLocaleString() ?? 0}
                         </motion.p>
                       )}
-                      <p className="text-xs text-[#6B6B6B] mt-2">Across all schools</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Across all schools</p>
                     </div>
                   </motion.div>
 
@@ -1173,29 +1324,29 @@ export default function AdminDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
                     whileHover={{ scale: 1.02, y: -4 }}
-                    className="group relative bg-[#FFFFFF] rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:bg-[#FFF7DB] transition-all duration-300 border border-[#E1E1DB] overflow-hidden"
+                    className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(90,122,149,0.15)] hover:bg-white dark:hover:bg-[#2F4156] transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden"
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#7BC96F] opacity-10 rounded-full -mr-16 -mt-16" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#6B9BB8]/20 to-[#7DB5D3]/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-[#7BC96F] flex items-center justify-center shadow-lg">
-                          <Briefcase className="text-[#FFFFFF]" size={24} />
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg shadow-[#6B9BB8]/30">
+                          <Briefcase className="text-white" size={24} />
                         </div>
-                        <TrendingUp className="text-[#7BC96F]" size={20} />
+                        <TrendingUp className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={20} />
                       </div>
-                      <p className="text-sm font-medium text-[#6B6B6B] mb-1">Total Staff</p>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Staff</p>
                       {loading ? (
-                        <div className="h-10 w-24 bg-[#E1E1DB] rounded animate-pulse" />
+                        <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                       ) : (
                         <motion.p
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-4xl font-bold text-[#2B2B2B]"
+                          className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
                         >
                           {overview?.totals.staff?.toLocaleString() ?? 0}
                         </motion.p>
                       )}
-                      <p className="text-xs text-[#6B6B6B] mt-2">Teaching & non-teaching</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Teaching & non-teaching</p>
                     </div>
                   </motion.div>
 
@@ -1205,29 +1356,29 @@ export default function AdminDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
                     whileHover={{ scale: 1.02, y: -4 }}
-                    className="group relative bg-[#FFFFFF] rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:bg-[#FFF7DB] transition-all duration-300 border border-[#E1E1DB] overflow-hidden"
+                    className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(90,122,149,0.15)] hover:bg-white dark:hover:bg-[#2F4156] transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden"
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#FFD66B] opacity-10 rounded-full -mr-16 -mt-16" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#6B9BB8]/20 to-[#7DB5D3]/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-[#FFD66B] flex items-center justify-center shadow-lg">
-                          <Building2 className="text-[#2B2B2B]" size={24} />
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg shadow-[#6B9BB8]/30">
+                          <Building2 className="text-white" size={24} />
                         </div>
-                        <TrendingUp className="text-[#FFD66B]" size={20} />
+                        <TrendingUp className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={20} />
                       </div>
-                      <p className="text-sm font-medium text-[#6B6B6B] mb-1">Active Classes</p>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Active Classes</p>
                       {loading ? (
-                        <div className="h-10 w-24 bg-[#E1E1DB] rounded animate-pulse" />
+                        <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                       ) : (
                         <motion.p
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-4xl font-bold text-[#2B2B2B]"
+                          className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
                         >
                           {overview?.totals.classes?.toLocaleString() ?? 0}
                         </motion.p>
                       )}
-                      <p className="text-xs text-[#6B6B6B] mt-2">Currently running</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Currently running</p>
                     </div>
                   </motion.div>
 
@@ -1237,36 +1388,37 @@ export default function AdminDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
                     whileHover={{ scale: 1.02, y: -4 }}
-                    className="group relative bg-[#FFFFFF] rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:bg-[#FFF7DB] transition-all duration-300 border border-[#E1E1DB] overflow-hidden"
+                    className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(90,122,149,0.15)] hover:bg-white dark:hover:bg-[#2F4156] transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden"
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-400 to-orange-600 opacity-10 rounded-full -mr-16 -mt-16" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#6B9BB8]/20 to-[#7DB5D3]/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg">
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg shadow-[#6B9BB8]/30">
                           <Activity className="text-white" size={24} />
                         </div>
-                        <TrendingUp className="text-amber-500" size={20} />
+                        <TrendingUp className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={20} />
                       </div>
-                      <p className="text-sm font-medium text-gray-600 mb-1">Attendance Rate</p>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Attendance Rate</p>
                       {loadingStats ? (
-                        <div className="h-10 w-24 bg-gray-200 rounded animate-pulse" />
+                        <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                       ) : (
                         <motion.p
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-4xl font-bold text-gray-900"
+                          className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
                         >
                           {dashboardStats?.attendanceRate?.toFixed(1) ?? '87.5'}%
                         </motion.p>
                       )}
-                      <div className="mt-3 w-full bg-gray-200 rounded-full h-2">
+                      <div className="mt-3 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: `${dashboardStats?.attendanceRate ?? 87.5}%` }}
                           transition={{ duration: 1, delay: 0.5 }}
-                          className="bg-gradient-to-r from-amber-500 to-orange-500 h-2 rounded-full"
+                          className="bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] h-2 rounded-full"
                         />
                       </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Average across schools</p>
                     </div>
                   </motion.div>
                 </div>

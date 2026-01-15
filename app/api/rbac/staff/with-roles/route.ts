@@ -90,6 +90,23 @@ export async function GET(request: NextRequest) {
       // Continue even if roles fetch fails - staff will just have empty roles array
     }
 
+    // Fetch assigned categories from staff_permissions table
+    const { data: permissionsData, error: permError } = await supabase
+      .from('staff_permissions')
+      .select(`
+        staff_id,
+        category:permission_categories (
+          id,
+          name,
+          description
+        )
+      `)
+      .in('staff_id', staffIds);
+
+    if (permError) {
+      console.error('Error fetching staff permissions/categories:', permError);
+    }
+
     // Create a map of staff_id to roles
     const rolesMap = new Map<string, Array<{ id: string; name: string; description: string | null }>>();
     if (staffRolesData) {
@@ -109,16 +126,48 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Combine staff with their roles
-    const staffWithRoles = staffData.map((staff) => ({
-      id: staff.id,
-      staff_id: staff.staff_id,
-      full_name: staff.full_name,
-      email: staff.email,
-      designation: staff.designation,
-      school_code: staff.school_code,
-      roles: rolesMap.get(staff.id) || [],
-    }));
+    // Create a map of staff_id to assigned categories (using Map with category.id as key to avoid duplicates)
+    const categoriesMap = new Map<string, Map<string, { id: string; name: string; description: string | null }>>();
+    if (permissionsData) {
+      permissionsData.forEach((sp: { 
+        staff_id: string; 
+        category: { id: string; name: string; description: string | null } | Array<{ id: string; name: string; description: string | null }> | null 
+      }) => {
+        if (!sp.category) return;
+        const category = Array.isArray(sp.category) ? sp.category[0] : sp.category;
+        if (category && category.id && category.name) {
+          if (!categoriesMap.has(sp.staff_id)) {
+            categoriesMap.set(sp.staff_id, new Map());
+          }
+          // Use category.id as key to ensure uniqueness
+          categoriesMap.get(sp.staff_id)!.set(category.id, {
+            id: category.id,
+            name: category.name,
+            description: category.description,
+          });
+        }
+      });
+    }
+
+    // Combine staff with their roles and categories
+    const staffWithRoles = staffData.map((staff) => {
+      const assignedRoles = rolesMap.get(staff.id) || [];
+      const categoryMap = categoriesMap.get(staff.id);
+      const assignedCategories = categoryMap ? Array.from(categoryMap.values()) : [];
+      
+      // Categories are already in the correct format, just combine with roles
+      const allRoles = [...assignedRoles, ...assignedCategories];
+
+      return {
+        id: staff.id,
+        staff_id: staff.staff_id,
+        full_name: staff.full_name,
+        email: staff.email,
+        designation: staff.designation,
+        school_code: staff.school_code,
+        roles: allRoles,
+      };
+    });
 
     console.log(`Fetched ${staffWithRoles.length} staff members for school ${normalizedSchoolCode}`);
 

@@ -35,7 +35,8 @@ import {
   Receipt,
   BarChart3,
   Sparkles,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 

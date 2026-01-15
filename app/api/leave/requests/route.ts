@@ -87,11 +87,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Calculate total days
+    // Validate date range
     const startDate = new Date(leave_start_date);
     const endDate = new Date(leave_end_date);
+    if (endDate < startDate) {
+      return NextResponse.json({ error: 'End date must be after start date' }, { status: 400 });
+    }
+
+    // Calculate total days (inclusive)
     const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
     const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    // Validate max_days if leave type has a limit
+    const { data: leaveType, error: leaveTypeError } = await supabase
+      .from('leave_types')
+      .select('max_days')
+      .eq('id', leave_type_id)
+      .single();
+
+    if (!leaveTypeError && leaveType?.max_days && totalDays > leaveType.max_days) {
+      return NextResponse.json({ 
+        error: `Leave duration (${totalDays} days) exceeds maximum allowed (${leaveType.max_days} days) for this leave type` 
+      }, { status: 400 });
+    }
 
     const { data, error } = await supabase
       .from('staff_leave_requests')
@@ -101,7 +119,7 @@ export async function POST(request: NextRequest) {
         leave_type_id,
         leave_start_date,
         leave_end_date,
-        total_days,
+        total_days: totalDays,
         comment: comment || '',
         reason: reason || '',
         status: 'pending',

@@ -142,10 +142,21 @@ export default function CreateExaminationPage({
     setSaving(true);
 
     try {
-      // Get current user (principal) - you may need to adjust this based on your auth
-      const principalId = sessionStorage.getItem('principal_id') || sessionStorage.getItem('staff_id');
-      if (!principalId) {
+      // Get current staff from session storage
+      const storedStaff = sessionStorage.getItem('staff');
+      let createdBy: string | null = null;
+      if (storedStaff) {
+        try {
+          const staffData = JSON.parse(storedStaff);
+          createdBy = staffData.id || null;
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      if (!createdBy) {
         alert('Please log in to create examinations');
+        setSaving(false);
         return;
       }
 
@@ -161,7 +172,7 @@ export default function CreateExaminationPage({
             subject_id: es.subject_id,
             max_marks: parseInt(es.max_marks) || 0,
           })),
-          created_by: principalId,
+          created_by: createdBy,
         }),
       });
 

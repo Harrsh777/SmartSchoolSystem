@@ -8,19 +8,40 @@ export async function POST(request: NextRequest) {
     const {
       school_code,
       schedule_name,
-      classes,
+      academic_year,
       number_of_installments,
-      collection_frequency,
+      collection_frequency = 'monthly',
+      installments, // JSONB array of installment details
       start_date,
       end_date,
       last_collection_date,
+      classes,
+      is_active = true,
     } = body;
 
-    if (!school_code || !schedule_name || !classes || !number_of_installments || !collection_frequency || !start_date || !end_date) {
+    if (!school_code || !schedule_name || !academic_year || !number_of_installments || !start_date || !end_date) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: school_code, schedule_name, academic_year, number_of_installments, start_date, end_date are required' },
         { status: 400 }
       );
+    }
+
+    // Validate installments array
+    if (!installments || !Array.isArray(installments) || installments.length !== number_of_installments) {
+      return NextResponse.json(
+        { error: `Installments array must have exactly ${number_of_installments} items with installment_number, due_date, and name` },
+        { status: 400 }
+      );
+    }
+
+    // Validate each installment
+    for (const inst of installments) {
+      if (!inst.installment_number || !inst.due_date || !inst.name) {
+        return NextResponse.json(
+          { error: 'Each installment must have installment_number, due_date, and name' },
+          { status: 400 }
+        );
+      }
     }
 
     // Get school ID
@@ -37,19 +58,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check for duplicate schedule name (within same academic year)
+    const { data: existing } = await supabase
+      .from('fee_schedules')
+      .select('id')
+      .eq('school_code', school_code)
+      .eq('schedule_name', schedule_name.trim())
+      .eq('academic_year', academic_year)
+      .maybeSingle();
+
+    if (existing) {
+      return NextResponse.json(
+        { error: 'A fee schedule with this name already exists for this academic year' },
+        { status: 400 }
+      );
+    }
+
     // Create fee schedule
     const { data: schedule, error: scheduleError } = await supabase
       .from('fee_schedules')
       .insert([{
         school_id: schoolData.id,
         school_code: school_code,
-        schedule_name: schedule_name,
-        classes: classes,
-        number_of_installments: number_of_installments,
+        schedule_name: schedule_name.trim(),
+        academic_year: academic_year,
+        number_of_installments: parseInt(number_of_installments.toString()),
         collection_frequency: collection_frequency,
+        installments: installments, // JSONB array
         start_date: start_date,
         end_date: end_date,
         last_collection_date: last_collection_date || null,
+        classes: Array.isArray(classes) ? classes : (classes ? [classes] : []),
+        is_active: Boolean(is_active),
       }])
       .select()
       .single();

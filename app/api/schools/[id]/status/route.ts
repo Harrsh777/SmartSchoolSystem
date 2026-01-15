@@ -71,7 +71,7 @@ export async function PATCH(
       
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         // Generate school code (SCH001, SCH002, etc.)
-        generatedSchoolCode = await generateSchoolCode();
+        generatedSchoolCode = generateSchoolCode(schoolData.school_name);
         
         const result = await supabase
           .from('accepted_schools')

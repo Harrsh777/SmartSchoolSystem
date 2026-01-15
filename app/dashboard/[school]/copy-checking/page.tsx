@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -15,7 +15,13 @@ import {
   Save,
   Edit,
   User,
-  ArrowLeft
+  ArrowLeft,
+  CheckCircle2,
+  AlertCircle,
+  XCircle,
+  Circle,
+  BookOpen,
+  TrendingUp
 } from 'lucide-react';
 
 interface Student {
@@ -34,11 +40,20 @@ interface Class {
   id: string;
   class: string;
   section?: string;
+  academic_year?: string;
 }
 
 interface Subject {
   id: string;
   subject_name: string;
+}
+
+interface AcademicYear {
+  id: string;
+  year_name: string;
+  start_date: string;
+  end_date: string;
+  is_current: boolean;
 }
 
 export default function CopyCheckingPage({
@@ -52,14 +67,19 @@ export default function CopyCheckingPage({
   const [saving, setSaving] = useState(false);
   const [classes, setClasses] = useState<Class[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [availableSections, setAvailableSections] = useState<string[]>([]);
   const [stats, setStats] = useState({
     class_work: { green: 0, yellow: 0, red: 0, not_marked: 0 },
     homework: { green: 0, yellow: 0, red: 0, not_marked: 0 },
   });
+  const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   
   // Filters
-  const [academicYear, setAcademicYear] = useState('');
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const [selectedClassName, setSelectedClassName] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
@@ -73,27 +93,74 @@ export default function CopyCheckingPage({
 
   useEffect(() => {
     fetchClasses();
-    fetchSubjects();
-    fetchAcademicYears();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   useEffect(() => {
-    if (selectedClassId && selectedSubjectId && selectedDate) {
-      fetchStudents();
+    // Extract unique academic years from classes
+    if (classes.length > 0) {
+      const uniqueYears = Array.from(new Set(classes.map(c => c.academic_year).filter(Boolean))).sort().reverse();
+      const academicYearsData = uniqueYears.map(year => ({
+        id: year,
+        year_name: year,
+        start_date: '',
+        end_date: '',
+        is_current: false,
+      }));
+      setAcademicYears(academicYearsData);
+      if (uniqueYears.length > 0 && !selectedAcademicYear) {
+        setSelectedAcademicYear(uniqueYears[0]);
+      }
+    }
+  }, [classes]);
+
+  useEffect(() => {
+    if (selectedClassName) {
+      // Find the first matching class ID for the selected class name
+      const matchingClass = classes.find(
+        c => c.class === selectedClassName && 
+        (!selectedAcademicYear || c.academic_year === selectedAcademicYear)
+      );
+      if (matchingClass) {
+        setSelectedClassId(matchingClass.id);
+      } else {
+        setSelectedClassId('');
+      }
+      updateSections();
+    } else {
+      setSelectedClassId('');
+      setAvailableSections([]);
+      setSelectedSection('');
+      setSubjects([]);
+      setSelectedSubjectId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClassId, selectedSubjectId, selectedDate, workType, schoolCode]);
+  }, [selectedClassName, classes, selectedAcademicYear]);
 
-  const fetchAcademicYears = async () => {
-    try {
-      const currentYear = new Date().getFullYear();
-      const nextYear = currentYear + 1;
-      setAcademicYear(`Apr ${currentYear} - Mar ${nextYear}`);
-    } catch (err) {
-      console.error('Error setting academic year:', err);
+  useEffect(() => {
+    if (selectedClassId) {
+      fetchClassSubjects();
+    } else {
+      setSubjects([]);
+      setSelectedSubjectId('');
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClassId]);
+
+  useEffect(() => {
+    if (selectedClassId && selectedSubjectId && selectedDate && selectedAcademicYear) {
+      fetchStudents();
+    } else {
+      setStudents([]);
+      setStudentRecords({});
+      setStats({
+        class_work: { green: 0, yellow: 0, red: 0, not_marked: 0 },
+        homework: { green: 0, yellow: 0, red: 0, not_marked: 0 },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClassId, selectedSection, selectedSubjectId, selectedDate, workType, selectedAcademicYear]);
+
 
   const fetchClasses = async () => {
     try {
@@ -104,28 +171,69 @@ export default function CopyCheckingPage({
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
+      setErrorMessage('Failed to load classes. Please refresh the page.');
     }
   };
 
-  const fetchSubjects = async () => {
+  const fetchClassSubjects = async () => {
+    if (!selectedClassId) {
+      setSubjects([]);
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/timetable/subjects?school_code=${schoolCode}`);
+      const response = await fetch(
+        `/api/classes/${selectedClassId}/subjects?school_code=${schoolCode}`
+      );
       const result = await response.json();
+      
       if (response.ok && result.data) {
-        // Map subjects to match expected format
         const mappedSubjects = result.data.map((subj: any) => ({
           id: subj.id,
           subject_name: subj.name || subj.subject_name,
         }));
         setSubjects(mappedSubjects);
+        // Clear selected subject if it's not in the new list
+        if (selectedSubjectId && !mappedSubjects.find((s: Subject) => s.id === selectedSubjectId)) {
+          setSelectedSubjectId('');
+        }
+      } else {
+        setSubjects([]);
+        setSelectedSubjectId('');
       }
     } catch (err) {
-      console.error('Error fetching subjects:', err);
+      console.error('Error fetching class subjects:', err);
+      setSubjects([]);
+      setSelectedSubjectId('');
+    }
+  };
+
+  const updateSections = () => {
+    if (selectedClassName) {
+      // Get all unique sections for this class name
+      const sections = classes
+        .filter(c => c.class === selectedClassName && c.academic_year === selectedAcademicYear)
+        .map(c => c.section)
+        .filter((section): section is string => Boolean(section))
+        .filter((value, index, self) => self.indexOf(value) === index)
+        .sort();
+      
+      setAvailableSections(sections);
+      
+      // Auto-select section if only one available
+      if (sections.length === 1) {
+        setSelectedSection(sections[0]);
+      } else {
+        setSelectedSection('');
+      }
+    } else {
+      setAvailableSections([]);
+      setSelectedSection('');
     }
   };
 
   const fetchStatsForOtherType = async () => {
-    if (!selectedClassId || !selectedSubjectId || !selectedDate) return;
+    if (!selectedClassId || !selectedSubjectId || !selectedDate || !selectedAcademicYear) return;
     
     try {
       const otherType = workType === 'class_work' ? 'homework' : 'class_work';
@@ -135,7 +243,12 @@ export default function CopyCheckingPage({
         subject_id: selectedSubjectId,
         work_date: selectedDate,
         work_type: otherType,
+        academic_year: selectedAcademicYear,
       });
+      
+      if (selectedSection) {
+        params.append('section', selectedSection);
+      }
 
       const response = await fetch(`/api/copy-checking?${params}`);
       const result = await response.json();
@@ -161,13 +274,19 @@ export default function CopyCheckingPage({
   const fetchStudents = async () => {
     try {
       setLoading(true);
+      setErrorMessage('');
       const params = new URLSearchParams({
         school_code: schoolCode,
         class_id: selectedClassId,
         subject_id: selectedSubjectId,
         work_date: selectedDate,
         work_type: workType,
+        academic_year: selectedAcademicYear,
       });
+      
+      if (selectedSection) {
+        params.append('section', selectedSection);
+      }
 
       const response = await fetch(`/api/copy-checking?${params}`);
       const result = await response.json();
@@ -201,13 +320,22 @@ export default function CopyCheckingPage({
         // Set topic
         if (result.topic) {
           setTopic(result.topic);
+          setIsEditingTopic(false);
+        } else {
+          setTopic('');
+          setIsEditingTopic(true);
         }
         
         // Fetch stats for the other work type
         fetchStatsForOtherType();
+      } else {
+        setErrorMessage(result.error || 'Failed to load students');
+        setStudents([]);
       }
     } catch (err) {
       console.error('Error fetching students:', err);
+      setErrorMessage('Failed to load students. Please try again.');
+      setStudents([]);
     } finally {
       setLoading(false);
     }
@@ -234,43 +362,73 @@ export default function CopyCheckingPage({
   };
 
   const handleSave = async () => {
-    if (!selectedClassId || !selectedSubjectId || !selectedDate) {
-      alert('Please select class, subject, and date');
+    if (!selectedClassId || !selectedSubjectId || !selectedDate || !selectedAcademicYear) {
+      setErrorMessage('Please select academic year, class, subject, and date');
       return;
     }
 
     try {
       setSaving(true);
+      setErrorMessage('');
+      setSuccessMessage('');
       
       // Get current user (staff) from session
-      const storedSchool = sessionStorage.getItem('school');
-      const storedTeacher = sessionStorage.getItem('teacher');
+      const storedStaff = sessionStorage.getItem('staff');
       let markedBy = '';
       
-      if (storedTeacher) {
-        const teacher = JSON.parse(storedTeacher);
-        markedBy = teacher.id;
-      } else if (storedSchool) {
-        // For admin/principal, use a default or fetch from API
-        const response = await fetch(`/api/staff?school_code=${schoolCode}&limit=1`);
-        const result = await response.json();
-        if (response.ok && result.data && result.data.length > 0) {
-          markedBy = result.data[0].id;
+      if (storedStaff) {
+        try {
+          const staffData = JSON.parse(storedStaff);
+          markedBy = staffData.id;
+        } catch {
+          // Ignore parse error
         }
       }
 
+      // If no staff in session (accessing from main dashboard), fetch default admin/principal
       if (!markedBy) {
-        alert('Unable to identify user. Please login again.');
+        try {
+          const response = await fetch(`/api/staff?school_code=${schoolCode}`);
+          const result = await response.json();
+          if (response.ok && result.data && Array.isArray(result.data) && result.data.length > 0) {
+            // Try to find principal or admin first
+            const principal = result.data.find((s: { role?: string; id: string }) => 
+              s.role && (
+                s.role.toLowerCase().includes('principal') || 
+                s.role.toLowerCase().includes('admin')
+              )
+            );
+            // If no principal/admin, use the first staff member
+            const defaultStaff = principal || result.data[0];
+            if (defaultStaff && defaultStaff.id) {
+              markedBy = defaultStaff.id;
+            } else {
+              setErrorMessage('Unable to create copy checking record. No valid staff found for this school.');
+              return;
+            }
+          } else {
+            setErrorMessage('Unable to create copy checking record. No staff found for this school.');
+            return;
+          }
+        } catch (err) {
+          console.error('Error fetching default staff:', err);
+          setErrorMessage('Unable to create copy checking record. Please try again.');
+          return;
+        }
+      }
+
+      // Final validation - ensure we have valid value before proceeding
+      if (!markedBy) {
+        setErrorMessage('Unable to create copy checking record. Staff information is missing.');
         return;
       }
 
-      const selectedClass = classes.find(c => c.id === selectedClassId);
       const selectedSubject = subjects.find(s => s.id === selectedSubjectId);
 
       const records = Object.entries(studentRecords).map(([studentId, record]) => ({
         student_id: studentId,
-        status: record.status,
-        remarks: record.remarks,
+        status: record.status || 'not_marked',
+        remarks: record.remarks || '',
       }));
 
       const response = await fetch('/api/copy-checking', {
@@ -278,11 +436,11 @@ export default function CopyCheckingPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
-          academic_year: academicYear,
+          academic_year: selectedAcademicYear,
           class_id: selectedClassId,
-          section: selectedSection || selectedClass?.section || null,
+          section: selectedSection || selectedClassData?.section || null,
           subject_id: selectedSubjectId,
-          subject_name: selectedSubject?.subject_name || selectedSubject?.name || '',
+          subject_name: selectedSubject?.subject_name || '',
           work_date: selectedDate,
           work_type: workType,
           topic: topic || null,
@@ -294,30 +452,51 @@ export default function CopyCheckingPage({
       const result = await response.json();
 
       if (response.ok) {
-        alert('Copy checking records saved successfully!');
+        setSuccessMessage(`Copy checking records saved successfully! ${records.length} students marked.`);
         setIsEditingTopic(false);
+        setTimeout(() => setSuccessMessage(''), 5000);
         fetchStudents(); // Refresh data
       } else {
-        alert(`Error: ${result.error || 'Failed to save records'}`);
+        setErrorMessage(result.error || 'Failed to save records');
       }
     } catch (err) {
       console.error('Error saving copy checking:', err);
-      alert('Failed to save copy checking records');
+      setErrorMessage('Failed to save copy checking records. Please try again.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDownload = () => {
-    // TODO: Implement download functionality
-    alert('Download functionality will be implemented');
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'green':
+        return <CheckCircle2 size={16} className="text-green-600" />;
+      case 'yellow':
+        return <AlertCircle size={16} className="text-yellow-600" />;
+      case 'red':
+        return <XCircle size={16} className="text-red-600" />;
+      default:
+        return <Circle size={16} className="text-gray-400" />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'green':
+        return 'bg-green-500 text-white ring-2 ring-green-300 shadow-lg';
+      case 'yellow':
+        return 'bg-yellow-500 text-white ring-2 ring-yellow-300 shadow-lg';
+      case 'red':
+        return 'bg-red-500 text-white ring-2 ring-red-300 shadow-lg';
+      default:
+        return 'bg-gray-200 text-gray-500 hover:bg-gray-300';
+    }
   };
 
   const selectedClass = classes.find(c => c.id === selectedClassId);
-  const sections = selectedClass ? [selectedClass.section].filter(Boolean) : [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -325,65 +504,120 @@ export default function CopyCheckingPage({
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-            <FileText size={32} />
+          <h1 className="text-3xl font-bold text-[#0F172A] mb-2 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg">
+              <FileText className="text-white" size={24} />
+            </div>
             Copy Checking
           </h1>
-          <p className="text-gray-600">Mark student classwork and homework</p>
+          <p className="text-[#64748B]">Mark student classwork and homework with color-coded status</p>
         </div>
         <Button
           variant="outline"
           onClick={() => router.push(`/dashboard/${schoolCode}`)}
+          className="border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
         >
           <ArrowLeft size={18} className="mr-2" />
           Back
         </Button>
       </motion.div>
 
-      {/* Filters */}
-      <Card>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-          <div className="flex items-center gap-2">
-            <Calendar className="text-gray-400" size={20} />
+      {/* Success/Error Messages */}
+      <AnimatePresence>
+        {successMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-800"
+          >
+            {successMessage}
+          </motion.div>
+        )}
+        {errorMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-800"
+          >
+            {errorMessage}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Filters Card */}
+      <Card className="p-6 bg-gradient-to-br from-white to-indigo-50/30 border-indigo-100">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          {/* Academic Year */}
+          <div>
+            <label className="block text-sm font-semibold text-[#0F172A] mb-2">
+              <Calendar size={14} className="inline mr-1" />
+              Academic Year <span className="text-red-500">*</span>
+            </label>
             <select
-              value={academicYear}
-              onChange={(e) => setAcademicYear(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              value={selectedAcademicYear}
+              onChange={(e) => {
+                setSelectedAcademicYear(e.target.value);
+                setSelectedClassName('');
+                setSelectedClassId('');
+                setSelectedSection('');
+                setSubjects([]);
+                setSelectedSubjectId('');
+              }}
+              className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:border-transparent bg-white"
             >
               <option value="">Select Academic Year</option>
-              <option value={academicYear}>{academicYear}</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Folder className="text-gray-400" size={20} />
-            <select
-              value={selectedClassId}
-              onChange={(e) => {
-                setSelectedClassId(e.target.value);
-                const cls = classes.find(c => c.id === e.target.value);
-                setSelectedSection(cls?.section || '');
-              }}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="">Select Class</option>
-              {classes.map((cls) => (
-                <option key={cls.id} value={cls.id}>
-                  {cls.class}
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.year_name}>
+                  {year.year_name}
                 </option>
               ))}
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Folder className="text-gray-400" size={20} />
+          {/* Class */}
+          <div>
+            <label className="block text-sm font-semibold text-[#0F172A] mb-2">
+              <Folder size={14} className="inline mr-1" />
+              Class <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={selectedClassName}
+              onChange={(e) => {
+                setSelectedClassName(e.target.value);
+                setSelectedSection('');
+              }}
+              disabled={!selectedAcademicYear}
+              className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+            >
+              <option value="">Select Class</option>
+              {Array.from(new Set(
+                classes
+                  .filter(c => !selectedAcademicYear || c.academic_year === selectedAcademicYear)
+                  .map(c => c.class)
+              )).sort().map((className) => (
+                <option key={className} value={className}>
+                  {className}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Section */}
+          <div>
+            <label className="block text-sm font-semibold text-[#0F172A] mb-2">
+              <Folder size={14} className="inline mr-1" />
+              Section
+            </label>
             <select
               value={selectedSection}
               onChange={(e) => setSelectedSection(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              disabled={!selectedClassName}
+              className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:border-transparent bg-white disabled:bg-gray-100"
             >
-              <option value="">Select Section</option>
-              {sections.map((section) => (
+              <option value="">All Sections</option>
+              {availableSections.map((section) => (
                 <option key={section} value={section}>
                   {section}
                 </option>
@@ -391,104 +625,158 @@ export default function CopyCheckingPage({
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Folder className="text-gray-400" size={20} />
-            <select
-              value={selectedSubjectId}
-              onChange={(e) => setSelectedSubjectId(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-            >
-              <option value="">Select Subject</option>
-              {subjects.map((subject) => (
-                <option key={subject.id} value={subject.id}>
-                  {subject.subject_name}
-                </option>
-              ))}
-            </select>
+          {/* Subject */}
+          <div>
+            <label className="block text-sm font-semibold text-[#0F172A] mb-2">
+              <BookOpen size={14} className="inline mr-1" />
+              Subject <span className="text-red-500">*</span>
+            </label>
+            {!selectedClassName ? (
+              <select
+                disabled
+                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl bg-gray-100 cursor-not-allowed"
+              >
+                <option value="">Select Class First</option>
+              </select>
+            ) : subjects.length === 0 ? (
+              <div className="w-full px-4 py-3 border-2 border-yellow-300 rounded-xl bg-yellow-50">
+                <p className="text-sm text-yellow-800 mb-2 font-medium">No subjects assigned to this class</p>
+                <p className="text-xs text-yellow-700 mb-3">First assign subjects to this class, then you can mark homework/classwork here.</p>
+                <Button
+                  size="sm"
+                  onClick={() => router.push(`/dashboard/${schoolCode}/classes/modify`)}
+                  className="w-full bg-[#2F6FED] hover:bg-[#1E3A8A] text-white"
+                >
+                  Go to Modify Classes
+                </Button>
+              </div>
+            ) : (
+              <select
+                value={selectedSubjectId}
+                onChange={(e) => setSelectedSubjectId(e.target.value)}
+                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:border-transparent bg-white"
+              >
+                <option value="">Select Subject</option>
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.subject_name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Date */}
+          <div>
+            <label className="block text-sm font-semibold text-[#0F172A] mb-2">
+              <Calendar size={14} className="inline mr-1" />
+              Date <span className="text-red-500">*</span>
+            </label>
             <Input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="flex-1"
+              max={new Date().toISOString().split('T')[0]}
+              className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:border-transparent"
             />
-            <Calendar className="text-gray-400" size={20} />
           </div>
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            onClick={handleDownload}
-            className="bg-orange-500 hover:bg-orange-600 text-white"
-          >
-            <Download size={18} className="mr-2" />
-            DOWNLOAD
-          </Button>
         </div>
       </Card>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card>
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-semibold text-gray-700 mb-3">CLASS WORK</h3>
-            <div className="flex flex-wrap gap-4">
-              <span className="text-green-600 font-medium">GREEN : {stats.class_work.green}</span>
-              <span className="text-yellow-600 font-medium">YELLOW : {stats.class_work.yellow}</span>
-              <span className="text-red-600 font-medium">RED : {stats.class_work.red}</span>
-              <span className="text-gray-600 font-medium">NOT MARKED : {stats.class_work.not_marked}</span>
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-lg text-[#1e3a8a] flex items-center gap-2">
+              <BookOpen size={20} />
+              CLASS WORK
+            </h3>
+            <TrendingUp className="text-[#3B82F6]" size={20} />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-green-100 rounded-lg p-3 text-center border border-green-200">
+              <div className="text-2xl font-bold text-green-700">{stats.class_work.green}</div>
+              <div className="text-xs text-green-600 font-medium mt-1">GREEN</div>
+            </div>
+            <div className="bg-yellow-100 rounded-lg p-3 text-center border border-yellow-200">
+              <div className="text-2xl font-bold text-yellow-700">{stats.class_work.yellow}</div>
+              <div className="text-xs text-yellow-600 font-medium mt-1">YELLOW</div>
+            </div>
+            <div className="bg-red-100 rounded-lg p-3 text-center border border-red-200">
+              <div className="text-2xl font-bold text-red-700">{stats.class_work.red}</div>
+              <div className="text-xs text-red-600 font-medium mt-1">RED</div>
+            </div>
+            <div className="bg-gray-100 rounded-lg p-3 text-center border border-gray-200">
+              <div className="text-2xl font-bold text-gray-700">{stats.class_work.not_marked}</div>
+              <div className="text-xs text-gray-600 font-medium mt-1">NOT MARKED</div>
             </div>
           </div>
         </Card>
 
-        <Card>
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-semibold text-gray-700 mb-3">HOMEWORK</h3>
-            <div className="flex flex-wrap gap-4">
-              <span className="text-green-600 font-medium">GREEN : {stats.homework.green}</span>
-              <span className="text-yellow-600 font-medium">YELLOW : {stats.homework.yellow}</span>
-              <span className="text-red-600 font-medium">RED : {stats.homework.red}</span>
-              <span className="text-gray-600 font-medium">NOT MARKED : {stats.homework.not_marked}</span>
+        <Card className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-lg text-purple-800 flex items-center gap-2">
+              <BookOpen size={20} />
+              HOMEWORK
+            </h3>
+            <TrendingUp className="text-purple-600" size={20} />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-green-100 rounded-lg p-3 text-center border border-green-200">
+              <div className="text-2xl font-bold text-green-700">{stats.homework.green}</div>
+              <div className="text-xs text-green-600 font-medium mt-1">GREEN</div>
+            </div>
+            <div className="bg-yellow-100 rounded-lg p-3 text-center border border-yellow-200">
+              <div className="text-2xl font-bold text-yellow-700">{stats.homework.yellow}</div>
+              <div className="text-xs text-yellow-600 font-medium mt-1">YELLOW</div>
+            </div>
+            <div className="bg-red-100 rounded-lg p-3 text-center border border-red-200">
+              <div className="text-2xl font-bold text-red-700">{stats.homework.red}</div>
+              <div className="text-xs text-red-600 font-medium mt-1">RED</div>
+            </div>
+            <div className="bg-gray-100 rounded-lg p-3 text-center border border-gray-200">
+              <div className="text-2xl font-bold text-gray-700">{stats.homework.not_marked}</div>
+              <div className="text-xs text-gray-600 font-medium mt-1">NOT MARKED</div>
             </div>
           </div>
         </Card>
       </div>
 
       {/* Work Type Toggle and Topic */}
-      <Card>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex gap-2">
+      <Card className="p-6">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-4 flex-1">
+            {/* Work Type Toggle */}
+            <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
               <button
                 onClick={() => setWorkType('class_work')}
-                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${
                   workType === 'class_work'
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-white text-black border border-gray-300'
+                    ? 'bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white shadow-lg'
+                    : 'bg-transparent text-gray-600 hover:text-[#1e3a8a]'
                 }`}
               >
                 CLASS WORK
               </button>
               <button
                 onClick={() => setWorkType('homework')}
-                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${
                   workType === 'homework'
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-white text-black border border-gray-300'
+                    ? 'bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white shadow-lg'
+                    : 'bg-transparent text-gray-600 hover:text-[#1e3a8a]'
                 }`}
               >
                 HOMEWORK
               </button>
             </div>
 
-            <div className="flex-1 max-w-md">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Topic</label>
+            {/* Topic Input */}
+            <div className="flex-1 max-w-md w-full">
+              <label className="block text-sm font-semibold text-[#0F172A] mb-2">Topic (Optional)</label>
               <div className="flex items-center gap-2">
                 <Input
                   type="text"
-                  placeholder="Type here..."
+                  placeholder="Enter topic/subject matter..."
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   disabled={!isEditingTopic}
@@ -497,65 +785,86 @@ export default function CopyCheckingPage({
                 <Button
                   size="sm"
                   onClick={() => setIsEditingTopic(!isEditingTopic)}
-                  className="bg-orange-500 hover:bg-orange-600 text-white"
+                  className="bg-[#1e3a8a] hover:bg-[#3B82F6] text-white"
                 >
                   <Edit size={16} className="mr-1" />
-                  EDIT
+                  {isEditingTopic ? 'Done' : 'Edit'}
                 </Button>
               </div>
             </div>
           </div>
 
+          {/* Action Buttons */}
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={() => router.push(`/dashboard/${schoolCode}`)}
-              className="bg-orange-500 hover:bg-orange-600 text-white border-orange-500"
+              onClick={() => {
+                setSelectedClassName('');
+                setSelectedClassId('');
+                setSelectedSection('');
+                setSelectedSubjectId('');
+                setStudents([]);
+                setStudentRecords({});
+              }}
+              className="border-gray-300 text-gray-700 hover:bg-gray-50"
             >
               <X size={18} className="mr-2" />
-              CANCEL
+              Clear
             </Button>
             <Button
               onClick={handleSave}
-              disabled={saving}
-              className="bg-orange-500 hover:bg-orange-600 text-white"
+              disabled={saving || !selectedClassId || !selectedSubjectId || !selectedDate || students.length === 0}
+              className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Save size={18} className="mr-2" />
-              {saving ? 'SAVING...' : 'SAVE'}
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save size={18} className="mr-2" />
+                  Save
+                </>
+              )}
             </Button>
           </div>
         </div>
       </Card>
 
       {/* Students Table */}
-      <Card>
+      <Card className="p-6">
         {loading ? (
           <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading students...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e3a8a] mx-auto mb-4"></div>
+            <p className="text-[#64748B]">Loading students...</p>
           </div>
         ) : students.length === 0 ? (
           <div className="text-center py-12">
-            <User size={48} className="mx-auto mb-4 text-gray-400" />
-            <p className="text-lg font-semibold text-gray-900 mb-2">No students found</p>
-            <p className="text-sm text-gray-600">Please select class, section, subject, and date</p>
+            <User size={48} className="mx-auto mb-4 text-[#64748B]" />
+            <p className="text-lg font-semibold text-[#0F172A] mb-2">No students found</p>
+            <p className="text-sm text-[#64748B]">
+              {!selectedClassId || !selectedSubjectId || !selectedDate || !selectedAcademicYear
+                ? 'Please select academic year, class, subject, and date'
+                : 'No students match the selected criteria'}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-teal-600 text-white">
+                <tr className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">#</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Student Name</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Admission ID</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Roll Number</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Class</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Section</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">
                     Status
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="w-5 h-5 rounded-full bg-green-500 text-white text-xs flex items-center justify-center">G</span>
-                      <span className="w-5 h-5 rounded-full bg-yellow-500 text-white text-xs flex items-center justify-center">Y</span>
-                      <span className="w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">R</span>
+                    <div className="flex items-center justify-center gap-1 mt-1 text-[10px]">
+                      <span className="w-4 h-4 rounded-full bg-green-500"></span>
+                      <span className="w-4 h-4 rounded-full bg-yellow-500"></span>
+                      <span className="w-4 h-4 rounded-full bg-red-500"></span>
+                      <span className="w-4 h-4 rounded-full bg-gray-400"></span>
                     </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Remarks</th>
@@ -569,60 +878,54 @@ export default function CopyCheckingPage({
                       key={student.id}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="hover:bg-gray-50 transition-colors"
+                      className="hover:bg-indigo-50/50 transition-colors"
                     >
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-[#64748B] font-mono">
+                        {String(index + 1).padStart(2, '0')}.
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-600">{String(index + 1).padStart(2, '0')}.</span>
-                          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                            <User size={16} className="text-gray-500" />
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold text-sm">
+                            {student.student_name.charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-sm font-medium text-gray-900">{student.student_name}</span>
+                          <span className="text-sm font-medium text-[#0F172A]">{student.student_name}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-[#64748B] font-mono">
                         {student.admission_no}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-[#64748B]">
                         {student.roll_number || '-'}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                        {student.class}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                        {student.section || '-'}
-                      </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => handleStatusChange(student.id, 'green')}
-                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
-                              record.status === 'green'
-                                ? 'bg-green-500 text-white ring-2 ring-green-300'
-                                : 'bg-gray-200 text-gray-500 hover:bg-green-100'
-                            }`}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'green' ? 'green' : 'not_marked')}`}
+                            title="Complete (Green)"
                           >
-                            G
+                            {record.status === 'green' ? 'G' : ''}
                           </button>
                           <button
                             onClick={() => handleStatusChange(student.id, 'yellow')}
-                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
-                              record.status === 'yellow'
-                                ? 'bg-yellow-500 text-white ring-2 ring-yellow-300'
-                                : 'bg-gray-200 text-gray-500 hover:bg-yellow-100'
-                            }`}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'yellow' ? 'yellow' : 'not_marked')}`}
+                            title="Incomplete (Yellow)"
                           >
-                            Y
+                            {record.status === 'yellow' ? 'Y' : ''}
                           </button>
                           <button
                             onClick={() => handleStatusChange(student.id, 'red')}
-                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-all ${
-                              record.status === 'red'
-                                ? 'bg-red-500 text-white ring-2 ring-red-300'
-                                : 'bg-gray-200 text-gray-500 hover:bg-red-100'
-                            }`}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'red' ? 'red' : 'not_marked')}`}
+                            title="Not Done (Red)"
                           >
-                            R
+                            {record.status === 'red' ? 'R' : ''}
+                          </button>
+                          <button
+                            onClick={() => handleStatusChange(student.id, 'not_marked')}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'not_marked' ? 'not_marked' : 'not_marked')}`}
+                            title="Not Marked"
+                          >
+                            {record.status === 'not_marked' ? 'N' : ''}
                           </button>
                         </div>
                       </td>
@@ -632,7 +935,7 @@ export default function CopyCheckingPage({
                           value={record.remarks}
                           onChange={(e) => handleRemarksChange(student.id, e.target.value)}
                           placeholder="Add remarks..."
-                          className="w-full text-sm"
+                          className="w-full text-sm border-gray-300 focus:border-[#1e3a8a] focus:ring-[#1e3a8a]"
                         />
                       </td>
                     </motion.tr>
@@ -646,4 +949,3 @@ export default function CopyCheckingPage({
     </div>
   );
 }
-

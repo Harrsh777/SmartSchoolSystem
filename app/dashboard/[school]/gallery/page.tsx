@@ -42,6 +42,7 @@ export default function GalleryPage({
     file: null as File | null,
   });
   const [preview, setPreview] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const categories = ['All', 'General', 'Events', 'Sports', 'Academics', 'Cultural', 'Other'];
 
@@ -49,6 +50,30 @@ export default function GalleryPage({
     fetchImages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode, selectedCategory]);
+
+  useEffect(() => {
+    // Check if user is admin/principal
+    const storedStaff = sessionStorage.getItem('staff');
+    if (storedStaff) {
+      try {
+        const staff = JSON.parse(storedStaff);
+        const role = (staff.role || '').toLowerCase();
+        const designation = (staff.designation || '').toLowerCase();
+        setIsAdmin(
+          role.includes('admin') ||
+          role.includes('principal') ||
+          designation.includes('admin') ||
+          designation.includes('principal')
+        );
+      } catch {
+        // If no staff in session, assume admin (main dashboard)
+        setIsAdmin(true);
+      }
+    } else {
+      // If no staff in session, assume admin (main dashboard)
+      setIsAdmin(true);
+    }
+  }, []);
 
   const fetchImages = async () => {
     try {
@@ -174,13 +199,13 @@ export default function GalleryPage({
         uploadFormData.append('description', formData.description);
         uploadFormData.append('category', formData.category);
 
-        // Get current user from session
-        const storedSchool = sessionStorage.getItem('school');
-        if (storedSchool) {
+        // Get staff ID from session if available
+        const storedStaff = sessionStorage.getItem('staff');
+        let staffId: string | null = null;
+        if (storedStaff) {
           try {
-            JSON.parse(storedSchool);
-            // You might need to get staff_id from somewhere
-            // For now, we'll leave it null
+            const staff = JSON.parse(storedStaff);
+            staffId = staff.id || staff.staff_id || null;
           } catch {
             // Ignore
           }
@@ -188,6 +213,7 @@ export default function GalleryPage({
 
         const response = await fetch('/api/gallery', {
           method: 'POST',
+          headers: staffId ? { 'x-staff-id': staffId } : {},
           body: uploadFormData,
         });
 
@@ -258,10 +284,12 @@ export default function GalleryPage({
               Manage gallery images for {schoolCode}
             </p>
           </div>
-          <Button onClick={() => handleOpenModal()}>
-            <Plus size={18} className="mr-2" />
-            Add Image
-          </Button>
+          {isAdmin && (
+            <Button onClick={() => handleOpenModal()}>
+              <Plus size={18} className="mr-2" />
+              Add Image
+            </Button>
+          )}
         </div>
       </motion.div>
 
@@ -332,25 +360,27 @@ export default function GalleryPage({
                     alt={image.title}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                   />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleOpenModal(image)}
-                      className="bg-white/90 hover:bg-white"
-                    >
-                      <Edit size={14} className="mr-1" />
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDelete(image.id)}
-                      className="bg-white/90 hover:bg-white text-red-600 border-red-300"
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
+                  {isAdmin && (
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenModal(image)}
+                        className="bg-white/90 hover:bg-white"
+                      >
+                        <Edit size={14} className="mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDelete(image.id)}
+                        className="bg-white/90 hover:bg-white text-red-600 border-red-300"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <div className="p-4">
                   <h3 className="font-bold text-gray-900 mb-1">{image.title}</h3>

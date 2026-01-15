@@ -14,7 +14,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status, rejected_reason } = body;
+    const { status, rejected_reason, updated_by } = body;
 
     if (!status || !['approved', 'rejected'].includes(status)) {
       return NextResponse.json({ error: 'Invalid status. Must be approved or rejected' }, { status: 400 });
@@ -24,6 +24,10 @@ export async function PATCH(
       status,
       updated_at: new Date().toISOString(),
     };
+
+    if (updated_by) {
+      updateData.updated_by = updated_by;
+    }
 
     if (status === 'rejected' && rejected_reason) {
       updateData.rejected_reason = rejected_reason;

@@ -29,24 +29,12 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('visitors')
-      .select(`
-        *,
-        student:students!visitors_student_id_fkey(
-          id,
-          student_name,
-          admission_no
-        ),
-        host:staff!visitors_host_id_fkey(
-          id,
-          full_name,
-          staff_id
-        )
-      `, { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('school_code', schoolCode)
       .order('created_at', { ascending: false });
 
     if (search) {
-      query = query.or(`visitor_name.ilike.%${search}%,purpose_of_visit.ilike.%${search}%,host_name.ilike.%${search}%`);
+      query = query.or(`visitor_name.ilike.%${search}%,purpose_of_visit.ilike.%${search}%,person_to_meet.ilike.%${search}%`);
     }
 
     if (status) {
@@ -84,29 +72,24 @@ export async function POST(request: NextRequest) {
     const {
       school_code,
       visitor_name,
-      visitor_photo_url,
-      purpose_of_visit,
-      student_id,
-      student_name,
-      host_id,
-      host_name,
-      status = 'pending',
-      requested_by = 'manual_entry',
-      requested_by_staff_id,
-      check_in_date,
-      check_in_time,
       phone_number,
       email,
+      purpose_of_visit,
+      person_to_meet,
+      person_to_meet_id,
+      person_to_meet_type,
+      visit_date,
+      time_in,
       id_proof_type,
       id_proof_number,
-      id_proof_document_url,
       vehicle_number,
       remarks,
+      created_by,
     } = body;
 
-    if (!school_code || !visitor_name || !purpose_of_visit || !host_name) {
+    if (!school_code || !visitor_name || !purpose_of_visit || !person_to_meet || !created_by) {
       return NextResponse.json(
-        { error: 'School code, visitor name, purpose of visit, and host name are required' },
+        { error: 'School code, visitor name, purpose of visit, person to meet, and created by are required' },
         { status: 400 }
       );
     }
@@ -127,30 +110,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate person_to_meet_type if provided
+    if (person_to_meet_type && !['staff', 'student', 'other'].includes(person_to_meet_type)) {
+      return NextResponse.json(
+        { error: 'person_to_meet_type must be one of: staff, student, other' },
+        { status: 400 }
+      );
+    }
+
     const { data: visitor, error } = await supabase
       .from('visitors')
       .insert({
         school_id: school.id,
         school_code,
         visitor_name,
-        visitor_photo_url,
-        purpose_of_visit,
-        student_id: student_id || null,
-        student_name: student_name || null,
-        host_id: host_id || null,
-        host_name,
-        status,
-        requested_by,
-        requested_by_staff_id: requested_by_staff_id || null,
-        check_in_date: check_in_date || new Date().toISOString().split('T')[0],
-        check_in_time: check_in_time || new Date().toTimeString().split(' ')[0].substring(0, 5),
         phone_number: phone_number || null,
         email: email || null,
+        purpose_of_visit,
+        person_to_meet,
+        person_to_meet_id: person_to_meet_id || null,
+        person_to_meet_type: person_to_meet_type || null,
+        visit_date: visit_date || new Date().toISOString().split('T')[0],
+        time_in: time_in || new Date().toTimeString().split(' ')[0].substring(0, 5),
         id_proof_type: id_proof_type || null,
         id_proof_number: id_proof_number || null,
-        id_proof_document_url: id_proof_document_url || null,
         vehicle_number: vehicle_number || null,
         remarks: remarks || null,
+        created_by,
+        status: 'IN',
       })
       .select()
       .single();

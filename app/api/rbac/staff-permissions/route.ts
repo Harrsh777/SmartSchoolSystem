@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       ?.map(p => p.assigned_by)
       .filter(Boolean) as string[] || [];
     
-    let assignedByMap = new Map();
+    const assignedByMap = new Map();
     if (assignedByIds.length > 0) {
       const { data: assignedByData } = await supabase
         .from('staff')

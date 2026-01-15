@@ -86,10 +86,17 @@ export default function LeaveBasicsPage({
       if (response.ok && result.data) {
         setLeaveTypes(result.data);
       } else {
-        console.error('Error fetching leave types:', result.error);
+        const errorMsg = result.details 
+          ? `${result.error}: ${result.details}${result.hint ? ` (${result.hint})` : ''}`
+          : result.error || 'Failed to fetch leave types';
+        console.error('Error fetching leave types:', errorMsg);
+        console.error('Full error response:', result);
+        // Show user-friendly error message
+        alert(errorMsg);
       }
     } catch (err) {
       console.error('Error fetching leave types:', err);
+      alert('Failed to fetch leave types. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -174,7 +181,11 @@ export default function LeaveBasicsPage({
           fetchLeaveTypes();
           handleCloseModal();
         } else {
-          alert(result.error || 'Failed to create leave type');
+          const errorMsg = result.details 
+            ? `${result.error}: ${result.details}` 
+            : result.error || 'Failed to create leave type';
+          alert(errorMsg);
+          console.error('Leave type creation error:', result);
         }
       }
     } catch (err) {

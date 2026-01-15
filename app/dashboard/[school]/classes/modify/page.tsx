@@ -24,11 +24,20 @@ export default function ModifyClassesPage({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBulkAddModal, setShowBulkAddModal] = useState(false);
   const [editingClass, setEditingClass] = useState<ClassWithDetails | null>(null);
+  const [classSubjects, setClassSubjects] = useState<Record<string, Array<{ id: string; name: string }>>>({});
 
   useEffect(() => {
     fetchClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
+
+  useEffect(() => {
+    // Fetch subjects for each class
+    if (classes.length > 0) {
+      fetchAllClassSubjects();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classes]);
 
   const fetchClasses = async () => {
     try {
@@ -46,10 +55,43 @@ export default function ModifyClassesPage({
     }
   };
 
+  const fetchAllClassSubjects = async () => {
+    try {
+      const subjectsMap: Record<string, Array<{ id: string; name: string }>> = {};
+      
+      await Promise.all(
+        classes.map(async (classItem) => {
+          if (!classItem.id) return;
+          
+          try {
+            const response = await fetch(
+              `/api/classes/${classItem.id}/subjects?school_code=${schoolCode}`
+            );
+            const result = await response.json();
+            
+            if (response.ok && result.data) {
+              subjectsMap[classItem.id] = result.data;
+            } else {
+              subjectsMap[classItem.id] = [];
+            }
+          } catch (err) {
+            console.error(`Error fetching subjects for class ${classItem.id}:`, err);
+            subjectsMap[classItem.id] = [];
+          }
+        })
+      );
+      
+      setClassSubjects(subjectsMap);
+    } catch (err) {
+      console.error('Error fetching class subjects:', err);
+    }
+  };
+
   const handleAddSuccess = () => {
     setShowAddModal(false);
     setShowBulkAddModal(false);
     fetchClasses();
+    // Subjects will be fetched automatically via useEffect when classes update
   };
 
   const handleDelete = async (classId: string) => {
@@ -203,39 +245,59 @@ export default function ModifyClassesPage({
                 <th className="px-4 py-3 text-left text-sm font-semibold">Class</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold">Section</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold">Academic Year</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Subjects</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E7EB] bg-white">
               {filteredClasses.length > 0 ? (
-                filteredClasses.map((classItem) => (
-                  <tr key={classItem.id} className="hover:bg-[#F1F5F9] transition-colors">
-                    <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{classItem.class}</td>
-                    <td className="px-4 py-3 text-sm text-[#0F172A]">{classItem.section}</td>
-                    <td className="px-4 py-3 text-sm text-[#64748B]">{classItem.academic_year}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEdit(classItem)}
-                          className="p-2 text-[#F97316] hover:bg-[#FFEDD5] rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(classItem.id!)}
-                          className="p-2 text-[#EF4444] hover:bg-[#FEE2E2] rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                filteredClasses.map((classItem) => {
+                  const subjects = classItem.id ? classSubjects[classItem.id] || [] : [];
+                  return (
+                    <tr key={classItem.id} className="hover:bg-[#F1F5F9] transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">{classItem.class}</td>
+                      <td className="px-4 py-3 text-sm text-[#0F172A]">{classItem.section}</td>
+                      <td className="px-4 py-3 text-sm text-[#64748B]">{classItem.academic_year}</td>
+                      <td className="px-4 py-3 text-sm text-[#0F172A]">
+                        {subjects.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {subjects.map((subject, idx) => (
+                              <span
+                                key={subject.id}
+                                className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-[#EAF1FF] text-[#1E3A8A] border border-[#DBEAFE]"
+                              >
+                                {subject.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[#94A3B8] italic">No subjects assigned</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleEdit(classItem)}
+                            className="p-2 text-[#F97316] hover:bg-[#FFEDD5] rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(classItem.id!)}
+                            className="p-2 text-[#EF4444] hover:bg-[#FEE2E2] rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-[#64748B]">
+                  <td colSpan={5} className="px-4 py-8 text-center text-[#64748B]">
                     {searchQuery ? 'No classes found matching your search' : 'No classes found'}
                   </td>
                 </tr>

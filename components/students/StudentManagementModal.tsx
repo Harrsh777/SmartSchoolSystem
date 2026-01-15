@@ -14,7 +14,8 @@ const menuItems = [
   { id: 'directory', label: 'Student Directory', icon: Users, path: '/students/directory' },
   { id: 'add', label: 'Add Student', icon: UserPlus, path: '/students/add' },
   { id: 'bulk-import', label: 'Bulk Student Import', icon: Upload, path: '/students/bulk-import' },
-  { id: 'attendance', label: 'Student Attendance', icon: Calendar, path: '/attendance' },
+  { id: 'attendance', label: 'Student Attendance', icon: Calendar, path: '/students/attendance' },
+  { id: 'mark-attendance', label: 'Mark Attendance', icon: Calendar, path: '/students/mark-attendance' },
   { id: 'siblings', label: 'Student Siblings List', icon: UsersRound, path: '/students/siblings' },
 ];
 

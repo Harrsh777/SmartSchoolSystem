@@ -22,8 +22,8 @@ export async function GET(request: NextRequest) {
       .from('gate_passes')
       .select('*')
       .eq('school_code', schoolCode)
-      .eq('is_active', true)
-      .order('out_date_time', { ascending: false });
+      .order('date', { ascending: false })
+      .order('time_out', { ascending: false });
 
     if (search) {
       query = query.ilike('person_name', `%${search}%`);
@@ -60,21 +60,38 @@ export async function POST(request: NextRequest) {
       person_type,
       person_id,
       person_name,
-      purpose,
-      leaving_with,
-      permitted_by_1,
-      permitted_by_1_name,
-      permitted_by_2,
-      permitted_by_2_name,
-      out_date_time,
-      in_date_time_tentative,
-      mobile_number,
-      remarks,
+      class: studentClass,
+      section: studentSection,
+      academic_year,
+      pass_type,
+      reason,
+      date,
+      time_out,
+      expected_return_time,
+      approved_by_name,
+      created_by,
     } = body;
 
-    if (!school_code || !person_type || !person_name || !purpose || !out_date_time) {
+    // Validate required fields
+    if (!school_code || !person_type || !person_name || !pass_type || !reason || !date || !time_out || !approved_by_name || !created_by) {
       return NextResponse.json(
-        { error: 'School code, person type, person name, purpose, and out date time are required' },
+        { error: 'School code, person type, person name, pass type, reason, date, time out, approved by name, and created by are required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate person_type
+    if (!['student', 'staff'].includes(person_type.toLowerCase())) {
+      return NextResponse.json(
+        { error: 'person_type must be either "student" or "staff"' },
+        { status: 400 }
+      );
+    }
+
+    // Validate pass_type
+    if (!['early_leave', 'late_entry', 'half_day'].includes(pass_type)) {
+      return NextResponse.json(
+        { error: 'pass_type must be one of: early_leave, late_entry, half_day' },
         { status: 400 }
       );
     }
@@ -93,29 +110,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Prepare insert data
+    const insertData: any = {
+      school_id: schoolData.id,
+      school_code,
+      person_type: person_type.toLowerCase(),
+      person_id: person_id || null,
+      person_name,
+      pass_type,
+      reason,
+      date,
+      time_out,
+      approved_by_name,
+      status: 'pending',
+      created_by,
+      expected_return_time: expected_return_time || null,
+    };
+
+    // Add class/section/academic_year for students
+    if (person_type.toLowerCase() === 'student') {
+      insertData.class = studentClass || null;
+      insertData.section = studentSection || null;
+      insertData.academic_year = academic_year || null;
+    }
+
     const { data: gatePass, error } = await supabase
       .from('gate_passes')
-      .insert([{
-        school_id: schoolData.id,
-        school_code,
-        person_type,
-        person_id: person_id || null,
-        person_name,
-        purpose,
-        leaving_with: leaving_with || null,
-        permitted_by_1: permitted_by_1 || null,
-        permitted_by_1_name: permitted_by_1_name || null,
-        permitted_by_2: permitted_by_2 || null,
-        permitted_by_2_name: permitted_by_2_name || null,
-        out_date_time,
-        in_date_time_tentative: in_date_time_tentative || null,
-        mobile_number: mobile_number || null,
-        remarks: remarks || null,
-      }])
+      .insert([insertData])
       .select()
       .single();
 
     if (error) {
+      console.error('Error creating gate pass:', error);
       return NextResponse.json(
         { error: 'Failed to create gate pass', details: error.message },
         { status: 500 }

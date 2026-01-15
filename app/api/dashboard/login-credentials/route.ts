@@ -186,14 +186,14 @@ export async function POST(request: NextRequest) {
       // Generate password if: include_passwords is true AND (regenerate_all is true OR user doesn't have password)
       if (include_passwords && (regenerate_all || !hasPassword)) {
         // Generate and hash password
-        const { password: generatedPassword, hash } = await generateAndHashPassword();
+        const { password: generatedPassword, hashedPassword } = await generateAndHashPassword();
         password = generatedPassword;
         
         // Prepare for database insert/update (store both hash and plain password)
         studentLoginRecords.push({
           school_code: school_code,
           admission_no: student.admission_no,
-          password_hash: hash,
+          password_hash: hashedPassword,
           plain_password: generatedPassword, // Store plain text password
           is_active: true,
         });
@@ -220,14 +220,14 @@ export async function POST(request: NextRequest) {
       // Generate password if: include_passwords is true AND (regenerate_all is true OR user doesn't have password)
       if (include_passwords && (regenerate_all || !hasPassword)) {
         // Generate and hash password
-        const { password: generatedPassword, hash } = await generateAndHashPassword();
+        const { password: generatedPassword, hashedPassword } = await generateAndHashPassword();
         password = generatedPassword;
         
         // Prepare for database insert/update (store both hash and plain password)
         staffLoginRecords.push({
           school_code: school_code,
           staff_id: member.staff_id,
-          password_hash: hash,
+          password_hash: hashedPassword,
           plain_password: generatedPassword, // Store plain text password
           is_active: true,
         });

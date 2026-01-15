@@ -98,6 +98,298 @@ export default function RoleManagementPage({
   const [loadingModules, setLoadingModules] = useState(false);
   const [modalError, setModalError] = useState('');
 
+  // Comprehensive list of all modules and submodules from the sidebar (22 modules only)
+  const allSidebarModules: Module[] = [
+    {
+      id: 'home',
+      name: 'Home',
+      sub_modules: [
+        { id: 'home-dashboard', name: 'Dashboard', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'home-main', name: 'Home', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false }
+      ]
+    },
+    {
+      id: 'institute-info',
+      name: 'Institute Info',
+      sub_modules: [
+        { id: 'basic-institute-info', name: 'Basic Institute Info', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'setup-school-faster', name: 'Setup Your School faster', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'admin-role-management',
+      name: 'Admin Role Management',
+      sub_modules: [
+        { id: 'staff-access-control', name: 'Staff Access Control', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'role-management', name: 'Role Management', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'password-manager',
+      name: 'Password Manager',
+      sub_modules: [
+        { id: 'password-manager-main', name: 'Password Manager', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'staff-management',
+      name: 'Staff Management',
+      sub_modules: [
+        { id: 'staff-directory', name: 'Staff Directory', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'add-staff', name: 'Add Staff', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'bulk-staff-import', name: 'Bulk Staff import', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'bulk-photo-upload-staff', name: 'Bulk Photo Upload', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'staff-attendance', name: 'Staff Attendance', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-attendance-marking-report', name: 'Student Attendance Marking Report', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'quick-staff-search', name: 'Quick Staff Search', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'bulk-import-staff', name: 'Bulk Import Staff', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'classes',
+      name: 'Classes',
+      sub_modules: [
+        { id: 'classes-overview', name: 'Classes Overview', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'modify-classes', name: 'Modify Classes', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'subject-teachers', name: 'Subject Teachers', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'add-modify-subjects', name: 'Add/Modify Subjects', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'student-management',
+      name: 'Student Management',
+      sub_modules: [
+        { id: 'add-student', name: 'Add student', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'bulk-import-students', name: 'Bulk Student Import', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'bulk-photo-upload-students', name: 'Bulk Photo Upload', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-optional-subject-allocation', name: 'Student Optional Subject Allocation', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-directory', name: 'Student Directory', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'new-admission-report', name: 'New Admission Report', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'student-attendance', name: 'Student Attendance', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-report', name: 'Student Report', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'student-info-update-settings', name: 'Student Info. Update Settings on App', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-form-config', name: 'Student Form Config', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-sibling', name: 'Student Sibling', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-attendance-report', name: 'Student Attendance Report', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'ptm-attendance', name: 'PTM Attendance', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'quick-student-search', name: 'Quick Student Search', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'bulk-import-students-alt', name: 'Bulk Import Students', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-siblings', name: 'Student Siblings', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'timetable',
+      name: 'Timetable',
+      sub_modules: [
+        { id: 'class-timetable', name: 'Class Timetable', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'teacher-timetable', name: 'Teacher Timetable', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'group-wise-timetable', name: 'Group Wise Timetable', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false }
+      ]
+    },
+    {
+      id: 'event-calendar',
+      name: 'Event/Calendar',
+      sub_modules: [
+        { id: 'academic-calendar', name: 'Academic Calendar', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'events', name: 'Events', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'examinations',
+      name: 'Examinations',
+      sub_modules: [
+        { id: 'create-examination', name: 'Create Examination', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'grade-scale', name: 'Grade Scale', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'marks-entry', name: 'Marks Entry', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'offline-tests', name: 'Offline Tests', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'report-card', name: 'Report Card', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'report-card-template', name: 'Report Card Template', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'examination-reports', name: 'Examination Reports', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false }
+      ]
+    },
+    {
+      id: 'fees',
+      name: 'Fees',
+      sub_modules: [
+        { id: 'fee-setup', name: 'Fee Setup', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'fee-components', name: 'Fee Components', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'fee-schedules', name: 'Fee Schedules', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'class-fee-assignment', name: 'Class Fee Assignment', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'fee-collection', name: 'Fee Collection', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-fee-statements', name: 'Student Fee Statements', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'discounts-fines', name: 'Discounts & Fines', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'fee-reports', name: 'Fee Reports', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'fee-configuration', name: 'Fee Configuration', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'fee-basics', name: 'Fee Basics', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'class-wise-fee', name: 'Class-wise Fee', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-wise-fee', name: 'Student-wise Fee', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-class-fee-schedule-mapper', name: 'Student Class & Fee Schedule Mapper', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'pending-cheque', name: 'Pending cheque', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'fee-dashboard', name: 'Fee Dashboard', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'fee-heads', name: 'Fee Heads', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'fee-structures', name: 'Fee Structures', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'collect-payment', name: 'Collect Payment', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'library',
+      name: 'Library',
+      sub_modules: [
+        { id: 'library-dashboard', name: 'Library Dashboard', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'library-basics', name: 'Library Basics', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'library-catalogue', name: 'Library Catalogue', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'library-transactions', name: 'Library Transactions', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'transport',
+      name: 'Transport',
+      sub_modules: [
+        { id: 'transport-basics', name: 'Transport Basics', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'vehicles', name: 'Vehicles', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'stops', name: 'Stops', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'routes', name: 'Routes', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-route-mapping', name: 'Student Route Mapping', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'vehicle-expenses', name: 'Vehicle Expenses', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'leave-management',
+      name: 'Leave Management',
+      sub_modules: [
+        { id: 'leave-basics', name: 'Leave Basics', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'student-staff-leave', name: 'Student Leave, Staff Leave', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'send-notification-staff-leave', name: 'Send Notification\'s On Leave Applied By Staff', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'send-notification-student-leave', name: 'Send Notification\'s On Leave Applied By Student', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'leave-dashboard', name: 'Leave Dashboard', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'communication',
+      name: 'Communication',
+      sub_modules: [
+        { id: 'notice-circular', name: 'Notice/Circular', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'survey', name: 'Survey', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'incident-log', name: 'Incident Log', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'child-activity', name: 'Child Activity', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'whatsapp', name: 'Whatsapp', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'communication-main', name: 'Communication', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'report',
+      name: 'Report',
+      sub_modules: [
+        { id: 'report-main', name: 'Report', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false }
+      ]
+    },
+    {
+      id: 'gallery',
+      name: 'Gallery',
+      sub_modules: [
+        { id: 'post-an-event', name: 'Post an Event', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'gallery-main', name: 'Gallery', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'certificate-management',
+      name: 'Certificate Management',
+      sub_modules: [
+        { id: 'template-selection', name: 'Template Selection', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'manage-certificate', name: 'Manage Certificate', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'classwise-student-certificate', name: 'Classwise student certificate', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'certificate-send-to-student', name: 'Certificate Send to Student', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'manage-certificates', name: 'Manage Certificates', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'class-wise-student-certificates', name: 'Class wise student certificates', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'digital-diary',
+      name: 'Digital Diary',
+      sub_modules: [
+        { id: 'create-diary', name: 'Create Diary', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'daily-dairy-report', name: 'Daily Dairy Report', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'daily-dairy-report-all', name: 'Daily Dairy Report(all classes or all batches)', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'digital-diary-main', name: 'Digital Diary', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'expense-income',
+      name: 'Expense/income',
+      sub_modules: [
+        { id: 'expense-income-main', name: 'Expense/income', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'front-office-management',
+      name: 'Front Office management',
+      sub_modules: [
+        { id: 'front-office-dashboard', name: 'Front Office Dashboard', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'gate-pass', name: 'Gate pass', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'visitor-management', name: 'Visitor Management', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    },
+    {
+      id: 'copy-checking',
+      name: 'Copy Checking',
+      sub_modules: [
+        { id: 'copy-checking-main', name: 'Copy Checking', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+      ]
+    }
+  ];
+
+  // Helper function to merge API modules with sidebar modules
+  // Only includes the 22 sidebar modules, merges API permission data into them
+  const mergeModulesWithSidebar = (apiModules: Module[]): Module[] => {
+    const mergedModules: Module[] = [];
+    const apiModulesMap = new Map<string, Module>();
+    
+    // Create a map of API modules by name for quick lookup
+    apiModules.forEach(module => {
+      apiModulesMap.set(module.name.toLowerCase(), module);
+    });
+    
+    // Process ONLY the sidebar modules (22 modules)
+    allSidebarModules.forEach(sidebarModule => {
+      const apiModule = apiModulesMap.get(sidebarModule.name.toLowerCase());
+      
+      if (apiModule) {
+        // Merge: use API module ID and permission data, but use sidebar submodule structure
+        const subModulesMap = new Map<string, SubModule>();
+        const apiSubModulesMap = new Map<string, SubModule>();
+        
+        // Create map of API submodules by name for quick lookup
+        apiModule.sub_modules.forEach(sub => {
+          apiSubModulesMap.set(sub.name.toLowerCase(), sub);
+        });
+        
+        // Use sidebar submodules as base, merge API permission data if available
+        sidebarModule.sub_modules.forEach(sidebarSub => {
+          const apiSub = apiSubModulesMap.get(sidebarSub.name.toLowerCase());
+          if (apiSub) {
+            // Use API submodule data (includes UUID ID and permission states)
+            subModulesMap.set(sidebarSub.name.toLowerCase(), apiSub);
+          } else {
+            // Use sidebar submodule (no API data yet)
+            subModulesMap.set(sidebarSub.name.toLowerCase(), sidebarSub);
+          }
+        });
+        
+        mergedModules.push({
+          id: apiModule.id,
+          name: apiModule.name,
+          sub_modules: Array.from(subModulesMap.values())
+        });
+      } else {
+        // Module not in API, use sidebar module as-is
+        mergedModules.push(sidebarModule);
+      }
+    });
+    
+    // Do NOT add API modules not in sidebar - only use the 22 sidebar modules
+    return mergedModules;
+  };
+
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,7 +487,10 @@ export default function RoleManagementPage({
       const result = await response.json();
       
       if (response.ok && result.data) {
-        setModules(result.data.modules || []);
+        // Merge API modules with sidebar modules to ensure all are shown
+        const apiModules = result.data.modules || [];
+        const mergedModules = mergeModulesWithSidebar(apiModules);
+        setModules(mergedModules);
         setCategories(result.data.categories || []);
         if (result.data.category) {
           setSelectedCategory(result.data.category);
@@ -203,10 +498,14 @@ export default function RoleManagementPage({
           setSelectedCategory(result.data.categories[0]);
         }
       } else {
+        // Even if API fails, show sidebar modules
+        setModules(allSidebarModules);
         setModalError(result.error || 'Failed to load permissions');
       }
     } catch (err) {
       console.error('Error fetching staff permissions:', err);
+      // On error, still show sidebar modules
+      setModules(allSidebarModules);
       setModalError('Failed to load permissions');
     } finally {
       setLoadingModules(false);
@@ -322,12 +621,19 @@ export default function RoleManagementPage({
         const result = await response.json();
         
         if (response.ok && result.data) {
-          setModules(result.data.modules || []);
+          // Merge API modules with sidebar modules to ensure all are shown
+          const apiModules = result.data.modules || [];
+          const mergedModules = mergeModulesWithSidebar(apiModules);
+          setModules(mergedModules);
         } else {
+          // Even if API fails, show sidebar modules
+          setModules(allSidebarModules);
           setModalError(result.error || 'Failed to load permissions');
         }
       } catch (err) {
         console.error('Error fetching staff permissions:', err);
+        // On error, still show sidebar modules
+        setModules(allSidebarModules);
         setModalError('Failed to load permissions');
       } finally {
         setLoadingModules(false);
@@ -355,12 +661,18 @@ export default function RoleManagementPage({
         }
       }
 
+      // Only include submodules with valid UUIDs (database IDs)
+      // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      
       const permissions = modules.flatMap((module) =>
-        module.sub_modules.map((subModule) => ({
-          sub_module_id: subModule.id,
-          view_access: subModule.view_access,
-          edit_access: subModule.edit_access,
-        }))
+        module.sub_modules
+          .filter((subModule) => uuidRegex.test(subModule.id)) // Only include valid UUIDs
+          .map((subModule) => ({
+            sub_module_id: subModule.id,
+            view_access: subModule.view_access,
+            edit_access: subModule.edit_access,
+          }))
       );
 
       const response = await fetch(`/api/rbac/staff-permissions/${selectedStaff.id}`, {
@@ -657,42 +969,6 @@ export default function RoleManagementPage({
                 </div>
               )}
             </div>
-            
-            {/* Filter Dropdown with proper state */}
-            <div className="relative group">
-              <button
-                className="px-4 py-2.5 bg-white border border-[#E5E7EB] rounded-lg text-[#0F172A] text-sm font-medium hover:bg-[#F1F5F9] transition-colors flex items-center gap-2"
-              >
-                <Filter size={16} className="text-[#64748B]" />
-                <span>
-                  {staffFilter === 'all' && 'All Staff'}
-                  {staffFilter === 'teaching' && 'Teaching'}
-                  {staffFilter === 'non-teaching' && 'Non-Teaching'}
-                  {staffFilter === 'rest' && 'Rest of Staff'}
-                </span>
-              </button>
-              
-              <div className="absolute right-0 mt-2 w-48 bg-white border border-[#E5E7EB] rounded-lg shadow-lg z-10 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                <div className="py-1">
-                  {(['all', 'teaching', 'non-teaching', 'rest'] as const).map((filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => setStaffFilter(filter)}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                        staffFilter === filter
-                          ? 'bg-[#EAF1FF] text-[#2F6FED] font-medium'
-                          : 'text-[#0F172A] hover:bg-[#F1F5F9]'
-                      }`}
-                    >
-                      {filter === 'all' && 'All Staff'}
-                      {filter === 'teaching' && 'Teaching'}
-                      {filter === 'non-teaching' && 'Non-Teaching'}
-                      {filter === 'rest' && 'Rest of Staff'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
         {staff.length === 0 ? (
@@ -715,53 +991,69 @@ export default function RoleManagementPage({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-            {filteredStaff.map((member) => (
-            <motion.div
-              key={member.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-5 border-2 border-[#E5E7EB] rounded-xl hover:border-[#2F6FED] hover:shadow-lg transition-all bg-white"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-[#0F172A]">{member.full_name}</h3>
-                  <p className="text-sm text-[#64748B] mt-1">{member.email || 'No email'}</p>
-                  <p className="text-xs text-[#64748B] mt-1">
-                    {member.designation || 'No designation'} • ID: {member.staff_id}
-                  </p>
-                </div>
-              </div>
-              {member.roles.length > 0 ? (
-                <div className="mb-4">
-                  <p className="text-xs font-semibold text-[#64748B] mb-2 uppercase tracking-wide">Assigned Roles:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {member.roles.map((role) => (
-                      <span
-                        key={role.id}
-                        className="px-3 py-1 bg-[#EAF1FF] text-[#2F6FED] text-xs rounded-full font-medium"
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b-2 border-gray-200">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Staff Name</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Designation</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Staff ID</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Assigned Roles</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredStaff.map((member) => (
+                  <motion.tr
+                    key={member.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="font-semibold text-gray-900">{member.full_name}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-600">{member.email || 'No email'}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-600">{member.designation || 'No designation'}</div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-600">{member.staff_id}</div>
+                    </td>
+                    <td className="px-4 py-4">
+                      {member.roles.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {member.roles.map((role) => (
+                            <span
+                              key={role.id}
+                              className="px-3 py-1 bg-[#EAF1FF] text-[#2F6FED] text-xs rounded-full font-medium"
+                            >
+                              {role.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">No roles assigned</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleManageRoles(member)}
+                        className="border-[#2F6FED] text-[#2F6FED] hover:bg-[#EAF1FF]"
                       >
-                        {role.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-4">
-                  <p className="text-xs text-[#64748B] italic">No roles assigned</p>
-                </div>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleManageRoles(member)}
-                className="w-full border-[#2F6FED] text-[#2F6FED] hover:bg-[#EAF1FF]"
-              >
-                <Edit size={14} className="mr-2" />
-                Assign Roles
-              </Button>
-            </motion.div>
-            ))}
+                        <Edit size={14} className="mr-2" />
+                        Assign Roles
+                      </Button>
+                    </td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </Card>
@@ -867,13 +1159,6 @@ export default function RoleManagementPage({
                       <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900">SUB MODULE</th>
                       <th className="px-3 py-2 text-center text-xs font-semibold text-gray-900">VIEW ACCESS</th>
                       <th className="px-3 py-2 text-center text-xs font-semibold text-gray-900">EDIT ACCESS</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-900">
-                        <div className="flex items-center justify-center gap-1">
-                          <span>IP Access</span>
-                          <span className="px-1 py-0.5 bg-green-500 text-white text-xs font-semibold rounded">PREMIUM</span>
-                          <Shield size={12} className="text-gray-600" />
-                        </div>
-                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -933,14 +1218,6 @@ export default function RoleManagementPage({
                               </button>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-center">
-                            <button
-                              disabled
-                              className="relative inline-flex h-5 w-9 items-center rounded-full bg-gray-300 opacity-50 cursor-not-allowed"
-                            >
-                              <span className="inline-block h-3.5 w-3.5 transform rounded-full bg-white translate-x-0.5" />
-                            </button>
-                          </td>
                         </tr>
                         {/* Sub-module Rows */}
                         {module.sub_modules.map((subModule, subIdx) => (
@@ -984,14 +1261,6 @@ export default function RoleManagementPage({
                               ) : (
                                 <span className="text-gray-400 text-xs">-</span>
                               )}
-                            </td>
-                            <td className="px-3 py-1 text-center">
-                              <button
-                                disabled
-                                className="relative inline-flex h-5 w-9 items-center rounded-full bg-gray-300 opacity-50 cursor-not-allowed"
-                              >
-                                <span className="inline-block h-3.5 w-3.5 transform rounded-full bg-white translate-x-0.5" />
-                              </button>
                             </td>
                           </tr>
                         ))}

@@ -119,8 +119,8 @@ export default function SetupSchoolPage({
   };
 
   const getModuleIcon = (moduleName: string) => {
-    const module = modules.find(m => m.name === moduleName);
-    return module?.icon || FileText;
+    const foundModule = modules.find(m => m.name === moduleName);
+    return foundModule?.icon || FileText;
   };
 
   return (

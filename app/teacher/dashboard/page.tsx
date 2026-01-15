@@ -7,7 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, TrendingUp, CalendarDays, CalendarX, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import type { Staff, Student, Class, Exam, Notice } from '@/lib/supabase';
-import TimetableView from '@/components/timetable/TimetableView';
+import TeacherTimetableView from '@/components/timetable/TeacherTimetableView';
 
 export default function TeacherDashboard() {
   const router = useRouter();
@@ -217,13 +217,26 @@ export default function TeacherDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <div>
-            <h1 className="text-3xl font-bold text-black mb-2">
-              Welcome, {teacher?.full_name}
-            </h1>
-            <p className="text-gray-600">
-              Class Teacher of {assignedClass.class}-{assignedClass.section} ({assignedClass.academic_year})
-            </p>
+          <div className="flex items-center gap-4">
+            {teacher?.photo_url ? (
+              <img
+                src={teacher.photo_url}
+                alt={teacher.full_name || 'Teacher'}
+                className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl">
+                {teacher?.full_name?.charAt(0).toUpperCase() || 'T'}
+              </div>
+            )}
+            <div>
+              <h1 className="text-3xl font-bold text-black mb-2">
+                Welcome, {teacher?.full_name}
+              </h1>
+              <p className="text-gray-600">
+                Class Teacher of {assignedClass.class}-{assignedClass.section} ({assignedClass.academic_year})
+              </p>
+            </div>
           </div>
         </motion.div>
 
@@ -427,7 +440,7 @@ export default function TeacherDashboard() {
         </motion.div>
 
         {/* Timetable Section */}
-        {assignedClass.id && teacher && (
+        {teacher && teacher.id && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -437,14 +450,12 @@ export default function TeacherDashboard() {
               <div className="p-2 bg-blue-100 rounded-lg">
                 <Calendar className="text-blue-600" size={24} />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900">Class Timetable</h2>
+              <h2 className="text-2xl font-bold text-gray-900">My Timetable</h2>
             </div>
-            <Card>
-              <TimetableView
-                schoolCode={teacher.school_code}
-                classId={assignedClass.id}
-              />
-            </Card>
+            <TeacherTimetableView
+              schoolCode={teacher.school_code}
+              teacherId={teacher.id}
+            />
           </motion.div>
         )}
 
@@ -589,11 +600,24 @@ export default function TeacherDashboard() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div>
-          <h1 className="text-3xl font-bold text-black mb-2">
-            Welcome, {teacher?.full_name}
-          </h1>
-          <p className="text-gray-600">Teacher Dashboard</p>
+        <div className="flex items-center gap-4">
+          {teacher?.photo_url ? (
+            <img
+              src={teacher.photo_url}
+              alt={teacher.full_name || 'Teacher'}
+              className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl">
+              {teacher?.full_name?.charAt(0).toUpperCase() || 'T'}
+            </div>
+          )}
+          <div>
+            <h1 className="text-3xl font-bold text-black mb-2">
+              Welcome, {teacher?.full_name}
+            </h1>
+            <p className="text-gray-600">Teacher Dashboard</p>
+          </div>
         </div>
       </motion.div>
 

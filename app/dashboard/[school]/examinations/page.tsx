@@ -5,7 +5,21 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { Plus, Trash2, BookOpen, Users } from 'lucide-react';
+import { 
+  Plus, 
+  Trash2, 
+  BookOpen, 
+  Users, 
+  FileText, 
+  Calendar, 
+  FileCheck, 
+  GraduationCap,
+  ClipboardList,
+  FileBarChart,
+  Award,
+  Settings,
+  BarChart3
+} from 'lucide-react';
 
 interface Exam {
   id: string;
@@ -103,6 +117,65 @@ export default function ExaminationsPage({
     );
   }
 
+  const examinationSections = [
+    {
+      id: 'create',
+      title: 'Create Examination',
+      description: 'Create new examinations for classes and subjects',
+      icon: Plus,
+      path: `/dashboard/${schoolCode}/examinations/create`,
+      color: 'from-blue-500 to-cyan-500',
+    },
+    {
+      id: 'grade-scale',
+      title: 'Grade Scale',
+      description: 'Configure grade scales and grading systems',
+      icon: GraduationCap,
+      path: `/dashboard/${schoolCode}/examinations/grade-scale`,
+      color: 'from-purple-500 to-pink-500',
+    },
+    {
+      id: 'marks-entry',
+      title: 'Marks Entry',
+      description: 'Enter and manage examination marks for students',
+      icon: ClipboardList,
+      path: `/dashboard/${schoolCode}/examinations/marks-entry`,
+      color: 'from-green-500 to-emerald-500',
+    },
+    {
+      id: 'offline-tests',
+      title: 'Offline Tests',
+      description: 'Manage offline test records and results',
+      icon: FileText,
+      path: `/dashboard/${schoolCode}/examinations/offline-tests`,
+      color: 'from-orange-500 to-red-500',
+    },
+    {
+      id: 'report-card',
+      title: 'Report Card',
+      description: 'Generate and view student report cards',
+      icon: Award,
+      path: `/dashboard/${schoolCode}/examinations/report-card`,
+      color: 'from-indigo-500 to-purple-500',
+    },
+    {
+      id: 'report-card-template',
+      title: 'Report Card Template',
+      description: 'Create and customize report card templates',
+      icon: FileBarChart,
+      path: `/dashboard/${schoolCode}/examinations/report-card-template`,
+      color: 'from-teal-500 to-cyan-500',
+    },
+    {
+      id: 'reports',
+      title: 'Examination Reports',
+      description: 'View detailed examination reports and analytics',
+      icon: BarChart3,
+      path: `/dashboard/${schoolCode}/examinations/reports`,
+      color: 'from-yellow-500 to-orange-500',
+    },
+  ];
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -112,22 +185,79 @@ export default function ExaminationsPage({
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Examinations</h1>
-            <p className="text-gray-600">Create and manage examinations for classes</p>
+            <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
+              <FileText className="text-indigo-600" size={32} />
+              Examinations
+            </h1>
+            <p className="text-gray-600">Manage examinations, marks, and reports</p>
           </div>
-          <Button onClick={() => router.push(`/dashboard/${schoolCode}/examinations/create`)}>
-            <Plus size={18} className="mr-2" />
-            Create Examination
-          </Button>
         </div>
       </motion.div>
 
-      {/* Exams Grid */}
+      {/* Examination Sections Grid */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          {examinationSections.map((section, index) => {
+            const Icon = section.icon;
+            return (
+              <motion.div
+                key={section.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <Card
+                  className="p-6 hover:shadow-lg transition-all duration-300 cursor-pointer group"
+                  onClick={() => router.push(section.path)}
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`p-4 rounded-xl bg-gradient-to-br ${section.color} shadow-lg group-hover:scale-110 transition-transform`}
+                    >
+                      <Icon className="text-white" size={28} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-indigo-600 transition-colors">
+                        {section.title}
+                      </h3>
+                      <p className="text-gray-600 text-sm mb-4">
+                        {section.description}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="group-hover:border-indigo-600 group-hover:text-indigo-600"
+                      >
+                        Open →
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
+      </motion.div>
+
+      {/* Existing Examinations Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-black">Created Examinations</h2>
+          <Button onClick={() => router.push(`/dashboard/${schoolCode}/examinations/create`)}>
+            <Plus size={18} className="mr-2" />
+            Create New
+          </Button>
+        </div>
+
+        {/* Exams Grid */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">

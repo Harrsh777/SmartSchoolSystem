@@ -21,18 +21,14 @@ import {
 } from 'lucide-react';
 
 interface AcademicYear {
-  id: string;
-  year_name: string;
-  start_date: string;
-  end_date: string;
-  is_current: boolean;
+  academic_year: string;
 }
 
 interface DiaryEntry {
   id: string;
   title: string;
   content: string | null;
-  type: 'HOMEWORK' | 'ANNOUNCEMENT' | 'HOLIDAY' | 'OTHER';
+  type: 'HOMEWORK' | 'OTHER';
   mode: 'GENERAL' | 'SUBJECT_WISE';
   created_at: string;
   diary_targets: Array<{
@@ -64,7 +60,7 @@ export default function DigitalDiaryPage({
   const [totalCount, setTotalCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [editingDiary, setEditingDiary] = useState<DiaryEntry | null>(null);
-  const [diaryType, setDiaryType] = useState<'HOMEWORK' | 'ANNOUNCEMENT' | 'HOLIDAY' | 'OTHER'>('HOMEWORK');
+  const [diaryType, setDiaryType] = useState<'HOMEWORK' | 'OTHER'>('HOMEWORK');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -83,12 +79,14 @@ export default function DigitalDiaryPage({
 
   const fetchAcademicYears = async () => {
     try {
-      const response = await fetch(`/api/fees/academic-years?school_code=${schoolCode}`);
+      const response = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setAcademicYears(result.data);
-        const current = result.data.find((y: AcademicYear) => y.is_current);
-        setSelectedYear(current || result.data[0] || null);
+        const years = result.data.map((year: string) => ({ academic_year: year }));
+        setAcademicYears(years);
+        if (years.length > 0) {
+          setSelectedYear(years[0]);
+        }
       }
     } catch (err) {
       console.error('Error fetching academic years:', err);
@@ -105,7 +103,7 @@ export default function DigitalDiaryPage({
         page: page.toString(),
         limit: '20',
       });
-      if (selectedYear) params.append('academic_year_id', selectedYear.id);
+      if (selectedYear) params.append('academic_year_id', selectedYear.academic_year);
 
       const response = await fetch(`/api/diary?${params}`);
       const result = await response.json();
@@ -125,7 +123,7 @@ export default function DigitalDiaryPage({
       const params = new URLSearchParams({
         school_code: schoolCode,
       });
-      if (selectedYear) params.append('academic_year_id', selectedYear.id);
+      if (selectedYear) params.append('academic_year_id', selectedYear.academic_year);
 
       const response = await fetch(`/api/diary/stats?${params}`);
       const result = await response.json();
@@ -174,10 +172,6 @@ export default function DigitalDiaryPage({
     switch (type) {
       case 'HOMEWORK':
         return 'bg-blue-100 text-blue-800';
-      case 'ANNOUNCEMENT':
-        return 'bg-green-100 text-green-800';
-      case 'HOLIDAY':
-        return 'bg-yellow-100 text-yellow-800';
       case 'OTHER':
         return 'bg-purple-100 text-purple-800';
       default:
@@ -202,7 +196,7 @@ export default function DigitalDiaryPage({
             <BookOpen size={32} />
             Digital Diary
           </h1>
-          <p className="text-gray-600">Manage homework, announcements, holidays, and notices</p>
+          <p className="text-gray-600">Manage homework and notices</p>
         </div>
         <Button
           variant="outline"
@@ -219,17 +213,17 @@ export default function DigitalDiaryPage({
           <div className="flex items-center gap-4">
             <label className="text-sm font-medium text-gray-700">Academic Year</label>
             <select
-              value={selectedYear?.id || ''}
+              value={selectedYear?.academic_year || ''}
               onChange={(e) => {
-                const year = academicYears.find((y) => y.id === e.target.value);
+                const year = academicYears.find((y) => y.academic_year === e.target.value);
                 setSelectedYear(year || null);
                 setPage(1);
               }}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 min-w-[200px]"
             >
               {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.year_name}
+                <option key={year.academic_year} value={year.academic_year}>
+                  {year.academic_year}
                 </option>
               ))}
             </select>
@@ -245,28 +239,6 @@ export default function DigitalDiaryPage({
             >
               <Plus size={18} className="mr-2" />
               Homework
-            </Button>
-            <Button
-              onClick={() => {
-                setDiaryType('ANNOUNCEMENT');
-                setEditingDiary(null);
-                setShowModal(true);
-              }}
-              className="bg-green-500 hover:bg-green-600 text-white"
-            >
-              <Plus size={18} className="mr-2" />
-              Announcement
-            </Button>
-            <Button
-              onClick={() => {
-                setDiaryType('HOLIDAY');
-                setEditingDiary(null);
-                setShowModal(true);
-              }}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white"
-            >
-              <Plus size={18} className="mr-2" />
-              Holiday
             </Button>
             <Button
               onClick={() => {
@@ -349,14 +321,12 @@ export default function DigitalDiaryPage({
               </div>
 
               {/* Read Count */}
-              {diary.type !== 'HOLIDAY' && (
-                <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-                  <Users size={16} />
-                  <span>
-                    {diary.read_count} / {diary.total_targets} READ
-                  </span>
-                </div>
-              )}
+              <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
+                <Users size={16} />
+                <span>
+                  {diary.read_count} / {diary.total_targets} READ
+                </span>
+              </div>
 
               {/* Attachments */}
               {diary.diary_attachments && diary.diary_attachments.length > 0 && (
@@ -425,7 +395,7 @@ export default function DigitalDiaryPage({
       {showModal && (
         <DiaryModal
           schoolCode={schoolCode}
-          academicYearId={selectedYear?.id}
+          academicYearId={selectedYear?.academic_year}
           diary={editingDiary}
           defaultType={diaryType}
           onClose={() => {
@@ -451,12 +421,17 @@ function DiaryModal({
   schoolCode: string;
   academicYearId?: string | null;
   diary: DiaryEntry | null;
-  defaultType: 'HOMEWORK' | 'ANNOUNCEMENT' | 'HOLIDAY' | 'OTHER';
+  defaultType: 'HOMEWORK' | 'OTHER';
   onClose: () => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [classes, setClasses] = useState<Array<{ class: string; section?: string }>>([]);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const [classes, setClasses] = useState<Array<{ id?: string; class: string; section?: string; academic_year?: string }>>([]);
+  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [availableSections, setAvailableSections] = useState<string[]>([]);
+  const [selectedSection, setSelectedSection] = useState<string>('');
   const [selectedTargets, setSelectedTargets] = useState<Array<{ class_name: string; section_name?: string }>>([]);
   const [attachments, setAttachments] = useState<Array<{ file_name: string; file_url: string; file_type: string; file_size?: number }>>([]);
   const [formData, setFormData] = useState({
@@ -467,7 +442,7 @@ function DiaryModal({
   });
 
   useEffect(() => {
-    fetchClasses();
+    fetchAcademicYears();
     if (diary) {
       setSelectedTargets(
         diary.diary_targets.map((t) => ({
@@ -482,40 +457,77 @@ function DiaryModal({
           file_type: a.file_type,
         }))
       );
+      // academicYearId from parent is the academic_year string, not an ID
+      if (academicYearId) {
+        setSelectedAcademicYear(academicYearId);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (selectedAcademicYear) {
+      fetchClasses();
+    } else {
+      setClasses([]);
+      setSelectedClass('');
+      setAvailableSections([]);
+      setSelectedSection('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAcademicYear]);
+
+  useEffect(() => {
+    if (selectedClass && classes.length > 0) {
+      const sections = classes
+        .filter((c) => c.class === selectedClass)
+        .map((c) => c.section)
+        .filter((s): s is string => !!s);
+      const uniqueSections = Array.from(new Set(sections)).sort();
+      setAvailableSections(uniqueSections);
+      setSelectedSection('');
+    } else {
+      setAvailableSections([]);
+      setSelectedSection('');
+    }
+  }, [selectedClass, classes]);
+
+  const fetchAcademicYears = async () => {
+    try {
+      const response = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        const years = result.data.map((year: string) => ({ academic_year: year }));
+        setAcademicYears(years);
+        if (academicYearId) {
+          // If academicYearId is provided (from parent), try to match it
+          const matchedYear = years.find((y: AcademicYear) => y.academic_year === academicYearId);
+          setSelectedAcademicYear(matchedYear?.academic_year || years[0]?.academic_year || '');
+        } else {
+          setSelectedAcademicYear(years[0]?.academic_year || '');
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching academic years:', err);
+    }
+  };
+
   const fetchClasses = async () => {
     try {
+      if (!selectedAcademicYear) {
+        setClasses([]);
+        return;
+      }
+
       const response = await fetch(`/api/classes?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        // Group by class and section
-        const classMap = new Map<string, Set<string>>();
-        result.data.forEach((item: { class?: string; section?: string }) => {
-          if (item.class) {
-            if (!classMap.has(item.class)) {
-              classMap.set(item.class, new Set());
-            }
-            if (item.section) {
-              classMap.get(item.class)!.add(item.section);
-            }
-          }
+        // Filter classes by selected academic year
+        const filteredClasses = result.data.filter((item: { academic_year?: string }) => {
+          return item.academic_year === selectedAcademicYear;
         });
 
-        const classList: Array<{ class: string; section?: string }> = [];
-        classMap.forEach((sections, className) => {
-          if (sections.size > 0) {
-            sections.forEach((section) => {
-              classList.push({ class: className, section });
-            });
-          } else {
-            classList.push({ class: className });
-          }
-        });
-
-        setClasses(classList);
+        setClasses(filteredClasses);
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
@@ -548,19 +560,33 @@ function DiaryModal({
     }
   };
 
-  const toggleTarget = (className: string, sectionName?: string) => {
-    const key = `${className}-${sectionName || ''}`;
+  const handleAddTarget = () => {
+    if (!selectedClass) {
+      alert('Please select a class');
+      return;
+    }
+
+    const target = {
+      class_name: selectedClass,
+      section_name: selectedSection || undefined,
+    };
+
     const exists = selectedTargets.some(
-      (t) => t.class_name === className && (t.section_name || '') === (sectionName || '')
+      (t) => t.class_name === target.class_name && (t.section_name || '') === (target.section_name || '')
     );
 
     if (exists) {
-      setSelectedTargets((prev) =>
-        prev.filter((t) => !(t.class_name === className && (t.section_name || '') === (sectionName || '')))
-      );
-    } else {
-      setSelectedTargets((prev) => [...prev, { class_name: className, section_name: sectionName }]);
+      alert('This class/section is already added');
+      return;
     }
+
+    setSelectedTargets((prev) => [...prev, target]);
+    setSelectedClass('');
+    setSelectedSection('');
+  };
+
+  const removeTarget = (index: number) => {
+    setSelectedTargets((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -583,7 +609,7 @@ function DiaryModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
-          academic_year_id: academicYearId,
+          academic_year_id: selectedAcademicYear || academicYearId || null,
           ...formData,
           targets: selectedTargets,
           attachments: attachments,
@@ -594,7 +620,11 @@ function DiaryModal({
       if (response.ok) {
         onClose();
       } else {
-        alert(result.error || `Failed to ${diary ? 'update' : 'create'} diary entry`);
+        const errorMsg = result.details 
+          ? `${result.error}: ${result.details}${result.hint ? ` (${result.hint})` : ''}`
+          : result.error || `Failed to ${diary ? 'update' : 'create'} diary entry`;
+        console.error('Diary creation error:', result);
+        alert(errorMsg);
       }
     } catch (err) {
       console.error('Error saving diary entry:', err);
@@ -646,8 +676,6 @@ function DiaryModal({
                 required
               >
                 <option value="HOMEWORK">Homework</option>
-                <option value="ANNOUNCEMENT">Announcement</option>
-                <option value="HOLIDAY">Holiday</option>
                 <option value="OTHER">Other</option>
               </select>
             </div>
@@ -666,35 +694,115 @@ function DiaryModal({
               </select>
             </div>
 
+            {/* Academic Year Selection */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Select Classes & Sections <span className="text-red-500">*</span>
+                Academic Year <span className="text-red-500">*</span>
               </label>
-              <div className="border border-gray-300 rounded-lg p-4 max-h-48 overflow-y-auto">
-                <div className="flex flex-wrap gap-2">
-                  {classes.map((cls, idx) => {
-                    const key = `${cls.class}-${cls.section || ''}`;
-                    const isSelected = selectedTargets.some(
-                      (t) => t.class_name === cls.class && (t.section_name || '') === (cls.section || '')
-                    );
-                    return (
-                      <button
+              <select
+                value={selectedAcademicYear}
+                onChange={(e) => {
+                  setSelectedAcademicYear(e.target.value);
+                  setSelectedClass('');
+                  setSelectedSection('');
+                  setSelectedTargets([]);
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                required
+              >
+                <option value="">Select Academic Year</option>
+                {academicYears.map((year) => (
+                  <option key={year.academic_year} value={year.academic_year}>
+                    {year.academic_year}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Class and Section Selection */}
+            {selectedAcademicYear && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Class <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={selectedClass}
+                      onChange={(e) => {
+                        setSelectedClass(e.target.value);
+                        setSelectedSection('');
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="">Select Class</option>
+                      {Array.from(new Set(classes.map(c => c.class))).sort().map((className) => (
+                        <option key={className} value={className}>
+                          {className}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Section
+                    </label>
+                    <select
+                      value={selectedSection}
+                      onChange={(e) => setSelectedSection(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      disabled={!selectedClass}
+                    >
+                      <option value="">All Sections (Whole Class)</option>
+                      {availableSections.map((section) => (
+                        <option key={section} value={section}>
+                          {section}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={handleAddTarget}
+                  disabled={!selectedClass}
+                  className="bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  <Plus size={16} className="mr-2" />
+                  Add Class/Section
+                </Button>
+              </div>
+            )}
+
+            {/* Selected Targets */}
+            {selectedTargets.length > 0 && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Selected Classes & Sections <span className="text-red-500">*</span>
+                </label>
+                <div className="border border-gray-300 rounded-lg p-4">
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTargets.map((target, idx) => (
+                      <span
                         key={idx}
-                        type="button"
-                        onClick={() => toggleTarget(cls.class, cls.section)}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          isSelected
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
+                        className="inline-flex items-center gap-2 px-3 py-1 bg-orange-100 text-orange-800 rounded-lg text-sm font-medium"
                       >
-                        {cls.class}{cls.section ? `-${cls.section}` : ''}
-                      </button>
-                    );
-                  })}
+                        {target.class_name}{target.section_name ? `-${target.section_name}` : ' (All Sections)'}
+                        <button
+                          type="button"
+                          onClick={() => removeTarget(idx)}
+                          className="text-orange-600 hover:text-orange-800"
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Instruction (Rich Text)</label>

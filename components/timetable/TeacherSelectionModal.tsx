@@ -21,6 +21,7 @@ interface TeacherSelectionModalProps {
   onSave: (teacherIds: string[]) => void;
   schoolCode: string;
   subjectName: string;
+  subjectId?: string | null;
   existingTeacherIds?: string[];
 }
 
@@ -30,6 +31,7 @@ export default function TeacherSelectionModal({
   onSave,
   schoolCode,
   subjectName,
+  subjectId,
   existingTeacherIds = [],
 }: TeacherSelectionModalProps) {
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -68,27 +70,59 @@ export default function TeacherSelectionModal({
   const fetchStaff = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/staff?school_code=${schoolCode}`);
+      
+      // If subjectId is provided, fetch only staff who teach that subject
+      // Otherwise, fetch all teaching staff
+      let response;
+      if (subjectId) {
+        response = await fetch(`/api/staff-subjects/by-subject?school_code=${schoolCode}&subject_id=${subjectId}`);
+      } else {
+        response = await fetch(`/api/staff?school_code=${schoolCode}`);
+      }
+      
       const result = await response.json();
 
       if (response.ok && result.data) {
-        // Filter to show only teaching staff (or all staff if no specific filter)
-        const teachingStaff = result.data.filter(
-          (s: Staff) =>
-            s.role?.toLowerCase().includes('teacher') ||
-            s.role?.toLowerCase().includes('principal') ||
-            s.role?.toLowerCase().includes('head') ||
-            s.role?.toLowerCase().includes('vice') ||
-            s.designation?.toLowerCase() === subjectName?.toLowerCase() ||
-            s.department?.toLowerCase().includes('teaching')
-        );
-        // If no teaching staff found, show all staff
-        const staffToShow = teachingStaff.length > 0 ? teachingStaff : result.data;
+        let staffToShow: Staff[] = [];
+        
+        if (subjectId) {
+          // Result from staff-subjects/by-subject already returns only staff who teach this subject
+          staffToShow = result.data.map((s: any) => ({
+            id: s.id,
+            staff_id: s.staff_id,
+            full_name: s.full_name,
+            role: s.role || '',
+            department: s.department || '',
+          }));
+        } else {
+          // Filter to show only teaching staff (or all staff if no specific filter)
+          interface StaffWithDesignation extends Staff {
+            designation?: string;
+          }
+          const teachingStaff = result.data.filter(
+            (s: StaffWithDesignation) =>
+              s.role?.toLowerCase().includes('teacher') ||
+              s.role?.toLowerCase().includes('principal') ||
+              s.role?.toLowerCase().includes('head') ||
+              s.role?.toLowerCase().includes('vice') ||
+              (s.designation && s.designation.toLowerCase() === subjectName?.toLowerCase()) ||
+              s.department?.toLowerCase().includes('teaching')
+          );
+          // If no teaching staff found, show all staff
+          staffToShow = teachingStaff.length > 0 ? teachingStaff : result.data;
+        }
+        
         setStaff(staffToShow);
         setFilteredStaff(staffToShow);
+      } else {
+        console.error('Failed to fetch staff:', result.error);
+        setStaff([]);
+        setFilteredStaff([]);
       }
     } catch (error) {
       console.error('Error fetching staff:', error);
+      setStaff([]);
+      setFilteredStaff([]);
     } finally {
       setLoading(false);
     }

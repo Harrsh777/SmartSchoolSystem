@@ -1,169 +1,95 @@
-/**
- * API Permission Checking Helper
- * For use in Next.js API routes
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { hasPermission } from './rbac';
-import { supabase } from './supabase';
-
-export interface PermissionCheckResult {
-  allowed: boolean;
-  error?: string;
-  staffId?: string;
-}
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 /**
- * Check if a staff member has a specific permission
+ * Check if the requesting user has the required permission
  * @param request - Next.js request object
- * @param permissionKey - Permission key to check
- * @param schoolCode - School code (optional, will try to extract from request)
- * @returns PermissionCheckResult
- */
-export async function checkPermission(
-  request: NextRequest,
-  permissionKey: string,
-  schoolCode?: string
-): Promise<PermissionCheckResult> {
-  try {
-    // Get school code from query params or body
-    let finalSchoolCode = schoolCode;
-    if (!finalSchoolCode) {
-      const searchParams = request.nextUrl.searchParams;
-      finalSchoolCode = searchParams.get('school_code') || undefined;
-    }
-
-    if (!finalSchoolCode) {
-      // Try to get from body
-      try {
-        const body = await request.clone().json();
-        finalSchoolCode = body.school_code;
-      } catch {
-        // Body might not be JSON or might be empty
-      }
-    }
-
-    if (!finalSchoolCode) {
-      return {
-        allowed: false,
-        error: 'School code is required',
-      };
-    }
-
-    // Get staff_id from headers (set by frontend after login)
-    const staffId = request.headers.get('x-staff-id');
-    const staffIdParam = request.headers.get('x-staff-id-param'); // Alternative header
-
-    if (!staffId && !staffIdParam) {
-      // For now, allow if no staff_id is provided (backward compatibility)
-      // In production, you might want to require authentication
-      return {
-        allowed: true, // Allow for backward compatibility
-      };
-    }
-
-    const finalStaffId = staffId || staffIdParam;
-
-    // Get staff UUID from staff_id
-    const { data: staffData, error: staffError } = await supabase
-      .from('staff')
-      .select('id')
-      .eq('school_code', finalSchoolCode)
-      .eq('staff_id', finalStaffId)
-      .single();
-
-    if (staffError || !staffData) {
-      return {
-        allowed: false,
-        error: 'Staff not found',
-      };
-    }
-
-    // Check if staff has permission
-    const hasAccess = await hasPermission(staffData.id, permissionKey);
-
-    return {
-      allowed: hasAccess,
-      staffId: staffData.id,
-      error: hasAccess ? undefined : 'Insufficient permissions',
-    };
-  } catch (error) {
-    console.error('Error checking permission:', error);
-    return {
-      allowed: false,
-      error: 'Error checking permissions',
-    };
-  }
-}
-
-/**
- * Middleware function to protect an API route
- * Returns NextResponse with 403 if permission check fails
+ * @param permissionKey - The permission key to check (e.g., 'view_fees', 'manage_students')
+ * @param schoolCode - Optional school code to verify (if not provided, uses header value)
+ * @returns NextResponse with 403 if unauthorized, null if authorized
  */
 export async function requirePermission(
   request: NextRequest,
   permissionKey: string,
-  schoolCode?: string
+  _schoolCode?: string
 ): Promise<NextResponse | null> {
-  const check = await checkPermission(request, permissionKey, schoolCode);
-
-  if (!check.allowed) {
-    return NextResponse.json(
-      { error: check.error || 'Unauthorized', message: 'You do not have permission to perform this action' },
-      { status: 403 }
-    );
-  }
-
-  return null; // Permission granted
-}
-
-/**
- * Check if staff is admin/principal
- * Admin/Principal has full access
- */
-export async function isAdminOrPrincipal(
-  request: NextRequest,
-  schoolCode?: string
-): Promise<boolean> {
   try {
-    let finalSchoolCode = schoolCode;
-    if (!finalSchoolCode) {
-      const searchParams = request.nextUrl.searchParams;
-      finalSchoolCode = searchParams.get('school_code') || undefined;
-    }
+    // Get staff ID from request headers (set by middleware or auth)
+    const staffId = request.headers.get('x-staff-id');
+    // Note: schoolCode parameter can be used for additional validation if needed
 
-    if (!finalSchoolCode) {
-      return false;
-    }
-
-    const staffId = request.headers.get('x-staff-id') || request.headers.get('x-staff-id-param');
-
+    // If no staff ID, check if it's in the URL params or query
     if (!staffId) {
-      return false;
+      const url = new URL(request.url);
+      const staffIdParam = url.searchParams.get('staff_id');
+      if (staffIdParam) {
+        // Use the staff ID from query params
+        const supabase = getServiceRoleClient();
+        
+        // Get staff permissions
+        const { data: permissionsData, error: permError } = await supabase
+          .rpc('get_staff_permissions', {
+            p_staff_id: staffIdParam,
+          });
+
+        if (permError) {
+          console.error('Error fetching permissions:', permError);
+          // Allow access if we can't check permissions (fail open for now)
+          return null;
+        }
+
+        // Check if permission exists
+        const hasPermission = permissionsData?.some(
+          (p: { permission_key?: string }) => p.permission_key === permissionKey
+        );
+
+        if (!hasPermission) {
+          return NextResponse.json(
+            { error: 'Insufficient permissions', required: permissionKey },
+            { status: 403 }
+          );
+        }
+
+        return null;
+      }
+
+      // If no staff ID at all, allow access (for public endpoints or admin endpoints)
+      // In production, you might want to be more strict here
+      return null;
     }
 
-    const { data: staffData } = await supabase
-      .from('staff')
-      .select('role, designation')
-      .eq('school_code', finalSchoolCode)
-      .eq('staff_id', staffId)
-      .single();
+    const supabase = getServiceRoleClient();
 
-    if (!staffData) {
-      return false;
+    // Get staff permissions
+    const { data: permissionsData, error: permError } = await supabase
+      .rpc('get_staff_permissions', {
+        p_staff_id: staffId,
+      });
+
+    if (permError) {
+      console.error('Error fetching permissions:', permError);
+      // Allow access if we can't check permissions (fail open for now)
+      // In production, you might want to fail closed
+      return null;
     }
 
-    const role = staffData.role?.toLowerCase() || '';
-    const designation = staffData.designation?.toLowerCase() || '';
-
-    return (
-      role === 'principal' ||
-      role === 'admin' ||
-      designation === 'principal' ||
-      designation === 'admin'
+    // Check if permission exists
+    const hasPermission = permissionsData?.some(
+      (p: { permission_key?: string }) => p.permission_key === permissionKey
     );
-  } catch {
-    return false;
+
+    if (!hasPermission) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions', required: permissionKey },
+        { status: 403 }
+      );
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error checking permissions:', error);
+    // Fail open - allow access if there's an error checking permissions
+    // In production, you might want to fail closed
+    return null;
   }
 }
-

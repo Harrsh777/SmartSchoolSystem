@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
+import { use, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -44,7 +44,7 @@ export default function BulkPhotoPage({
 }: {
   params: Promise<{ school: string }>;
 }) {
-  const { school: schoolCode } = use(params);
+  const { school: schoolCodeParam } = use(params);
   const router = useRouter();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [photos, setPhotos] = useState<PhotoFile[]>([]);
@@ -54,23 +54,40 @@ export default function BulkPhotoPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetchStaff();
-  }, [schoolCode]);
-
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 4000);
-      return () => clearTimeout(timer);
+  // Get school code from URL param (normalized to uppercase) or sessionStorage as fallback
+  const getSchoolCode = useCallback((): string => {
+    // First try URL param (normalized to uppercase)
+    if (schoolCodeParam) {
+      return schoolCodeParam.toUpperCase();
     }
-  }, [toast]);
+    
+    // Fallback to sessionStorage
+    try {
+      const storedSchool = sessionStorage.getItem('school');
+      if (storedSchool) {
+        const schoolData = JSON.parse(storedSchool);
+        if (schoolData.school_code) {
+          return schoolData.school_code.toUpperCase();
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    
+    return '';
+  }, [schoolCodeParam]);
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+  const schoolCode = getSchoolCode();
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
-  };
+  }, []);
 
-  const fetchStaff = async () => {
+  const fetchStaff = useCallback(async () => {
+    if (!schoolCode) return;
+    
     try {
       setLoading(true);
       const response = await fetch(`/api/staff?school_code=${schoolCode}`);
@@ -84,30 +101,89 @@ export default function BulkPhotoPage({
     } finally {
       setLoading(false);
     }
+  }, [schoolCode, showToast]);
+
+  useEffect(() => {
+    if (schoolCode) {
+      fetchStaff();
+    }
+  }, [schoolCode, fetchStaff]);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  // Normalize filename for matching (same logic as backend)
+  const normalizeFilename = (filename: string): string => {
+    return filename
+      .replace(/\.[^/.]+$/, '') // Remove extension
+      .toLowerCase()
+      .replace(/[^a-zA-Z0-9]/g, ''); // Remove special chars, spaces, underscores, hyphens
+  };
+
+  // Extract staff ID patterns from filename
+  const extractStaffIdPatterns = (filename: string): string[] => {
+    const patterns: string[] = [];
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '').toLowerCase();
+    
+    // Pattern 1: STF001, STF-001, STF_001, etc.
+    const stfMatch = nameWithoutExt.match(/(?:stf|staff)[\s_-]?(\d+)/i);
+    if (stfMatch && stfMatch[1]) {
+      patterns.push(`STF${stfMatch[1].padStart(3, '0')}`);
+      patterns.push(stfMatch[1]);
+    }
+    
+    // Pattern 2: EMP001, EMP-001, etc.
+    const empMatch = nameWithoutExt.match(/(?:emp|employee)[\s_-]?(\d+)/i);
+    if (empMatch && empMatch[1]) {
+      patterns.push(`EMP${empMatch[1].padStart(3, '0')}`);
+      patterns.push(empMatch[1]);
+    }
+    
+    // Pattern 3: Direct number match
+    const numMatch = nameWithoutExt.match(/^(\d+)$/);
+    if (numMatch) {
+      patterns.push(numMatch[1]);
+      patterns.push(numMatch[1].padStart(3, '0'));
+    }
+    
+    // Pattern 4: Normalized filename
+    patterns.push(normalizeFilename(filename));
+    
+    return [...new Set(patterns)]; // Remove duplicates
   };
 
   const extractStaffIdFromFilename = (filename: string): string | null => {
-    const patterns = [
-      /(STF\d+)/i,
-      /(EMP\d+)/i,
-      /staff[_-]?(\d+)/i,
-      /employee[_-]?(\d+)/i,
-    ];
+    const patterns = extractStaffIdPatterns(filename);
+    const normalizedName = normalizeFilename(filename);
 
-    for (const pattern of patterns) {
-      const match = filename.match(pattern);
-      if (match) {
-        return match[1];
+    // Try to match against staff
+    for (const staffMember of staff) {
+      const normalizedStaffId = normalizeFilename(staffMember.staff_id || '');
+      const normalizedEmployeeCode = normalizeFilename(staffMember.employee_code || '');
+      const staffId = (staffMember.staff_id || '').toUpperCase();
+      const employeeCode = (staffMember.employee_code || '').toUpperCase();
+      
+      // Try exact match with normalized names
+      if (normalizedName === normalizedStaffId || normalizedName === normalizedEmployeeCode) {
+        return staffMember.staff_id || staffMember.employee_code || null;
       }
-    }
-
-    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '').toLowerCase();
-    const matchedStaff = staff.find(s => 
-      s.full_name?.toLowerCase().replace(/\s+/g, '_') === nameWithoutExt ||
-      s.full_name?.toLowerCase().replace(/\s+/g, '-') === nameWithoutExt
-    );
-    if (matchedStaff) {
-      return matchedStaff.staff_id || matchedStaff.employee_code || null;
+      
+      // Try pattern matching
+      for (const pattern of patterns) {
+        const normalizedPattern = normalizeFilename(pattern);
+        if (
+          normalizedPattern === normalizedStaffId ||
+          normalizedPattern === normalizedEmployeeCode ||
+          pattern === staffId ||
+          pattern === employeeCode
+        ) {
+          return staffMember.staff_id || staffMember.employee_code || null;
+        }
+      }
     }
 
     return null;
@@ -231,74 +307,241 @@ export default function BulkPhotoPage({
       return;
     }
 
-    setUploading(true);
-    let successCount = 0;
-    let errorCount = 0;
+    // Validate all photos before uploading
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    
+    const invalidPhotos: string[] = [];
+    const validPhotos = photosToUpload.filter(photo => {
+      if (!ALLOWED_TYPES.includes(photo.file.type)) {
+        invalidPhotos.push(`${photo.file.name} (invalid file type)`);
+        return false;
+      }
+      if (photo.file.size > MAX_FILE_SIZE) {
+        invalidPhotos.push(`${photo.file.name} (file too large, max 5MB)`);
+        return false;
+      }
+      if (!photo.matchedStaff || !photo.matchedStaff.id) {
+        invalidPhotos.push(`${photo.file.name} (no staff member matched)`);
+        return false;
+      }
+      return true;
+    });
 
-    for (let i = 0; i < photosToUpload.length; i++) {
-      const photo = photosToUpload[i];
-      if (!photo.matchedStaff) continue;
-
-      try {
-        setPhotos(prev => prev.map(p => 
-          p.id === photo.id ? { ...p, uploadStatus: 'uploading', progress: 0 } : p
-        ));
-
-        const formData = new FormData();
-        formData.append('file', photo.file);
-        formData.append('school_code', schoolCode);
-        formData.append('staff_id', photo.matchedStaff.id!);
-
-        // Simulate progress
-        const progressInterval = setInterval(() => {
-          setPhotos(prev => prev.map(p => {
-            if (p.id === photo.id && p.progress !== undefined && p.progress < 90) {
-              return { ...p, progress: Math.min(p.progress + 10, 90) };
-            }
-            return p;
-          }));
-        }, 200);
-
-        const response = await fetch('/api/staff/photo', {
-          method: 'POST',
-          body: formData,
-        });
-
-        clearInterval(progressInterval);
-
-        const result = await response.json();
-
-        if (response.ok) {
-          setPhotos(prev => prev.map(p => 
-            p.id === photo.id 
-              ? { ...p, uploadStatus: 'success', progress: 100 }
-              : p
-          ));
-          successCount++;
-        } else {
-          setPhotos(prev => prev.map(p => 
-            p.id === photo.id 
-              ? { ...p, uploadStatus: 'error', error: result.error || 'Upload failed', progress: 0 }
-              : p
-          ));
-          errorCount++;
-        }
-      } catch (error) {
-        setPhotos(prev => prev.map(p => 
-          p.id === photo.id 
-            ? { ...p, uploadStatus: 'error', error: 'Network error', progress: 0 }
-            : p
-        ));
-        errorCount++;
+    if (invalidPhotos.length > 0) {
+      showToast(`Invalid files detected: ${invalidPhotos.slice(0, 2).join(', ')}${invalidPhotos.length > 2 ? '...' : ''}`, 'error');
+      if (validPhotos.length === 0) {
+        return;
       }
     }
 
-    setUploading(false);
-    if (successCount > 0) {
-      showToast(`Successfully uploaded ${successCount} photo${successCount > 1 ? 's' : ''}`, 'success');
-    }
-    if (errorCount > 0) {
-      showToast(`${errorCount} upload${errorCount > 1 ? 's' : ''} failed`, 'error');
+    setUploading(true);
+
+    // Update all photos to uploading status
+    setPhotos(prev => prev.map(p => {
+      const photoToUpload = validPhotos.find(vp => vp.id === p.id);
+      if (photoToUpload) {
+        return { ...p, uploadStatus: 'uploading' as const, progress: 0 };
+      }
+      return p;
+    }));
+
+    try {
+      // Get current user staff ID from session storage (once, reuse for both formData and headers)
+      const storedStaff = sessionStorage.getItem('staff');
+      let staffId = '';
+      if (storedStaff) {
+        try {
+          const staffData = JSON.parse(storedStaff);
+          if (staffData.staff_id) {
+            staffId = staffData.staff_id;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      // Prepare FormData for bulk upload
+      const formData = new FormData();
+      
+      // School code is already normalized to uppercase from getSchoolCode()
+      // It should always be available since we're on a school-specific route
+      if (!schoolCode) {
+        showToast('School code is required. Please refresh the page.', 'error');
+        setUploading(false);
+        setPhotos(prev => prev.map(p => {
+          const photoToUpload = validPhotos.find(vp => vp.id === p.id);
+          if (photoToUpload) {
+            return { ...p, uploadStatus: 'error' as const, error: 'School code is required' };
+          }
+          return p;
+        }));
+        return;
+      }
+      
+      formData.append('school_code', schoolCode);
+      if (staffId) {
+        formData.append('uploaded_by_staff_id', staffId);
+      }
+
+      // Append all files - the backend will match them by filename
+      // We need to ensure filenames match staff_id or employee_code for auto-matching
+      validPhotos.forEach(photo => {
+        // Rename file to match staff_id for better auto-matching
+        // Keep original filename but backend will try to match
+        formData.append('file', photo.file);
+      });
+
+      // Update progress during upload
+      const progressInterval = setInterval(() => {
+        setPhotos(prev => prev.map(p => {
+          const photoToUpload = validPhotos.find(vp => vp.id === p.id);
+          if (photoToUpload && p.uploadStatus === 'uploading' && (p.progress === undefined || p.progress < 90)) {
+            return { ...p, progress: Math.min((p.progress || 0) + 5, 90) };
+          }
+          return p;
+        }));
+      }, 300);
+
+      // Get auth headers from session storage
+      const headers: Record<string, string> = {};
+      if (staffId) {
+        headers['x-staff-id'] = staffId;
+      }
+
+      const response = await fetch('/api/staff/photos/bulk', {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      clearInterval(progressInterval);
+
+      const result = await response.json();
+
+      if (response.ok && result.data) {
+        const uploadData = result.data;
+        
+        // Map backend results to frontend photos by filename
+        const uploadResultsMap = new Map(
+          (uploadData.upload_results || []).map((result: any) => [result.filename, result])
+        );
+        
+        const unmatchedFilenames = new Set(
+          (uploadData.unmatched_files || []).map((uf: any) => uf.filename)
+        );
+
+        // Update photos based on backend response
+        setPhotos(prev => prev.map(p => {
+          const photoToUpload = validPhotos.find(vp => vp.id === p.id);
+          if (!photoToUpload) return p;
+
+          const filename = p.file.name;
+          
+          // Check if unmatched
+          if (unmatchedFilenames.has(filename)) {
+            return { 
+              ...p, 
+              uploadStatus: 'error' as const, 
+              error: 'Photo could not be matched to staff member. Please match manually.',
+              progress: 0
+            };
+          }
+
+          // Check upload results for this specific file
+          const uploadResult = uploadResultsMap.get(filename);
+          if (uploadResult) {
+            if (uploadResult.success) {
+              return { 
+                ...p, 
+                uploadStatus: 'success' as const, 
+                progress: 100,
+                error: undefined
+              };
+            } else {
+              return { 
+                ...p, 
+                uploadStatus: 'error' as const, 
+                error: uploadResult.error || 'Upload failed',
+                progress: 0
+              };
+            }
+          }
+
+          // If no result found but upload count suggests success, mark as success
+          // This handles cases where backend matched but didn't return detailed results
+          if (uploadData.uploaded > 0 && !unmatchedFilenames.has(filename)) {
+            return { 
+              ...p, 
+              uploadStatus: 'success' as const, 
+              progress: 100 
+            };
+          }
+
+          return p;
+        }));
+
+        // Show success message
+        const successMessage = uploadData.status === 'completed'
+          ? `Successfully uploaded all ${uploadData.uploaded} photo${uploadData.uploaded !== 1 ? 's' : ''}!`
+          : uploadData.status === 'partial'
+          ? `Uploaded ${uploadData.uploaded} of ${uploadData.total_files} photos. ${uploadData.failed} failed.`
+          : `Upload completed with ${uploadData.uploaded} successful and ${uploadData.failed} failed.`;
+
+        showToast(successMessage, uploadData.status === 'completed' ? 'success' : 'info');
+
+        // Show unmatched files if any
+        if (uploadData.unmatched_files && uploadData.unmatched_files.length > 0) {
+          const unmatchedNames = uploadData.unmatched_files.slice(0, 3).map((uf: any) => uf.filename).join(', ');
+          showToast(
+            `${uploadData.unmatched_files.length} file${uploadData.unmatched_files.length > 1 ? 's' : ''} couldn't be matched: ${unmatchedNames}${uploadData.unmatched_files.length > 3 ? '...' : ''}. Please match them manually.`,
+            'error'
+          );
+        }
+
+        // Refresh staff list to get updated photo URLs
+        await fetchStaff();
+      } else {
+        // Handle error response
+        const errorMessage = result.error || 'Failed to upload photos';
+        const errorDetails = result.details ? `: ${result.details}` : '';
+        
+        // Mark all as error
+        setPhotos(prev => prev.map(p => {
+          const photoToUpload = validPhotos.find(vp => vp.id === p.id);
+          if (photoToUpload) {
+            return { 
+              ...p, 
+              uploadStatus: 'error' as const, 
+              error: errorMessage,
+              progress: 0
+            };
+          }
+          return p;
+        }));
+
+        showToast(`${errorMessage}${errorDetails}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error during bulk upload:', error);
+      
+      // Mark all as error
+      setPhotos(prev => prev.map(p => {
+        const photoToUpload = validPhotos.find(vp => vp.id === p.id);
+        if (photoToUpload) {
+          return { 
+            ...p, 
+            uploadStatus: 'error' as const, 
+            error: 'Network error. Please try again.',
+            progress: 0
+          };
+        }
+        return p;
+      }));
+
+      showToast('Network error. Please check your connection and try again.', 'error');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -527,6 +770,7 @@ export default function BulkPhotoPage({
             </div>
 
             <input
+              ref={fileInputRef}
               type="file"
               multiple
               accept="image/*"
@@ -534,12 +778,14 @@ export default function BulkPhotoPage({
               className="hidden"
               id="photo-upload"
             />
-            <label htmlFor="photo-upload">
-              <Button className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] hover:from-[#3B82F6] hover:to-[#1e3a8a] text-white shadow-lg hover:shadow-xl transition-all cursor-pointer px-8 py-3 text-base font-semibold">
-                <Upload size={20} className="mr-2" />
-                Select Photos
-              </Button>
-            </label>
+            <Button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] hover:from-[#3B82F6] hover:to-[#1e3a8a] text-white shadow-lg hover:shadow-xl transition-all cursor-pointer px-8 py-3 text-base font-semibold"
+            >
+              <Upload size={20} className="mr-2" />
+              Select Photos
+            </Button>
 
             <div className="mt-6 pt-6 border-t border-gray-200">
               <div className="flex items-center justify-center gap-6 text-xs text-gray-500">

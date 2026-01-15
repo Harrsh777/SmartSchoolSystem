@@ -54,26 +54,38 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform the data to match the expected format
-    const transformedData = (data || []).map((item: any) => ({
-      id: item.id,
-      student_id: item.student_id,
-      student_name: item.student?.student_name || '',
-      admission_no: item.student?.admission_no || '',
-      class: item.student?.class || '',
-      section: item.student?.section || '',
-      leave_type_id: item.leave_type_id,
-      leave_type: item.leave_type?.abbreviation || '',
-      leave_type_name: item.leave_type?.name || '',
-      leave_title: item.leave_title || '',
-      leave_applied_date: item.leave_applied_date,
-      leave_start_date: item.leave_start_date,
-      leave_end_date: item.leave_end_date,
-      reason: item.reason || '',
-      absent_form_submitted: item.absent_form_submitted || false,
-      attachment: item.attachment || null,
-      status: item.status,
-      rejected_reason: item.rejected_reason || null,
-    }));
+    const transformedData = (data || []).map((item: any) => {
+      // Calculate total_days if not present in database
+      let totalDays = item.total_days;
+      if (!totalDays && item.leave_start_date && item.leave_end_date) {
+        const startDate = new Date(item.leave_start_date);
+        const endDate = new Date(item.leave_end_date);
+        const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+        totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      }
+
+      return {
+        id: item.id,
+        student_id: item.student_id,
+        student_name: item.student?.student_name || '',
+        admission_no: item.student?.admission_no || '',
+        class: item.student?.class || '',
+        section: item.student?.section || '',
+        leave_type_id: item.leave_type_id,
+        leave_type: item.leave_type?.abbreviation || '',
+        leave_type_name: item.leave_type?.name || '',
+        leave_title: item.leave_title || '',
+        leave_applied_date: item.leave_applied_date,
+        leave_start_date: item.leave_start_date,
+        leave_end_date: item.leave_end_date,
+        total_days: totalDays,
+        reason: item.reason || '',
+        absent_form_submitted: item.absent_form_submitted || false,
+        attachment: item.attachment || null,
+        status: item.status,
+        rejected_reason: item.rejected_reason || null,
+      };
+    });
 
     return NextResponse.json({ data: transformedData });
   } catch (error) {
@@ -92,6 +104,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // Validate date range
+    const startDate = new Date(leave_start_date);
+    const endDate = new Date(leave_end_date);
+    if (endDate < startDate) {
+      return NextResponse.json({ error: 'End date must be after start date' }, { status: 400 });
+    }
+
+    // Calculate total days (inclusive)
+    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    // Validate max_days if leave type has a limit
+    const { data: leaveType, error: leaveTypeError } = await supabase
+      .from('leave_types')
+      .select('max_days')
+      .eq('id', leave_type_id)
+      .single();
+
+    if (!leaveTypeError && leaveType?.max_days && totalDays > leaveType.max_days) {
+      return NextResponse.json({ 
+        error: `Leave duration (${totalDays} days) exceeds maximum allowed (${leaveType.max_days} days) for this leave type` 
+      }, { status: 400 });
+    }
+
     const { data, error } = await supabase
       .from('student_leave_requests')
       .insert({
@@ -101,6 +137,7 @@ export async function POST(request: NextRequest) {
         leave_title: leave_title || '',
         leave_start_date,
         leave_end_date,
+        total_days: totalDays,
         reason: reason || '',
         absent_form_submitted: absent_form_submitted || false,
         status: 'pending',

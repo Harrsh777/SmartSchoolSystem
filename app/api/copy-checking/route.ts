@@ -13,9 +13,11 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
     const classId = searchParams.get('class_id');
+    const section = searchParams.get('section');
     const subjectId = searchParams.get('subject_id');
     const workDate = searchParams.get('work_date');
     const workType = searchParams.get('work_type'); // 'class_work' or 'homework'
+    const academicYear = searchParams.get('academic_year');
 
     if (!schoolCode || !classId || !subjectId || !workDate || !workType) {
       return NextResponse.json(
@@ -26,13 +28,37 @@ export async function GET(request: NextRequest) {
 
     const supabase = getServiceRoleClient();
 
-    // Get students for the class
-    const { data: students, error: studentsError } = await supabase
+    // Get class details to filter students properly
+    const { data: classData, error: classError } = await supabase
+      .from('classes')
+      .select('class, section, academic_year')
+      .eq('id', classId)
+      .eq('school_code', schoolCode)
+      .single();
+
+    if (classError || !classData) {
+      return NextResponse.json(
+        { error: 'Class not found', details: classError?.message },
+        { status: 404 }
+      );
+    }
+
+    // Build students query
+    let studentsQuery = supabase
       .from('students')
       .select('id, student_name, admission_no, roll_number, class, section')
       .eq('school_code', schoolCode)
-      .eq('class_id', classId)
-      .order('roll_number', { ascending: true, nullsLast: true });
+      .eq('class', classData.class)
+      .eq('academic_year', academicYear || classData.academic_year);
+
+    // Filter by section if provided (from class or query param)
+    const sectionFilter = section || classData.section;
+    if (sectionFilter) {
+      studentsQuery = studentsQuery.eq('section', sectionFilter);
+    }
+
+    const { data: students, error: studentsError } = await studentsQuery
+      .order('roll_number', { ascending: true });
 
     if (studentsError) {
       console.error('Error fetching students:', studentsError);
@@ -43,7 +69,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get existing copy checking records
-    const { data: existingRecords, error: recordsError } = await supabase
+    let recordsQuery = supabase
       .from('copy_checking')
       .select('*')
       .eq('school_code', schoolCode)
@@ -51,6 +77,18 @@ export async function GET(request: NextRequest) {
       .eq('subject_id', subjectId)
       .eq('work_date', workDate)
       .eq('work_type', workType);
+
+    // Filter by section if provided
+    if (sectionFilter) {
+      recordsQuery = recordsQuery.eq('section', sectionFilter);
+    }
+
+    // Filter by academic year if provided
+    if (academicYear) {
+      recordsQuery = recordsQuery.eq('academic_year', academicYear);
+    }
+
+    const { data: existingRecords, error: recordsError } = await recordsQuery;
 
     if (recordsError) {
       console.error('Error fetching copy checking records:', recordsError);

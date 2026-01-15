@@ -69,12 +69,31 @@ export async function POST(request: NextRequest) {
     const description = formData.get('description') as string;
     const category = formData.get('category') as string;
     const uploadedBy = formData.get('uploaded_by') as string;
+    const staffIdHeader = request.headers.get('x-staff-id');
 
     if (!file || !schoolCode || !title) {
       return NextResponse.json(
         { error: 'File, school code, and title are required' },
         { status: 400 }
       );
+    }
+
+    // Get staff ID from header or use default admin/principal
+    let staffId: string | null = uploadedBy || staffIdHeader || null;
+    
+    if (!staffId) {
+      // Try to get default admin/principal for the school
+      const { data: adminStaff } = await supabase
+        .from('staff')
+        .select('id')
+        .eq('school_code', schoolCode)
+        .or('role.ilike.%admin%,role.ilike.%principal%')
+        .limit(1)
+        .single();
+      
+      if (adminStaff) {
+        staffId = adminStaff.id;
+      }
     }
 
     // Validate file type
@@ -149,7 +168,7 @@ export async function POST(request: NextRequest) {
         description: description || null,
         category: category || 'General',
         image_url: imageUrl,
-        uploaded_by: uploadedBy || null,
+        uploaded_by: staffId,
       }])
       .select()
       .single();

@@ -143,11 +143,11 @@ export async function POST(request: NextRequest) {
         // Generate passwords for successfully inserted staff
         const loginRecords = [];
         for (const member of insertedStaff || []) {
-          const { password, hash } = await generateAndHashPassword();
+          const { password, hashedPassword } = await generateAndHashPassword();
           loginRecords.push({
             school_code: school_code,
             staff_id: member.staff_id,
-            password_hash: hash,
+            password_hash: hashedPassword,
             plain_password: password, // Store plain text password
             is_active: true,
           });
@@ -187,13 +187,13 @@ export async function POST(request: NextRequest) {
 
     for (const member of existingStaffWithoutPasswords) {
       try {
-        const { password, hash } = await generateAndHashPassword();
+        const { password, hashedPassword } = await generateAndHashPassword();
         const { error: loginInsertError } = await supabase
           .from('staff_login')
           .insert({
             school_code: school_code,
             staff_id: member.staff_id,
-            password_hash: hash,
+            password_hash: hashedPassword,
             plain_password: password, // Store plain text password
             is_active: true,
           });

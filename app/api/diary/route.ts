@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
-    const academicYearId = searchParams.get('academic_year_id');
+    const academicYearId = searchParams.get('academic_year_id') || searchParams.get('academic_year');
     const type = searchParams.get('type');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -127,9 +127,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['HOMEWORK', 'ANNOUNCEMENT', 'HOLIDAY', 'OTHER'].includes(type)) {
+    if (!['HOMEWORK', 'OTHER'].includes(type)) {
       return NextResponse.json(
-        { error: 'Invalid diary type' },
+        { error: 'Invalid diary type. Must be HOMEWORK or OTHER' },
         { status: 400 }
       );
     }
@@ -156,24 +156,41 @@ export async function POST(request: NextRequest) {
     }
 
     // Create diary entry
+    const diaryData: any = {
+      school_id: schoolData.id,
+      school_code,
+      title: title.trim(),
+      content: content ? content.trim() : null,
+      type,
+      mode: mode || 'GENERAL',
+      created_by: created_by || null,
+    };
+
+    // Add academic_year_id if provided (it's a text field, not a UUID)
+    if (academic_year_id) {
+      diaryData.academic_year_id = academic_year_id;
+    }
+
     const { data: diary, error: insertError } = await supabase
       .from('diaries')
-      .insert([{
-        school_id: schoolData.id,
-        school_code,
-        academic_year_id: academic_year_id || null,
-        title,
-        content: content || null,
-        type,
-        mode: mode || 'GENERAL',
-        created_by: created_by || null,
-      }])
+      .insert([diaryData])
       .select()
       .single();
 
     if (insertError) {
+      console.error('Error creating diary entry:', insertError);
+      console.error('Diary data attempted:', JSON.stringify(diaryData, null, 2));
+      console.error('Error code:', insertError.code);
+      console.error('Error hint:', insertError.hint);
+      
       return NextResponse.json(
-        { error: 'Failed to create diary entry', details: insertError.message },
+        { 
+          error: 'Failed to create diary entry', 
+          details: insertError.message,
+          code: insertError.code,
+          hint: insertError.hint,
+          attempted_data: diaryData
+        },
         { status: 500 }
       );
     }

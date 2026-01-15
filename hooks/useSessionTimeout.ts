@@ -9,8 +9,8 @@ interface UseSessionTimeoutOptions {
 }
 
 export function useSessionTimeout({
-  timeoutMinutes = 10,
-  warningMinutes = 9,
+  timeoutMinutes = 15,
+  warningMinutes = 14,
   onLogout,
   loginPath = '/login',
 }: UseSessionTimeoutOptions = {}) {

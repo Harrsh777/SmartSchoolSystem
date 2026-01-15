@@ -13,7 +13,7 @@ interface ClassManagementModalProps {
 const menuItems = [
   { id: 'overview', label: 'Class Overview', icon: BookOpen, path: '/classes/overview' },
   { id: 'modify', label: 'Add/Modify Classes', icon: Plus, path: '/classes/modify' },
-  { id: 'assign-teachers', label: 'Add/Assign Teachers', icon: UserCheck, path: '/classes/assign-teachers' },
+  { id: 'subject-teachers', label: 'Subject Teachers', icon: BookOpen, path: '/classes/subject-teachers' },
 ];
 
 export default function ClassManagementModal({ isOpen, onClose, schoolCode }: ClassManagementModalProps) {

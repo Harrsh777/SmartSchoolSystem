@@ -7,7 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Camera, Upload, X } from 'lucide-react';
 
 interface FormErrors {
   [key: string]: string;
@@ -22,6 +22,10 @@ export default function AddStudentPage({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [createdStudentId, setCreatedStudentId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     // Required fields
     admission_no: '',
@@ -235,7 +239,19 @@ export default function AddStudentPage({
       const result = await response.json();
 
       if (response.ok) {
-        router.push(`/dashboard/${schoolCode}/students`);
+        const studentId = result.data?.id;
+        if (studentId) {
+          setCreatedStudentId(studentId);
+          
+          // If photo was selected, upload it
+          if (photoFile) {
+            await handlePhotoUpload(studentId);
+          } else {
+            router.push(`/dashboard/${schoolCode}/students`);
+          }
+        } else {
+          router.push(`/dashboard/${schoolCode}/students`);
+        }
       } else {
         alert(result.error || 'Failed to add student');
       }
@@ -256,6 +272,85 @@ export default function AddStudentPage({
         delete newErrors[field];
         return newErrors;
       });
+    }
+  };
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image size must be less than 5MB');
+        return;
+      }
+      setPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null);
+    if (photoPreview) {
+      URL.revokeObjectURL(photoPreview);
+    }
+    setPhotoPreview(null);
+    // Reset file input
+    const fileInput = document.getElementById('photo-upload') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  };
+
+  const handlePhotoUpload = async (studentId: string) => {
+    if (!photoFile || !studentId) return;
+
+    setUploadingPhoto(true);
+    try {
+      // Get current admin's staff_id for authentication
+      const storedStaff = sessionStorage.getItem('staff');
+      const headers: Record<string, string> = {};
+      if (storedStaff) {
+        try {
+          const staffData = JSON.parse(storedStaff);
+          if (staffData.staff_id) {
+            headers['x-staff-id'] = staffData.staff_id;
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('file', photoFile);
+      formData.append('school_code', schoolCode);
+      formData.append('student_id', studentId);
+
+      const response = await fetch('/api/students/photos/individual', {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.data) {
+        // Photo uploaded successfully, redirect to students page
+        router.push(`/dashboard/${schoolCode}/students`);
+      } else {
+        // Student created but photo upload failed
+        alert(result.error || 'Student created but photo upload failed');
+        router.push(`/dashboard/${schoolCode}/students`);
+      }
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      // Student created but photo upload failed
+      alert('Student created but photo upload failed. You can upload the photo later by editing the student.');
+      router.push(`/dashboard/${schoolCode}/students`);
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -285,6 +380,59 @@ export default function AddStudentPage({
         <Card className="flex flex-col overflow-hidden" style={{ maxHeight: 'calc(100vh - 160px)' }}>
           <form onSubmit={handleSubmit} className="flex flex-col h-full">
             <div className="flex-1 overflow-y-auto overflow-x-hidden pr-2 space-y-8 pb-4" style={{ maxHeight: 'calc(100vh - 260px)' }}>
+            {/* Profile Photo Section */}
+            <div>
+              <h2 className="text-xl font-bold text-black mb-4 pb-2 border-b border-gray-200">
+                Profile Photo
+              </h2>
+              <div className="flex items-start gap-6">
+                <div className="relative">
+                  {photoPreview ? (
+                    <div className="relative">
+                      <img
+                        src={photoPreview}
+                        alt="Profile preview"
+                        className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-32 h-32 rounded-lg bg-gray-100 border-2 border-gray-200 flex items-center justify-center">
+                      <Camera className="text-gray-400" size={32} />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    id="photo-upload"
+                    accept="image/*"
+                    onChange={handlePhotoSelect}
+                    className="hidden"
+                  />
+                  <label htmlFor="photo-upload">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="cursor-pointer border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
+                    >
+                      <Upload size={18} className="mr-2" />
+                      {photoPreview ? 'Change Photo' : 'Upload Photo'}
+                    </Button>
+                  </label>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Supported: JPG, PNG, GIF • Max 5MB
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Required Information */}
             <div>
               <h2 className="text-xl font-bold text-black mb-4 pb-2 border-b border-gray-200">
@@ -916,11 +1064,12 @@ export default function AddStudentPage({
                 type="button"
                 variant="outline"
                 onClick={() => router.push(`/dashboard/${schoolCode}/students`)}
+                disabled={loading || uploadingPhoto}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? 'Adding...' : 'Add Student'}
+              <Button type="submit" disabled={loading || uploadingPhoto}>
+                {uploadingPhoto ? 'Uploading Photo...' : loading ? 'Adding...' : 'Add Student'}
               </Button>
             </div>
           </form>

@@ -124,11 +124,11 @@ export async function POST(request: NextRequest) {
                 continue;
               }
 
-              const { hash } = await generateAndHashPassword();
+              const { hashedPassword } = await generateAndHashPassword();
               loginRecords.push({
                 school_code: student.school_code,
                 admission_no: student.admission_no,
-                password_hash: hash,
+                password_hash: hashedPassword,
                 is_active: true,
               });
             } catch (err) {

@@ -156,11 +156,11 @@ export async function POST(request: NextRequest) {
                   continue;
                 }
 
-                const { password, hash } = await generateAndHashPassword();
+                const { password, hashedPassword } = await generateAndHashPassword();
                 loginRecords.push({
                   school_code: student.school_code,
                   admission_no: student.admission_no,
-                  password_hash: hash,
+                  password_hash: hashedPassword,
                   is_active: true,
                 });
                 results[schoolCode]?.passwords?.push({
@@ -238,11 +238,11 @@ export async function POST(request: NextRequest) {
 
             for (const member of batch) {
               try {
-                const { password, hash } = await generateAndHashPassword();
+                const { password, hashedPassword } = await generateAndHashPassword();
                 loginRecords.push({
                   school_code: member.school_code,
                   staff_id: member.staff_id,
-                  password_hash: hash,
+                  password_hash: hashedPassword,
                   is_active: true,
                 });
                 results[schoolCode]?.passwords?.push({

@@ -16,7 +16,7 @@ export default function Navbar() {
             className="flex items-center gap-2"
           >
             <Link href="/" className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-              EduYan
+              EduCore
             </Link>
           </motion.div>
 

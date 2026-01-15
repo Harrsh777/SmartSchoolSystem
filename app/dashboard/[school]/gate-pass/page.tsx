@@ -10,17 +10,19 @@ import { DoorOpen, Plus, Search, Users, X, Calendar, FileText, Phone } from 'luc
 
 interface GatePass {
   id: string;
-  person_type: string;
+  person_type: 'student' | 'staff';
   person_name: string;
-  purpose: string;
-  out_date_time: string;
-  in_date_time_tentative: string | null;
-  status: string;
-}
-
-interface GatePassPurpose {
-  id: string;
-  purpose_name: string;
+  class?: string;
+  section?: string;
+  academic_year?: string;
+  pass_type: 'early_leave' | 'late_entry' | 'half_day';
+  reason: string;
+  date: string;
+  time_out: string;
+  expected_return_time?: string;
+  actual_return_time?: string;
+  approved_by_name: string;
+  status: 'pending' | 'approved' | 'rejected' | 'active' | 'closed';
 }
 
 interface Staff {
@@ -138,7 +140,7 @@ export default function GatePassPage({
       <div className="flex justify-end">
         <Button
           onClick={() => setShowCreateModal(true)}
-          className="bg-orange-500 hover:bg-orange-600 text-white"
+          className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E40AF] hover:to-[#2563EB] text-white"
         >
           <Plus size={18} className="mr-2" />
           CREATE GATE PASS
@@ -154,34 +156,40 @@ export default function GatePassPage({
         <Card className="p-6">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-teal-700 text-white">
+              <thead className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] text-white">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Person Name</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Person Type</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Purpose</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Out Date & Time</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">In Date & Time (Tentative)</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Pass Type</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Reason</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Time Out</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {gatePasses.map((gatePass) => (
                   <tr key={gatePass.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{gatePass.person_name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{gatePass.person_type}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{gatePass.purpose}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{formatDateTime(gatePass.out_date_time)}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {gatePass.in_date_time_tentative ? formatDateTime(gatePass.in_date_time_tentative) : 'N/A'}
-                    </td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{gatePass.person_name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 capitalize">{gatePass.person_type}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {gatePass.pass_type ? gatePass.pass_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{gatePass.reason || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {gatePass.date ? new Date(gatePass.date).toLocaleDateString('en-GB') : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{gatePass.time_out || '-'}</td>
                     <td className="px-4 py-3 text-sm">
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          gatePass.status === 'completed'
+                          gatePass.status === 'active'
                             ? 'bg-green-100 text-green-800'
                             : gatePass.status === 'approved'
                             ? 'bg-blue-100 text-blue-800'
-                            : gatePass.status === 'cancelled'
+                            : gatePass.status === 'closed'
+                            ? 'bg-gray-100 text-gray-800'
+                            : gatePass.status === 'rejected'
                             ? 'bg-red-100 text-red-800'
                             : 'bg-yellow-100 text-yellow-800'
                         }`}
@@ -199,9 +207,9 @@ export default function GatePassPage({
         <Card className="p-12">
           <div className="text-center">
             <div className="flex justify-center mb-4">
-              <div className="w-32 h-32 bg-orange-100 rounded-lg flex items-center justify-center">
+              <div className="w-32 h-32 bg-blue-100 rounded-lg flex items-center justify-center">
                 <svg
-                  className="w-20 h-20 text-orange-400"
+                  className="w-20 h-20 text-blue-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -219,7 +227,7 @@ export default function GatePassPage({
             <p className="text-gray-500 mb-6">No gate passes have been created yet.</p>
             <Button
               onClick={() => setShowCreateModal(true)}
-              className="bg-orange-500 hover:bg-orange-600 text-white"
+              className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E40AF] hover:to-[#2563EB] text-white"
             >
               <Plus size={18} className="mr-2" />
               CREATE GATE PASS
@@ -253,37 +261,89 @@ function CreateGatePassModal({
 }) {
   const [saving, setSaving] = useState(false);
   const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [studentList, setStudentList] = useState<Array<{ id: string; student_name: string }>>([]);
-  const [purposes, setPurposes] = useState<GatePassPurpose[]>([]);
+  const [studentList, setStudentList] = useState<Array<{ id: string; student_name: string; class?: string; section?: string }>>([]);
+  const [classes, setClasses] = useState<Array<{ id: string; class: string; section: string; academic_year: string }>>([]);
+  const [sections, setSections] = useState<string[]>([]);
   const [searchStaffQuery, setSearchStaffQuery] = useState('');
   const [searchStudentQuery, setSearchStudentQuery] = useState('');
   const [showStaffDropdown, setShowStaffDropdown] = useState(false);
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
   const [filteredStaff, setFilteredStaff] = useState<Staff[]>([]);
-  const [filteredStudents, setFilteredStudents] = useState<Array<{ id: string; student_name: string }>>([]);
+  const [filteredStudents, setFilteredStudents] = useState<Array<{ id: string; student_name: string; class?: string; section?: string }>>([]);
 
   const [formData, setFormData] = useState({
-    person_type: 'Staff',
+    person_type: 'staff' as 'staff' | 'student',
     person_id: '',
     person_name: '',
-    purpose: '',
-    leaving_with: '',
-    permitted_by_1: '',
-    permitted_by_1_name: '',
-    permitted_by_2: '',
-    permitted_by_2_name: '',
-    out_date_time: '',
-    in_date_time_tentative: '',
-    mobile_number: '',
-    remarks: '',
+    student_class: '',
+    student_section: '',
+    academic_year: '',
+    pass_type: '' as '' | 'early_leave' | 'late_entry' | 'half_day',
+    reason: '',
+    date: new Date().toISOString().split('T')[0],
+    time_out: new Date().toTimeString().split(' ')[0].substring(0, 5),
+    expected_return_time: '',
   });
 
   useEffect(() => {
     fetchStaff();
     fetchStudents();
-    fetchPurposes();
+    fetchClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    // Filter students by class and section when selected
+    if (formData.person_type === 'student' && (formData.student_class || formData.student_section)) {
+      let filtered = studentList;
+      if (formData.student_class) {
+        filtered = filtered.filter(s => s.class === formData.student_class);
+      }
+      if (formData.student_section) {
+        filtered = filtered.filter(s => s.section === formData.student_section);
+      }
+      
+      if (searchStudentQuery) {
+        filtered = filtered.filter((student) =>
+          student.student_name.toLowerCase().includes(searchStudentQuery.toLowerCase())
+        );
+      }
+      setFilteredStudents(filtered.slice(0, 10));
+    } else if (formData.person_type === 'student') {
+      if (searchStudentQuery) {
+        setFilteredStudents(
+          studentList.filter((student) =>
+            student.student_name.toLowerCase().includes(searchStudentQuery.toLowerCase())
+          ).slice(0, 10)
+        );
+      } else {
+        setFilteredStudents(studentList.slice(0, 10));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.student_class, formData.student_section, searchStudentQuery, studentList]);
+
+  useEffect(() => {
+    // Update sections when class changes
+    if (formData.student_class) {
+      const classSections = Array.from(
+        new Set(
+          classes
+            .filter(c => c.class === formData.student_class)
+            .map(c => c.section)
+        )
+      ).sort();
+      setSections(classSections);
+      // Clear section if it's not valid for the new class
+      if (formData.student_section && !classSections.includes(formData.student_section)) {
+        setFormData({ ...formData, student_section: '' });
+      }
+    } else {
+      setSections([]);
+      setFormData({ ...formData, student_section: '' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.student_class, classes]);
 
   useEffect(() => {
     if (searchStaffQuery) {
@@ -296,18 +356,6 @@ function CreateGatePassModal({
       setFilteredStaff(staffList.slice(0, 10));
     }
   }, [searchStaffQuery, staffList]);
-
-  useEffect(() => {
-    if (searchStudentQuery) {
-      setFilteredStudents(
-        studentList.filter((student) =>
-          student.student_name.toLowerCase().includes(searchStudentQuery.toLowerCase())
-        )
-      );
-    } else {
-      setFilteredStudents(studentList.slice(0, 10));
-    }
-  }, [searchStudentQuery, studentList]);
 
   const fetchStaff = async () => {
     try {
@@ -327,31 +375,95 @@ function CreateGatePassModal({
       const response = await fetch(`/api/students?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setStudentList(result.data);
-        setFilteredStudents(result.data.slice(0, 10));
+        const studentsWithClass = result.data.map((s: any) => ({
+          id: s.id,
+          student_name: s.student_name || s.full_name || `${s.first_name || ''} ${s.last_name || ''}`.trim(),
+          class: s.class,
+          section: s.section,
+        }));
+        setStudentList(studentsWithClass);
+        setFilteredStudents(studentsWithClass.slice(0, 10));
       }
     } catch (err) {
       console.error('Error fetching students:', err);
     }
   };
 
-  const fetchPurposes = async () => {
+  const fetchClasses = async () => {
     try {
-      const response = await fetch(`/api/gate-pass/purposes?school_code=${schoolCode}`);
+      const response = await fetch(`/api/classes?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setPurposes(result.data);
+        setClasses(result.data);
       }
     } catch (err) {
-      console.error('Error fetching purposes:', err);
+      console.error('Error fetching classes:', err);
     }
   };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.person_name || !formData.purpose || !formData.out_date_time) {
+    if (!formData.person_name || !formData.pass_type || !formData.reason || !formData.date || !formData.time_out) {
       alert('Please fill in all required fields');
+      return;
+    }
+
+    // Get current staff from session storage
+    const storedStaff = sessionStorage.getItem('staff');
+    let createdBy: string | null = null;
+    let approvedByName: string = '';
+    
+    if (storedStaff) {
+      try {
+        const staffData = JSON.parse(storedStaff);
+        createdBy = staffData.id || null;
+        approvedByName = staffData.full_name || '';
+      } catch {
+        // Ignore parse errors
+      }
+    }
+
+    // If no staff in session (accessing from main dashboard), fetch default admin/principal
+    // Check if we have valid values (not null, not empty string)
+    const hasValidStaff = createdBy && createdBy.toString().trim() !== '' && approvedByName && approvedByName.toString().trim() !== '';
+    
+    if (!hasValidStaff) {
+      try {
+        const response = await fetch(`/api/staff?school_code=${schoolCode}`);
+        const result = await response.json();
+        if (response.ok && result.data && Array.isArray(result.data) && result.data.length > 0) {
+          // Try to find principal or admin first
+          const principal = result.data.find((s: Staff) => 
+            s.role && (
+              s.role.toLowerCase().includes('principal') || 
+              s.role.toLowerCase().includes('admin')
+            )
+          );
+          // If no principal/admin, use the first staff member
+          const defaultStaff = principal || result.data[0];
+          if (defaultStaff && defaultStaff.id) {
+            createdBy = defaultStaff.id;
+            approvedByName = defaultStaff.full_name || 'Admin';
+          } else {
+            alert('Unable to create gate pass. No valid staff found for this school.');
+            return;
+          }
+        } else {
+          alert('Unable to create gate pass. No staff found for this school.');
+          return;
+        }
+      } catch (err) {
+        console.error('Error fetching default staff:', err);
+        alert('Unable to create gate pass. Please try again.');
+        return;
+      }
+    }
+
+    // Final validation - ensure we have valid values before proceeding
+    if (!createdBy || !approvedByName) {
+      alert('Unable to create gate pass. Staff information is missing.');
       return;
     }
 
@@ -362,11 +474,19 @@ function CreateGatePassModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
-          ...formData,
-          out_date_time: new Date(formData.out_date_time).toISOString(),
-          in_date_time_tentative: formData.in_date_time_tentative
-            ? new Date(formData.in_date_time_tentative).toISOString()
-            : null,
+          person_type: formData.person_type.toLowerCase(),
+          person_id: formData.person_id || null,
+          person_name: formData.person_name,
+          class: formData.person_type === 'student' ? formData.student_class : null,
+          section: formData.person_type === 'student' ? formData.student_section : null,
+          academic_year: formData.person_type === 'student' ? formData.academic_year : null,
+          pass_type: formData.pass_type,
+          reason: formData.reason,
+          date: formData.date,
+          time_out: formData.time_out,
+          expected_return_time: formData.expected_return_time || null,
+          approved_by_name: approvedByName,
+          created_by: createdBy,
         }),
       });
 
@@ -385,12 +505,21 @@ function CreateGatePassModal({
     }
   };
 
-  const selectPerson = (person: Staff | { id: string; student_name: string }) => {
+  const selectPerson = (person: Staff | { id: string; student_name: string; class?: string; section?: string }) => {
     const name = 'full_name' in person ? person.full_name : person.student_name;
+    const selectedClass = 'class' in person && person.class ? person.class : formData.student_class;
+    const selectedSection = 'section' in person && person.section ? person.section : formData.student_section;
+    
+    // Get academic_year from the selected class
+    const selectedClassData = classes.find(c => c.class === selectedClass && c.section === selectedSection);
+    
     setFormData({
       ...formData,
       person_id: person.id,
       person_name: name,
+      student_class: selectedClass,
+      student_section: selectedSection,
+      academic_year: selectedClassData?.academic_year || '',
     });
     setSearchStaffQuery('');
     setSearchStudentQuery('');
@@ -398,36 +527,28 @@ function CreateGatePassModal({
     setShowStudentDropdown(false);
   };
 
-  const selectPermittedBy = (staff: Staff, field: 'permitted_by_1' | 'permitted_by_2') => {
-    setFormData({
-      ...formData,
-      [field]: staff.id,
-      [`${field}_name`]: staff.full_name,
-    });
-  };
-
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-3xl bg-white rounded-lg shadow-xl my-8"
+        className="w-full max-w-3xl bg-white rounded-lg shadow-xl my-8 flex flex-col max-h-[90vh]"
       >
         {/* Header */}
-        <div className="bg-orange-500 text-white px-6 py-4 rounded-t-lg flex items-center justify-between">
+        <div className="bg-orange-500 text-white px-6 py-4 rounded-t-lg flex items-center justify-between flex-shrink-0">
           <h2 className="text-xl font-bold">Create Gate Pass</h2>
           <button onClick={onClose} className="text-white hover:text-gray-200">
             <X size={24} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1">
           {/* Person Detail Section */}
           <div>
-            <div className="bg-amber-900 text-white px-4 py-2 rounded-t-lg">
+            <div className="bg-[#1E3A8A] text-white px-4 py-2 rounded-t-lg">
               <h3 className="font-semibold">Person Detail</h3>
             </div>
-            <div className="border border-amber-900 rounded-b-lg p-4 space-y-4">
+            <div className="border border-[#1E3A8A] rounded-b-lg p-4 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Person Type <span className="text-red-500">*</span>
@@ -439,19 +560,85 @@ function CreateGatePassModal({
                     onChange={(e) => {
                       setFormData({
                         ...formData,
-                        person_type: e.target.value,
+                        person_type: e.target.value as 'staff' | 'student',
                         person_id: '',
                         person_name: '',
+                        student_class: '',
+                        student_section: '',
+                        academic_year: '',
                       });
+                      setSearchStaffQuery('');
+                      setSearchStudentQuery('');
+                      setShowStaffDropdown(false);
+                      setShowStudentDropdown(false);
                     }}
-                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
                     required
                   >
-                    <option value="Staff">Staff</option>
-                    <option value="Student">Student</option>
+                    <option value="staff">Staff</option>
+                    <option value="student">Student</option>
                   </select>
                 </div>
               </div>
+              {formData.person_type === 'student' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Class <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={formData.student_class}
+                      onChange={(e) => {
+                        setFormData({
+                          ...formData,
+                          student_class: e.target.value,
+                          student_section: '',
+                          academic_year: '',
+                          person_id: '',
+                          person_name: '',
+                        });
+                        setSearchStudentQuery('');
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
+                      required={formData.person_type === 'student'}
+                    >
+                      <option value="">Select Class</option>
+                      {Array.from(new Set(classes.map(c => c.class))).sort().map((cls) => (
+                        <option key={cls} value={cls}>{cls}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Section <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={formData.student_section}
+                      onChange={(e) => {
+                        const selectedSection = e.target.value;
+                        // Get academic_year from the selected class and section
+                        const selectedClassData = classes.find(c => c.class === formData.student_class && c.section === selectedSection);
+                        setFormData({
+                          ...formData,
+                          student_section: selectedSection,
+                          academic_year: selectedClassData?.academic_year || '',
+                          person_id: '',
+                          person_name: '',
+                        });
+                        setSearchStudentQuery('');
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
+                      required={formData.person_type === 'student'}
+                      disabled={!formData.student_class}
+                    >
+                      <option value="">Select Section</option>
+                      {sections.map((section) => (
+                        <option key={section} value={section}>{section}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   {formData.person_type} Name <span className="text-red-500">*</span>
@@ -460,30 +647,40 @@ function CreateGatePassModal({
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                   <Input
                     type="text"
-                    value={formData.person_type === 'Staff' ? searchStaffQuery : searchStudentQuery}
+                    value={formData.person_name || (formData.person_type === 'staff' ? searchStaffQuery : searchStudentQuery)}
                     onChange={(e) => {
-                      if (formData.person_type === 'Staff') {
+                      if (formData.person_type === 'staff') {
                         setSearchStaffQuery(e.target.value);
                         setShowStaffDropdown(true);
+                        setShowStudentDropdown(false);
+                        if (formData.person_name) {
+                          setFormData({ ...formData, person_id: '', person_name: '' });
+                        }
                       } else {
                         setSearchStudentQuery(e.target.value);
                         setShowStudentDropdown(true);
+                        setShowStaffDropdown(false);
+                        if (formData.person_name) {
+                          setFormData({ ...formData, person_id: '', person_name: '' });
+                        }
                       }
                     }}
                     onFocus={() => {
-                      if (formData.person_type === 'Staff') {
+                      if (formData.person_type === 'staff') {
                         setShowStaffDropdown(true);
+                        setShowStudentDropdown(false);
                       } else {
                         setShowStudentDropdown(true);
+                        setShowStaffDropdown(false);
                       }
                     }}
-                    placeholder={`Search ${formData.person_type}`}
+                    placeholder={formData.person_name ? formData.person_name : `Search ${formData.person_type}`}
                     className="pl-10"
                     required
                   />
-                  {(showStaffDropdown || showStudentDropdown) && (
+                  {((formData.person_type === 'staff' && showStaffDropdown) || (formData.person_type === 'student' && showStudentDropdown)) && (
                     <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {(formData.person_type === 'Staff' ? filteredStaff : filteredStudents).map((person) => (
+                      {(formData.person_type === 'staff' ? filteredStaff : filteredStudents).map((person) => (
                         <button
                           key={person.id}
                           type="button"
@@ -491,6 +688,9 @@ function CreateGatePassModal({
                           className="w-full text-left px-4 py-2 hover:bg-gray-100"
                         >
                           {'full_name' in person ? person.full_name : person.student_name}
+                          {'class' in person && person.class && (
+                            <span className="text-xs text-gray-500 ml-2">({person.class}-{person.section})</span>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -505,92 +705,45 @@ function CreateGatePassModal({
             </div>
           </div>
 
-          {/* Purpose Section */}
+          {/* Pass Type and Reason Section */}
           <div>
-            <div className="bg-amber-900 text-white px-4 py-2 rounded-t-lg">
-              <h3 className="font-semibold">Purpose</h3>
+            <div className="bg-[#1E3A8A] text-white px-4 py-2 rounded-t-lg">
+              <h3 className="font-semibold">Pass Type & Reason</h3>
             </div>
-            <div className="border border-amber-900 rounded-b-lg p-4 space-y-4">
+            <div className="border border-[#1E3A8A] rounded-b-lg p-4 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Add Purpose of going out <span className="text-red-500">*</span>
+                  Pass Type <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                   <select
-                    value={formData.purpose}
-                    onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    value={formData.pass_type}
+                    onChange={(e) => setFormData({ ...formData, pass_type: e.target.value as 'early_leave' | 'late_entry' | 'half_day' })}
+                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
                     required
                   >
-                    <option value="">Select Purpose</option>
-                    {purposes.map((purpose) => (
-                      <option key={purpose.id} value={purpose.purpose_name}>
-                        {purpose.purpose_name}
-                      </option>
-                    ))}
+                    <option value="">Select Pass Type</option>
+                    <option value="early_leave">Early Leave</option>
+                    <option value="late_entry">Late Entry</option>
+                    <option value="half_day">Half Day</option>
                   </select>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Leaving With</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Reason <span className="text-red-500">*</span>
+                </label>
                 <div className="relative">
                   <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                   <Input
                     type="text"
-                    value={formData.leaving_with}
-                    onChange={(e) => setFormData({ ...formData, leaving_with: e.target.value })}
-                    placeholder="Leaving With"
+                    value={formData.reason}
+                    onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                    placeholder="Enter reason for gate pass"
                     className="pl-10"
+                    required
                   />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Permitted By (1)</label>
-                  <div className="relative">
-                    <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                    <select
-                      value={formData.permitted_by_1}
-                      onChange={(e) => {
-                        const staff = staffList.find((s) => s.id === e.target.value);
-                        if (staff) {
-                          selectPermittedBy(staff, 'permitted_by_1');
-                        }
-                      }}
-                      className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="">Select Staff</option>
-                      {staffList.map((staff) => (
-                        <option key={staff.id} value={staff.id}>
-                          {staff.full_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Permitted By (2)</label>
-                  <div className="relative">
-                    <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                    <select
-                      value={formData.permitted_by_2}
-                      onChange={(e) => {
-                        const staff = staffList.find((s) => s.id === e.target.value);
-                        if (staff) {
-                          selectPermittedBy(staff, 'permitted_by_2');
-                        }
-                      }}
-                      className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="">Select Staff</option>
-                      {staffList.map((staff) => (
-                        <option key={staff.id} value={staff.id}>
-                          {staff.full_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
               </div>
             </div>
@@ -598,71 +751,53 @@ function CreateGatePassModal({
 
           {/* Date & Time Section */}
           <div>
-            <div className="bg-amber-900 text-white px-4 py-2 rounded-t-lg">
+            <div className="bg-[#1E3A8A] text-white px-4 py-2 rounded-t-lg">
               <h3 className="font-semibold">Date & Time</h3>
             </div>
-            <div className="border border-amber-900 rounded-b-lg p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Out Date & Time <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                  <Input
-                    type="datetime-local"
-                    value={formData.out_date_time}
-                    onChange={(e) => setFormData({ ...formData, out_date_time: e.target.value })}
-                    required
-                    className="pr-10"
-                  />
+            <div className="border border-[#1E3A8A] rounded-b-lg p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Date <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                    <Input
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      required
+                      className="pr-10"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Time Out <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                    <Input
+                      type="time"
+                      value={formData.time_out}
+                      onChange={(e) => setFormData({ ...formData, time_out: e.target.value })}
+                      required
+                      className="pr-10"
+                    />
+                  </div>
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  In Date & Time (Tentative)
+                  Expected Return Time
                 </label>
                 <div className="relative">
                   <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                   <Input
-                    type="datetime-local"
-                    value={formData.in_date_time_tentative}
-                    onChange={(e) => setFormData({ ...formData, in_date_time_tentative: e.target.value })}
+                    type="time"
+                    value={formData.expected_return_time}
+                    onChange={(e) => setFormData({ ...formData, expected_return_time: e.target.value })}
                     className="pr-10"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Authenticate (Optional) Section */}
-          <div>
-            <div className="bg-amber-900 text-white px-4 py-2 rounded-t-lg">
-              <h3 className="font-semibold">Authenticate (Optional)</h3>
-            </div>
-            <div className="border border-amber-900 rounded-b-lg p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Mobile Number</label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                  <Input
-                    type="tel"
-                    value={formData.mobile_number}
-                    onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
-                    placeholder="Mobile Number"
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Remarks</label>
-                <div className="relative">
-                  <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                  <Input
-                    type="text"
-                    value={formData.remarks}
-                    onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                    placeholder="Remarks"
-                    className="pl-10"
                   />
                 </div>
               </div>
@@ -670,7 +805,7 @@ function CreateGatePassModal({
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end pt-4 border-t border-gray-200">
+          <div className="flex justify-end pt-4 border-t border-gray-200 flex-shrink-0">
             <Button
               type="button"
               variant="outline"
@@ -682,7 +817,7 @@ function CreateGatePassModal({
             <Button
               type="submit"
               disabled={saving}
-              className="bg-gray-500 hover:bg-gray-600 text-white"
+              className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E40AF] hover:to-[#2563EB] text-white"
             >
               <FileText size={18} className="mr-2" />
               {saving ? 'Saving...' : 'SAVE'}

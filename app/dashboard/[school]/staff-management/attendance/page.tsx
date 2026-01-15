@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -271,6 +271,28 @@ export default function StaffAttendancePage({
         </div>
       </motion.div>
 
+      {/* Success Alert */}
+      <AnimatePresence>
+        {saveSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2 shadow-sm"
+          >
+            <CheckCircle size={20} className="text-green-600 flex-shrink-0" />
+            <span className="font-medium">
+              Staff attendance has been marked successfully for {new Date(selectedDate).toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}!
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Date Selection and Stats */}
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -286,12 +308,6 @@ export default function StaffAttendancePage({
               />
             </div>
           </div>
-          {saveSuccess && (
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle size={20} />
-              <span className="font-medium">Attendance saved successfully!</span>
-            </div>
-          )}
         </div>
 
         {/* Statistics */}

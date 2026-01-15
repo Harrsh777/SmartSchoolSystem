@@ -23,6 +23,9 @@ export default function AddStaffPage({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [formData, setFormData] = useState({
     // Required fields (removed staff_id, employee_code, rfid, uuid, short_code - these are auto-generated)
     full_name: '',
@@ -153,7 +156,32 @@ export default function AddStaffPage({
 
       const result = await response.json();
 
-      if (response.ok) {
+      if (response.ok && result.data) {
+        // Upload photo if provided (optional)
+        if (photoFile && result.data.id) {
+          try {
+            setUploadingPhoto(true);
+            const photoFormData = new FormData();
+            photoFormData.append('file', photoFile);
+            photoFormData.append('school_code', schoolCode);
+            photoFormData.append('staff_id', result.data.id);
+
+            const photoResponse = await fetch('/api/staff/photos/individual', {
+              method: 'POST',
+              body: photoFormData,
+            });
+
+            if (!photoResponse.ok) {
+              console.error('Photo upload failed, but staff was created successfully');
+            }
+          } catch (photoError) {
+            console.error('Error uploading photo:', photoError);
+            // Don't fail the whole operation if photo upload fails
+          } finally {
+            setUploadingPhoto(false);
+          }
+        }
+
         router.push(`/dashboard/${schoolCode}/staff-management/directory`);
       } else {
         alert(result.error || 'Failed to add staff');
@@ -602,6 +630,78 @@ export default function AddStaffPage({
               </div>
             </div>
 
+            {/* Photo Upload Section (Optional) */}
+            <div className="mb-6">
+              <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Profile Photo (Optional)</h3>
+                <div className="flex items-start gap-6">
+                  <div className="flex-shrink-0">
+                    {photoPreview ? (
+                      <div className="relative">
+                        <img
+                          src={photoPreview}
+                          alt="Preview"
+                          className="w-32 h-32 rounded-lg object-cover border-2 border-gray-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPhotoFile(null);
+                            setPhotoPreview(null);
+                          }}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-32 h-32 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-100">
+                        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Upload Photo
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/gif"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          // Validate file size (5MB max)
+                          if (file.size > 5 * 1024 * 1024) {
+                            alert('File size must be less than 5MB');
+                            return;
+                          }
+                          // Validate file type
+                          if (!['image/jpeg', 'image/jpg', 'image/png', 'image/gif'].includes(file.type)) {
+                            alert('Only JPG, PNG, and GIF images are allowed');
+                            return;
+                          }
+                          setPhotoFile(file);
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setPhotoPreview(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                    <p className="mt-2 text-xs text-gray-500">
+                      Allowed formats: JPG, PNG, GIF. Maximum size: 5MB
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-end gap-3 pt-4 mt-4 border-t border-gray-200 flex-shrink-0 bg-white sticky bottom-0">
               <Button
                 type="button"
@@ -610,8 +710,8 @@ export default function AddStaffPage({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? 'Adding...' : 'Add Staff'}
+              <Button type="submit" disabled={loading || uploadingPhoto}>
+                {loading || uploadingPhoto ? (uploadingPhoto ? 'Uploading Photo...' : 'Adding...') : 'Add Staff'}
               </Button>
             </div>
           </form>

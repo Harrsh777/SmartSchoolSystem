@@ -73,13 +73,13 @@ export async function POST(request: NextRequest) {
 
       for (const member of batch) {
         try {
-          const { password, hash } = await generateAndHashPassword();
+          const { password, hashedPassword } = await generateAndHashPassword();
           const isExisting = existingStaffIds.has(member.staff_id);
 
           loginRecords.push({
             school_code: member.school_code,
             staff_id: member.staff_id,
-            password_hash: hash,
+            password_hash: hashedPassword,
             plain_password: password, // Store plain text password
             is_active: true,
           });

@@ -47,7 +47,17 @@ interface TeacherLayoutProps {
 }
 
 // Teacher-specific menu items (always shown)
-const teacherBaseItems = [
+type TeacherMenuItem = {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  path: string;
+  permission: string | null;
+  viewPermission: string | null;
+  requiresClassTeacher?: boolean;
+};
+
+const teacherBaseItems: TeacherMenuItem[] = [
   { id: 'home', label: 'Home', icon: Home, path: '/teacher/dashboard', permission: null, viewPermission: null },
   { id: 'attendance', label: 'Mark Attendance', icon: Calendar, path: '/teacher/dashboard/attendance', permission: null, viewPermission: null },
   { id: 'my-attendance', label: 'My Attendance', icon: Calendar, path: '/teacher/dashboard/attendance-staff', permission: null, viewPermission: null },
@@ -58,26 +68,26 @@ const teacherBaseItems = [
 ];
 
 // All menu items from main dashboard (mapped to teacher paths)
-const dashboardMenuItems = [
-  { icon: Building2, label: 'Institute Info', path: '/teacher/dashboard/institute-info', permission: null, viewPermission: null },
-  { icon: Key, label: 'Password Manager', path: '/teacher/dashboard/password', permission: 'manage_passwords', viewPermission: 'manage_passwords' },
-  { icon: UserCheck, label: 'Staff Management', path: '/teacher/dashboard/staff-management', permission: 'manage_staff', viewPermission: 'view_staff' },
-  { icon: BookOpen, label: 'Classes', path: '/teacher/dashboard/classes', permission: 'manage_classes', viewPermission: 'view_classes' },
-  { icon: GraduationCap, label: 'Student Management', path: '/teacher/dashboard/students', permission: 'manage_students', viewPermission: 'view_students' },
-  { icon: CalendarDays, label: 'Timetable', path: '/teacher/dashboard/timetable', permission: 'manage_timetable', viewPermission: 'view_timetable' },
-  { icon: CalendarDays, label: 'Event/Calendar', path: '/teacher/dashboard/calendar', permission: 'manage_events', viewPermission: 'view_events' },
-  { icon: FileText, label: 'Examinations', path: '/teacher/dashboard/examinations', permission: 'manage_exams', viewPermission: 'view_exams' },
-  { icon: DollarSign, label: 'Fees', path: '/teacher/dashboard/fees', permission: 'manage_fees', viewPermission: 'view_fees' },
-  { icon: Library, label: 'Library', path: '/teacher/dashboard/library', permission: 'manage_library', viewPermission: 'view_library' },
-  { icon: Bus, label: 'Transport', path: '/teacher/dashboard/transport', permission: 'manage_transport', viewPermission: 'view_transport' },
-  { icon: MessageSquare, label: 'Communication', path: '/teacher/dashboard/communication', permission: 'manage_communication', viewPermission: 'view_communication' },
-  { icon: FileBarChart, label: 'Report', path: '/teacher/dashboard/reports', permission: 'view_reports', viewPermission: 'view_reports' },
-  { icon: Image, label: 'Gallery', path: '/teacher/dashboard/gallery', permission: null, viewPermission: null },
-  { icon: Award, label: 'Certificate Management', path: '/teacher/dashboard/certificates', permission: 'manage_certificates', viewPermission: 'view_certificates' },
-  { icon: BookMarked, label: 'Digital Diary', path: '/teacher/dashboard/homework', permission: 'manage_homework', viewPermission: 'view_homework' },
-  { icon: TrendingUp, label: 'Expense/income', path: '/teacher/dashboard/expense-income', permission: 'manage_finances', viewPermission: 'view_finances' },
-  { icon: DoorOpen, label: 'Gate pass', path: '/teacher/dashboard/gate-pass', permission: 'manage_gate_pass', viewPermission: 'view_gate_pass' },
-  { icon: Settings, label: 'Settings', path: '/teacher/dashboard/settings', permission: null, viewPermission: null },
+const dashboardMenuItems: TeacherMenuItem[] = [
+  { id: 'institute-info', icon: Building2, label: 'Institute Info', path: '/teacher/dashboard/institute-info', permission: null, viewPermission: null },
+  { id: 'password', icon: Key, label: 'Password Manager', path: '/teacher/dashboard/password', permission: 'manage_passwords', viewPermission: 'manage_passwords' },
+  { id: 'staff-management', icon: UserCheck, label: 'Staff Management', path: '/teacher/dashboard/staff-management', permission: 'manage_staff', viewPermission: 'view_staff' },
+  { id: 'classes-dash', icon: BookOpen, label: 'Classes', path: '/teacher/dashboard/classes', permission: 'manage_classes', viewPermission: 'view_classes' },
+  { id: 'students', icon: GraduationCap, label: 'Student Management', path: '/teacher/dashboard/students', permission: 'manage_students', viewPermission: 'view_students' },
+  { id: 'timetable', icon: CalendarDays, label: 'Timetable', path: '/teacher/dashboard/timetable', permission: 'manage_timetable', viewPermission: 'view_timetable' },
+  { id: 'calendar', icon: CalendarDays, label: 'Event/Calendar', path: '/teacher/dashboard/calendar', permission: 'manage_events', viewPermission: 'view_events' },
+  { id: 'examinations', icon: FileText, label: 'Examinations', path: '/teacher/dashboard/examinations', permission: 'manage_exams', viewPermission: 'view_exams' },
+  { id: 'fees', icon: DollarSign, label: 'Fees', path: '/teacher/dashboard/fees', permission: 'manage_fees', viewPermission: 'view_fees' },
+  { id: 'library', icon: Library, label: 'Library', path: '/teacher/dashboard/library', permission: 'manage_library', viewPermission: 'view_library' },
+  { id: 'transport', icon: Bus, label: 'Transport', path: '/teacher/dashboard/transport', permission: 'manage_transport', viewPermission: 'view_transport' },
+  { id: 'communication', icon: MessageSquare, label: 'Communication', path: '/teacher/dashboard/communication', permission: 'manage_communication', viewPermission: 'view_communication' },
+  { id: 'reports', icon: FileBarChart, label: 'Report', path: '/teacher/dashboard/reports', permission: 'view_reports', viewPermission: 'view_reports' },
+  { id: 'gallery', icon: Image, label: 'Gallery', path: '/teacher/dashboard/gallery', permission: null, viewPermission: null },
+  { id: 'certificates', icon: Award, label: 'Certificate Management', path: '/teacher/dashboard/certificates', permission: 'manage_certificates', viewPermission: 'view_certificates' },
+  { id: 'homework', icon: BookMarked, label: 'Digital Diary', path: '/teacher/dashboard/homework', permission: 'manage_homework', viewPermission: 'view_homework' },
+  { id: 'expense-income', icon: TrendingUp, label: 'Expense/income', path: '/teacher/dashboard/expense-income', permission: 'manage_finances', viewPermission: 'view_finances' },
+  { id: 'gate-pass', icon: DoorOpen, label: 'Gate pass', path: '/teacher/dashboard/gate-pass', permission: 'manage_gate_pass', viewPermission: 'view_gate_pass' },
+  { id: 'settings', icon: Settings, label: 'Settings', path: '/teacher/dashboard/settings', permission: null, viewPermission: null },
 ];
 
 export default function TeacherLayout({ children }: TeacherLayoutProps) {
@@ -92,10 +102,10 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [staffPermissions, setStaffPermissions] = useState<any>(null);
 
-  // Session timeout (10 minutes)
+  // Session timeout (15 minutes)
   const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
-    timeoutMinutes: 10,
-    warningMinutes: 9,
+    timeoutMinutes: 15,
+    warningMinutes: 14,
     loginPath: '/login',
   });
 
@@ -170,7 +180,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       'Staff Directory': ['view_staff'],
       'Add Staff': ['manage_staff', 'view_staff'],
       'Bulk Staff import': ['manage_staff', 'view_staff'],
-      'Bulk Photo Upload': ['manage_staff', 'view_staff'],
+      'Bulk Staff Photo Upload': ['manage_staff', 'view_staff'],
       'Staff Attendance': ['view_staff'],
       'Student Attendance Marking Report': ['view_staff'],
       'Quick Staff Search': ['view_staff'],
@@ -189,7 +199,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       // Student Management
       'Add student': ['manage_students', 'view_students'],
       'Bulk Student Import': ['manage_students', 'view_students'],
-      'Bulk Photo Upload': ['manage_students', 'view_students'],
+      'Bulk Student Photo Upload': ['manage_students', 'view_students'],
       'Student Directory': ['view_students'],
       'New Admission Report': ['view_students'],
       'Student Attendance': ['view_students'],
@@ -307,7 +317,9 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     }
   };
 
-  const hasPermission = (item: typeof dashboardMenuItems[0]): boolean => {
+  type MenuItem = TeacherMenuItem;
+
+  const hasPermission = (item: MenuItem): boolean => {
     // Always visible items (no permission required)
     if (!item.permission && !item.viewPermission) return true;
     
@@ -330,7 +342,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   });
 
   // Combine teacher items with dashboard items
-  const allMenuItems = [
+  const allMenuItems: MenuItem[] = [
     ...filteredTeacherItems,
     ...dashboardMenuItems,
   ];
@@ -365,7 +377,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                 {sidebarOpen ? <X size={24} className="text-[#1e3a8a]" /> : <Menu size={24} className="text-[#1e3a8a]" />}
               </button>
               <Link href="/" className="text-xl font-bold text-[#1e3a8a]">
-                Edu<span className="text-[#5A7A9A]">-Yan</span>
+                Edu<span className="text-[#5A7A9A]">-Core</span>
               </Link>
               <div className="hidden sm:block h-6 w-px bg-[#E1E1DB]" />
               <span className="hidden sm:block text-[#1e3a8a] font-semibold">{school?.school_name || teacher.school_code}</span>
@@ -377,7 +389,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                   <p className="text-xs text-[#5A7A9A]">{teacher.role || 'Teacher'}</p>
                 </div>
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold">
-                  {teacher.full_name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                  {teacher.full_name.split(' ').map((n) => n[0] || '').join('').substring(0, 2)}
                 </div>
               </div>
               <Button
@@ -435,11 +447,12 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                   {allMenuItems.map((item, index) => {
                     const Icon = item.icon;
                     const active = isActive(item.path);
-                    const enabled = hasPermission(item as typeof dashboardMenuItems[0]);
+                    const enabled = hasPermission(item);
                     const isTeacherItem = index < filteredTeacherItems.length;
+                    const itemId = item.id;
                     
                     return (
-                      <div key={item.id || item.label} className="relative sidebar-menu-item">
+                      <div key={itemId} className="relative sidebar-menu-item">
                         <div className="flex items-center gap-1">
                           {enabled ? (
                             <Link

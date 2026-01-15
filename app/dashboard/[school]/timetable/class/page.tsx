@@ -179,12 +179,25 @@ export default function ClassTimetablePage({
     }
   }, [selectedClassName, selectedSection, classes]);
 
+  // Fetch subjects when period group is selected (even without class)
   useEffect(() => {
-    if (selectedClass) {
-      fetchData();
+    if (periodGroup) {
+      fetchSubjects(selectedClass?.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode, selectedClass, periodGroup]);
+  }, [periodGroup]);
+
+  // Fetch subjects and slots when class is selected
+  useEffect(() => {
+    if (selectedClass && periodGroup) {
+      fetchSubjects(selectedClass.id);
+      fetchTimetableSlots();
+    } else if (periodGroup && !selectedClass) {
+      // Just fetch all subjects if period group is selected but no class
+      fetchSubjects();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClass, periodGroup]);
 
   const fetchClasses = async () => {
     try {
@@ -207,6 +220,9 @@ export default function ClassTimetablePage({
             .map((assignment: AssignmentData) => assignment.class)
             .filter((cls: ClassData | undefined) => cls !== null && cls !== undefined);
           setClasses(assignedClasses);
+        } else {
+          console.error('Failed to fetch classes for period group:', result.error);
+          setClasses([]);
         }
       } else {
         // If no period group selected, fetch all classes
@@ -214,10 +230,14 @@ export default function ClassTimetablePage({
         const result = await response.json();
         if (response.ok && result.data) {
           setClasses(result.data);
+        } else {
+          console.error('Failed to fetch classes:', result.error);
+          setClasses([]);
         }
       }
     } catch (error) {
       console.error('Error fetching classes:', error);
+      setClasses([]);
     }
   };
 
@@ -242,30 +262,52 @@ export default function ClassTimetablePage({
     }
   };
 
-  const fetchData = async () => {
-    if (!selectedClass || !periodGroup) return;
-    
+  // Fetch subjects (can be called with or without class)
+  const fetchSubjects = async (classId?: string) => {
     try {
-      setLoading(true);
-      const [subjectsRes, slotsRes] = await Promise.all([
-        fetch(`/api/timetable/subjects?school_code=${schoolCode}&class_id=${selectedClass.id}`),
-        fetch(`/api/timetable/slots?school_code=${schoolCode}&class_id=${selectedClass.id}`),
-      ]);
+      const url = classId 
+        ? `/api/timetable/subjects?school_code=${schoolCode}&class_id=${classId}`
+        : `/api/timetable/subjects?school_code=${schoolCode}`;
+      
+      const response = await fetch(url);
+      const result = await response.json();
 
-      const subjectsData = await subjectsRes.json();
-      const slotsData = await slotsRes.json();
-
-      if (subjectsRes.ok && subjectsData.data) {
-        setSubjects(subjectsData.data);
-      }
-
-      if (slotsRes.ok && slotsData.data) {
-        setSlots(slotsData.data);
+      if (response.ok && result.data) {
+        setSubjects(result.data);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error fetching subjects:', error);
+    }
+  };
+
+  // Fetch timetable slots for selected class
+  const fetchTimetableSlots = async () => {
+    if (!selectedClass) {
+      setSlots([]);
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/timetable/slots?school_code=${schoolCode}&class_id=${selectedClass.id}`);
+      const result = await response.json();
+
+      if (response.ok && result.data) {
+        setSlots(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching timetable slots:', error);
+    }
+  };
+
+  const fetchData = async () => {
+    if (!periodGroup) return;
+    
+    // Always fetch subjects (with or without class)
+    await fetchSubjects(selectedClass?.id);
+    
+    // Only fetch slots if class is selected
+    if (selectedClass) {
+      await fetchTimetableSlots();
     }
   };
 
@@ -302,6 +344,7 @@ export default function ClassTimetablePage({
     setSaving(`${day}-${periodOrder}`);
 
     try {
+      const periodGroupId = periodGroup?.id || null;
       const response = await fetch('/api/timetable/slots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -309,8 +352,9 @@ export default function ClassTimetablePage({
           school_code: schoolCode,
           class_id: selectedClass.id,
           day: day,
-          period: periodOrder,
+          period_order: periodOrder, // Use period_order instead of period
           subject_id: subjectId,
+          period_group_id: periodGroupId, // Sync with period group
         }),
       });
 
@@ -349,18 +393,22 @@ export default function ClassTimetablePage({
           setSlots(prev => [...prev, newSlot]);
         }
       } else {
-        alert(result.error || 'Failed to save timetable slot');
+        console.error('Failed to save slot:', result);
+        const errorDetails = result.details ? `\nDetails: ${result.details}` : '';
+        const errorCode = result.code ? `\nCode: ${result.code}` : '';
+        const errorHint = result.hint ? `\nHint: ${result.hint}` : '';
+        alert(`Failed to save timetable slot: ${result.error}${errorDetails}${errorCode}${errorHint}`);
       }
     } catch (error) {
       console.error('Error saving slot:', error);
-      alert('Failed to save timetable slot. Please try again.');
+      alert('Failed to save timetable slot. Please check your connection and try again.');
     } finally {
       setSaving(null);
     }
   };
 
   const handleClearSlot = async (day: string, periodOrder: number) => {
-    if (!selectedClass) return;
+    if (!selectedClass || !periodGroup) return;
 
     setSaving(`${day}-${periodOrder}`);
 
@@ -372,15 +420,20 @@ export default function ClassTimetablePage({
           school_code: schoolCode,
           class_id: selectedClass.id,
           day: day,
-          period: periodOrder,
+          period_order: periodOrder, // Use period_order instead of period
         }),
       });
 
+      const result = await response.json();
+
       if (response.ok) {
         setSlots(prev => prev.filter(s => !(s.day === day && s.period_order === periodOrder)));
+      } else {
+        alert(result.error || 'Failed to clear slot. Please try again.');
       }
     } catch (error) {
       console.error('Error clearing slot:', error);
+      alert('Failed to clear slot. Please try again.');
     } finally {
       setSaving(null);
     }
@@ -392,7 +445,7 @@ export default function ClassTimetablePage({
   };
 
   const handleSaveTeachers = async (teacherIds: string[]) => {
-    if (!selectedSlot || !selectedClass) return;
+    if (!selectedSlot || !selectedClass || !periodGroup) return;
 
     const slot = getSlot(selectedSlot.day, selectedSlot.periodOrder);
     if (!slot || !slot.subject_id) return;
@@ -400,6 +453,7 @@ export default function ClassTimetablePage({
     setSaving(`${selectedSlot.day}-${selectedSlot.periodOrder}`);
 
     try {
+      const periodGroupId = periodGroup?.id || null;
       const response = await fetch('/api/timetable/slots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -410,6 +464,7 @@ export default function ClassTimetablePage({
           period_order: selectedSlot.periodOrder,
           subject_id: slot.subject_id,
           teacher_ids: teacherIds,
+          period_group_id: periodGroupId, // Sync with period group
         }),
       });
 
@@ -459,7 +514,10 @@ export default function ClassTimetablePage({
         return;
       }
 
-      // Save each slot
+      // Get period group ID if available
+      const periodGroupId = periodGroup?.id || null;
+
+      // Save each slot with period_group_id and auto-generate teacher timetables
       const savePromises = slotsToSave.map(slot =>
         fetch('/api/timetable/slots', {
           method: 'POST',
@@ -471,22 +529,36 @@ export default function ClassTimetablePage({
             period_order: slot.period_order,
             subject_id: slot.subject_id,
             teacher_ids: slot.teacher_ids || [],
+            period_group_id: periodGroupId, // Sync with period group
           }),
         })
       );
 
       const results = await Promise.all(savePromises);
-      const allSuccessful = results.every(r => r.ok);
+      
+      // Check each result for errors
+      const errors: string[] = [];
+      await Promise.all(
+        results.map(async (r, index) => {
+          if (!r.ok) {
+            const errorData = await r.json().catch(() => ({ error: 'Unknown error' }));
+            errors.push(`Slot ${index + 1}: ${errorData.error || 'Failed to save'}`);
+          }
+        })
+      );
 
-      if (allSuccessful) {
+      if (errors.length === 0) {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
+        // Refresh slots to get latest data
+        await fetchTimetableSlots();
       } else {
-        alert('Some slots failed to save. Please check and try again.');
+        console.error('Some slots failed to save:', errors);
+        alert(`Some slots failed to save:\n${errors.join('\n')}\n\nPlease check and try again.`);
       }
     } catch (error) {
       console.error('Error saving timetable:', error);
-      alert('Failed to save timetable. Please try again.');
+      alert('Failed to save timetable. Please check your connection and try again.');
     } finally {
       setSavingAll(false);
     }
@@ -612,24 +684,31 @@ export default function ClassTimetablePage({
           <h1 className="text-3xl font-bold text-black mb-2">Class Time Table</h1>
           <p className="text-[#64748B]">Drag and drop subjects to create class timetables</p>
         </div>
-        <div className="flex gap-3">
-          <select
-            value={periodGroup?.id || ''}
-            onChange={(e) => {
-              const group = periodGroups.find(g => g.id === e.target.value);
-              if (group) {
-                setPeriodGroup(group);
-                setSelectedClass(null); // Reset selected class when group changes
-                setSelectedClassName(''); // Reset class selection
-                setSelectedSection(''); // Reset section selection
-              }
-            }}
-            className="px-4 py-2.5 border border-[#E5E7EB] rounded-lg text-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-[#2F6FED] focus:border-transparent transition-all bg-white"
-          >
-            {periodGroups.map(g => (
-              <option key={g.id} value={g.id}>{g.group_name}</option>
-            ))}
-          </select>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-semibold text-[#0F172A] whitespace-nowrap">Period Group:</label>
+            <select
+              value={periodGroup?.id || ''}
+              onChange={(e) => {
+                const group = periodGroups.find(g => g.id === e.target.value);
+                if (group) {
+                  setPeriodGroup(group);
+                  setSelectedClass(null); // Reset selected class when group changes
+                  setSelectedClassName(''); // Reset class selection
+                  setSelectedSection(''); // Reset section selection
+                  setSlots([]); // Clear slots when group changes
+                }
+              }}
+              className="px-4 py-2.5 border border-[#E5E7EB] rounded-lg text-[#0F172A] text-sm focus:outline-none focus:ring-2 focus:ring-[#2F6FED] focus:border-transparent transition-all bg-white min-w-[200px] font-medium"
+            >
+              <option value="">
+                {periodGroups.length === 0 ? 'No period groups' : 'Select Period Group'}
+              </option>
+              {periodGroups.map(g => (
+                <option key={g.id} value={g.id}>{g.group_name} {g.is_active ? '(Active)' : ''}</option>
+              ))}
+            </select>
+          </div>
           <Button
             variant="outline"
             onClick={() => router.push(`/dashboard/${schoolCode}/timetable/group-wise`)}
@@ -723,7 +802,7 @@ export default function ClassTimetablePage({
         </div>
       </Card>
 
-      {selectedClass && (
+      {periodGroup && (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -734,56 +813,73 @@ export default function ClassTimetablePage({
             {/* Subjects */}
             <Card>
               <h2 className="text-lg font-bold text-[#0F172A] mb-4">Subjects</h2>
-              <SortableContext items={subjects.map(s => s.id)} strategy={rectSortingStrategy}>
-                <div className="space-y-2">
-                  {subjects.map(subject => (
-                    <SubjectChip
-                      key={subject.id}
-                      subject={subject}
-                      isDragging={activeId === subject.id}
-                    />
-                  ))}
+              {subjects.length > 0 ? (
+                <SortableContext items={subjects.map(s => s.id)} strategy={rectSortingStrategy}>
+                  <div className="space-y-2">
+                    {subjects.map(subject => (
+                      <SubjectChip
+                        key={subject.id}
+                        subject={subject}
+                        isDragging={activeId === subject.id}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 text-sm">
+                    {selectedClass 
+                      ? 'No subjects available for this class. Please create subjects first.' 
+                      : 'Select a class to view subjects'}
+                  </p>
                 </div>
-              </SortableContext>
+              )}
             </Card>
 
             {/* Timetable Grid */}
             <div className="lg:col-span-3">
               <Card>
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-[#0F172A] bg-[#F1F5F9] border border-[#E5E7EB]">
-                          Time
-                        </th>
-                        {days.map(day => (
-                          <th
-                            key={day}
-                            className="px-4 py-3 text-center text-sm font-semibold text-[#0F172A] bg-[#F1F5F9] border border-[#E5E7EB] min-w-[120px]"
-                          >
-                            {day}
+                {selectedClass ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-[#0F172A] bg-[#F1F5F9] border border-[#E5E7EB]">
+                            Time
                           </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allPeriods.map(period => (
-                        <tr key={period.id}>
-                          <td className="px-4 py-3 text-sm font-medium text-[#0F172A] bg-[#F1F5F9] border border-[#E5E7EB]">
-                            {period.period_start_time} - {period.period_end_time}
-                            <div className="text-xs text-[#64748B] mt-1">
-                              {period.period_name}
-                            </div>
-                          </td>
                           {days.map(day => (
-                            <TimetableCell key={`${day}-${period.period_order}`} day={day} period={period} />
+                            <th
+                              key={day}
+                              className="px-4 py-3 text-center text-sm font-semibold text-[#0F172A] bg-[#F1F5F9] border border-[#E5E7EB] min-w-[120px]"
+                            >
+                              {day}
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {allPeriods.map(period => (
+                          <tr key={period.id}>
+                            <td className="px-4 py-3 text-sm font-medium text-[#0F172A] bg-[#F1F5F9] border border-[#E5E7EB]">
+                              {period.period_start_time} - {period.period_end_time}
+                              <div className="text-xs text-[#64748B] mt-1">
+                                {period.period_name}
+                              </div>
+                            </td>
+                            {days.map(day => (
+                              <TimetableCell key={`${day}-${period.period_order}`} day={day} period={period} />
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500 text-lg">Select a class to create timetable</p>
+                    <p className="text-gray-400 text-sm mt-2">Choose a class and section above to start</p>
+                  </div>
+                )}
               </Card>
             </div>
           </div>
@@ -811,6 +907,7 @@ export default function ClassTimetablePage({
           onSave={handleSaveTeachers}
           schoolCode={schoolCode}
           subjectName={getSlot(selectedSlot.day, selectedSlot.periodOrder)?.subject?.name || ''}
+          subjectId={getSlot(selectedSlot.day, selectedSlot.periodOrder)?.subject_id || null}
           existingTeacherIds={getSlot(selectedSlot.day, selectedSlot.periodOrder)?.teacher_ids || []}
         />
       )}
