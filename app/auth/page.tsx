@@ -80,24 +80,35 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-[#F5EFEB] via-[#F0F5F9] to-[#EBF2F7] dark:bg-[#0f172a] flex items-center justify-center px-4 py-12">
+      {/* Decorative background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 right-0 w-72 h-72 bg-gradient-to-br from-[#5A7A95]/20 via-[#6B9BB8]/20 to-[#7DB5D3]/20 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-20 left-0 w-96 h-96 bg-gradient-to-br from-[#6B9BB8]/15 via-[#7DB5D3]/15 to-[#5A7A95]/15 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+      </div>
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md relative z-10"
       >
         <div className="text-center mb-8">
           <Link href="/" className="inline-block">
-            <h1 className="text-3xl font-bold text-black mb-2">
-              Edu<span className="text-gray-600">Core</span>
-            </h1>
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
+                <span className="text-white font-bold text-xl">E</span>
+              </div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white">
+                EduCore
+              </h1>
+            </div>
           </Link>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-400">
             {isSignup ? 'Create your school account' : 'Sign in to your account'}
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
+        <div className="bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-xl rounded-2xl shadow-xl p-8 border border-[#E1E1DB] dark:border-[#2F4156]">
           <AnimatePresence mode="wait">
             {!isSignup ? (
               <motion.div
@@ -127,7 +138,7 @@ export default function AuthPage() {
                   />
 
                   {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
                       {error}
                     </div>
                   )}
@@ -138,22 +149,22 @@ export default function AuthPage() {
                 </form>
 
                 <div className="mt-6 text-center">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     New user?{' '}
                     <button
                       onClick={() => {
                         setIsSignup(true);
                         setError('');
                       }}
-                      className="text-black font-semibold hover:underline"
+                      className="text-[#5A7A95] dark:text-[#6B9BB8] font-semibold hover:underline"
                     >
                       Sign up
                     </button>
                   </p>
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-gray-200">
-                  <p className="text-xs text-gray-500 text-center">
+                <div className="mt-6 pt-6 border-t border-[#E1E1DB] dark:border-[#2F4156]">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
                     Demo Mode: Use any email to sign in
                   </p>
                 </div>
@@ -213,7 +224,7 @@ export default function AuthPage() {
                   />
 
                   {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
                       {error}
                     </div>
                   )}
@@ -224,14 +235,14 @@ export default function AuthPage() {
                 </form>
 
                 <div className="mt-6 text-center">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     Already have an account?{' '}
                     <button
                       onClick={() => {
                         setIsSignup(false);
                         setError('');
                       }}
-                      className="text-black font-semibold hover:underline"
+                      className="text-[#5A7A95] dark:text-[#6B9BB8] font-semibold hover:underline"
                     >
                       Sign in
                     </button>

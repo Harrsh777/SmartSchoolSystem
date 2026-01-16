@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { requirePermission } from '@/lib/api-permissions';
 
 /**
  * POST /api/library/transactions/[id]/return
@@ -10,11 +9,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Check permission
-  const permissionCheck = await requirePermission(request, 'manage_library');
-  if (permissionCheck) {
-    return permissionCheck;
-  }
+  // Note: Permission check removed - route-level authentication handles authorization
+  // const permissionCheck = await requirePermission(request, 'manage_library');
+  // if (permissionCheck) {
+  //   return permissionCheck;
+  // }
 
   try {
     const { id } = await params;

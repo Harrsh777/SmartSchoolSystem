@@ -148,8 +148,8 @@ export default function StaffPage({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading staff...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95] border-t-transparent mx-auto mb-4"></div>
+          <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-medium">Loading staff...</p>
         </div>
       </div>
     );
@@ -163,8 +163,13 @@ export default function StaffPage({
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Staff Management</h1>
-            <p className="text-gray-600">Manage all staff members and their information</p>
+            <h1 className="text-3xl font-bold text-black dark:text-white mb-2 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                <UserCheck className="text-white" size={28} />
+              </div>
+              Staff Management
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">Manage all staff members and their information</p>
           </div>
           <div className="flex gap-3">
             <Button
@@ -188,7 +193,7 @@ export default function StaffPage({
             >
               {generatingPasswords ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black mr-2" />
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
                   Generating...
                 </>
               ) : (
@@ -229,14 +234,14 @@ export default function StaffPage({
                   placeholder="Search staff by name, staff ID, role, or department..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black"
+                  className="w-full pl-10 pr-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
                 />
               </div>
             </div>
             <select 
               value={departmentFilter}
               onChange={(e) => setDepartmentFilter(e.target.value)}
-              className="px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black"
+              className="px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
             >
               <option value="all">All Departments</option>
               {uniqueDepartments.map(dept => (
@@ -284,33 +289,33 @@ export default function StaffPage({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 + index * 0.05 }}
             >
-              <Card hover>
+              <Card className="hover:shadow-xl transition-all duration-300 border-2 border-transparent hover:border-[#5A7A95]/30 dark:hover:border-[#6B9BB8]/30">
                 <div className="flex items-start space-x-4">
-                  <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">
+                  <div className="w-16 h-16 bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] rounded-full flex items-center justify-center text-white text-xl font-bold shadow-lg">
                     {member.full_name.split(' ').map(n => n[0]).join('').substring(0, 2)}
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-bold text-black mb-1">{member.full_name}</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{member.full_name}</h3>
                     {!!member.role && (
-                      <p className="text-sm text-gray-600 mb-2">{getString(member.role)}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{getString(member.role)}</p>
                     )}
                     {!!member.department && (
-                      <p className="text-xs text-gray-500 mb-3">{getString(member.department)}</p>
+                      <p className="text-xs text-[#5A7A95] dark:text-[#6B9BB8] font-medium mb-3">{getString(member.department)}</p>
                     )}
                     <div className="space-y-2">
                       {!!member.email && (
-                        <div className="flex items-center space-x-2 text-xs text-gray-600">
-                          <Mail size={14} />
+                        <div className="flex items-center space-x-2 text-xs text-gray-600 dark:text-gray-400">
+                          <Mail size={14} className="text-[#5A7A95] dark:text-[#6B9BB8]" />
                           <span className="truncate">{getString(member.email)}</span>
                         </div>
                       )}
                       {!!member.phone && (
-                        <div className="flex items-center space-x-2 text-xs text-gray-600">
-                          <Phone size={14} />
+                        <div className="flex items-center space-x-2 text-xs text-gray-600 dark:text-gray-400">
+                          <Phone size={14} className="text-[#5A7A95] dark:text-[#6B9BB8]" />
                           <span>{getString(member.phone)}</span>
                         </div>
                       )}
-                      <div className="text-xs text-gray-500 mt-2">
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                         Joined: {(() => {
                           const doj = typeof member.date_of_joining === 'string' ? member.date_of_joining : 
                                      typeof member.date_of_joining === 'number' ? String(member.date_of_joining) : null;
@@ -320,10 +325,10 @@ export default function StaffPage({
                     </div>
                   </div>
                 </div>
-                <div className="mt-4 pt-4 border-t border-gray-200 flex space-x-2">
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex space-x-2">
                   <button 
                     onClick={() => router.push(`/dashboard/${schoolCode}/staff/${member.id}/view`)}
-                    className="flex-1 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    className="flex-1 px-3 py-2 text-sm bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] hover:from-[#567C8D] hover:to-[#5A7A95] text-white rounded-lg transition-all shadow-md hover:shadow-lg"
                   >
                     View
                   </button>

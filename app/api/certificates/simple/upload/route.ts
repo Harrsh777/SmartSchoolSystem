@@ -78,6 +78,31 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Check if bucket exists, create if it doesn't
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const bucketExists = buckets?.some(bucket => bucket.name === 'certificates');
+    
+    if (!bucketExists) {
+      // Try to create the bucket
+      const { error: createError } = await supabase.storage.createBucket('certificates', {
+        public: true,
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'],
+        fileSizeLimit: 10485760, // 10MB
+      });
+      
+      if (createError) {
+        console.error('Error creating bucket:', createError);
+        return NextResponse.json(
+          { 
+            error: 'Storage bucket "certificates" not found and could not be created automatically.',
+            details: createError.message,
+            hint: 'Please create the bucket manually in Supabase Dashboard: Storage > Create bucket > Name: "certificates" > Public: Yes'
+          },
+          { status: 500 }
+        );
+      }
+    }
+
     // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('certificates')
@@ -88,8 +113,28 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) {
       console.error('Error uploading certificate image:', uploadError);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to upload image';
+      const errorMsg = uploadError.message || '';
+      if (errorMsg.includes('Bucket not found') || errorMsg.includes('The resource was not found')) {
+        errorMessage = 'Storage bucket "certificates" not found. Please create it in Supabase Storage.';
+      } else if (errorMsg.includes('new row violates row-level security policy') || errorMsg.includes('permission denied')) {
+        errorMessage = 'Permission denied. Please check storage policies in Supabase.';
+      } else if (errorMsg.includes('duplicate key') || errorMsg.includes('already exists')) {
+        errorMessage = 'A certificate with this name already exists. Please rename the file.';
+      } else {
+        errorMessage = uploadError.message || errorMessage;
+      }
+      
       return NextResponse.json(
-        { error: 'Failed to upload image', details: uploadError.message },
+        { 
+          error: errorMessage, 
+          details: uploadError.message,
+          hint: errorMsg.includes('Bucket not found') || errorMsg.includes('The resource was not found')
+            ? 'Go to Supabase Dashboard > Storage > Create a new bucket named "certificates" and set it to public.'
+            : undefined
+        },
         { status: 500 }
       );
     }

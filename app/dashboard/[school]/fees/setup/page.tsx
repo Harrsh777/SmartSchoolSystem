@@ -30,7 +30,7 @@ export default function FeeSetupPage({
       description: 'Create and manage fee types (Tuition, Library, Lab, Transport, etc.)',
       icon: FileText,
       path: `/dashboard/${schoolCode}/fees/setup/components`,
-      color: 'from-blue-500 to-cyan-500',
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
     {
       id: 'schedules',
@@ -38,7 +38,7 @@ export default function FeeSetupPage({
       description: 'Define installment structures (Annual, Quarterly, Monthly, etc.)',
       icon: Calendar,
       path: `/dashboard/${schoolCode}/fees/setup/schedules`,
-      color: 'from-green-500 to-emerald-500',
+      color: 'from-[#6B9BB8] to-[#7DB5D3]',
     },
     {
       id: 'class-assignment',
@@ -46,7 +46,7 @@ export default function FeeSetupPage({
       description: 'Assign fee components to classes with amounts and schedules',
       icon: Users,
       path: `/dashboard/${schoolCode}/fees/setup/class-assignment`,
-      color: 'from-purple-500 to-pink-500',
+      color: 'from-[#567C8D] to-[#5A7A95]',
     },
     {
       id: 'student-assignment',
@@ -54,7 +54,7 @@ export default function FeeSetupPage({
       description: 'Override class fees for individual students (scholarships, special cases)',
       icon: GraduationCap,
       path: `/dashboard/${schoolCode}/fees/setup/student-assignment`,
-      color: 'from-[#1E3A8A] to-[#2F6FED]',
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
   ];
 
@@ -67,8 +67,10 @@ export default function FeeSetupPage({
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-              <Settings className="text-[#2F6FED]" size={32} />
+            <h1 className="text-3xl font-bold text-black dark:text-white mb-2 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                <Settings className="text-white" size={28} />
+              </div>
               Fee Setup
             </h1>
             <p className="text-gray-600">Configure fees, schedules, and assignments for the academic year</p>
@@ -94,33 +96,38 @@ export default function FeeSetupPage({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
             >
-              <Card
-                className="p-6 hover:shadow-lg transition-all duration-300 cursor-pointer group"
-                onClick={() => router.push(section.path)}
+              <motion.div
+                whileHover={{ y: -5, scale: 1.02 }}
+                transition={{ duration: 0.2 }}
               >
-                <div className="flex items-start gap-4">
-                  <div
-                    className={`p-4 rounded-xl bg-gradient-to-br ${section.color} shadow-lg group-hover:scale-110 transition-transform`}
-                  >
-                    <Icon className="text-white" size={28} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-[#2F6FED] transition-colors">
-                      {section.title}
-                    </h3>
-                    <p className="text-gray-600 text-sm mb-4">
-                      {section.description}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="group-hover:border-[#2F6FED] group-hover:text-[#2F6FED]"
+                <Card
+                  className="p-6 hover:shadow-xl transition-all duration-300 cursor-pointer group border-2 border-transparent hover:border-[#5A7A95]/30 dark:hover:border-[#6B9BB8]/30"
+                  onClick={() => router.push(section.path)}
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`p-4 rounded-xl bg-gradient-to-br ${section.color} shadow-lg group-hover:scale-110 transition-transform`}
                     >
-                      Open →
-                    </Button>
+                      <Icon className="text-white" size={28} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-[#5A7A95] dark:group-hover:text-[#6B9BB8] transition-colors">
+                        {section.title}
+                      </h3>
+                      <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
+                        {section.description}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="group-hover:border-[#5A7A95] dark:group-hover:border-[#6B9BB8] group-hover:text-[#5A7A95] dark:group-hover:text-[#6B9BB8]"
+                      >
+                        Open →
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </Card>
+                </Card>
+              </motion.div>
             </motion.div>
           );
         })}
@@ -132,9 +139,9 @@ export default function FeeSetupPage({
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
       >
-        <Card className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+        <Card className="p-6 bg-gradient-to-br from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156] border-2 border-[#5A7A95]/20 dark:border-[#6B9BB8]/20">
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-[#2F6FED] rounded-lg">
+            <div className="p-3 bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] rounded-lg shadow-lg">
               <Tag className="text-white" size={24} />
             </div>
             <div className="flex-1">

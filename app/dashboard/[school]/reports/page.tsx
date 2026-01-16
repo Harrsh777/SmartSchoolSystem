@@ -160,10 +160,10 @@ export default function ReportsPage({
       title: 'Staff Information',
       description: 'Download complete staff details including personal information, roles, and contact details',
       icon: UserCheck,
-      gradient: 'from-blue-500 to-blue-600',
-      bgGradient: 'from-blue-50 to-blue-100',
-      borderColor: 'border-blue-200',
-      textColor: 'text-blue-700',
+      gradient: 'from-[#5A7A95] to-[#6B9BB8]',
+      bgGradient: 'from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]',
+      borderColor: 'border-[#5A7A95]/30 dark:border-[#6B9BB8]/30',
+      textColor: 'text-[#5A7A95] dark:text-[#6B9BB8]',
       stats: 'All staff records',
       features: ['Personal details', 'Roles & positions', 'Contact information', 'Employment history'],
     },
@@ -172,10 +172,10 @@ export default function ReportsPage({
       title: 'Financial Information',
       description: 'Download fee collection reports, payment history, and financial summaries',
       icon: DollarSign,
-      gradient: 'from-emerald-500 to-green-600',
-      bgGradient: 'from-emerald-50 to-green-100',
-      borderColor: 'border-emerald-200',
-      textColor: 'text-emerald-700',
+      gradient: 'from-[#6B9BB8] to-[#7DB5D3]',
+      bgGradient: 'from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]',
+      borderColor: 'border-[#6B9BB8]/30 dark:border-[#7DB5D3]/30',
+      textColor: 'text-[#6B9BB8] dark:text-[#7DB5D3]',
       stats: 'Fee & payment data',
       features: ['Fee collections', 'Payment history', 'Financial summaries', 'Transaction records'],
     },
@@ -184,10 +184,10 @@ export default function ReportsPage({
       title: 'Student Information',
       description: 'Download complete student details including admission info, class, and parent details',
       icon: Users,
-      gradient: 'from-purple-500 to-purple-600',
-      bgGradient: 'from-purple-50 to-purple-100',
-      borderColor: 'border-purple-200',
-      textColor: 'text-purple-700',
+      gradient: 'from-[#567C8D] to-[#5A7A95]',
+      bgGradient: 'from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]',
+      borderColor: 'border-[#567C8D]/30 dark:border-[#5A7A95]/30',
+      textColor: 'text-[#567C8D] dark:text-[#5A7A95]',
       stats: 'Complete student records',
       features: ['Admission details', 'Class & section info', 'Parent contacts', 'Academic records'],
     },
@@ -196,10 +196,10 @@ export default function ReportsPage({
       title: 'Marks Information',
       description: 'Download student marks and examination results',
       icon: FileText,
-      gradient: 'from-orange-500 to-amber-600',
-      bgGradient: 'from-orange-50 to-amber-100',
-      borderColor: 'border-orange-200',
-      textColor: 'text-orange-700',
+      gradient: 'from-[#5A7A95] to-[#6B9BB8]',
+      bgGradient: 'from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]',
+      borderColor: 'border-[#5A7A95]/30 dark:border-[#6B9BB8]/30',
+      textColor: 'text-[#5A7A95] dark:text-[#6B9BB8]',
       stats: 'Examination results',
       features: ['Exam marks', 'Subject scores', 'Grades & percentages', 'Result history'],
     },
@@ -208,10 +208,10 @@ export default function ReportsPage({
       title: 'Transport Information',
       description: 'Download transport routes, vehicles, stops, and student assignments',
       icon: Bus,
-      gradient: 'from-cyan-500 to-teal-600',
-      bgGradient: 'from-cyan-50 to-teal-100',
-      borderColor: 'border-cyan-200',
-      textColor: 'text-cyan-700',
+      gradient: 'from-[#6B9BB8] to-[#7DB5D3]',
+      bgGradient: 'from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]',
+      borderColor: 'border-[#6B9BB8]/30 dark:border-[#7DB5D3]/30',
+      textColor: 'text-[#6B9BB8] dark:text-[#7DB5D3]',
       stats: 'Transport & routes data',
       features: ['Route details', 'Vehicle information', 'Student assignments', 'Stop locations'],
     },
@@ -232,10 +232,10 @@ export default function ReportsPage({
       title: 'Library Information',
       description: 'Download library books, transactions, borrowers, and inventory details',
       icon: BookOpen,
-      gradient: 'from-rose-500 to-pink-600',
-      bgGradient: 'from-rose-50 to-pink-100',
-      borderColor: 'border-rose-200',
-      textColor: 'text-rose-700',
+      gradient: 'from-[#5A7A95] to-[#6B9BB8]',
+      bgGradient: 'from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]',
+      borderColor: 'border-[#5A7A95]/30 dark:border-[#6B9BB8]/30',
+      textColor: 'text-[#5A7A95] dark:text-[#6B9BB8]',
       stats: 'Library & books data',
       features: ['Book catalog', 'Issue records', 'Borrower details', 'Inventory status'],
     },
@@ -244,10 +244,10 @@ export default function ReportsPage({
       title: 'Examination Information',
       description: 'Download examination schedules, subjects, and examination details',
       icon: GraduationCap,
-      gradient: 'from-amber-500 to-yellow-600',
-      bgGradient: 'from-amber-50 to-yellow-100',
-      borderColor: 'border-amber-200',
-      textColor: 'text-amber-700',
+      gradient: 'from-[#6B9BB8] to-[#7DB5D3]',
+      bgGradient: 'from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]',
+      borderColor: 'border-[#6B9BB8]/30 dark:border-[#7DB5D3]/30',
+      textColor: 'text-[#6B9BB8] dark:text-[#7DB5D3]',
       stats: 'Exam & schedule data',
       features: ['Exam schedules', 'Subject details', 'Exam dates', 'Class-wise exams'],
     },
@@ -256,10 +256,10 @@ export default function ReportsPage({
       title: 'Leave Information',
       description: 'Download staff and student leave requests, leave types, and leave history',
       icon: Clock,
-      gradient: 'from-lime-500 to-green-600',
-      bgGradient: 'from-lime-50 to-green-100',
-      borderColor: 'border-lime-200',
-      textColor: 'text-lime-700',
+      gradient: 'from-[#567C8D] to-[#5A7A95]',
+      bgGradient: 'from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]',
+      borderColor: 'border-[#567C8D]/30 dark:border-[#5A7A95]/30',
+      textColor: 'text-[#567C8D] dark:text-[#5A7A95]',
       stats: 'Leave & attendance data',
       features: ['Leave requests', 'Leave types', 'Approval status', 'Leave history'],
     },
@@ -275,11 +275,11 @@ export default function ReportsPage({
       >
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center shadow-lg">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
               <BarChart3 className="text-white" size={32} />
             </div>
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Reports Center</h1>
+              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">Reports Center</h1>
               <p className="text-gray-600 text-sm md:text-base">
                 Download comprehensive reports in CSV format for analysis and record-keeping
               </p>
@@ -291,7 +291,7 @@ export default function ReportsPage({
             whileTap={{ scale: 0.98 }}
             onClick={handleDownloadAll}
             disabled={downloadingAll || !!downloading}
-            className="inline-flex items-center gap-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-3.5 rounded-xl font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="inline-flex items-center gap-3 bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] hover:from-[#567C8D] hover:to-[#5A7A95] text-white px-6 py-3.5 rounded-xl font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {downloadingAll ? (
               <>
@@ -484,9 +484,9 @@ export default function ReportsPage({
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.5 + idx * 0.1 }}
-                      className="flex items-start gap-3 p-3 bg-white/60 backdrop-blur-sm rounded-lg border border-blue-200/50"
+                      className="flex items-start gap-3 p-3 bg-white/60 dark:bg-[#2F4156]/60 backdrop-blur-sm rounded-lg border border-[#5A7A95]/30 dark:border-[#6B9BB8]/30"
                     >
-                      <item.icon className="text-blue-600 flex-shrink-0 mt-0.5" size={18} />
+                      <item.icon className="text-[#5A7A95] dark:text-[#6B9BB8] flex-shrink-0 mt-0.5" size={18} />
                       <div>
                         <div className="font-semibold text-gray-900 text-sm">{item.label}</div>
                         <div className="text-xs text-gray-600">{item.desc}</div>
@@ -508,10 +508,10 @@ export default function ReportsPage({
         className="grid grid-cols-2 md:grid-cols-4 gap-4"
       >
         {[
-          { icon: FileText, label: 'Report Types', value: '9', color: 'from-blue-500 to-blue-600' },
-          { icon: Download, label: 'Download Format', value: 'CSV', color: 'from-emerald-500 to-emerald-600' },
-          { icon: Database, label: 'Data Coverage', value: '100%', color: 'from-purple-500 to-purple-600' },
-          { icon: Sparkles, label: 'Always Updated', value: 'Real-time', color: 'from-orange-500 to-orange-600' },
+          { icon: FileText, label: 'Report Types', value: '9', color: 'from-[#5A7A95] to-[#6B9BB8]' },
+          { icon: Download, label: 'Download Format', value: 'CSV', color: 'from-[#6B9BB8] to-[#7DB5D3]' },
+          { icon: Database, label: 'Data Coverage', value: '100%', color: 'from-[#567C8D] to-[#5A7A95]' },
+          { icon: Sparkles, label: 'Always Updated', value: 'Real-time', color: 'from-[#5A7A95] to-[#6B9BB8]' },
         ].map((stat, idx) => (
           <motion.div
             key={idx}

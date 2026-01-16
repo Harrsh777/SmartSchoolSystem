@@ -102,8 +102,8 @@ export default function LibraryDashboardPage({
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <Loader2 className="animate-spin mx-auto mb-4 text-indigo-600" size={48} />
-          <p className="text-gray-600">Loading library statistics...</p>
+          <Loader2 className="animate-spin mx-auto mb-4 text-[#5A7A95] dark:text-[#6B9BB8]" size={48} />
+          <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-medium">Loading library statistics...</p>
         </div>
       </div>
     );
@@ -118,7 +118,7 @@ export default function LibraryDashboardPage({
             <p className="text-red-600 text-lg">{error}</p>
             <button
               onClick={fetchStats}
-              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              className="mt-4 px-4 py-2 bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] hover:from-[#567C8D] hover:to-[#5A7A95] text-white rounded-lg transition-all shadow-md hover:shadow-lg"
             >
               Retry
             </button>
@@ -145,15 +145,17 @@ export default function LibraryDashboardPage({
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <BarChart3 className="text-indigo-600" size={32} />
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+              <BarChart3 className="text-white" size={28} />
+            </div>
             Library Dashboard
           </h1>
           <p className="text-gray-600 mt-2">Analytics and statistics for {schoolCode}</p>
         </div>
         <button
           onClick={fetchStats}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+          className="px-4 py-2 bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] hover:from-[#567C8D] hover:to-[#5A7A95] text-white rounded-lg transition-all shadow-md hover:shadow-lg flex items-center gap-2"
         >
           <Loader2 size={18} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -174,8 +176,8 @@ export default function LibraryDashboardPage({
                 <p className="text-3xl font-bold text-gray-900">{stats.totalBooks}</p>
                 <p className="text-xs text-gray-500 mt-1">{stats.totalCopies} total copies</p>
               </div>
-              <div className="bg-blue-100 p-3 rounded-lg">
-                <BookOpen className="text-blue-600" size={32} />
+              <div className="bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/20 p-3 rounded-lg">
+                <BookOpen className="text-[#5A7A95] dark:text-[#6B9BB8]" size={32} />
               </div>
             </div>
           </Card>
@@ -228,11 +230,11 @@ export default function LibraryDashboardPage({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 mb-1">Total Transactions</p>
-                <p className="text-3xl font-bold text-indigo-600">{stats.totalTransactions}</p>
-                <p className="text-xs text-gray-500 mt-1">{utilizationRate}% utilization</p>
+                <p className="text-3xl font-bold text-[#5A7A95] dark:text-[#6B9BB8]">{stats.totalTransactions}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{utilizationRate}% utilization</p>
               </div>
-              <div className="bg-indigo-100 p-3 rounded-lg">
-                <TrendingUp className="text-indigo-600" size={32} />
+              <div className="bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/20 p-3 rounded-lg">
+                <TrendingUp className="text-[#5A7A95] dark:text-[#6B9BB8]" size={32} />
               </div>
             </div>
           </Card>
@@ -284,7 +286,7 @@ export default function LibraryDashboardPage({
           <Card>
             <div className="p-6">
               <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <BookOpen className="text-indigo-600" size={20} />
+                <BookOpen className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
                 Section Usage
               </h3>
               {sectionUsageData.length > 0 ? (
@@ -398,7 +400,7 @@ export default function LibraryDashboardPage({
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-semibold">
+                        <span className="px-3 py-1 bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/20 text-[#5A7A95] dark:text-[#6B9BB8] rounded-full text-sm font-semibold">
                           {book.count} issues
                         </span>
                       </div>
@@ -449,7 +451,7 @@ export default function LibraryDashboardPage({
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 bg-gray-200 rounded-full h-2">
                                   <div
-                                    className="bg-indigo-600 h-2 rounded-full"
+                                    className="bg-[#5A7A95] dark:bg-[#6B9BB8] h-2 rounded-full"
                                     style={{ width: `${percentage}%` }}
                                   />
                                 </div>

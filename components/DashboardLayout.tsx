@@ -221,14 +221,14 @@ function SortableMenuItem({
             className={`group flex-1 flex ${sidebarCollapsed ? 'flex-col items-center px-2' : 'items-center gap-3 px-2'} py-3 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active
                 ? 'bg-gradient-to-r from-[#6B9BB8] to-[#7DB5D3] text-white shadow-xl shadow-[#6B9BB8]/30 scale-[1.02]'
-                : 'text-[#C8D9E6] hover:text-white hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156]'
+                : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
             }`}
           >
             {!sidebarCollapsed && (
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
                 active 
                   ? 'bg-white/20 text-white' 
-                  : 'bg-[#567C8D]/50 dark:bg-[#2F4156] text-[#C8D9E6] group-hover:bg-[#6B9BB8]/30 group-hover:text-white'
+                  : 'bg-[rgba(255,255,255,0.08)] dark:bg-[rgba(255,255,255,0.08)] text-[#E2E8F0] group-hover:bg-[rgba(255,255,255,0.12)] group-hover:text-white'
               }`}>
                 {index + 1}
               </span>
@@ -331,17 +331,17 @@ function SortableMenuItem({
                     }}
                     className={`group flex items-center gap-3 px-4 py-2.5 transition-all duration-300 ${
                       subActive
-                        ? 'bg-[#6B9BB8]/30 dark:bg-[#2F4156] text-[#6B9BB8] dark:text-[#7DB5D3]'
-                        : 'text-[#C8D9E6] hover:text-white hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156]'
+                        ? 'bg-[#4A707A] dark:bg-[#5A879A] text-white'
+                        : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
                     }`}
                   >
-                    <SubIcon size={16} className={subActive ? 'text-[#6B9BB8] dark:text-[#7DB5D3]' : 'text-[#C8D9E6] group-hover:text-white'} />
+                    <SubIcon size={16} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
                     <span className="font-medium text-sm tracking-wide flex-1 text-left">
                       {subItem.label}
                     </span>
-                    <ExternalLink size={14} className={subActive ? 'text-[#6B9BB8] dark:text-[#7DB5D3]' : 'text-[#C8D9E6] group-hover:text-white'} />
+                    <ExternalLink size={14} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
                     {subActive && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#6B9BB8] dark:bg-[#7DB5D3] animate-pulse" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#4A707A] dark:bg-[#5A879A] animate-pulse" />
                     )}
                   </Link>
                 );
@@ -378,14 +378,14 @@ function SortableMenuItem({
             className={`group flex-1 flex ${sidebarCollapsed ? 'flex-col items-center px-2' : 'items-center gap-3 px-2'} py-3 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active
                 ? 'bg-gradient-to-r from-[#6B9BB8] to-[#7DB5D3] text-white shadow-xl shadow-[#6B9BB8]/30 scale-[1.02]'
-                : 'text-[#C8D9E6] hover:text-white hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156]'
+                : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
             }`}
           >
             {!sidebarCollapsed && (
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
                 active 
                   ? 'bg-white/20 text-white' 
-                  : 'bg-[#567C8D]/50 dark:bg-[#2F4156] text-[#C8D9E6] group-hover:bg-[#6B9BB8]/30 group-hover:text-white'
+                  : 'bg-[rgba(255,255,255,0.08)] dark:bg-[rgba(255,255,255,0.08)] text-[#E2E8F0] group-hover:bg-[rgba(255,255,255,0.12)] group-hover:text-white'
               }`}>
                 {index + 1}
               </span>
@@ -475,14 +475,14 @@ function SortableMenuItem({
             className={`group flex-1 flex ${sidebarCollapsed ? 'flex-col items-center px-2' : 'items-center gap-3 px-2'} py-3 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active
                 ? 'bg-gradient-to-r from-[#6B9BB8] to-[#7DB5D3] text-white shadow-xl shadow-[#6B9BB8]/30 scale-[1.02]'
-                : 'text-[#C8D9E6] hover:text-white hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156]'
+                : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
             }`}
           >
             {!sidebarCollapsed && (
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
                 active 
                   ? 'bg-white/20 text-white' 
-                  : 'bg-[#567C8D]/50 dark:bg-[#2F4156] text-[#C8D9E6] group-hover:bg-[#6B9BB8]/30 group-hover:text-white'
+                  : 'bg-[rgba(255,255,255,0.08)] dark:bg-[rgba(255,255,255,0.08)] text-[#E2E8F0] group-hover:bg-[rgba(255,255,255,0.12)] group-hover:text-white'
               }`}>
                 {index + 1}
               </span>
@@ -569,16 +569,16 @@ function SortableMenuItem({
                   className={`group flex items-center gap-3 px-4 py-2.5 transition-all duration-300 ${
                     subActive
                       ? 'bg-[#6B9BB8]/30 dark:bg-[#2F4156] text-[#6B9BB8] dark:text-[#7DB5D3]'
-                      : 'text-[#C8D9E6] hover:text-white hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156]'
+                      : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
                   }`}
                 >
-                  <SubIcon size={16} className={subActive ? 'text-[#6B9BB8] dark:text-[#7DB5D3]' : 'text-[#C8D9E6] group-hover:text-white'} />
+                  <SubIcon size={16} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
                   <span className="font-medium text-sm tracking-wide flex-1 text-left">
                     {subItem.label}
                   </span>
-                  <ExternalLink size={14} className={subActive ? 'text-[#6B9BB8] dark:text-[#7DB5D3]' : 'text-[#C8D9E6] group-hover:text-white'} />
+                  <ExternalLink size={14} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
                   {subActive && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#6B9BB8] dark:bg-[#7DB5D3] animate-pulse" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#4A707A] dark:bg-[#5A879A] animate-pulse" />
                   )}
                 </Link>
               );
@@ -925,6 +925,11 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     // Note: Exam Schedule and View Marks are dynamic routes and cannot be included in sidebar navigation
     // They are accessible from individual exam pages
     
+    // Marks
+    { label: 'Marks', path: '/marks', category: 'Marks', icon: GraduationCap },
+    { label: 'Marks Dashboard', path: '/marks', category: 'Marks', icon: FileBarChart, parent: 'Marks' },
+    { label: 'Mark Entry', path: '/marks-entry', category: 'Marks', icon: ClipboardList, parent: 'Marks' },
+    
     // Fees - V2 System (Primary) + Legacy
     { label: 'Fees', path: '/fees', category: 'Fees', icon: DollarSign },
     { label: 'Fee Dashboard', path: '/fees/v2/dashboard', category: 'Fees', icon: BarChart3, parent: 'Fees' },
@@ -989,8 +994,8 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Copy Checking', path: '/copy-checking', category: 'Academic', icon: FileText },
     
     // Certificate Management
-    { label: 'Certificate Dashboard', path: '/certificates', category: 'Academic', icon: Award, parent: 'Certificate Management' },
-    { label: 'New Certificate', path: '/certificates#new', category: 'Academic', icon: Award, parent: 'Certificate Management' },
+    { label: 'Certificate Dashboard', path: '/certificates/dashboard', category: 'Academic', icon: Award, parent: 'Certificate Management' },
+    { label: 'New Certificate', path: '/certificates/new', category: 'Academic', icon: Award, parent: 'Certificate Management' },
     
     // Attendance
     { label: 'Attendance', path: '/attendance', category: 'Attendance', icon: CalendarDays },
@@ -1155,6 +1160,11 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
       );
     }
     
+    // Marks should have sub-items
+    if (mainMenuItem.path === '/marks') {
+      return searchableItems.filter(item => item.parent === 'Marks');
+    }
+    
     // Leave Management should have sub-items
     if (mainMenuItem.path === '/leave') {
       return searchableItems.filter(item => item.parent === 'Leave Management');
@@ -1245,13 +1255,13 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="lg:hidden p-2 rounded-xl hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] transition-all"
               >
-                {sidebarOpen ? <X size={24} className="text-[#5A7A95] dark:text-[#6B9BB8]" /> : <Menu size={24} className="text-[#5A7A95] dark:text-[#6B9BB8]" />}
+                {sidebarOpen ? <X size={24} className="text-[#2C3E50] dark:text-[#5A879A]" /> : <Menu size={24} className="text-[#2C3E50] dark:text-[#5A879A]" />}
               </button>
               <Link href="/" className="text-xl font-bold bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] bg-clip-text text-transparent">
                 EduCore
               </Link>
               <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
-              <span className="hidden sm:block text-[#5A7A95] dark:text-[#6B9BB8] font-semibold">{schoolName}</span>
+              <span className="hidden sm:block text-[#2C3E50] dark:text-[#F8FAFC] font-semibold">{schoolName}</span>
               <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
               <span className="hidden sm:block text-sm text-gray-600 dark:text-gray-400 font-medium">ID: {schoolCode}</span>
               <div className="hidden md:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
@@ -1269,7 +1279,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                   title="Quick Search"
                 >
                   <div className="w-10 h-10 rounded-full bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center">
-                    <Search className="text-[#5A7A95] dark:text-[#6B9BB8]" size={18} />
+                    <Search className="text-[#475569] dark:text-[#94A3B8]" size={18} />
                 </div>
                   <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">Search</span>
                 </button>
@@ -1290,8 +1300,8 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                       >
                         <div className="w-10 h-10 rounded-lg bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center flex-shrink-0">
                           <div className="relative">
-                            <GraduationCap className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
-                            <Search className="absolute -bottom-1 -right-1 text-[#5A7A95] dark:text-[#6B9BB8] bg-white dark:bg-[#1e293b] rounded-full p-0.5" size={12} />
+                            <GraduationCap className="text-[#2C3E50] dark:text-[#5A879A]" size={20} />
+                            <Search className="absolute -bottom-1 -right-1 text-[#2C3E50] dark:text-[#5A879A] bg-white dark:bg-[#1A2332] rounded-full p-0.5" size={12} />
                         </div>
                               </div>
                         <span className="text-sm font-medium text-navy dark:text-skyblue">Quick Student Search</span>
@@ -1306,8 +1316,8 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                       >
                         <div className="w-10 h-10 rounded-lg bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center flex-shrink-0">
                           <div className="relative">
-                            <User className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
-                            <Search className="absolute -bottom-1 -right-1 text-[#5A7A95] dark:text-[#6B9BB8] bg-white dark:bg-[#1e293b] rounded-full p-0.5" size={12} />
+                            <User className="text-[#2C3E50] dark:text-[#5A879A]" size={20} />
+                            <Search className="absolute -bottom-1 -right-1 text-[#2C3E50] dark:text-[#5A879A] bg-white dark:bg-[#1A2332] rounded-full p-0.5" size={12} />
                                     </div>
                                     </div>
                         <span className="text-sm font-medium text-navy dark:text-skyblue">Quick Staff Search</span>
@@ -1326,7 +1336,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                   title="Quick Actions"
                 >
                   <div className="w-10 h-10 rounded-full bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center">
-                    <ChevronUp className="text-[#5A7A95] dark:text-[#6B9BB8]" size={18} />
+                    <ChevronUp className="text-[#2C3E50] dark:text-[#5A879A]" size={18} />
                   </div>
                   <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">Quick</span>
                 </button>
@@ -1340,7 +1350,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                   title="Notifications"
                 >
                   <div className="w-10 h-10 rounded-full bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center">
-                    <Bell className="text-[#5A7A95] dark:text-[#6B9BB8]" size={18} />
+                    <Bell className="text-[#2C3E50] dark:text-[#5A879A]" size={18} />
                   </div>
                   <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">Notifications</span>
                 </button>
@@ -1352,7 +1362,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                     className="absolute right-0 mt-2 w-80 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-xl rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.08)] border border-white/60 dark:border-gray-700/50 z-50 overflow-hidden"
                   >
                     <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                      <h3 className="font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Notifications</h3>
+                      <h3 className="font-semibold text-foreground">Notifications</h3>
                     </div>
                     <div className="p-8 text-center">
                       <Bell className="mx-auto mb-3 text-[#C8D9E6] dark:text-[#6B9BB8]" size={32} />
@@ -1539,9 +1549,10 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                     ease: [0.4, 0, 0.2, 1]
                   }
                 }}
-                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] bg-gradient-to-b from-[#5A7A95] to-[#567C8D] dark:from-[#0f172a] dark:to-[#1e293b] border-r border-[#6B9BB8]/30 dark:border-gray-700/50 z-50 lg:z-auto overflow-y-auto overflow-x-hidden shadow-2xl"
+                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] bg-[#2C3E50] dark:bg-[#15202B] border-r border-[rgba(255,255,255,0.1)] z-50 lg:z-auto overflow-y-auto overflow-x-hidden shadow-lg"
                 style={{ 
-                  willChange: 'width'
+                  willChange: 'width',
+                  marginLeft: 0
                 }}
               >
                 <nav className={`p-3 space-y-1.5 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${sidebarCollapsed ? 'px-2' : ''}`}>
@@ -1566,7 +1577,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onFocus={() => setSearchDropdownOpen(true)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-[#567C8D]/50 dark:bg-[#2F4156] border border-[#6B9BB8]/30 dark:border-gray-700/50 rounded-lg text-white placeholder-[#C8D9E6] text-sm focus:outline-none focus:ring-2 focus:ring-[#6B9BB8] focus:border-transparent transition-all"
+                                className="w-full pl-10 pr-4 py-2.5 bg-[rgba(255,255,255,0.08)] dark:bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.1)] rounded-lg text-white placeholder-[#94A3B8] text-sm focus:outline-none focus:ring-2 focus:ring-[#4A707A]/30 focus:border-[#4A707A]/40 transition-all"
                               />
                           </div>
                           
@@ -1575,7 +1586,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                             <motion.div
                               initial={{ opacity: 0, y: -10 }}
                               animate={{ opacity: 1, y: 0 }}
-                              className="absolute top-full left-0 right-0 mt-2 bg-[#567C8D]/90 dark:bg-[#2F4156]/90 backdrop-blur-xl border border-[#6B9BB8]/30 dark:border-gray-700/50 rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
+                              className="absolute top-full left-0 right-0 mt-2 bg-[#1A2332]/95 dark:bg-[#0F172A]/95 backdrop-blur-xl border border-[rgba(255,255,255,0.1)] rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
                             >
                               <div className="p-2">
                                 {filteredSearchResults.map((item, idx) => {
@@ -1721,8 +1732,8 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
           )}
         </AnimatePresence>
 
-        {/* Main Content - Vibrant Background */}
-        <main className="flex-1 lg:ml-0 bg-[#F5EFEB] dark:bg-[#0f172a] min-h-[calc(100vh-4rem)]">
+        {/* Main Content */}
+        <main className="flex-1 lg:ml-0 bg-background min-h-[calc(100vh-4rem)]">
           <div className="p-4 sm:p-6 lg:p-8">
             {children}
           </div>

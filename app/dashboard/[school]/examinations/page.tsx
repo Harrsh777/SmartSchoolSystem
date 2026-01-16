@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import ModuleGuideButton from '@/components/ModuleGuideButton';
 import { 
   Plus, 
   Trash2, 
@@ -107,8 +108,8 @@ export default function ExaminationsPage({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading examinations...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95] border-t-transparent mx-auto mb-4"></div>
+          <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-medium">Loading examinations...</p>
         </div>
       </div>
     );
@@ -121,7 +122,7 @@ export default function ExaminationsPage({
       description: 'Create new examinations for classes and subjects',
       icon: Plus,
       path: `/dashboard/${schoolCode}/examinations/create`,
-      color: 'from-blue-500 to-cyan-500',
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
     {
       id: 'grade-scale',
@@ -129,7 +130,7 @@ export default function ExaminationsPage({
       description: 'Configure grade scales and grading systems',
       icon: GraduationCap,
       path: `/dashboard/${schoolCode}/examinations/grade-scale`,
-      color: 'from-purple-500 to-pink-500',
+      color: 'from-[#6B9BB8] to-[#7DB5D3]',
     },
     {
       id: 'marks-entry',
@@ -137,7 +138,15 @@ export default function ExaminationsPage({
       description: 'Enter and manage examination marks for students',
       icon: ClipboardList,
       path: `/dashboard/${schoolCode}/examinations/marks-entry`,
-      color: 'from-green-500 to-emerald-500',
+      color: 'from-[#567C8D] to-[#5A7A95]',
+    },
+    {
+      id: 'marks-approval',
+      title: 'Marks Approval',
+      description: 'Review and approve submitted marks',
+      icon: Award,
+      path: `/dashboard/${schoolCode}/examinations/marks-approval`,
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
     {
       id: 'offline-tests',
@@ -145,7 +154,7 @@ export default function ExaminationsPage({
       description: 'Manage offline test records and results',
       icon: FileText,
       path: `/dashboard/${schoolCode}/examinations/offline-tests`,
-      color: 'from-orange-500 to-red-500',
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
     {
       id: 'report-card',
@@ -153,7 +162,7 @@ export default function ExaminationsPage({
       description: 'Generate and view student report cards',
       icon: Award,
       path: `/dashboard/${schoolCode}/examinations/report-card`,
-      color: 'from-indigo-500 to-purple-500',
+      color: 'from-[#6B9BB8] to-[#7DB5D3]',
     },
     {
       id: 'report-card-template',
@@ -161,7 +170,7 @@ export default function ExaminationsPage({
       description: 'Create and customize report card templates',
       icon: FileBarChart,
       path: `/dashboard/${schoolCode}/examinations/report-card-template`,
-      color: 'from-teal-500 to-cyan-500',
+      color: 'from-[#567C8D] to-[#5A7A95]',
     },
     {
       id: 'reports',
@@ -169,7 +178,7 @@ export default function ExaminationsPage({
       description: 'View detailed examination reports and analytics',
       icon: BarChart3,
       path: `/dashboard/${schoolCode}/examinations/reports`,
-      color: 'from-yellow-500 to-orange-500',
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
   ];
 
@@ -182,12 +191,15 @@ export default function ExaminationsPage({
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-              <FileText className="text-indigo-600" size={32} />
+            <h1 className="text-3xl font-bold text-black dark:text-white mb-2 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                <FileText className="text-white" size={28} />
+              </div>
               Examinations
             </h1>
             <p className="text-gray-600">Manage examinations, marks, and reports</p>
           </div>
+          <ModuleGuideButton />
         </div>
       </motion.div>
 
@@ -207,33 +219,38 @@ export default function ExaminationsPage({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
               >
-                <Card
-                  className="p-6 hover:shadow-lg transition-all duration-300 cursor-pointer group"
-                  onClick={() => router.push(section.path)}
+                <motion.div
+                  whileHover={{ y: -5, scale: 1.02 }}
+                  transition={{ duration: 0.2 }}
                 >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={`p-4 rounded-xl bg-gradient-to-br ${section.color} shadow-lg group-hover:scale-110 transition-transform`}
-                    >
-                      <Icon className="text-white" size={28} />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-indigo-600 transition-colors">
-                        {section.title}
-                      </h3>
-                      <p className="text-gray-600 text-sm mb-4">
-                        {section.description}
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="group-hover:border-indigo-600 group-hover:text-indigo-600"
+                  <Card
+                    className="p-6 hover:shadow-xl transition-all duration-300 cursor-pointer group border-2 border-transparent hover:border-[#5A7A95]/30 dark:hover:border-[#6B9BB8]/30"
+                    onClick={() => router.push(section.path)}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div
+                        className={`p-4 rounded-xl bg-gradient-to-br ${section.color} shadow-lg group-hover:scale-110 transition-transform`}
                       >
-                        Open →
-                      </Button>
+                        <Icon className="text-white" size={28} />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-[#5A7A95] dark:group-hover:text-[#6B9BB8] transition-colors">
+                          {section.title}
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
+                          {section.description}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="group-hover:border-[#5A7A95] dark:group-hover:border-[#6B9BB8] group-hover:text-[#5A7A95] dark:group-hover:text-[#6B9BB8]"
+                        >
+                          Open →
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </Card>
+                  </Card>
+                </motion.div>
               </motion.div>
             );
           })}

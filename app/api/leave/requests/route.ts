@@ -14,23 +14,11 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getServiceRoleClient();
+    
+    // Fetch leave requests
     let query = supabase
       .from('staff_leave_requests')
-      .select(`
-        *,
-        staff:staff_id (
-          id,
-          full_name,
-          staff_id,
-          role,
-          department
-        ),
-        leave_type:leave_type_id (
-          id,
-          abbreviation,
-          name
-        )
-      `)
+      .select('*')
       .eq('school_code', schoolCode)
       .order('leave_applied_date', { ascending: false });
 
@@ -42,58 +30,83 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
-    const { data, error } = await query;
+    const { data: leaveRequests, error } = await query;
 
     if (error) {
       console.error('Error fetching leave requests:', error);
       return NextResponse.json({ error: 'Failed to fetch leave requests' }, { status: 500 });
     }
 
-    interface StaffInfo {
+    if (!leaveRequests || leaveRequests.length === 0) {
+      return NextResponse.json({ data: [] });
+    }
+
+    // Get unique staff IDs and leave type IDs
+    interface LeaveRequest {
+      id: string;
+      leave_applied_date: string | null;
+      leave_start_date: string | null;
+      leave_end_date: string | null;
+      total_days: number | null;
+      comment: string | null;
+      reason: string | null;
+      status: string | null;
+      rejected_reason: string | null;
+      staff_id: string;
+      leave_type_id: string;
+    }
+    const staffIds = [...new Set(leaveRequests.map((lr: LeaveRequest) => lr.staff_id).filter(Boolean))];
+    const leaveTypeIds = [...new Set(leaveRequests.map((lr: LeaveRequest) => lr.leave_type_id).filter(Boolean))];
+
+    // Fetch staff information
+    const { data: staffData } = await supabase
+      .from('staff')
+      .select('id, full_name, staff_id, role, department')
+      .in('id', staffIds);
+
+    // Fetch leave types
+    const { data: leaveTypesData } = await supabase
+      .from('leave_types')
+      .select('id, abbreviation, name')
+      .in('id', leaveTypeIds);
+
+    // Create lookup maps
+    interface Staff {
       id: string;
       full_name: string;
       staff_id: string;
-      role?: string;
-      department?: string;
+      role: string;
+      department: string;
     }
-
-    interface LeaveTypeInfo {
+    interface LeaveType {
       id: string;
       abbreviation: string;
       name: string;
     }
-
-    interface LeaveRequestItem {
-      id: string;
-      staff_id: string;
-      staff?: StaffInfo | null;
-      leave_type?: LeaveTypeInfo | null;
-      leave_applied_date: string;
-      leave_start_date: string;
-      leave_end_date: string;
-      total_days: number;
-      comment?: string | null;
-      reason?: string | null;
-      status: string;
-      rejected_reason?: string | null;
-    }
+    const staffMap = new Map((staffData || []).map((s: Staff) => [s.id, s]));
+    const leaveTypesMap = new Map((leaveTypesData || []).map((lt: LeaveType) => [lt.id, lt]));
 
     // Transform the data to match the expected format
-    const transformedData = (data || []).map((item: LeaveRequestItem) => ({
-      id: item.id,
-      staff_id: item.staff_id,
-      staff_name: item.staff?.full_name || '',
-      leave_type: item.leave_type?.abbreviation || '',
-      leave_type_name: item.leave_type?.name || '',
-      leave_applied_date: item.leave_applied_date,
-      leave_start_date: item.leave_start_date,
-      leave_end_date: item.leave_end_date,
-      total_days: item.total_days,
-      comment: item.comment || '',
-      reason: item.reason || '',
-      status: item.status,
-      rejected_reason: item.rejected_reason || null,
-    }));
+    const transformedData = leaveRequests.map((item: LeaveRequest) => {
+      const staff = staffMap.get(item.staff_id);
+      const leaveType = leaveTypesMap.get(item.leave_type_id);
+      
+      return {
+        id: item.id,
+        staff_id: item.staff_id,
+        staff_name: staff?.full_name || '',
+        leave_type: leaveType?.abbreviation || '',
+        leave_type_name: leaveType?.name || '',
+        leave_applied_date: item.leave_applied_date,
+        leave_start_date: item.leave_start_date,
+        leave_end_date: item.leave_end_date,
+        total_days: item.total_days,
+        comment: item.comment || '',
+        reason: item.reason || '',
+        status: item.status,
+        rejected_reason: item.rejected_reason || null,
+      };
+    });
 
     return NextResponse.json({ data: transformedData });
   } catch (error) {

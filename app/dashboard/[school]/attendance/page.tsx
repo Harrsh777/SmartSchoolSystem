@@ -108,8 +108,8 @@ export default function AttendancePage({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading attendance...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95] border-t-transparent mx-auto mb-4"></div>
+          <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-medium">Loading attendance...</p>
         </div>
       </div>
     );
@@ -124,8 +124,13 @@ export default function AttendancePage({
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Attendance Overview</h1>
-            <p className="text-gray-600">Track and manage student attendance records</p>
+            <h1 className="text-3xl font-bold text-black dark:text-white mb-2 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                <Calendar className="text-white" size={28} />
+              </div>
+              Attendance Overview
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">Track and manage student attendance records</p>
           </div>
         </div>
       </motion.div>
@@ -144,7 +149,7 @@ export default function AttendancePage({
               <select
                 value={selectedClass}
                 onChange={(e) => setSelectedClass(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                className="px-4 py-2 border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
               >
                 <option value="all">All Classes</option>
                 {classes.map((cls) => (
@@ -164,7 +169,7 @@ export default function AttendancePage({
                   setSelectedDate(e.target.value);
                   setDateRange({ start: '', end: '' });
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                className="px-4 py-2 border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -177,7 +182,7 @@ export default function AttendancePage({
                   setSelectedDate('');
                 }}
                 placeholder="Start Date"
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                className="px-4 py-2 border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
               />
               <span className="text-gray-500">to</span>
               <input
@@ -188,7 +193,7 @@ export default function AttendancePage({
                   setSelectedDate('');
                 }}
                 placeholder="End Date"
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                className="px-4 py-2 border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
               />
             </div>
           </div>

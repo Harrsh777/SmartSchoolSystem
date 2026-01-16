@@ -264,7 +264,7 @@ export default function GalleryPage({
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-[#5A7A95] dark:text-[#6B9BB8]" />
       </div>
     );
   }
@@ -277,8 +277,10 @@ export default function GalleryPage({
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <Images className="text-indigo-600" size={32} />
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                <Images className="text-white" size={28} />
+              </div>
               Gallery
             </h1>
             <p className="text-gray-600 mt-2">
@@ -327,8 +329,8 @@ export default function GalleryPage({
               className={`px-4 py-2 rounded-lg font-medium transition-all ${
                 (cat === 'All' && selectedCategory === 'all') ||
                 (cat !== 'All' && selectedCategory === cat.toLowerCase())
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] text-white shadow-md'
+                  : 'bg-gray-100 dark:bg-[#2F4156] text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#1e293b]'
               }`}
             >
               {cat}

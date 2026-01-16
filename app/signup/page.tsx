@@ -17,7 +17,8 @@ import {
   ArrowRight,
   CheckCircle2,
   AlertCircle,
-  Loader2
+  Loader2,
+  ArrowLeft
 } from 'lucide-react';
 
 // Add CSS for animations
@@ -185,24 +186,38 @@ export default function SignupPage() {
         className="w-full max-w-4xl relative z-10"
       >
         {/* Header */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-block mb-4">
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              className="inline-flex items-center gap-3"
+        <div className="mb-8">
+          {/* Back Button */}
+          <div className="mb-6">
+            <Button
+              variant="outline"
+              onClick={() => router.push('/')}
+              className="border-gray-300 dark:border-gray-600 text-navy dark:text-skyblue hover:bg-[#F0F5F9] dark:hover:bg-[#1e293b] transition-all"
             >
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg shadow-[#6B9BB8]/30">
-                <GraduationCap className="text-white" size={28} />
-              </div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white">
-                EduCore
-              </h1>
-            </motion.div>
-          </Link>
-          <h2 className="text-3xl font-bold text-navy dark:text-skyblue mb-2">
-            Join Our School Network
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 text-lg">Complete your school registration in just a few steps</p>
+              <ArrowLeft size={18} className="mr-2" />
+              Back
+            </Button>
+          </div>
+          
+          <div className="text-center">
+            <Link href="/" className="inline-block mb-4">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                className="inline-flex items-center gap-3"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg shadow-[#6B9BB8]/30">
+                  <GraduationCap className="text-white" size={28} />
+                </div>
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white">
+                  EduCore
+                </h1>
+              </motion.div>
+            </Link>
+            <h2 className="text-3xl font-bold text-navy dark:text-skyblue mb-2">
+              Join Our School Network
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 text-lg">Complete your school registration in just a few steps</p>
+          </div>
         </div>
 
         {/* Progress Bar */}

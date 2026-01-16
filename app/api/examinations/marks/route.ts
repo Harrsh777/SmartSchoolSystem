@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import {
+  calculatePercentage,
+  getGradeFromPercentage,
+  checkPassStatus,
+  calculateOverallPercentage,
+} from '@/lib/grade-calculator';
 
 // Get marks for a student in an exam
 export async function GET(request: NextRequest) {
@@ -101,25 +107,51 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Prepare marks records for upsert
+    // Get exam subjects to check passing marks
+    const { data: examSubjects } = await supabase
+      .from('exam_subjects')
+      .select('subject_id, max_marks, passing_marks')
+      .eq('exam_id', exam_id);
+
+    // Prepare marks records for upsert with calculations
     interface MarkInput {
       subject_id: string;
       max_marks: number;
       marks_obtained: number;
       remarks?: string;
     }
-    const marksRecords = marks.map((m: MarkInput) => ({
-      exam_id: exam_id,
-      student_id: student_id,
-      subject_id: m.subject_id,
-      class_id: class_id,
-      school_id: schoolData.id,
-      school_code: school_code,
-      max_marks: parseInt(String(m.max_marks || '0')) || 0,
-      marks_obtained: parseInt(String(m.marks_obtained || '0')) || 0,
-      remarks: m.remarks || null,
-      entered_by: entered_by,
-    }));
+    const marksRecords = marks.map((m: MarkInput) => {
+      const maxMarks = parseInt(String(m.max_marks || '0')) || 0;
+      const marksObtained = parseFloat(String(m.marks_obtained || '0')) || 0;
+      
+      // Calculate percentage
+      const percentage = calculatePercentage(marksObtained, maxMarks);
+      
+      // Get grade from percentage
+      const grade = getGradeFromPercentage(percentage);
+      
+      // Check pass status (use passing marks from exam_subjects if available, else default to 40% of max)
+      const examSubject = examSubjects?.find((es) => es.subject_id === m.subject_id);
+      const passingMarks = examSubject?.passing_marks || Math.round(maxMarks * 0.4);
+      const passingStatus = checkPassStatus(marksObtained, passingMarks);
+
+      return {
+        exam_id: exam_id,
+        student_id: student_id,
+        subject_id: m.subject_id,
+        class_id: class_id,
+        school_id: schoolData.id,
+        school_code: school_code,
+        max_marks: maxMarks,
+        marks_obtained: marksObtained,
+        percentage: percentage,
+        grade: grade,
+        passing_status: passingStatus,
+        remarks: m.remarks || null,
+        entered_by: entered_by,
+        status: 'draft', // Default status - will be changed to 'submitted' when ready
+      };
+    });
 
     // Upsert marks (insert or update)
     const { data: insertedMarks, error: marksError } = await supabase
@@ -144,7 +176,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // The trigger will automatically calculate and update student_exam_summary
+    // Calculate and update exam summary
+    // Get all marks for this student in this exam
+    const { data: allStudentMarks } = await supabase
+      .from('student_subject_marks')
+      .select('marks_obtained, max_marks, percentage, grade, passing_status')
+      .eq('exam_id', exam_id)
+      .eq('student_id', student_id);
+
+    if (allStudentMarks && allStudentMarks.length > 0) {
+      const totalMarks = allStudentMarks.reduce((sum, m) => sum + m.marks_obtained, 0);
+      const totalMaxMarks = allStudentMarks.reduce((sum, m) => sum + m.max_marks, 0);
+      const overallPercentage = calculateOverallPercentage(
+        allStudentMarks.map((m) => ({ marks_obtained: m.marks_obtained, max_marks: m.max_marks }))
+      );
+      const overallGrade = getGradeFromPercentage(overallPercentage);
+      const subjectsPassed = allStudentMarks.filter((m) => m.passing_status === 'pass').length;
+      const subjectsFailed = allStudentMarks.filter((m) => m.passing_status === 'fail').length;
+      const resultStatus = subjectsFailed === 0 ? 'pass' : 'fail';
+
+      // Upsert exam summary
+      await supabase
+        .from('student_exam_summary')
+        .upsert({
+          exam_id,
+          student_id,
+          class_id,
+          school_id: schoolData.id,
+          school_code,
+          total_marks: totalMarks,
+          total_max_marks: totalMaxMarks,
+          overall_percentage: overallPercentage,
+          overall_grade: overallGrade,
+          result_status: resultStatus,
+          subjects_passed: subjectsPassed,
+          subjects_failed: subjectsFailed,
+        }, {
+          onConflict: 'exam_id,student_id',
+        });
+    }
+
     // Fetch the updated summary
     const { data: summary } = await supabase
       .from('student_exam_summary')

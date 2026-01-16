@@ -13,7 +13,10 @@ import {
   AlertCircle,
   Loader2,
   Plus,
+  ArrowLeft,
+  X,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface Transaction {
   id: string;
@@ -83,6 +86,7 @@ export default function LibraryTransactionsPage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
+  const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -264,7 +268,9 @@ export default function LibraryTransactionsPage({
         fetchAvailableBooks();
         setTimeout(() => setSuccess(''), 3000);
       } else {
-        setError(result.error || 'Failed to issue book');
+        const errorMessage = result.error || 'Failed to issue book';
+        const details = result.details ? `\n\nDetails: ${result.details}` : '';
+        setError(`${errorMessage}${details}`);
       }
     } catch (err) {
       console.error('Error issuing book:', err);
@@ -304,7 +310,9 @@ export default function LibraryTransactionsPage({
         fetchAvailableBooks();
         setTimeout(() => setSuccess(''), 3000);
       } else {
-        setError(result.error || 'Failed to return book');
+        const errorMessage = result.error || 'Failed to return book';
+        const details = result.details ? `\n\nDetails: ${result.details}` : '';
+        setError(`${errorMessage}${details}`);
       }
     } catch (err) {
       console.error('Error returning book:', err);
@@ -327,366 +335,403 @@ export default function LibraryTransactionsPage({
     return true;
   });
 
+  if (loading && transactions.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-[#5A7A95] mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Loading transactions...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <FileText className="text-indigo-600" size={32} />
-            Library Transactions
-          </h1>
-          <p className="text-gray-600 mt-2">Issue and return books for {schoolCode}</p>
-        </div>
-        <div className="flex gap-3">
-          <Button
-            variant={activeTab === 'view' ? 'primary' : 'outline'}
-            onClick={() => setActiveTab('view')}
-          >
-            View Transactions
-          </Button>
-          <Button
-            variant={activeTab === 'issue' ? 'primary' : 'outline'}
-            onClick={() => setActiveTab('issue')}
-          >
-            <Plus size={18} className="mr-2" />
-            Issue Book
-          </Button>
-        </div>
-      </motion.div>
-
-      {/* Success/Error Messages */}
-      {success && (
+    <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Header */}
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2"
+          className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6"
         >
-          <CheckCircle size={20} />
-          {success}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/dashboard/${schoolCode}/library`)}
+                className="border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
+              >
+                <ArrowLeft size={18} className="mr-2" />
+                Back
+              </Button>
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
+                <FileText className="text-white" size={28} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Library Transactions</h1>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Issue and return books for {schoolCode}</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant={activeTab === 'view' ? 'primary' : 'outline'}
+                onClick={() => setActiveTab('view')}
+                className={activeTab === 'view' ? 'bg-[#5A7A95] hover:bg-[#4a6a85]' : ''}
+              >
+                View Transactions
+              </Button>
+              <Button
+                variant={activeTab === 'issue' ? 'primary' : 'outline'}
+                onClick={() => setActiveTab('issue')}
+                className={activeTab === 'issue' ? 'bg-[#5A7A95] hover:bg-[#4a6a85]' : ''}
+              >
+                <Plus size={18} className="mr-2" />
+                Issue Book
+              </Button>
+            </div>
+          </div>
         </motion.div>
-      )}
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center gap-2"
-        >
-          <AlertCircle size={20} />
-          {error}
-        </motion.div>
-      )}
 
-      {activeTab === 'view' ? (
-        <>
-          {/* Filters */}
-          <Card>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+        {/* Success/Error Messages */}
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-center gap-3"
+          >
+            <CheckCircle className="text-green-600 dark:text-green-400" size={20} />
+            <p className="text-green-800 dark:text-green-300 text-sm">{success}</p>
+          </motion.div>
+        )}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="text-red-600 dark:text-red-400" size={20} />
+              <p className="text-red-800 dark:text-red-300 text-sm">{error}</p>
+            </div>
+            <button onClick={() => setError('')} className="text-red-600 dark:text-red-400 hover:text-red-800">
+              <X size={18} />
+            </button>
+          </motion.div>
+        )}
+
+        {activeTab === 'view' ? (
+          <>
+            {/* Filters */}
+            <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                  <Input
+                    placeholder="Search borrower or book..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                >
+                  <option value="all">All Status</option>
+                  <option value="issued">Issued</option>
+                  <option value="returned">Returned</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                >
+                  <option value="all">All Types</option>
+                  <option value="student">Students</option>
+                  <option value="staff">Staff</option>
+                </select>
                 <Input
-                  placeholder="Search borrower or book..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  placeholder="Start Date"
+                  className="w-full"
+                />
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  placeholder="End Date"
+                  className="w-full"
                 />
               </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="all">All Status</option>
-                <option value="issued">Issued</option>
-                <option value="returned">Returned</option>
-                <option value="overdue">Overdue</option>
-              </select>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="all">All Types</option>
-                <option value="student">Students</option>
-                <option value="staff">Staff</option>
-              </select>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                placeholder="Start Date"
-              />
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                placeholder="End Date"
-              />
-            </div>
-          </Card>
+            </Card>
 
-          {/* Transactions Table */}
-          <Card>
-            {loading ? (
-              <div className="text-center py-12">
-                <Loader2 className="animate-spin mx-auto mb-4 text-indigo-600" size={32} />
-                <p className="text-gray-600">Loading transactions...</p>
-              </div>
-            ) : filteredTransactions.length === 0 ? (
-              <div className="text-center py-12">
-                <FileText className="mx-auto mb-4 text-gray-400" size={48} />
-                <p className="text-gray-600 text-lg">No transactions found</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Borrower</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Book</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Accession #</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Issue Date</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Due Date</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Return Date</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Fine</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredTransactions.map((transaction) => {
-                      const isOverdue =
-                        transaction.status === 'issued' &&
-                        new Date(transaction.due_date) < new Date();
-                      return (
-                        <tr key={transaction.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3 text-sm">
-                            <div>
-                              <div className="font-medium text-gray-900">
-                                {transaction.borrower_type === 'student'
-                                  ? transaction.borrower?.student_name || 'N/A'
-                                  : transaction.borrower?.full_name || 'N/A'}
+            {/* Transactions Table */}
+            <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 overflow-hidden">
+              {loading ? (
+                <div className="text-center py-12">
+                  <Loader2 className="animate-spin mx-auto mb-4 text-[#5A7A95]" size={32} />
+                  <p className="text-gray-600 dark:text-gray-400">Loading transactions...</p>
+                </div>
+              ) : filteredTransactions.length === 0 ? (
+                <div className="text-center py-12">
+                  <FileText className="mx-auto mb-4 text-gray-400" size={64} />
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No Transactions Found</h3>
+                  <p className="text-gray-600 dark:text-gray-400">No transactions match your search criteria</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase">Borrower</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase">Book</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase">Accession #</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase">Issue Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase">Due Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase">Return Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase">Fine</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {filteredTransactions.map((transaction) => {
+                        const isOverdue =
+                          transaction.status === 'issued' &&
+                          new Date(transaction.due_date) < new Date();
+                        return (
+                          <tr key={transaction.id} className="hover:bg-[#5A7A95]/5 dark:hover:bg-[#6B9BB8]/10 transition-colors">
+                            <td className="px-4 py-3 text-sm">
+                              <div>
+                                <div className="font-medium text-gray-900 dark:text-white">
+                                  {transaction.borrower_type === 'student'
+                                    ? transaction.borrower?.student_name || 'N/A'
+                                    : transaction.borrower?.full_name || 'N/A'}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                  {transaction.borrower_type === 'student'
+                                    ? `${transaction.borrower?.class || ''} ${transaction.borrower?.section || ''}`
+                                    : transaction.borrower?.staff_id || ''}
+                                </div>
                               </div>
-                              <div className="text-xs text-gray-500">
-                                {transaction.borrower_type === 'student'
-                                  ? `${transaction.borrower?.class || ''} ${transaction.borrower?.section || ''}`
-                                  : transaction.borrower?.staff_id || ''}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <div className="font-medium text-gray-900 dark:text-white">
+                                {transaction.book_copy?.book?.title || 'N/A'}
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            <div className="font-medium text-gray-900">
-                              {transaction.book_copy?.book?.title || 'N/A'}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {transaction.book_copy?.book?.author || ''}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600 font-mono">
-                            {transaction.book_copy?.accession_number || 'N/A'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {new Date(transaction.issue_date).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {new Date(transaction.due_date).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {transaction.return_date
-                              ? new Date(transaction.return_date).toLocaleDateString()
-                              : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            {transaction.fine_amount > 0 ? (
-                              <span className="text-red-600 font-semibold">
-                                ₹{transaction.fine_amount.toFixed(2)}
-                              </span>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                transaction.status === 'returned'
-                                  ? 'bg-green-100 text-green-800'
-                                  : isOverdue
-                                  ? 'bg-red-100 text-red-800'
-                                  : 'bg-blue-100 text-blue-800'
-                              }`}
-                            >
-                              {isOverdue ? 'Overdue' : transaction.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            {transaction.status === 'issued' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleReturnBook(transaction.id)}
-                                disabled={saving}
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {transaction.book_copy?.book?.author || ''}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 font-mono">
+                              {transaction.book_copy?.accession_number || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                              {new Date(transaction.issue_date).toLocaleDateString()}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                              {new Date(transaction.due_date).toLocaleDateString()}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                              {transaction.return_date
+                                ? new Date(transaction.return_date).toLocaleDateString()
+                                : '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              {transaction.fine_amount > 0 ? (
+                                <span className="text-red-600 dark:text-red-400 font-semibold">
+                                  ₹{transaction.fine_amount.toFixed(2)}
+                                </span>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  transaction.status === 'returned'
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                    : isOverdue
+                                    ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                    : 'bg-[#5A7A95]/10 text-[#5A7A95] dark:bg-[#6B9BB8]/20 dark:text-[#6B9BB8]'
+                                }`}
                               >
-                                Return
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-        </>
-      ) : (
-        <Card>
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Borrower Type</label>
-              <div className="flex gap-4">
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value="student"
-                    checked={borrowerType === 'student'}
-                    onChange={(e) => {
-                      setBorrowerType(e.target.value as 'student' | 'staff');
-                      setSelectedBorrower('');
-                      setBorrowerInfo(null);
-                    }}
-                    className="mr-2"
-                  />
-                  Student
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value="staff"
-                    checked={borrowerType === 'staff'}
-                    onChange={(e) => {
-                      setBorrowerType(e.target.value as 'student' | 'staff');
-                      setSelectedBorrower('');
-                      setBorrowerInfo(null);
-                    }}
-                    className="mr-2"
-                  />
-                  Staff
-                </label>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select {borrowerType === 'student' ? 'Student' : 'Staff'}
-              </label>
-              <select
-                value={selectedBorrower}
-                onChange={(e) => {
-                  setSelectedBorrower(e.target.value);
-                  setBorrowerInfo(null);
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="">Select {borrowerType === 'student' ? 'Student' : 'Staff'}</option>
-                {borrowerType === 'student'
-                  ? students.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {`${item.student_name} (${item.admission_no}) - ${item.class}${item.section || ''}`}
-                      </option>
-                    ))
-                  : staff.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {`${item.full_name} (${item.staff_id})`}
-                      </option>
-                    ))}
-              </select>
-              {selectedBorrower && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleCheckBorrower}
-                  className="mt-2"
-                >
-                  Check Eligibility
-                </Button>
+                                {isOverdue ? 'Overdue' : transaction.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              {transaction.status === 'issued' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleReturnBook(transaction.id)}
+                                  disabled={saving}
+                                  className="border-green-300 text-green-600 hover:bg-green-50 dark:border-green-700 dark:text-green-400"
+                                >
+                                  Return
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            </div>
-
-            {borrowerInfo && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-900 mb-2">Borrower Information</h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-gray-600">Max Books:</span>{' '}
-                    <span className="font-medium">{borrowerInfo.maxBooksAllowed}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Current Books:</span>{' '}
-                    <span className="font-medium">{borrowerInfo.currentBooksCount}</span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-gray-600">Can Borrow:</span>{' '}
-                    <span
-                      className={`font-medium ${borrowerInfo.canBorrow ? 'text-green-600' : 'text-red-600'}`}
-                    >
-                      {borrowerInfo.canBorrow ? 'Yes' : 'No'}
-                    </span>
-                  </div>
+            </Card>
+          </>
+        ) : (
+          <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Borrower Type</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="student"
+                      checked={borrowerType === 'student'}
+                      onChange={(e) => {
+                        setBorrowerType(e.target.value as 'student' | 'staff');
+                        setSelectedBorrower('');
+                        setBorrowerInfo(null);
+                      }}
+                      className="mr-2 text-[#5A7A95] focus:ring-[#5A7A95]"
+                    />
+                    <span className="text-gray-900 dark:text-white">Student</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="staff"
+                      checked={borrowerType === 'staff'}
+                      onChange={(e) => {
+                        setBorrowerType(e.target.value as 'student' | 'staff');
+                        setSelectedBorrower('');
+                        setBorrowerInfo(null);
+                      }}
+                      className="mr-2 text-[#5A7A95] focus:ring-[#5A7A95]"
+                    />
+                    <span className="text-gray-900 dark:text-white">Staff</span>
+                  </label>
                 </div>
               </div>
-            )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select Book</label>
-              <select
-                value={selectedBook}
-                onChange={(e) => handleBookSelect(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="">Select Book</option>
-                {books
-                  .filter((book) => book.available_copies > 0)
-                  .map((book) => (
-                    <option key={book.id} value={book.id}>
-                      {book.title} by {book.author || 'Unknown'} ({book.available_copies} available)
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            {selectedBook && selectedCopy && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <p className="text-sm text-green-800">
-                  ✓ Copy selected and ready to issue
-                </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Select {borrowerType === 'student' ? 'Student' : 'Staff'}
+                </label>
+                <select
+                  value={selectedBorrower}
+                  onChange={(e) => {
+                    setSelectedBorrower(e.target.value);
+                    setBorrowerInfo(null);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                >
+                  <option value="">Select {borrowerType === 'student' ? 'Student' : 'Staff'}</option>
+                  {borrowerType === 'student'
+                    ? students.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {`${item.student_name} (${item.admission_no}) - ${item.class}${item.section || ''}`}
+                        </option>
+                      ))
+                    : staff.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {`${item.full_name} (${item.staff_id})`}
+                        </option>
+                      ))}
+                </select>
+                {selectedBorrower && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCheckBorrower}
+                    className="mt-2 border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
+                  >
+                    Check Eligibility
+                  </Button>
+                )}
               </div>
-            )}
 
-            <Button
-              onClick={handleIssueBook}
-              disabled={saving || !selectedBorrower || !selectedBook || !selectedCopy || (borrowerInfo ? !borrowerInfo.canBorrow : false)}
-              className="w-full"
-            >
-              {saving ? (
-                <>
-                  <Loader2 size={18} className="mr-2 animate-spin" />
-                  Issuing...
-                </>
-              ) : (
-                <>
-                  <BookOpen size={18} className="mr-2" />
-                  Issue Book
-                </>
+              {borrowerInfo && (
+                <div className="bg-gradient-to-r from-[#5A7A95]/10 via-[#6B9BB8]/10 to-[#7DB5D3]/10 dark:from-[#5A7A95]/20 dark:via-[#6B9BB8]/20 dark:to-[#7DB5D3]/20 border-2 border-[#5A7A95]/30 dark:border-[#6B9BB8]/30 rounded-xl p-4">
+                  <h3 className="font-semibold text-[#5A7A95] dark:text-[#6B9BB8] mb-3">Borrower Information</h3>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="p-2 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                      <span className="text-gray-600 dark:text-gray-400">Max Books:</span>{' '}
+                      <span className="font-bold text-[#5A7A95] dark:text-[#6B9BB8]">{borrowerInfo.maxBooksAllowed}</span>
+                    </div>
+                    <div className="p-2 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                      <span className="text-gray-600 dark:text-gray-400">Current Books:</span>{' '}
+                      <span className="font-bold text-[#5A7A95] dark:text-[#6B9BB8]">{borrowerInfo.currentBooksCount}</span>
+                    </div>
+                    <div className="col-span-2 p-2 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                      <span className="text-gray-600 dark:text-gray-400">Can Borrow:</span>{' '}
+                      <span
+                        className={`font-bold ${borrowerInfo.canBorrow ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
+                      >
+                        {borrowerInfo.canBorrow ? 'Yes ✓' : 'No ✗'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               )}
-            </Button>
-          </div>
-        </Card>
-      )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Book</label>
+                <select
+                  value={selectedBook}
+                  onChange={(e) => handleBookSelect(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                >
+                  <option value="">Select Book</option>
+                  {books
+                    .filter((book) => book.available_copies > 0)
+                    .map((book) => (
+                      <option key={book.id} value={book.id}>
+                        {book.title} by {book.author || 'Unknown'} ({book.available_copies} available)
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {selectedBook && selectedCopy && (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                  <p className="text-sm text-green-800 dark:text-green-300 flex items-center gap-2">
+                    <CheckCircle size={16} />
+                    Copy selected and ready to issue
+                  </p>
+                </div>
+              )}
+
+              <Button
+                onClick={handleIssueBook}
+                disabled={saving || !selectedBorrower || !selectedBook || !selectedCopy || (borrowerInfo ? !borrowerInfo.canBorrow : false)}
+                className="w-full bg-[#5A7A95] hover:bg-[#4a6a85] disabled:opacity-50"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 size={18} className="mr-2 animate-spin" />
+                    Issuing...
+                  </>
+                ) : (
+                  <>
+                    <BookOpen size={18} className="mr-2" />
+                    Issue Book
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

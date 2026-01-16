@@ -6,8 +6,8 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import ModuleGuideButton from '@/components/ModuleGuideButton';
 import {
-  FileText,
   Download,
   Eye,
   Search,
@@ -26,6 +26,7 @@ import {
   Award,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { getGradeColor } from '@/lib/grade-calculator';
 
 interface StudentMark {
   id: string;
@@ -208,14 +209,6 @@ export default function MarksDashboardPage({
 
   const totalPages = Math.ceil(filteredMarks.length / itemsPerPage);
 
-  // Get grade color
-  const getGradeColor = (grade: string) => {
-    if (grade?.includes('A+') || grade?.includes('A')) return 'text-green-600 font-semibold';
-    if (grade?.includes('B')) return 'text-blue-600 font-semibold';
-    if (grade?.includes('C')) return 'text-yellow-600 font-semibold';
-    if (grade?.includes('D')) return 'text-orange-600 font-semibold';
-    return 'text-red-600 font-semibold';
-  };
 
   // Download handlers
   const handleDownloadReportCard = async (studentId: string, examId: string) => {
@@ -326,127 +319,139 @@ export default function MarksDashboardPage({
 
 
   return (
-    <div className="space-y-6 pb-20">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-            <FileText className="text-orange-500" size={32} />
-            Marks Management
-          </h1>
-          <p className="text-gray-600">View, analyze, and download student marks and report cards</p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => router.push(`/dashboard/${schoolCode}`)}
+    <div className="min-h-screen bg-background">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card rounded-xl p-6 soft-shadow-md"
         >
-          <ArrowLeft size={18} className="mr-2" />
-          Back
-        </Button>
-      </div>
-
-      {/* Filters - Sticky */}
-      <Card className="sticky top-0 z-10 shadow-md">
-        <div className="p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Filter className="text-orange-500" size={20} />
-            <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Examination */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Examination <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={filters.exam_id}
-                onChange={(e) => setFilters({ ...filters, exam_id: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                required
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/dashboard/${schoolCode}`)}
+                className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
               >
-                <option value="">Select Examination</option>
-                {examinations.map((exam) => (
-                  <option key={exam.id} value={exam.id}>
-                    {exam.exam_name || exam.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Class */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Class</label>
-              <select
-                value={filters.class_id}
-                onChange={(e) => {
-                  setFilters({ ...filters, class_id: e.target.value, section: '' });
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                <option value="">All Classes</option>
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.class} {cls.section ? `- ${cls.section}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Section */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Section</label>
-              <select
-                value={filters.section}
-                onChange={(e) => setFilters({ ...filters, section: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                disabled={!filters.class_id}
-              >
-                <option value="">All Sections</option>
-                {sections.map((sec) => (
-                  <option key={sec} value={sec}>
-                    {sec}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Subject */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
-              <select
-                value={filters.subject_id}
-                onChange={(e) => setFilters({ ...filters, subject_id: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                <option value="">All Subjects</option>
-                {subjects.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Search */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                <Input
-                  type="text"
-                  placeholder="Name or Roll No."
-                  value={filters.search}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  className="pl-10"
-                />
+                <ArrowLeft size={18} className="mr-2" />
+                Back
+              </Button>
+              <div className="w-14 h-14 rounded-xl bg-[#2C3E50] dark:bg-[#4A707A] flex items-center justify-center soft-shadow">
+                <GraduationCap className="text-white" size={28} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-semibold text-foreground">Marks Management</h1>
+                <p className="text-sm text-muted-foreground mt-1">Manage examination marks, entry, and reports</p>
               </div>
             </div>
+            <ModuleGuideButton />
           </div>
+        </motion.div>
 
-          <div className="flex items-center justify-between mt-4">
-            <Button
-              onClick={fetchMarks}
-              className="bg-orange-500 hover:bg-orange-600 text-white"
+
+        {/* Filters - Sticky */}
+        <Card className="sticky top-0 z-10 soft-shadow-md">
+          <div className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Filter className="text-[#2C3E50] dark:text-[#5A879A]" size={20} />
+              <h2 className="text-lg font-semibold text-foreground">Filters</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Examination */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Examination <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={filters.exam_id}
+                  onChange={(e) => setFilters({ ...filters, exam_id: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                  required
+                >
+                  <option value="">Select Examination</option>
+                  {examinations.map((exam) => (
+                    <option key={exam.id} value={exam.id}>
+                      {exam.exam_name || exam.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Class */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Class</label>
+                <select
+                  value={filters.class_id}
+                  onChange={(e) => {
+                    setFilters({ ...filters, class_id: e.target.value, section: '' });
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                >
+                  <option value="">All Classes</option>
+                  {classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.class} {cls.section ? `- ${cls.section}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Section */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Section</label>
+                <select
+                  value={filters.section}
+                  onChange={(e) => setFilters({ ...filters, section: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900"
+                  disabled={!filters.class_id}
+                >
+                  <option value="">All Sections</option>
+                  {sections.map((sec) => (
+                    <option key={sec} value={sec}>
+                      {sec}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Subject */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Subject</label>
+                <select
+                  value={filters.subject_id}
+                  onChange={(e) => setFilters({ ...filters, subject_id: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                >
+                  <option value="">All Subjects</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Search */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <Input
+                    type="text"
+                    placeholder="Name or Roll No."
+                    value={filters.search}
+                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-4">
+              <Button
+                onClick={fetchMarks}
+                className="bg-[#5A7A95] hover:bg-[#4a6a85] text-white"
             >
               <RefreshCw size={18} className="mr-2" />
               Apply Filters
@@ -456,6 +461,7 @@ export default function MarksDashboardPage({
                 variant="outline"
                 onClick={handleExportExcel}
                 disabled={!filters.exam_id || marks.length === 0}
+                className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
               >
                 <FileSpreadsheet size={18} className="mr-2" />
                 Export Excel
@@ -464,6 +470,7 @@ export default function MarksDashboardPage({
                 variant="outline"
                 onClick={handleBulkDownload}
                 disabled={!filters.exam_id || marks.length === 0}
+                className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
               >
                 <Download size={18} className="mr-2" />
                 Download All Report Cards
@@ -476,17 +483,17 @@ export default function MarksDashboardPage({
       {/* Analytics Cards */}
       {analytics && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="p-6 bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+          <Card className="p-6 bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] text-white shadow-lg">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-sm mb-1">Total Students</p>
+                <p className="text-white/80 text-sm mb-1">Total Students</p>
                 <p className="text-3xl font-bold">{analytics.total_students}</p>
               </div>
-              <Users className="text-blue-200" size={32} />
+              <Users className="text-white/70" size={32} />
             </div>
           </Card>
 
-          <Card className="p-6 bg-gradient-to-br from-green-500 to-green-600 text-white">
+          <Card className="p-6 bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-green-100 text-sm mb-1">Passed</p>
@@ -496,7 +503,7 @@ export default function MarksDashboardPage({
             </div>
           </Card>
 
-          <Card className="p-6 bg-gradient-to-br from-red-500 to-red-600 text-white">
+          <Card className="p-6 bg-gradient-to-br from-red-500 to-red-600 text-white shadow-lg">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-red-100 text-sm mb-1">Failed</p>
@@ -506,13 +513,13 @@ export default function MarksDashboardPage({
             </div>
           </Card>
 
-          <Card className="p-6 bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+          <Card className="p-6 bg-gradient-to-br from-[#6B9BB8] to-[#7DB5D3] text-white shadow-lg">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-100 text-sm mb-1">Average %</p>
+                <p className="text-white/80 text-sm mb-1">Average %</p>
                 <p className="text-3xl font-bold">{analytics.average_percentage.toFixed(1)}%</p>
               </div>
-              <TrendingUp className="text-purple-200" size={32} />
+              <TrendingUp className="text-white/70" size={32} />
             </div>
           </Card>
         </div>
@@ -522,36 +529,36 @@ export default function MarksDashboardPage({
       {marks.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Grade Distribution */}
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <BarChart3 className="text-orange-500" size={20} />
+          <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <BarChart3 className="text-[#5A7A95]" size={20} />
               Grade Distribution
             </h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={gradeDistribution}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="name" stroke="#6b7280" />
+                <YAxis stroke="#6b7280" />
                 <Tooltip />
-                <Bar dataKey="value" fill="#f97316" />
+                <Bar dataKey="value" fill="#5A7A95" />
               </BarChart>
             </ResponsiveContainer>
           </Card>
 
           {/* Subject Performance */}
           {subjectPerformance.length > 0 && (
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <BookOpen className="text-orange-500" size={20} />
+            <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <BookOpen className="text-[#5A7A95]" size={20} />
                 Subject Average Performance
               </h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={subjectPerformance}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} stroke="#6b7280" />
+                  <YAxis stroke="#6b7280" />
                   <Tooltip />
-                  <Line type="monotone" dataKey="average" stroke="#f97316" strokeWidth={2} />
+                  <Line type="monotone" dataKey="average" stroke="#5A7A95" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </Card>
@@ -561,20 +568,20 @@ export default function MarksDashboardPage({
 
       {/* Toppers */}
       {analytics && analytics.toppers.length > 0 && (
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Award className="text-orange-500" size={20} />
+        <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Award className="text-[#5A7A95]" size={20} />
             Top Performers
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {analytics.toppers.map((topper, idx) => (
-              <div key={idx} className="text-center p-4 bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg border border-orange-200">
-                <div className="w-12 h-12 rounded-full bg-orange-500 text-white flex items-center justify-center mx-auto mb-2 font-bold text-lg">
+              <div key={idx} className="text-center p-4 bg-gradient-to-br from-[#5A7A95]/10 to-[#6B9BB8]/10 dark:from-[#5A7A95]/20 dark:to-[#6B9BB8]/20 rounded-lg border border-[#5A7A95]/20 dark:border-[#6B9BB8]/30">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] text-white flex items-center justify-center mx-auto mb-2 font-bold text-lg shadow-lg">
                   {idx + 1}
                 </div>
-                <p className="font-semibold text-gray-900">{topper.student_name}</p>
-                <p className="text-orange-600 font-bold">{topper.percentage.toFixed(1)}%</p>
-                <p className="text-sm text-gray-600">{topper.grade}</p>
+                <p className="font-semibold text-gray-900 dark:text-white">{topper.student_name}</p>
+                <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-bold">{topper.percentage.toFixed(1)}%</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">{topper.grade}</p>
               </div>
             ))}
           </div>
@@ -582,42 +589,42 @@ export default function MarksDashboardPage({
       )}
 
       {/* Marks Table */}
-      <Card className="p-6">
+      <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <GraduationCap className="text-orange-500" size={20} />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <GraduationCap className="text-[#5A7A95]" size={20} />
             Student Marks ({filteredMarks.length} students)
           </h3>
         </div>
 
         {loading ? (
           <div className="text-center py-12">
-            <RefreshCw className="animate-spin text-orange-500 mx-auto mb-4" size={32} />
-            <p className="text-gray-600">Loading marks...</p>
+            <RefreshCw className="animate-spin text-[#5A7A95] mx-auto mb-4" size={32} />
+            <p className="text-gray-600 dark:text-gray-400">Loading marks...</p>
           </div>
         ) : filteredMarks.length === 0 ? (
           <div className="text-center py-12">
-            <AlertCircle className="text-gray-400 mx-auto mb-4" size={48} />
-            <p className="text-gray-600">No marks found. Please apply filters to view marks.</p>
+            <AlertCircle className="text-gray-400 dark:text-gray-600 mx-auto mb-4" size={48} />
+            <p className="text-gray-600 dark:text-gray-400">No marks found. Please apply filters to view marks.</p>
           </div>
         ) : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Roll No.</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Student Name</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Class</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Subject Marks</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">%</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Grade</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white">
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Roll No.</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Student Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Class</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Subject Marks</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Total</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">%</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Grade</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {paginatedMarks.map((mark) => {
                     const isPass = (mark.percentage || 0) >= 40;
                     return (
@@ -625,11 +632,11 @@ export default function MarksDashboardPage({
                         key={mark.id}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                        className="border-b border-gray-100 dark:border-gray-700 hover:bg-[#5A7A95]/5 dark:hover:bg-[#6B9BB8]/10 transition-colors"
                       >
-                        <td className="px-4 py-3 text-gray-700">{mark.student?.roll_number || '-'}</td>
-                        <td className="px-4 py-3 font-medium text-black">{mark.student?.student_name || mark.student?.full_name || '-'}</td>
-                        <td className="px-4 py-3 text-gray-700">{mark.student?.class || '-'} {mark.student?.section ? `- ${mark.student.section}` : ''}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{mark.student?.roll_number || '-'}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{mark.student?.student_name || mark.student?.full_name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{mark.student?.class || '-'} {mark.student?.section ? `- ${mark.student.section}` : ''}</td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {mark.subject_marks?.slice(0, 3).map((sm) => (
@@ -642,24 +649,22 @@ export default function MarksDashboardPage({
                               </span>
                             ))}
                             {mark.subject_marks && mark.subject_marks.length > 3 && (
-                              <span className="px-2 py-1 text-xs text-gray-600">+{mark.subject_marks.length - 3} more</span>
+                              <span className="px-2 py-1 text-xs text-gray-600 dark:text-gray-400">+{mark.subject_marks.length - 3} more</span>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="font-medium">
-                            {mark.total_marks || 0} / {mark.total_max_marks || 0}
-                          </span>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                          {mark.total_marks || 0} / {mark.total_max_marks || 0}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-16 bg-gray-200 rounded-full h-2">
+                            <div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                               <div
                                 className={`h-2 rounded-full ${isPass ? 'bg-green-500' : 'bg-red-500'}`}
                                 style={{ width: `${Math.min(mark.percentage || 0, 100)}%` }}
                               />
                             </div>
-                            <span className={`font-semibold ${isPass ? 'text-green-600' : 'text-red-600'}`}>
+                            <span className={`font-semibold text-sm ${isPass ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                               {(mark.percentage || 0).toFixed(1)}%
                             </span>
                           </div>
@@ -670,7 +675,7 @@ export default function MarksDashboardPage({
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-1 text-xs rounded-full ${isPass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          <span className={`px-2 py-1 text-xs rounded-full ${isPass ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'}`}>
                             {isPass ? 'Pass' : 'Fail'}
                           </span>
                         </td>
@@ -680,6 +685,7 @@ export default function MarksDashboardPage({
                               size="sm"
                               variant="outline"
                               onClick={() => router.push(`/dashboard/${schoolCode}/marks/${mark.student_id}?exam_id=${mark.exam_id}`)}
+                              className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
                             >
                               <Eye size={14} className="mr-1" />
                               View
@@ -688,6 +694,7 @@ export default function MarksDashboardPage({
                               size="sm"
                               variant="outline"
                               onClick={() => handleDownloadReportCard(mark.student_id, mark.exam_id)}
+                              className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
                             >
                               <Download size={14} className="mr-1" />
                               PDF
@@ -703,8 +710,8 @@ export default function MarksDashboardPage({
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-                <p className="text-sm text-gray-600">
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredMarks.length)} of {filteredMarks.length} students
                 </p>
                 <div className="flex gap-2">
@@ -713,10 +720,11 @@ export default function MarksDashboardPage({
                     size="sm"
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
+                    className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
                   >
                     Previous
                   </Button>
-                  <span className="px-4 py-2 text-sm text-gray-700">
+                  <span className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                     Page {currentPage} of {totalPages}
                   </span>
                   <Button
@@ -724,6 +732,7 @@ export default function MarksDashboardPage({
                     size="sm"
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
+                    className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
                   >
                     Next
                   </Button>
@@ -733,6 +742,7 @@ export default function MarksDashboardPage({
           </>
         )}
       </Card>
+      </div>
     </div>
   );
 }

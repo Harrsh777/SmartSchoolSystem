@@ -602,7 +602,7 @@ export default function DashboardPage({
   };
 
   return (
-    <div className="space-y-8 bg-[#F8FAFC] min-h-screen p-6">
+    <div className="space-y-8 bg-background min-h-screen p-6">
       {/* Header with School Name, Date, and Quick Actions Dropdown */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -612,7 +612,7 @@ export default function DashboardPage({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
           <div>
-              <h1 className="text-2xl font-bold text-[#0F172A] mb-1">
+              <h1 className="text-3xl font-semibold text-foreground mb-2">
                 {school?.school_name || 'Institute Dashboard'}
             </h1>
             </div>
@@ -621,7 +621,7 @@ export default function DashboardPage({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => router.push(`/dashboard/${schoolCode}/students/directory`)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-[#EAF1FF] hover:bg-[#2F6FED] hover:text-white text-[#2F6FED] rounded-lg transition-all text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-1.5 bg-[#F1F5F9] dark:bg-[#2D3748] hover:bg-[#2C3E50] hover:text-white text-[#2C3E50] dark:text-[#5A879A] dark:hover:bg-[#4A707A] rounded-lg transition-all text-sm font-medium"
                 title="Quick Student Search"
               >
                 <GraduationCap size={16} />
@@ -629,7 +629,7 @@ export default function DashboardPage({
               </button>
               <button
                 onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/directory`)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-[#EAF1FF] hover:bg-[#2F6FED] hover:text-white text-[#2F6FED] rounded-lg transition-all text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-1.5 bg-[#F1F5F9] dark:bg-[#2D3748] hover:bg-[#2C3E50] hover:text-white text-[#2C3E50] dark:text-[#5A879A] dark:hover:bg-[#4A707A] rounded-lg transition-all text-sm font-medium"
                 title="Quick Staff Search"
               >
                 <UserCheck size={16} />
@@ -641,21 +641,21 @@ export default function DashboardPage({
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="fixed top-20 right-4 w-[800px] max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-xl border border-[#E5E7EB] z-50 overflow-hidden quick-actions-menu-container"
+                className="fixed top-20 right-4 w-[800px] max-w-[calc(100vw-2rem)] glass-card rounded-xl soft-shadow-lg border border-border z-50 overflow-hidden quick-actions-menu-container"
               >
                   {/* Filter Tabs */}
-                  <div className="flex items-center gap-1 border-b border-[#E5E7EB] px-4 pt-3 pb-2 bg-[#F8FAFC]">
+                  <div className="flex items-center gap-1 border-b border-border px-4 pt-3 pb-2 bg-muted/50">
                     <button
                       onClick={() => setActiveQuickActionTab('quick')}
                       className={`px-4 py-2 text-xs font-medium transition-colors relative ${
                         activeQuickActionTab === 'quick'
-                          ? 'text-[#2F6FED]'
-                          : 'text-[#64748B] hover:text-[#2F6FED]'
+                          ? 'text-[#2C3E50] dark:text-[#5A879A]'
+                          : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#2C3E50] dark:hover:text-[#5A879A]'
                       }`}
                     >
                       QUICK ACTIONS
                       {activeQuickActionTab === 'quick' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2F6FED]"></div>
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                       )}
                       {activeQuickActionTab === 'quick' && (
                         <Edit className="absolute -top-1 -right-6 text-[#2F6FED]" size={12} />
@@ -665,78 +665,78 @@ export default function DashboardPage({
                       onClick={() => setActiveQuickActionTab('admin')}
                       className={`px-4 py-2 text-xs font-medium transition-colors relative ${
                         activeQuickActionTab === 'admin'
-                          ? 'text-[#2F6FED]'
-                          : 'text-[#64748B] hover:text-[#2F6FED]'
+                          ? 'text-[#2C3E50] dark:text-[#5A879A]'
+                          : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#2C3E50] dark:hover:text-[#5A879A]'
                       }`}
                     >
                       ADMIN
                       {activeQuickActionTab === 'admin' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2F6FED]"></div>
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                       )}
                     </button>
                     <button
                       onClick={() => setActiveQuickActionTab('finance')}
                       className={`px-4 py-2 text-xs font-medium transition-colors relative ${
                         activeQuickActionTab === 'finance'
-                          ? 'text-[#2F6FED]'
-                          : 'text-[#64748B] hover:text-[#2F6FED]'
+                          ? 'text-[#2C3E50] dark:text-[#5A879A]'
+                          : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#2C3E50] dark:hover:text-[#5A879A]'
                       }`}
                     >
                       FINANCE
                       {activeQuickActionTab === 'finance' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2F6FED]"></div>
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                       )}
                     </button>
                     <button
                       onClick={() => setActiveQuickActionTab('academics')}
                       className={`px-4 py-2 text-xs font-medium transition-colors relative ${
                         activeQuickActionTab === 'academics'
-                          ? 'text-[#2F6FED]'
-                          : 'text-[#64748B] hover:text-[#2F6FED]'
+                          ? 'text-[#2C3E50] dark:text-[#5A879A]'
+                          : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#2C3E50] dark:hover:text-[#5A879A]'
                       }`}
                     >
                       ACADEMICS
                       {activeQuickActionTab === 'academics' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2F6FED]"></div>
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                       )}
                     </button>
                     <button
                       onClick={() => setActiveQuickActionTab('transport')}
                       className={`px-4 py-2 text-xs font-medium transition-colors relative ${
                         activeQuickActionTab === 'transport'
-                          ? 'text-[#2F6FED]'
-                          : 'text-[#64748B] hover:text-[#2F6FED]'
+                          ? 'text-[#2C3E50] dark:text-[#5A879A]'
+                          : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#2C3E50] dark:hover:text-[#5A879A]'
                       }`}
                     >
                       TRANSPORT
                       {activeQuickActionTab === 'transport' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2F6FED]"></div>
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                       )}
                     </button>
                     <button
                       onClick={() => setActiveQuickActionTab('communication')}
                       className={`px-4 py-2 text-xs font-medium transition-colors relative ${
                         activeQuickActionTab === 'communication'
-                          ? 'text-[#2F6FED]'
-                          : 'text-[#64748B] hover:text-[#2F6FED]'
+                          ? 'text-[#2C3E50] dark:text-[#5A879A]'
+                          : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#2C3E50] dark:hover:text-[#5A879A]'
                       }`}
                     >
                       COMMUNICATION
                       {activeQuickActionTab === 'communication' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2F6FED]"></div>
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                       )}
                     </button>
                     <button
                       onClick={() => setActiveQuickActionTab('reports')}
                       className={`px-4 py-2 text-xs font-medium transition-colors relative ${
                         activeQuickActionTab === 'reports'
-                          ? 'text-[#2F6FED]'
-                          : 'text-[#64748B] hover:text-[#2F6FED]'
+                          ? 'text-[#2C3E50] dark:text-[#5A879A]'
+                          : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#2C3E50] dark:hover:text-[#5A879A]'
                       }`}
                     >
                       REPORTS
                       {activeQuickActionTab === 'reports' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2F6FED]"></div>
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                       )}
                     </button>
                   </div>
@@ -760,17 +760,17 @@ export default function DashboardPage({
                                   setShowQuickActionsMenu(false);
                                 }
                               }}
-                              className="w-full p-4 bg-white rounded-lg border border-[#E5E7EB] hover:border-[#2F6FED] hover:shadow-md transition-all flex items-center justify-between group"
+                              className="w-full p-4 glass-card rounded-lg border border-border hover:border-[#2C3E50]/30 dark:hover:border-[#4A707A]/30 hover:soft-shadow-md transition-all flex items-center justify-between group"
                             >
                               <div className="flex items-center gap-3 flex-1">
-                                <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#EAF1FF]">
-                                  <Icon className="text-[#2F6FED]" size={20} />
+                                <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#2C3E50]/10 dark:bg-[#4A707A]/10">
+                                  <Icon className="text-[#2C3E50] dark:text-[#5A879A]" size={20} />
                                 </div>
-                                <span className="text-sm font-medium text-[#0F172A] text-left">{item.label}</span>
+                                <span className="text-sm font-medium text-foreground text-left">{item.label}</span>
                               </div>
                               {hasSubItems && (
                                 <ChevronDown 
-                                  className={`text-[#64748B] transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
+                                  className={`text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
                                   size={16} 
                                 />
                               )}
@@ -788,10 +788,10 @@ export default function DashboardPage({
                                         router.push(`/dashboard/${schoolCode}${subItem.path}`);
                                         setShowQuickActionsMenu(false);
                                       }}
-                                      className="w-full p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB] hover:border-[#2F6FED] hover:bg-white transition-all flex items-center gap-3 text-left"
+                                      className="w-full p-3 bg-muted/50 rounded-lg border border-border hover:border-[#2C3E50]/30 dark:hover:border-[#4A707A]/30 hover:bg-card transition-all flex items-center gap-3 text-left"
                                     >
-                                      <SubIcon className="text-[#2F6FED]" size={16} />
-                                      <span className="text-xs font-medium text-[#0F172A]">{subItem.label}</span>
+                                      <SubIcon className="text-[#2C3E50] dark:text-[#5A879A]" size={16} />
+                                      <span className="text-xs font-medium text-foreground">{subItem.label}</span>
                                     </button>
                                   );
                                 })}
@@ -825,7 +825,7 @@ export default function DashboardPage({
                   disabled={downloading === 'students'}
                   className="w-full px-4 py-3 text-left hover:bg-[#F1F5F9] transition-colors flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Users size={18} className="text-[#38BDF8]" />
+                  <Users size={18} className="text-[#2C3E50] dark:text-[#5A879A]" />
                   <span className="font-medium">
                     {downloading === 'students' ? 'Downloading...' : 'Student Data Download'}
                   </span>
@@ -873,77 +873,43 @@ export default function DashboardPage({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0 }}
-          whileHover={{ scale: 1.02, y: -4 }}
-          className="group relative bg-gradient-to-br from-[#1E3A8A] to-[#2F6FED] rounded-lg p-3 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
+          whileHover={{ y: -2 }}
+          className="group relative glass-card rounded-xl p-6 soft-shadow-md hover:soft-shadow-lg transition-all duration-200"
         >
-          {/* Decorative Background Elements */}
-          <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 blur-2xl" />
-          <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full -ml-8 -mb-8 blur-xl" />
-          
-          <div className="relative z-10">
-            <div className="flex items-start justify-between mb-2.5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
-                  <Users className="text-white" size={16} strokeWidth={2} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-white/90 uppercase tracking-wider mb-0.5">
-                    Headcount
-                  </p>
-                  <p className="text-[9px] text-white/70">Total Enrollment</p>
-                </div>
+          <div className="relative">
+            {/* Icon at top center */}
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 rounded-lg bg-[#2C3E50]/10 flex items-center justify-center">
+                <Users className="text-[#2C3E50] dark:text-[#5A879A]" size={24} />
               </div>
-            <button
-              onClick={() => fetchDashboardStats()}
-                className="p-1 rounded-lg hover:bg-white/20 transition-colors backdrop-blur-sm"
-              aria-label="Refresh headcount"
-            >
-                <RefreshCw className="text-white" size={12} strokeWidth={2} />
-            </button>
-          </div>
-            
-            <div className="space-y-2">
-              <div className="flex items-center justify-between bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20 hover:bg-white/15 transition-colors group/item">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
-                    <GraduationCap className="text-white" size={12} strokeWidth={2} />
-                  </div>
-                  <span className="text-xs font-medium text-white">Students</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-lg font-bold text-white">
-                {loading ? '...' : stats.totalStudents.toLocaleString()}
-              </span>
-                  <button
-                    onClick={() => router.push(`/dashboard/${schoolCode}/students/directory`)}
-                    className="p-1 rounded-lg hover:bg-white/20 transition-colors opacity-0 group-hover/item:opacity-100"
-                    aria-label="View Students"
-                  >
-                    <ChevronRight className="text-white" size={12} strokeWidth={2} />
-                  </button>
             </div>
+            
+            {/* Title */}
+            <p className="text-sm font-medium text-[#475569] dark:text-[#94A3B8] text-center mb-3">
+              Total Enrollment
+            </p>
+            
+            {/* Main Value */}
+            <div className="text-center mb-4">
+              <div className="text-3xl font-bold text-[#1F2937] dark:text-[#F8FAFC] mb-1">
+                {loading ? '...' : (stats.totalStudents + stats.totalStaff).toLocaleString()}
               </div>
-              
-              <div className="flex items-center justify-between bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20 hover:bg-white/15 transition-colors group/item">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
-                    <UserCheck className="text-white" size={12} strokeWidth={2} />
-                  </div>
-                  <span className="text-xs font-medium text-white">Staff</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-lg font-bold text-white">
-                {loading ? '...' : stats.totalStaff.toLocaleString()}
-              </span>
-                  <button
-                    onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/directory`)}
-                    className="p-1 rounded-lg hover:bg-white/20 transition-colors opacity-0 group-hover/item:opacity-100"
-                    aria-label="View Staff"
-                  >
-                    <ChevronRight className="text-white" size={12} strokeWidth={2} />
-                  </button>
-                </div>
+              <div className="flex items-center justify-center gap-4 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                <span>Students: {loading ? '...' : stats.totalStudents.toLocaleString()}</span>
+                <span>Staff: {loading ? '...' : stats.totalStaff.toLocaleString()}</span>
               </div>
+            </div>
+            
+            {/* Progress Bar at bottom */}
+            <div className="relative w-full bg-[#F1F5F9] dark:bg-[#2D3748] rounded-full h-2 overflow-hidden">
+              <motion.div 
+                className="bg-[#2C3E50] dark:bg-[#4A707A] h-full rounded-full"
+                initial={{ width: 0 }}
+                animate={{ 
+                  width: loading ? '0%' : `${Math.min(((stats.totalStudents + stats.totalStaff) / 100) * 100, 100)}%` 
+                }}
+                transition={{ duration: 0.8, ease: 'easeOut' }}
+              />
             </div>
           </div>
         </motion.div>
@@ -953,109 +919,50 @@ export default function DashboardPage({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          whileHover={{ scale: 1.02, y: -4 }}
-          className="group relative bg-gradient-to-br from-[#22C55E] to-[#16A34A] rounded-lg p-3 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
+          whileHover={{ y: -2 }}
+          className="group relative glass-card rounded-xl p-6 soft-shadow-md hover:soft-shadow-lg transition-all duration-200"
         >
-          {/* Decorative Background Elements */}
-          <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 blur-2xl" />
-          <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full -ml-8 -mb-8 blur-xl" />
-          
-          <div className="relative z-10">
-            <div className="flex items-start justify-between mb-2.5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
-                  <CalendarDays className="text-white" size={16} strokeWidth={2} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-white/90 uppercase tracking-wider mb-0.5">
-                    Today&apos;s Attendance
-                  </p>
-                  <p className="text-[9px] text-white/70">Live Status</p>
-                </div>
+          <div className="relative">
+            {/* Icon at top center */}
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 rounded-lg bg-[#4A707A]/10 flex items-center justify-center">
+                <CalendarDays className="text-[#4A707A] dark:text-[#5A879A]" size={24} />
               </div>
-            <button
-              onClick={() => fetchDashboardStats()}
-                className="p-1 rounded-lg hover:bg-white/20 transition-colors backdrop-blur-sm"
-              aria-label="Refresh"
-            >
-                <RefreshCw className="text-white" size={12} strokeWidth={2} />
-            </button>
-          </div>
+            </div>
             
-            <div className="space-y-2">
-              {/* Staff Attendance */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20 hover:bg-white/15 transition-colors group/item">
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
-                      <UserCheck className="text-white" size={12} strokeWidth={2} />
-                    </div>
-                    <span className="text-xs font-medium text-white">Staffs</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold text-white">
-                      {loading ? '...' : (stats.todayAttendance.staff?.present ?? 0)}
+            {/* Title */}
+            <p className="text-sm font-medium text-[#475569] dark:text-[#94A3B8] text-center mb-3">
+              Today&apos;s Attendance
+            </p>
+            
+            {/* Status Badge (Top Right) */}
+            <div className="absolute top-6 right-6">
+              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-[#F1F5F9] dark:bg-[#2D3748] text-[#64748B] dark:text-[#94A3B8]">
+                Live Status
               </span>
-                    <span className="text-xs font-semibold text-white/90 min-w-[32px] text-right">
-                      {loading ? '...' : `${stats.todayAttendance.staff?.percentage ?? 0}%`}
-                    </span>
-                    <button
-                      onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/attendance`)}
-                      className="p-1 rounded-lg hover:bg-white/20 transition-colors opacity-0 group-hover/item:opacity-100"
-                      aria-label="View Staff Attendance"
-                    >
-                      <ChevronRight className="text-white" size={12} strokeWidth={2} />
-                    </button>
-                  </div>
-                </div>
-                <div className="relative w-full bg-white/20 rounded-full h-1.5 overflow-hidden">
-                  <motion.div 
-                    className="bg-white h-full rounded-full shadow-sm"
-                    initial={{ width: 0 }}
-                    animate={{ 
-                      width: loading ? '0%' : `${Math.min(stats.todayAttendance.staff?.percentage ?? 0, 100)}%` 
-                    }}
-                    transition={{ duration: 0.8, ease: 'easeOut' }}
-                  />
-                </div>
+            </div>
+            
+            {/* Main Value */}
+            <div className="text-center mb-4">
+              <div className="text-3xl font-bold text-[#1F2937] dark:text-[#F8FAFC] mb-1">
+                {loading ? '...' : `${stats.todayAttendance.percentage.toFixed(1)}%`}
               </div>
-
-              {/* Student Attendance */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20 hover:bg-white/15 transition-colors group/item">
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
-                      <GraduationCap className="text-white" size={12} strokeWidth={2} />
-                    </div>
-                    <span className="text-xs font-medium text-white">Students</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold text-white">
-                      {loading ? '...' : (stats.todayAttendance.students?.present ?? 0)}
-                    </span>
-                    <span className="text-xs font-semibold text-white/90 min-w-[32px] text-right">
-                      {loading ? '...' : `${stats.todayAttendance.students?.percentage ?? 0}%`}
-                    </span>
-                    <button
-                      onClick={() => router.push(`/dashboard/${schoolCode}/students/attendance`)}
-                      className="p-1 rounded-lg hover:bg-white/20 transition-colors opacity-0 group-hover/item:opacity-100"
-                      aria-label="View Student Attendance"
-                    >
-                      <ChevronRight className="text-white" size={12} strokeWidth={2} />
-                    </button>
-                  </div>
-                </div>
-                <div className="relative w-full bg-white/20 rounded-full h-1.5 overflow-hidden">
-                  <motion.div 
-                    className="bg-white h-full rounded-full shadow-sm"
-                    initial={{ width: 0 }}
-                    animate={{ 
-                      width: loading ? '0%' : `${Math.min(stats.todayAttendance.students?.percentage ?? 0, 100)}%` 
-                    }}
-                    transition={{ duration: 0.8, ease: 'easeOut' }}
-                  />
-                </div>
+              <div className="flex items-center justify-center gap-4 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                <span>Staffs: {loading ? '...' : `${stats.todayAttendance.staff?.percentage ?? 0}%`}</span>
+                <span>Students: {loading ? '...' : `${stats.todayAttendance.students?.percentage ?? 0}%`}</span>
               </div>
+            </div>
+            
+            {/* Progress Bar at bottom */}
+            <div className="relative w-full bg-[#F1F5F9] dark:bg-[#2D3748] rounded-full h-2 overflow-hidden">
+              <motion.div 
+                className="bg-[#4A707A] dark:bg-[#5A879A] h-full rounded-full"
+                initial={{ width: 0 }}
+                animate={{ 
+                  width: loading ? '0%' : `${Math.min(stats.todayAttendance.percentage, 100)}%` 
+                }}
+                transition={{ duration: 0.8, ease: 'easeOut' }}
+              />
             </div>
           </div>
         </motion.div>
@@ -1065,74 +972,42 @@ export default function DashboardPage({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          whileHover={{ scale: 1.02, y: -4 }}
-          className="group relative bg-gradient-to-br from-[#F97316] to-[#EA580C] rounded-lg p-3 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
+          whileHover={{ y: -2 }}
+          className="group relative glass-card rounded-xl p-6 soft-shadow-md hover:soft-shadow-lg transition-all duration-200"
         >
-          {/* Decorative Background Elements */}
-          <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12 blur-2xl" />
-          <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full -ml-8 -mb-8 blur-xl" />
-          
-          <div className="relative z-10">
-            <div className="flex items-start justify-between mb-2.5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
-                  <DollarSign className="text-white" size={16} strokeWidth={2} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-white/90 uppercase tracking-wider mb-0.5">
-                    Fee Collection
-                  </p>
-                  <p className="text-[9px] text-white/70">Financial Overview</p>
-                </div>
+          <div className="relative">
+            {/* Icon at top center */}
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 rounded-lg bg-[#2C3E50]/10 flex items-center justify-center">
+                <DollarSign className="text-[#2C3E50] dark:text-[#5A879A]" size={24} />
               </div>
-            <button
-              onClick={() => fetchDashboardStats()}
-                className="p-1 rounded-lg hover:bg-white/20 transition-colors backdrop-blur-sm"
-              aria-label="Refresh"
-            >
-                <RefreshCw className="text-white" size={12} strokeWidth={2} />
-            </button>
-          </div>
+            </div>
             
-            <div className="space-y-2">
-              {/* Today's Collection */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20 hover:bg-white/15 transition-colors group/item">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
-                      <Calendar className="text-white" size={12} strokeWidth={2} />
-                    </div>
-                    <span className="text-xs font-medium text-white">Today&apos;s Collection</span>
-                  </div>
-                  <span className="text-base font-bold text-white">
-                    ₹{loading ? '...' : (stats.feeCollection.todayCollection ?? 0).toLocaleString()}
-              </span>
-                </div>
+            {/* Title */}
+            <p className="text-sm font-medium text-[#475569] dark:text-[#94A3B8] text-center mb-3">
+              Fee Collection
+            </p>
+            
+            {/* Main Value */}
+            <div className="text-center mb-4">
+              <div className="text-3xl font-bold text-[#1F2937] dark:text-[#F8FAFC] mb-1">
+                ₹{loading ? '...' : (stats.feeCollection.collected ?? 0).toLocaleString('en-IN')}
               </div>
-
-              {/* Total Collection */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-2 border border-white/20 hover:bg-white/15 transition-colors group/item">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
-                      <TrendingUp className="text-white" size={12} strokeWidth={2} />
-                    </div>
-                    <span className="text-xs font-medium text-white">Total Collection</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-base font-bold text-white">
-                      ₹{loading ? '...' : (stats.feeCollection.collected ?? 0).toLocaleString()}
-                    </span>
-                    <button
-                      onClick={() => router.push(`/dashboard/${schoolCode}/fees/student-wise`)}
-                      className="p-1 rounded-lg hover:bg-white/20 transition-colors opacity-0 group-hover/item:opacity-100"
-                      aria-label="View Student-wise Fees"
-                    >
-                      <ChevronRight className="text-white" size={12} strokeWidth={2} />
-                    </button>
-                  </div>
-                </div>
+              <div className="text-xs text-[#64748B] dark:text-[#94A3B8]">
+                Total Collection: ₹{loading ? '...' : (stats.feeCollection.total ?? 0).toLocaleString('en-IN')}
               </div>
+            </div>
+            
+            {/* Progress Bar at bottom */}
+            <div className="relative w-full bg-[#F1F5F9] dark:bg-[#2D3748] rounded-full h-2 overflow-hidden">
+              <motion.div 
+                className="bg-[#2C3E50] dark:bg-[#4A707A] h-full rounded-full"
+                initial={{ width: 0 }}
+                animate={{ 
+                  width: loading || stats.feeCollection.total === 0 ? '0%' : `${Math.min((stats.feeCollection.collected / stats.feeCollection.total) * 100, 100)}%` 
+                }}
+                transition={{ duration: 0.8, ease: 'easeOut' }}
+              />
             </div>
           </div>
         </motion.div>
@@ -1148,7 +1023,7 @@ export default function DashboardPage({
           transition={{ delay: 0.4 }}
           className="bg-[#FFFFFF] rounded-lg border border-[#E5E7EB] p-5 shadow-sm"
         >
-        <h3 className="text-base font-semibold text-[#0F172A] mb-5">Staff & Student Enrollment Overview</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-5">Staff & Student Enrollment Overview</h3>
           {loadingDetailed ? (
             <div className="h-64 flex items-center justify-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#2F6FED]" />
@@ -1172,8 +1047,8 @@ export default function DashboardPage({
               <div className="mb-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-[#FFEDD5] flex items-center justify-center">
-                      <Users className="text-[#F97316]" size={16} />
+                    <div className="w-8 h-8 rounded-full bg-[#2C3E50]/10 flex items-center justify-center">
+                      <Users className="text-[#2C3E50] dark:text-[#4A707A]" size={16} />
                     </div>
                     <span className="text-sm font-medium text-[#0F172A]">
                       Students ({(() => {
@@ -1184,7 +1059,7 @@ export default function DashboardPage({
                       })()})
                           </span>
                         </div>
-                  <button className="w-6 h-6 rounded-full bg-[#FFEDD5] flex items-center justify-center hover:bg-[#F97316]/20 transition-colors">
+                  <button className="w-6 h-6 rounded-full bg-[#F1F5F9] dark:bg-[#2D3748] flex items-center justify-center hover:bg-[#2C3E50]/10 dark:hover:bg-[#4A707A]/20 transition-colors">
                     <Play className="text-[#F97316]" size={10} fill="currentColor" />
                   </button>
                       </div>
@@ -1203,7 +1078,7 @@ export default function DashboardPage({
                               initial={{ width: 0 }}
                               animate={{ width: `${malePercent}%` }}
                               transition={{ duration: 0.8, ease: "easeOut" }}
-                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                              className="bg-[#2C3E50] dark:bg-[#4A707A] h-full flex items-center justify-center"
                             >
                               <span className="text-[10px] text-white font-semibold px-1">
                                 {malePercent.toFixed(1)}%
@@ -1215,7 +1090,7 @@ export default function DashboardPage({
                               initial={{ width: 0 }}
                               animate={{ width: `${femalePercent}%` }}
                               transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
-                              className="bg-[#EF4444] h-full flex items-center justify-center"
+                              className="bg-[#4A707A] dark:bg-[#5A879A] h-full flex items-center justify-center"
                             >
                               <span className="text-[10px] text-white font-semibold px-1">
                                 {femalePercent.toFixed(1)}%
@@ -1227,7 +1102,7 @@ export default function DashboardPage({
                               initial={{ width: 0 }}
                               animate={{ width: `${remainingPercent}%` }}
                               transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                              className="bg-[#2C3E50] dark:bg-[#4A707A] h-full flex items-center justify-center"
                             >
                               <span className="text-[10px] text-white font-semibold px-1">
                                 {remainingPercent.toFixed(1)}%
@@ -1250,19 +1125,19 @@ export default function DashboardPage({
                       <>
                         {malePercent > 0 && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                             <span className="text-[#64748B]">Male ({malePercent.toFixed(1)}%)</span>
                           </div>
                         )}
                         {femalePercent > 0 && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#4A707A] dark:bg-[#5A879A]"></div>
                             <span className="text-[#64748B]">Female ({femalePercent.toFixed(1)}%)</span>
                           </div>
                         )}
                         {remainingPercent > 0 && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                             <span className="text-[#64748B]">Not Mapped ({remainingPercent.toFixed(1)}%)</span>
                           </div>
                         )}
@@ -1276,14 +1151,14 @@ export default function DashboardPage({
                     <div>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-[#FFEDD5] flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-full bg-[#2C3E50]/10 flex items-center justify-center">
                       <UserCheck className="text-[#F97316]" size={16} />
                       </div>
                     <span className="text-sm font-medium text-[#0F172A]">
                       Staffs ({detailedStats?.staffGenderStats?.total ?? detailedStats?.staffBreakdown?.total ?? 0})
                     </span>
                         </div>
-                  <button className="w-6 h-6 rounded-full bg-[#FFEDD5] flex items-center justify-center hover:bg-[#F97316]/20 transition-colors">
+                  <button className="w-6 h-6 rounded-full bg-[#F1F5F9] dark:bg-[#2D3748] flex items-center justify-center hover:bg-[#2C3E50]/10 dark:hover:bg-[#4A707A]/20 transition-colors">
                     <Play className="text-[#F97316]" size={10} fill="currentColor" />
                   </button>
                   </div>
@@ -1302,7 +1177,7 @@ export default function DashboardPage({
                               initial={{ width: 0 }}
                               animate={{ width: `${malePercent}%` }}
                               transition={{ duration: 0.8, ease: "easeOut" }}
-                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                              className="bg-[#2C3E50] dark:bg-[#4A707A] h-full flex items-center justify-center"
                             >
                               <span className="text-[10px] text-white font-semibold px-1">
                                 {malePercent.toFixed(1)}%
@@ -1314,7 +1189,7 @@ export default function DashboardPage({
                               initial={{ width: 0 }}
                               animate={{ width: `${femalePercent}%` }}
                               transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
-                              className="bg-[#EF4444] h-full flex items-center justify-center"
+                              className="bg-[#4A707A] dark:bg-[#5A879A] h-full flex items-center justify-center"
                             >
                               <span className="text-[10px] text-white font-semibold px-1">
                                 {femalePercent.toFixed(1)}%
@@ -1326,7 +1201,7 @@ export default function DashboardPage({
                               initial={{ width: 0 }}
                               animate={{ width: `${otherPercent}%` }}
                               transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                              className="bg-[#2C3E50] dark:bg-[#4A707A] h-full flex items-center justify-center"
                             >
                               <span className="text-[10px] text-white font-semibold px-1">
                                 {otherPercent.toFixed(1)}%
@@ -1338,7 +1213,7 @@ export default function DashboardPage({
                               initial={{ width: 0 }}
                               animate={{ width: '100%' }}
                               transition={{ duration: 0.8, ease: "easeOut" }}
-                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                              className="bg-[#2C3E50] dark:bg-[#4A707A] h-full flex items-center justify-center"
                             >
                               <span className="text-[10px] text-white font-semibold px-1">100.0%</span>
                             </motion.div>
@@ -1350,7 +1225,7 @@ export default function DashboardPage({
                         initial={{ width: 0 }}
                         animate={{ width: '100%' }}
                         transition={{ duration: 0.8, ease: "easeOut" }}
-                        className="bg-[#38BDF8] h-full flex items-center justify-center"
+                        className="bg-[#2C3E50] dark:bg-[#4A707A] h-full flex items-center justify-center"
                       >
                         <span className="text-[10px] text-white font-semibold px-1">100.0%</span>
                       </motion.div>
@@ -1379,19 +1254,19 @@ export default function DashboardPage({
                       <>
                         {malePercent > 0 && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                             <span className="text-[#64748B]">Male ({malePercent.toFixed(1)}%)</span>
                           </div>
                         )}
                         {femalePercent > 0 && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#4A707A] dark:bg-[#5A879A]"></div>
                             <span className="text-[#64748B]">Female ({femalePercent.toFixed(1)}%)</span>
                           </div>
                         )}
                         {(otherPercent > 0 || hasNoData) && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#2C3E50] dark:bg-[#4A707A]"></div>
                             <span className="text-[#64748B]">
                               Not Mapped ({otherPercent > 0 ? otherPercent.toFixed(1) : '100.0'}%)
                             </span>
@@ -1415,7 +1290,7 @@ export default function DashboardPage({
           className="bg-[#FFFFFF] rounded-lg border border-[#E5E7EB] p-5 shadow-sm"
         >
           <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-semibold text-[#0F172A] flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <FileText className="text-[#64748B]" size={18} strokeWidth={2} />
             Examination Management
           </h3>
@@ -1448,7 +1323,7 @@ export default function DashboardPage({
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                           exam.status === 'ongoing' 
                             ? 'bg-[#DCFCE7] text-[#22C55E]' 
-                            : 'bg-[#E0F2FE] text-[#38BDF8]'
+                            : 'bg-[#F1F5F9] dark:bg-[#2D3748] text-[#2C3E50] dark:text-[#5A879A]'
                         }`}>
                           {exam.status === 'ongoing' ? 'Ongoing' : 'Upcoming'}
                     </span>
@@ -1497,7 +1372,7 @@ export default function DashboardPage({
         transition={{ delay: 0.6 }}
         className="bg-[#FFFFFF] rounded-lg border border-[#E5E7EB] p-5 shadow-sm"
       >
-        <h3 className="text-base font-semibold text-[#0F172A] mb-5">Financial Management Overview</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-5">Financial Management Overview</h3>
         
         {loadingFinancial ? (
           <div className="h-96 flex items-center justify-center">
@@ -1718,7 +1593,7 @@ export default function DashboardPage({
         transition={{ delay: 0.75 }}
         className="space-y-6"
       >
-        <h3 className="text-base font-semibold text-[#0F172A]">Administrative Operations Overview</h3>
+        <h3 className="text-lg font-semibold text-foreground">Administrative Operations Overview</h3>
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Updates Section */}

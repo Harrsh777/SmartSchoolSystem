@@ -134,8 +134,13 @@ export default function StudentsPage({
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Students</h1>
-            <p className="text-gray-600">Manage all student records and information</p>
+            <h1 className="text-3xl font-bold text-black dark:text-white mb-2 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                <Users className="text-white" size={28} />
+              </div>
+              Students
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">Manage all student records and information</p>
           </div>
           <div className="flex gap-3">
             <Button
@@ -183,7 +188,7 @@ export default function StudentsPage({
             <select 
               value={classFilter}
               onChange={(e) => setClassFilter(e.target.value)}
-              className="px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black"
+              className="px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
             >
               <option value="all">All Classes</option>
               {uniqueClasses.map(cls => (
@@ -230,13 +235,13 @@ export default function StudentsPage({
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Admission No</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Name</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Class</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Section</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Status</th>
-                    <th className="text-left py-4 px-4 font-semibold text-gray-700">Actions</th>
+                  <tr className="border-b-2 border-[#5A7A95]/20 dark:border-[#6B9BB8]/20 bg-gradient-to-r from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]">
+                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Admission No</th>
+                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Name</th>
+                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Class</th>
+                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Section</th>
+                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Status</th>
+                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -246,21 +251,21 @@ export default function StudentsPage({
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.3 + index * 0.05 }}
-                      className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                      className="border-b border-gray-100 dark:border-gray-700 hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] transition-colors"
                     >
-                      <td className="py-4 px-4 font-medium text-black">{getString(student.admission_no) || 'N/A'}</td>
-                      <td className="py-4 px-4 text-gray-700">{getString(student.student_name) || 'N/A'}</td>
-                      <td className="py-4 px-4 text-gray-700">{getString(student.class) || 'N/A'}</td>
-                      <td className="py-4 px-4 text-gray-700">{getString(student.section) || 'N/A'}</td>
+                      <td className="py-4 px-4 font-medium text-gray-900 dark:text-white">{getString(student.admission_no) || 'N/A'}</td>
+                      <td className="py-4 px-4 text-gray-700 dark:text-gray-300">{getString(student.student_name) || 'N/A'}</td>
+                      <td className="py-4 px-4 text-gray-700 dark:text-gray-300">{getString(student.class) || 'N/A'}</td>
+                      <td className="py-4 px-4 text-gray-700 dark:text-gray-300">{getString(student.section) || 'N/A'}</td>
                       <td className="py-4 px-4">
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                           (() => {
                             const status = getString(student.status);
                             return status === 'active' 
-                              ? 'bg-green-100 text-green-800'
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
                               : status === 'inactive'
-                              ? 'bg-gray-100 text-gray-800'
-                              : 'bg-blue-100 text-blue-800';
+                              ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
+                              : 'bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/20 text-[#5A7A95] dark:text-[#6B9BB8]';
                           })()
                         }`}>
                           {getString(student.status) || 'N/A'}
@@ -270,14 +275,14 @@ export default function StudentsPage({
                         <div className="flex items-center space-x-2">
                           <button 
                             onClick={() => router.push(`/dashboard/${schoolCode}/students/${student.id}/view`)}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            className="text-[#5A7A95] dark:text-[#6B9BB8] hover:text-[#6B9BB8] dark:hover:text-[#7DB5D3] text-sm font-medium transition-colors"
                           >
                             View
                           </button>
-                          <span className="text-gray-300">|</span>
+                          <span className="text-gray-300 dark:text-gray-600">|</span>
                           <button 
                             onClick={() => router.push(`/dashboard/${schoolCode}/students/${student.id}/edit`)}
-                            className="text-gray-600 hover:text-black text-sm font-medium"
+                            className="text-gray-600 dark:text-gray-400 hover:text-[#5A7A95] dark:hover:text-[#6B9BB8] text-sm font-medium transition-colors"
                           >
                             Edit
                           </button>
@@ -300,41 +305,62 @@ export default function StudentsPage({
           transition={{ delay: 0.5 }}
           className="grid grid-cols-1 md:grid-cols-3 gap-6"
         >
-          <Card>
-            <div className="flex items-center space-x-4">
-              <div className="bg-blue-500 p-3 rounded-lg">
-                <Users className="text-white" size={24} />
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            whileHover={{ scale: 1.05 }}
+          >
+            <Card className="p-6 bg-gradient-to-br from-[#5A7A95] to-[#567C8D] text-white hover:shadow-xl transition-all">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm">
+                  <Users className="text-white" size={24} />
+                </div>
+                <div>
+                  <p className="text-sm text-[#C8D9E6]">Total Students</p>
+                  <p className="text-3xl font-bold text-white">{students.length}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-600">Total Students</p>
-                <p className="text-2xl font-bold text-black">{students.length}</p>
+            </Card>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+            whileHover={{ scale: 1.05 }}
+          >
+            <Card className="p-6 bg-gradient-to-br from-[#6B9BB8] to-[#5A7A95] text-white hover:shadow-xl transition-all">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm">
+                  <Users className="text-white" size={24} />
+                </div>
+                <div>
+                  <p className="text-sm text-[#C8D9E6]">Active Students</p>
+                  <p className="text-3xl font-bold text-white">
+                    {students.filter(s => getString(s.status) === 'active').length}
+                  </p>
+                </div>
               </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center space-x-4">
-              <div className="bg-green-500 p-3 rounded-lg">
-                <Users className="text-white" size={24} />
+            </Card>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8 }}
+            whileHover={{ scale: 1.05 }}
+          >
+            <Card className="p-6 bg-gradient-to-br from-[#567C8D] to-[#6B9BB8] text-white hover:shadow-xl transition-all">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm">
+                  <Users className="text-white" size={24} />
+                </div>
+                <div>
+                  <p className="text-sm text-[#C8D9E6]">Classes</p>
+                  <p className="text-3xl font-bold text-white">{uniqueClasses.length}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-600">Active Students</p>
-                <p className="text-2xl font-bold text-black">
-                  {students.filter(s => getString(s.status) === 'active').length}
-                </p>
-              </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center space-x-4">
-              <div className="bg-purple-500 p-3 rounded-lg">
-                <Users className="text-white" size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Classes</p>
-                <p className="text-2xl font-bold text-black">{uniqueClasses.length}</p>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          </motion.div>
         </motion.div>
       )}
     </div>

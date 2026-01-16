@@ -14,23 +14,11 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getServiceRoleClient();
+    
+    // Fetch student leave requests
     let query = supabase
       .from('student_leave_requests')
-      .select(`
-        *,
-        student:student_id (
-          id,
-          student_name,
-          admission_no,
-          class,
-          section
-        ),
-        leave_type:leave_type_id (
-          id,
-          abbreviation,
-          name
-        )
-      `)
+      .select('*')
       .eq('school_code', schoolCode)
       .order('leave_applied_date', { ascending: false });
 
@@ -42,47 +30,70 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
-    const { data, error } = await query;
+    const { data: leaveRequests, error } = await query;
 
     if (error) {
       console.error('Error fetching student leave requests:', error);
       return NextResponse.json({ error: 'Failed to fetch student leave requests' }, { status: 500 });
     }
 
-    interface StudentInfo {
+    if (!leaveRequests || leaveRequests.length === 0) {
+      return NextResponse.json({ data: [] });
+    }
+
+    // Get unique student IDs and leave type IDs
+    interface StudentLeaveRequest {
+      absent_form_submitted: boolean;
+      attachment: null;
+      rejected_reason: null;
+      id: string;
+      student_id: string;
+      leave_type_id: string;
+      leave_start_date?: string | null;
+      leave_end_date?: string | null;
+      total_days?: number | null;
+      leave_applied_date?: string | null;
+      leave_title?: string | null;
+      reason?: string | null;
+      status?: string | null;
+      comment?: string | null;
+    }
+    const studentIds = [...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.student_id).filter(Boolean))];
+    const leaveTypeIds = [...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.leave_type_id).filter(Boolean))];
+
+    // Fetch student information
+    const { data: studentsData } = await supabase
+      .from('students')
+      .select('id, student_name, admission_no, class, section')
+      .in('id', studentIds);
+
+    // Fetch leave types
+    const { data: leaveTypesData } = await supabase
+      .from('leave_types')
+      .select('id, abbreviation, name')
+      .in('id', leaveTypeIds);
+
+    // Create lookup maps
+    interface Student {
       id: string;
       student_name: string;
       admission_no: string;
       class: string;
-      section?: string;
+      section: string;
     }
-
-    interface LeaveTypeInfo {
+    interface LeaveType {
       id: string;
       abbreviation: string;
       name: string;
     }
-
-    interface StudentLeaveRequestItem {
-      id: string;
-      student_id: string;
-      leave_type_id: string;
-      leave_start_date: string;
-      leave_end_date: string;
-      leave_applied_date: string;
-      total_days?: number | null;
-      leave_title?: string | null;
-      reason?: string | null;
-      absent_form_submitted?: boolean;
-      attachment?: string | null;
-      status: string;
-      rejected_reason?: string | null;
-      student?: StudentInfo | null;
-      leave_type?: LeaveTypeInfo | null;
-    }
+    const studentsMap = new Map((studentsData || []).map((s: Student) => [s.id, s]));
+    const leaveTypesMap = new Map((leaveTypesData || []).map((lt: LeaveType) => [lt.id, lt]));
 
     // Transform the data to match the expected format
-    const transformedData = (data || []).map((item: StudentLeaveRequestItem) => {
+    const transformedData = leaveRequests.map((item: StudentLeaveRequest) => {
+      const student = studentsMap.get(item.student_id);
+      const leaveType = leaveTypesMap.get(item.leave_type_id);
+      
       // Calculate total_days if not present in database
       let totalDays = item.total_days;
       if (!totalDays && item.leave_start_date && item.leave_end_date) {
@@ -95,13 +106,13 @@ export async function GET(request: NextRequest) {
       return {
         id: item.id,
         student_id: item.student_id,
-        student_name: item.student?.student_name || '',
-        admission_no: item.student?.admission_no || '',
-        class: item.student?.class || '',
-        section: item.student?.section || '',
+        student_name: student?.student_name || '',
+        admission_no: student?.admission_no || '',
+        class: student?.class || '',
+        section: student?.section || '',
         leave_type_id: item.leave_type_id,
-        leave_type: item.leave_type?.abbreviation || '',
-        leave_type_name: item.leave_type?.name || '',
+        leave_type: leaveType?.abbreviation || '',
+        leave_type_name: leaveType?.name || '',
         leave_title: item.leave_title || '',
         leave_applied_date: item.leave_applied_date,
         leave_start_date: item.leave_start_date,

@@ -15,13 +15,14 @@ interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, ExcludedProps> 
 }
 
 export default function Card({ children, className = '', hover = false, ...props }: CardProps) {
-  const baseStyles = 'bg-[#FFFFFF] rounded-2xl border border-[#E1E1DB] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)]';
+  const baseStyles = 'glass-card rounded-xl p-6 soft-shadow-md';
   
   if (hover) {
     return (
       <motion.div
-        whileHover={{ y: -6, scale: 1.01 }}
-        className={`${baseStyles} transition-all duration-300 hover:bg-[#FFF7DB] hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] hover:border-[#FFD66B] ${className}`}
+        whileHover={{ y: -2 }}
+        transition={{ duration: 0.2 }}
+        className={`${baseStyles} transition-all duration-200 cursor-pointer ${className}`}
         {...props}
       >
         {children}

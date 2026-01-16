@@ -439,8 +439,8 @@ export default function InstituteInfoPage({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading school information...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95] border-t-transparent mx-auto mb-4"></div>
+          <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-medium">Loading school information...</p>
         </div>
       </div>
     );
@@ -474,8 +474,13 @@ export default function InstituteInfoPage({
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold text-black mb-2">Institute Information</h1>
-          <p className="text-gray-600">Manage your school details and information</p>
+          <h1 className="text-3xl font-bold text-black dark:text-white mb-2 flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+              <Building2 className="text-white" size={28} />
+            </div>
+            Institute Information
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">Manage your school details and information</p>
         </div>
         {!isEditing ? (
           <Button onClick={() => setIsEditing(true)}>

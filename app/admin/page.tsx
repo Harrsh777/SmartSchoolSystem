@@ -23,7 +23,6 @@ import {
   Users,
   GraduationCap,
   Layers,
-  Plus,
   FileText,
   Bell,
   Menu,
@@ -35,10 +34,22 @@ import {
   HelpCircle,
   DollarSign,
   Shield,
+  Edit,
+  Eye,
+  EyeOff,
+  Save,
+  Loader2,
+  Send,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { AnimatePresence } from 'framer-motion';
 import SchoolSupervisionView from '@/components/admin/SchoolSupervisionView';
+import {
+  calculatePercentage,
+  getGradeFromPercentage,
+  getGradeColor,
+  getPassStatusColor,
+} from '@/lib/grade-calculator';
 
 interface AcceptedSchool {
   id: string;
@@ -117,6 +128,7 @@ type ViewMode =
   | 'help-queries'
   | 'attendance'
   | 'exams'
+  | 'marks'
   | 'fees'
   | 'communications'
   | 'employees'
@@ -184,6 +196,545 @@ interface EventsData {
   [key: string]: unknown;
 }
 
+// Admin Marks Entry Component
+function AdminMarksEntryView({ acceptedSchools }: { acceptedSchools: AcceptedSchool[] }) {
+  const [selectedSchool, setSelectedSchool] = useState('');
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedSection, setSelectedSection] = useState('');
+  const [selectedExam, setSelectedExam] = useState('');
+  const [classes, setClasses] = useState<Array<{ class: string; sections: string[] }>>([]);
+  const [exams, setExams] = useState<Array<{ id: string; name: string; class_id: string; exam_subjects: Array<{ subject_id: string; max_marks: number; subject: { id: string; name: string; color: string } }> }>>([]);
+  const [students, setStudents] = useState<Array<{ id: string; admission_no: string; student_name: string; roll_number?: string }>>([]);
+  const [subjects, setSubjects] = useState<Array<{ id: string; name: string; max_marks: number }>>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [marks, setMarks] = useState<Record<string, Record<string, number>>>({});
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showTotals] = useState(true);
+
+  // Fetch classes when school changes
+  useEffect(() => {
+    if (selectedSchool) {
+      const fetchClasses = async () => {
+        try {
+          setLoadingStudents(true);
+          const response = await fetch(`/api/examinations/classes?school_code=${selectedSchool}`);
+          const result = await response.json();
+          if (response.ok && result.data) {
+            setClasses(result.data);
+          }
+        } catch (err) {
+          console.error('Error fetching classes:', err);
+        } finally {
+          setLoadingStudents(false);
+        }
+      };
+      fetchClasses();
+    } else {
+      setClasses([]);
+      setSelectedClass('');
+      setSelectedSection('');
+    }
+  }, [selectedSchool]);
+
+  // Fetch exams when class and section are selected
+  useEffect(() => {
+    if (selectedSchool && selectedClass && selectedSection) {
+      const fetchClassIdAndExams = async () => {
+        try {
+          const classesRes = await fetch(`/api/classes?school_code=${selectedSchool}`);
+          const classesData = await classesRes.json();
+          if (!classesRes.ok || !classesData.data) return;
+
+          const classItem = classesData.data.find((c: { class: string; section: string }) => 
+            c.class === selectedClass && c.section === selectedSection
+          );
+          if (!classItem?.id) return;
+
+          setSelectedClassId(classItem.id);
+
+          const response = await fetch(`/api/examinations?school_code=${selectedSchool}&class_id=${classItem.id}`);
+          const result = await response.json();
+          if (response.ok && result.data) {
+            setExams(result.data);
+          }
+        } catch (err) {
+          console.error('Error fetching exams:', err);
+        }
+      };
+      fetchClassIdAndExams();
+    } else {
+      setExams([]);
+      setSelectedExam('');
+      setSelectedClassId('');
+    }
+  }, [selectedSchool, selectedClass, selectedSection]);
+
+  // Fetch students and subjects when exam is selected
+  useEffect(() => {
+    if (selectedSchool && selectedClass && selectedSection && selectedExam && selectedClassId) {
+      const fetchStudentsAndSubjects = async () => {
+        try {
+          setLoadingStudents(true);
+          setError('');
+
+          const examRes = await fetch(`/api/examinations/${selectedExam}?school_code=${selectedSchool}`);
+          const examData = await examRes.json();
+          if (!examRes.ok || !examData.data?.exam_subjects?.length) {
+            setError('Failed to fetch exam details');
+            return;
+          }
+
+          const exam = examData.data;
+          const examSubjects = exam.exam_subjects.map((es: { subject_id: string; subject: { name: string }; max_marks: number }) => ({
+            id: es.subject_id,
+            name: es.subject.name,
+            max_marks: es.max_marks,
+          }));
+          setSubjects(examSubjects);
+
+          const studentsRes = await fetch(
+            `/api/students?school_code=${selectedSchool}&class=${encodeURIComponent(selectedClass)}&section=${encodeURIComponent(selectedSection)}&status=active`
+          );
+          const studentsData = await studentsRes.json();
+          if (!studentsRes.ok || !studentsData.data) {
+            setError('Failed to fetch students');
+            return;
+          }
+
+          setStudents(studentsData.data || []);
+
+          // Load existing marks
+          const existingMarksPromises = (studentsData.data || []).map(async (student: { id: string }) => {
+            try {
+              const marksRes = await fetch(
+                `/api/examinations/marks?exam_id=${selectedExam}&student_id=${student.id}`
+              );
+              const marksData = await marksRes.json();
+              if (marksRes.ok && marksData.data?.length > 0) {
+                const studentMarks: Record<string, number> = {};
+                marksData.data.forEach((m: { subject_id: string; marks_obtained: number }) => {
+                  studentMarks[m.subject_id] = m.marks_obtained;
+                });
+                return { studentId: student.id, marks: studentMarks };
+              }
+            } catch (err) {
+              console.error(`Error fetching marks for student ${student.id}:`, err);
+            }
+            return { studentId: student.id, marks: {} };
+          });
+
+          const existingMarksResults = await Promise.all(existingMarksPromises);
+          const marksState: Record<string, Record<string, number>> = {};
+          existingMarksResults.forEach(({ studentId, marks: studentMarks }) => {
+            marksState[studentId] = studentMarks;
+          });
+          setMarks(marksState);
+        } catch (err) {
+          console.error('Error fetching data:', err);
+          setError('Failed to load data. Please try again.');
+        } finally {
+          setLoadingStudents(false);
+        }
+      };
+      fetchStudentsAndSubjects();
+    } else {
+      setStudents([]);
+      setSubjects([]);
+      setMarks({});
+    }
+  }, [selectedSchool, selectedClass, selectedSection, selectedExam, selectedClassId]);
+
+  const handleMarksChange = (studentId: string, subjectId: string, value: string) => {
+    const numValue = value === '' ? 0 : parseFloat(value);
+    setMarks(prev => ({
+      ...prev,
+      [studentId]: {
+        ...prev[studentId],
+        [subjectId]: numValue,
+      },
+    }));
+  };
+
+  const handleSave = async (submitForReview = false) => {
+    if (!selectedSchool || !selectedClass || !selectedSection || !selectedExam || !selectedClassId) {
+      setError('Please select all required fields');
+      return;
+    }
+
+    if (students.length === 0 || subjects.length === 0) {
+      setError('No students or subjects found');
+      return;
+    }
+
+    if (submitForReview) {
+      // Validate all marks are entered
+      for (const student of students) {
+        for (const subject of subjects) {
+          const markValue = marks[student.id]?.[subject.id];
+          if (markValue === undefined || markValue === null || isNaN(markValue)) {
+            setError('All marks must be entered before submitting for review.');
+            return;
+          }
+        }
+      }
+    }
+
+    const endpoint = submitForReview ? '/api/examinations/marks/submit' : '/api/examinations/marks/bulk';
+    const action = submitForReview ? setSubmitting : setSaving;
+    action(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const bulkMarks = students.map((student) => ({
+        student_id: student.id,
+        subjects: subjects.map((subject) => ({
+          subject_id: subject.id,
+          max_marks: subject.max_marks,
+          marks_obtained: marks[student.id]?.[subject.id] || 0,
+          remarks: '',
+        })),
+      }));
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: selectedSchool,
+          exam_id: selectedExam,
+          class_id: selectedClassId,
+          marks: submitForReview ? bulkMarks : bulkMarks,
+          entered_by: 'admin', // Admin marks entry
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setSuccess(result.message || `Marks ${submitForReview ? 'submitted' : 'saved'} successfully!`);
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(result.error || `Failed to ${submitForReview ? 'submit' : 'save'} marks`);
+      }
+    } catch (err) {
+      console.error(`Error ${submitForReview ? 'submitting' : 'saving'} marks:`, err);
+      setError(`Failed to ${submitForReview ? 'submit' : 'save'} marks. Please try again.`);
+    } finally {
+      action(false);
+    }
+  };
+
+  const calculateStudentStats = (studentId: string) => {
+    const studentMarks = marks[studentId] || {};
+    let totalObtained = 0;
+    let totalMax = 0;
+
+    subjects.forEach((subject) => {
+      const marksObtained = studentMarks[subject.id] || 0;
+      totalObtained += marksObtained;
+      totalMax += subject.max_marks;
+    });
+
+    const percentage = totalMax > 0 ? calculatePercentage(totalObtained, totalMax) : 0;
+    const grade = getGradeFromPercentage(percentage);
+    const isPass = percentage >= 40;
+
+    return { totalObtained, totalMax, percentage, grade, isPass };
+  };
+
+  const filteredStudents = students.filter(s =>
+    s.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.admission_no.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const sections = classes.find(c => c.class === selectedClass)?.sections || [];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-black">Marks Entry</h2>
+          <p className="text-gray-600 mt-1">Enter and manage examination marks for any school</p>
+        </div>
+      </div>
+
+      {/* Error/Success Messages */}
+      <AnimatePresence>
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3"
+          >
+            <CheckCircle className="text-green-600" size={20} />
+            <p className="text-green-800 text-sm">{success}</p>
+          </motion.div>
+        )}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="text-red-600" size={20} />
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
+            <button onClick={() => setError('')} className="text-red-600 hover:text-red-800">
+              <X size={18} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Selection Filters */}
+      <Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">School *</label>
+            <select
+              value={selectedSchool}
+              onChange={(e) => {
+                setSelectedSchool(e.target.value);
+                setSelectedClass('');
+                setSelectedSection('');
+                setSelectedExam('');
+              }}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5A7A95]"
+            >
+              <option value="">Select School</option>
+              {acceptedSchools.map((school) => (
+                <option key={school.id} value={school.school_code}>
+                  {school.school_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Class *</label>
+            <select
+              value={selectedClass}
+              onChange={(e) => {
+                setSelectedClass(e.target.value);
+                setSelectedSection('');
+                setSelectedExam('');
+              }}
+              disabled={!selectedSchool}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5A7A95] disabled:bg-gray-100"
+            >
+              <option value="">Select Class</option>
+              {Array.from(new Set(classes.map(c => c.class))).sort().map((cls) => (
+                <option key={cls} value={cls}>{cls}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Section *</label>
+            <select
+              value={selectedSection}
+              onChange={(e) => {
+                setSelectedSection(e.target.value);
+                setSelectedExam('');
+              }}
+              disabled={!selectedClass}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5A7A95] disabled:bg-gray-100"
+            >
+              <option value="">Select Section</option>
+              {sections.map((sec) => (
+                <option key={sec} value={sec}>{sec}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Examination *</label>
+            <select
+              value={selectedExam}
+              onChange={(e) => setSelectedExam(e.target.value)}
+              disabled={!selectedSection}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5A7A95] disabled:bg-gray-100"
+            >
+              <option value="">Select Examination</option>
+              {exams.map((exam) => (
+                <option key={exam.id} value={exam.id}>{exam.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end gap-2">
+            <Button
+              onClick={() => handleSave(false)}
+              disabled={saving || submitting || !selectedExam || students.length === 0}
+              className="w-full bg-[#5A7A95] hover:bg-[#4a6a85] disabled:opacity-50"
+            >
+              {saving ? (
+                <>
+                  <Loader2 size={18} className="mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save size={18} className="mr-2" />
+                  Save Draft
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={() => handleSave(true)}
+              disabled={saving || submitting || !selectedExam || students.length === 0}
+              className="w-full bg-[#6B9BB8] hover:bg-[#5a8a95] disabled:opacity-50"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={18} className="mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Send size={18} className="mr-2" />
+                  Submit
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Search */}
+      {students.length > 0 && (
+        <Card>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search students by name or admission number..."
+              className="pl-10"
+            />
+          </div>
+        </Card>
+      )}
+
+      {/* Marks Entry Table */}
+      {loadingStudents ? (
+        <Card>
+          <div className="text-center py-12">
+            <Loader2 className="animate-spin text-[#5A7A95] mx-auto mb-4" size={32} />
+            <p className="text-gray-600">Loading students and subjects...</p>
+          </div>
+        </Card>
+      ) : students.length === 0 && selectedExam ? (
+        <Card>
+          <div className="text-center py-12">
+            <Users className="text-gray-400 mx-auto mb-4" size={48} />
+            <p className="text-gray-600">No students found for the selected class and section</p>
+          </div>
+        </Card>
+      ) : students.length > 0 && subjects.length > 0 ? (
+        <Card>
+          <div className="overflow-x-auto">
+            <div className="inline-block min-w-full align-middle">
+              <table className="min-w-full">
+                <thead className="bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] text-white sticky top-0 z-10">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold sticky left-0 bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] z-20">Roll No.</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold sticky left-20 bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] z-20">Student Name</th>
+                    {subjects.map((subject) => (
+                      <th key={subject.id} className="px-4 py-3 text-center text-sm font-semibold min-w-[120px]">
+                        {subject.name}
+                        <div className="text-xs font-normal mt-1">({subject.max_marks})</div>
+                      </th>
+                    ))}
+                    {showTotals && (
+                      <>
+                        <th className="px-4 py-3 text-center text-sm font-semibold">Total</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold">%</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold">Grade</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold">Status</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredStudents.map((student) => {
+                    const stats = calculateStudentStats(student.id);
+                    return (
+                      <tr key={student.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-700 sticky left-0 bg-white z-10">{student.roll_number || '-'}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-20 bg-white z-10">{student.student_name}</td>
+                        {subjects.map((subject) => {
+                          const marksObtained = marks[student.id]?.[subject.id] || 0;
+                          const percentage = calculatePercentage(marksObtained, subject.max_marks);
+                          const isPass = marksObtained >= (subject.max_marks * 0.4);
+                          return (
+                            <td key={subject.id} className="px-4 py-3">
+                              <div className="flex flex-col items-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={subject.max_marks}
+                                  step="0.01"
+                                  value={marksObtained || ''}
+                                  onChange={(e) => handleMarksChange(student.id, subject.id, e.target.value)}
+                                  className={`w-20 px-2 py-1 border rounded text-center text-sm ${
+                                    marksObtained > 0
+                                      ? isPass
+                                        ? 'border-green-500 bg-green-50'
+                                        : 'border-red-500 bg-red-50'
+                                      : 'border-gray-300'
+                                  } focus:outline-none focus:ring-2 focus:ring-[#5A7A95]`}
+                                />
+                                <span className={`text-xs mt-1 ${getGradeColor(getGradeFromPercentage(percentage))}`}>
+                                  {percentage.toFixed(1)}%
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        })}
+                        {showTotals && (
+                          <>
+                            <td className="px-4 py-3 text-center text-sm font-semibold">
+                              {stats.totalObtained} / {stats.totalMax}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`text-sm font-semibold ${stats.isPass ? 'text-green-600' : 'text-red-600'}`}>
+                                {stats.percentage.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`text-sm font-semibold ${getGradeColor(stats.grade)}`}>
+                                {stats.grade}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`px-2 py-1 text-xs rounded-full ${getPassStatusColor(stats.isPass ? 'pass' : 'fail')}`}>
+                                {stats.isPass ? 'Pass' : 'Fail'}
+                              </span>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+    </motion.div>
+  );
+}
+
 export default function AdminDashboard() {
   const [pendingSchools, setPendingSchools] = useState<SchoolSignup[]>([]);
   const [acceptedSchools, setAcceptedSchools] = useState<AcceptedSchool[]>([]);
@@ -211,6 +762,18 @@ export default function AdminDashboard() {
   const [creatingEmployee, setCreatingEmployee] = useState(false);
   const [newEmployeePassword, setNewEmployeePassword] = useState<string | null>(null);
   const [signupsViewMode, setSignupsViewMode] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all');
+  
+  // Edit credentials modal state
+  const [showEditCredentialsModal, setShowEditCredentialsModal] = useState(false);
+  const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
+  const [editingSchoolName, setEditingSchoolName] = useState('');
+  const [editForm, setEditForm] = useState({
+    school_code: '',
+    password: '',
+  });
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [updatingCredentials, setUpdatingCredentials] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   
   // Data states for admin views
   interface StudentData {
@@ -693,6 +1256,75 @@ export default function AdminDashboard() {
     setShowRejectModal(true);
   };
 
+  const openEditCredentialsModal = (school: AcceptedSchool) => {
+    setEditingSchoolId(school.id);
+    setEditingSchoolName(school.school_name);
+    setEditForm({
+      school_code: school.school_code || '',
+      password: '',
+    });
+    setEditErrors({});
+    setShowPassword(false);
+    setShowEditCredentialsModal(true);
+  };
+
+  const handleUpdateCredentials = async () => {
+    if (!editingSchoolId) return;
+
+    // Validate form
+    const errors: Record<string, string> = {};
+    if (editForm.school_code && editForm.school_code.trim().length < 3) {
+      errors.school_code = 'School code must be at least 3 characters';
+    }
+    if (editForm.password && editForm.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters';
+    }
+    if (Object.keys(errors).length > 0) {
+      setEditErrors(errors);
+      return;
+    }
+
+    if (!editForm.school_code.trim() && !editForm.password.trim()) {
+      setEditErrors({ general: 'Please provide at least a school code or password to update' });
+      return;
+    }
+
+    try {
+      setUpdatingCredentials(true);
+      setEditErrors({});
+
+      const response = await fetch(`/api/schools/${editingSchoolId}/credentials`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          school_code: editForm.school_code.trim() || undefined,
+          password: editForm.password.trim() || undefined,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setShowEditCredentialsModal(false);
+        setEditingSchoolId(null);
+        setEditingSchoolName('');
+        setEditForm({ school_code: '', password: '' });
+        setEditErrors({});
+        await fetchAllSchools();
+        alert('School credentials updated successfully!');
+      } else {
+        setEditErrors({ general: result.error || 'Failed to update credentials' });
+      }
+    } catch (error) {
+      console.error('Error updating credentials:', error);
+      setEditErrors({ general: 'An error occurred while updating credentials' });
+    } finally {
+      setUpdatingCredentials(false);
+    }
+  };
+
   const handleReject = async () => {
     if (!rejectingSchoolId) return;
 
@@ -703,6 +1335,8 @@ export default function AdminDashboard() {
 
     try {
       setUpdatingId(rejectingSchoolId);
+      setRejectionError('');
+      
       const response = await fetch(`/api/schools/${rejectingSchoolId}/status`, {
         method: 'PATCH',
         headers: {
@@ -720,14 +1354,19 @@ export default function AdminDashboard() {
         setShowRejectModal(false);
         setRejectingSchoolId(null);
         setRejectionReason('');
+        setRejectionError('');
         await fetchAllSchools();
         alert(result.message || 'School rejected successfully');
       } else {
-        setRejectionError(result.error || 'Failed to reject school');
+        const errorMessage = result.error || 'Failed to reject school';
+        const details = result.details ? `\n\nDetails: ${result.details}` : '';
+        const hint = result.hint ? `\n\nHint: ${result.hint}` : '';
+        setRejectionError(`${errorMessage}${details}${hint}`);
+        console.error('Rejection error:', result);
       }
     } catch (error) {
       console.error('Error rejecting school:', error);
-      setRejectionError('An error occurred while rejecting the school');
+      setRejectionError(`An error occurred while rejecting the school: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setUpdatingId(null);
     }
@@ -821,35 +1460,54 @@ export default function AdminDashboard() {
     const schoolId = 'id' in school ? String(school.id || '') : '';
 
     return (
-      <Card>
-        <div className="p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex-1">
-              <div className="flex items-center space-x-3 mb-2">
-                <h3 className="text-2xl font-bold text-black">{schoolName}</h3>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  isAccepted
-                    ? 'bg-green-100 text-green-800'
-                    : isRejectedStatus
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-yellow-100 text-yellow-800'
-                }`}>
-                  {isAccepted ? 'Approved' : isRejectedStatus ? 'Rejected' : 'Pending'}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500 mb-4">
-                {schoolCode && (
-                  <>
-                    School Code: <span className="font-semibold text-gray-700">{schoolCode}</span>
-                    {' • '}
-                  </>
-                )}
-                Established: <span className="font-semibold text-gray-700">{'established_year' in school ? String(school.established_year || 'N/A') : 'N/A'}</span>
-                {' • '}
-                Type: <span className="font-semibold text-gray-700">{'school_type' in school ? String(school.school_type || 'N/A') : 'N/A'}</span>
-                {' • '}
-                Affiliation: <span className="font-semibold text-gray-700">{'affiliation' in school ? String(school.affiliation || 'N/A') : 'N/A'}</span>
-              </p>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ y: -2 }}
+        transition={{ duration: 0.2 }}
+      >
+        <Card className="hover:shadow-xl transition-all duration-300 border-l-4 border-l-[#5A7A95]">
+          <div className="p-6 lg:p-8">
+            <div className="flex items-start justify-between mb-6">
+              <div className="flex-1">
+                <div className="flex items-center space-x-3 mb-3">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
+                    <Building2 className="text-white" size={24} />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-2xl font-bold text-gray-900 mb-1">{schoolName}</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        isAccepted
+                          ? 'bg-green-100 text-green-700 border border-green-200'
+                          : isRejectedStatus
+                          ? 'bg-red-100 text-red-700 border border-red-200'
+                          : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                      }`}>
+                        {isAccepted ? 'Approved' : isRejectedStatus ? 'Rejected' : 'Pending'}
+                      </span>
+                      {schoolCode && (
+                        <span className="px-3 py-1 rounded-full text-xs font-mono font-semibold bg-[#5A7A95]/10 text-[#5A7A95] border border-[#5A7A95]/20">
+                          {schoolCode}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                  <div className="flex items-center space-x-2 text-sm">
+                    <span className="text-gray-500">Established:</span>
+                    <span className="font-semibold text-gray-700">{'established_year' in school ? String(school.established_year || 'N/A') : 'N/A'}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-sm">
+                    <span className="text-gray-500">Type:</span>
+                    <span className="font-semibold text-gray-700">{'school_type' in school ? String(school.school_type || 'N/A') : 'N/A'}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-sm">
+                    <span className="text-gray-500">Affiliation:</span>
+                    <span className="font-semibold text-gray-700">{'affiliation' in school ? String(school.affiliation || 'N/A') : 'N/A'}</span>
+                  </div>
+                </div>
               {rejectionReason && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                   <div className="flex items-start space-x-2">
@@ -862,118 +1520,144 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
-            {(isPending || status === 'pending') && (
-              <div className="flex items-center space-x-2 ml-4">
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={() => openAcceptModal(schoolId, schoolName)}
-                              disabled={updatingId === schoolId}
-                            >
-                              <CheckCircle size={18} className="mr-2" />
-                              {updatingId === schoolId ? 'Updating...' : 'Approve'}
-                            </Button>
+            <div className="flex items-center space-x-2 ml-4">
+              {(isPending || status === 'pending') && (
+                <>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => openAcceptModal(schoolId, schoolName)}
+                    disabled={updatingId === schoolId}
+                  >
+                    <CheckCircle size={18} className="mr-2" />
+                    {updatingId === schoolId ? 'Updating...' : 'Approve'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openRejectModal(schoolId)}
+                    disabled={updatingId === schoolId}
+                    className="border-red-300 text-red-600 hover:bg-red-50"
+                  >
+                    <XCircle size={18} className="mr-2" />
+                    Reject
+                  </Button>
+                </>
+              )}
+              {isAccepted && schoolId && (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => openRejectModal(schoolId)}
-                  disabled={updatingId === schoolId}
-                  className="border-red-300 text-red-600 hover:bg-red-50"
+                  onClick={() => {
+                    const acceptedSchool = school as AcceptedSchool;
+                    openEditCredentialsModal(acceptedSchool);
+                  }}
+                  className="border-[#5A7A95] text-[#5A7A95] hover:bg-[#5A7A95]/10"
                 >
-                  <XCircle size={18} className="mr-2" />
-                  Reject
+                  <Edit size={18} className="mr-2" />
+                  Edit Credentials
                 </Button>
-              </div>
-            )}
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Address Information */}
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                <MapPin size={16} className="mr-2" />
-                Address
-              </h4>
-              <p className="text-gray-600 text-sm">
-                {'school_address' in school ? String(school.school_address || '') : ''}<br />
-                {'city' in school ? String(school.city || '') : ''}, {'state' in school ? String(school.state || '') : ''} {'zip_code' in school ? String(school.zip_code || '') : ''}<br />
-                {'country' in school ? String(school.country || '') : ''}
-              </p>
-            </div>
-
-            {/* Contact Information */}
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                <Mail size={16} className="mr-2" />
-                Contact
-              </h4>
-              <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex items-center">
-                  <Mail size={14} className="mr-2 text-gray-400" />
-                  {'school_email' in school ? String(school.school_email || '') : ''}
-                </div>
-                <div className="flex items-center">
-                  <Phone size={14} className="mr-2 text-gray-400" />
-                  {'school_phone' in school ? String(school.school_phone || '') : ''}
-                </div>
-              </div>
-            </div>
-
-            {/* Principal Information */}
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                <User size={16} className="mr-2" />
-                Principal
-              </h4>
-              <div className="space-y-2 text-sm text-gray-600">
-                <p className="font-medium text-gray-800">{'principal_name' in school ? String(school.principal_name || '') : ''}</p>
-                <div className="flex items-center">
-                  <Mail size={14} className="mr-2 text-gray-400" />
-                  {'principal_email' in school ? String(school.principal_email || '') : ''}
-                </div>
-                <div className="flex items-center">
-                  <Phone size={14} className="mr-2 text-gray-400" />
-                  {'principal_phone' in school ? String(school.principal_phone || '') : ''}
-                </div>
-              </div>
-            </div>
-
-            {/* Date Information */}
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">
-                {isAccepted ? 'Approved Date' : isRejectedStatus ? 'Rejected Date' : 'Submission Date'}
-              </h4>
-              <p className="text-sm text-gray-600">
-                {isAccepted && 'approved_at' in school && school.approved_at
-                  ? new Date(String(school.approved_at)).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : isRejectedStatus && 'rejected_at' in school && school.rejected_at
-                  ? new Date(String(school.rejected_at)).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : 'created_at' in school && school.created_at
-                  ? new Date(String(school.created_at)).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : 'N/A'}
-              </p>
+              )}
             </div>
           </div>
-        </div>
-      </Card>
+
+            <div className="mt-6 grid md:grid-cols-2 gap-6">
+              {/* Address Information */}
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
+                  <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/10 flex items-center justify-center mr-2">
+                    <MapPin size={16} className="text-[#5A7A95]" />
+                  </div>
+                  Address
+                </h4>
+                <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+                  {'school_address' in school ? String(school.school_address || '') : ''}<br />
+                  {'city' in school ? String(school.city || '') : ''}, {'state' in school ? String(school.state || '') : ''} {'zip_code' in school ? String(school.zip_code || '') : ''}<br />
+                  {'country' in school ? String(school.country || '') : ''}
+                </p>
+              </div>
+
+              {/* Contact Information */}
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
+                  <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/10 flex items-center justify-center mr-2">
+                    <Mail size={16} className="text-[#5A7A95]" />
+                  </div>
+                  Contact
+                </h4>
+                <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="flex items-center">
+                    <Mail size={14} className="mr-2 text-[#5A7A95]" />
+                    <span className="break-all">{'school_email' in school ? String(school.school_email || '') : ''}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <Phone size={14} className="mr-2 text-[#5A7A95]" />
+                    {'school_phone' in school ? String(school.school_phone || '') : ''}
+                  </div>
+                </div>
+              </div>
+
+              {/* Principal Information */}
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
+                  <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/10 flex items-center justify-center mr-2">
+                    <User size={16} className="text-[#5A7A95]" />
+                  </div>
+                  Principal
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <p className="font-semibold text-gray-900 dark:text-gray-100">{'principal_name' in school ? String(school.principal_name || '') : ''}</p>
+                  <div className="flex items-center text-gray-700 dark:text-gray-300">
+                    <Mail size={14} className="mr-2 text-[#5A7A95]" />
+                    <span className="break-all">{'principal_email' in school ? String(school.principal_email || '') : ''}</span>
+                  </div>
+                  <div className="flex items-center text-gray-700 dark:text-gray-300">
+                    <Phone size={14} className="mr-2 text-[#5A7A95]" />
+                    {'principal_phone' in school ? String(school.principal_phone || '') : ''}
+                  </div>
+                </div>
+              </div>
+
+              {/* Date Information */}
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
+                  <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/10 flex items-center justify-center mr-2">
+                    <Clock size={16} className="text-[#5A7A95]" />
+                  </div>
+                  {isAccepted ? 'Approved Date' : isRejectedStatus ? 'Rejected Date' : 'Submission Date'}
+                </h4>
+                <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                  {isAccepted && 'approved_at' in school && school.approved_at
+                    ? new Date(String(school.approved_at)).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : isRejectedStatus && 'rejected_at' in school && school.rejected_at
+                    ? new Date(String(school.rejected_at)).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'created_at' in school && school.created_at
+                    ? new Date(String(school.created_at)).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'N/A'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </motion.div>
     );
   };
 
@@ -1041,6 +1725,7 @@ export default function AdminDashboard() {
                     { id: 'classes', label: 'Classes', icon: Layers },
                     { id: 'attendance', label: 'Attendance', icon: Activity },
                     { id: 'exams', label: 'Exams', icon: FileText },
+                    { id: 'marks', label: 'Marks', icon: GraduationCap },
                     { id: 'fees', label: 'Fees', icon: DollarSign },
                     { id: 'communications', label: 'Communications', icon: Bell },
                     { id: 'help-queries', label: 'Help Queries', icon: HelpCircle },
@@ -1076,203 +1761,6 @@ export default function AdminDashboard() {
 
         {/* Main Content */}
         <main className="flex-1 lg:ml-0 bg-[#F5EFEB] dark:bg-[#0f172a]">
-          {/* Top Header Section with Admin Illustration */}
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="relative overflow-hidden bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] dark:from-[#0f172a] dark:via-[#1e293b] dark:to-[#2F4156]"
-          >
-            {/* Decorative Blob Gradients */}
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute top-20 right-0 w-[500px] h-[500px] bg-gradient-to-br from-purple-300/30 via-blue-300/30 to-cyan-300/30 rounded-full mix-blend-multiply filter blur-[80px] opacity-50 animate-pulse"></div>
-              <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-gradient-to-br from-teal-300/25 via-green-300/25 to-emerald-300/25 rounded-full mix-blend-multiply filter blur-[100px] opacity-40 animate-pulse" style={{ animationDelay: '2s' }}></div>
-            </div>
-
-            <div className="relative z-10 p-6 sm:p-8 lg:p-10">
-              <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-                {/* Left Side - Text Content */}
-                <div>
-                  <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="inline-flex items-center gap-2 bg-white/20 dark:bg-[#1e293b]/30 backdrop-blur-sm rounded-full px-4 py-1.5 mb-6 border border-white/30"
-                  >
-                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                    <span className="text-xs font-bold text-white tracking-wide uppercase">Super Admin Portal</span>
-                  </motion.div>
-                  <motion.h1
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-4 leading-tight"
-                  >
-                    Admin Dashboard
-                  </motion.h1>
-                  <motion.p
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="text-[#C8D9E6] dark:text-gray-300 text-lg mb-6"
-                  >
-                    Comprehensive School ERP Management System
-                  </motion.p>
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4 }}
-                    className="flex flex-wrap items-center gap-4"
-                  >
-                    <div className="flex items-center gap-3 bg-white/10 dark:bg-[#1e293b]/30 backdrop-blur-sm rounded-xl px-4 py-2 border border-white/20">
-                      <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
-                        <User className="text-white" size={20} />
-                      </div>
-                      <div>
-                        <p className="text-white font-semibold text-sm">Super Admin</p>
-                        <p className="text-[#C8D9E6] text-xs">EduCore Platform</p>
-                      </div>
-                    </div>
-                    <div className="px-4 py-2 bg-green-500/20 backdrop-blur-sm border border-green-400/30 rounded-full">
-                      <span className="text-white text-xs font-medium flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                        Active
-                      </span>
-                    </div>
-                  </motion.div>
-                </div>
-
-                {/* Right Side - Admin Illustration */}
-                <motion.div
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="hidden lg:flex items-center justify-center relative"
-                >
-                  <div className="relative w-full max-w-md">
-                    {/* Main Admin Character */}
-                    <motion.div
-                      initial={{ scale: 0.8, y: 20 }}
-                      animate={{ scale: 1, y: 0 }}
-                      transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
-                      className="relative z-10"
-                    >
-                      {/* Admin Figure with Suit */}
-                      <div className="relative mb-8 flex justify-center">
-                        <div className="relative">
-                          {/* Head */}
-                          <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#C8D9E6] to-white flex items-center justify-center shadow-2xl relative z-20 mb-4">
-                            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] flex items-center justify-center">
-                              <Shield className="text-white" size={40} />
-                            </div>
-                          </div>
-                          
-                          {/* Suit/Torso */}
-                          <div className="absolute top-24 left-1/2 -translate-x-1/2 w-40 h-32 bg-gradient-to-br from-[#567C8D] to-[#5A7A95] rounded-2xl shadow-xl border-4 border-[#6B9BB8]/30">
-                            {/* Tie */}
-                            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-3 h-16 bg-gradient-to-b from-red-500 to-red-600 rounded-full"></div>
-                          </div>
-
-                          {/* Floating Admin Elements */}
-                          <motion.div
-                            animate={{ y: [0, -10, 0], rotate: [0, 5, 0] }}
-                            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                            className="absolute -top-4 -left-4"
-                          >
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
-                              <BarChart2 className="text-white" size={24} />
-                            </div>
-                          </motion.div>
-
-                          <motion.div
-                            animate={{ y: [0, 10, 0], rotate: [0, -5, 0] }}
-                            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-                            className="absolute -top-4 -right-4"
-                          >
-                            <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
-                              <TrendingUp className="text-white" size={20} />
-                            </div>
-                          </motion.div>
-                        </div>
-                      </div>
-
-                      {/* Control Panel/Desk */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.6 }}
-                        className="relative"
-                      >
-                        {/* Dashboard Screen */}
-                        <div className="w-full max-w-xs mx-auto bg-gradient-to-br from-[#567C8D] to-[#5A7A95] rounded-xl p-6 shadow-2xl border-4 border-[#6B9BB8]/30 mb-4">
-                          <div className="bg-white/10 rounded-lg p-3 mb-2">
-                            <div className="flex gap-1 mb-2">
-                              <div className="w-2 h-2 rounded-full bg-red-400"></div>
-                              <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
-                              <div className="w-2 h-2 rounded-full bg-green-400"></div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="h-8 bg-white/20 rounded"></div>
-                              <div className="h-8 bg-white/20 rounded"></div>
-                              <div className="h-8 bg-white/20 rounded"></div>
-                            </div>
-                            <div className="h-12 bg-white/20 rounded mt-2"></div>
-                          </div>
-                        </div>
-
-                        {/* Stats Cards */}
-                        <div className="flex items-center justify-center gap-3 mb-4">
-                          <motion.div
-                            animate={{ scale: [1, 1.05, 1] }}
-                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                            className="w-16 h-20 bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-sm rounded-lg shadow-xl border-2 border-[#6B9BB8] flex flex-col items-center justify-center"
-                          >
-                            <Users className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
-                            <span className="text-xs font-bold text-[#5A7A95] dark:text-[#6B9BB8] mt-1">1.2K</span>
-                          </motion.div>
-                          <motion.div
-                            animate={{ scale: [1, 1.05, 1] }}
-                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
-                            className="w-16 h-20 bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-sm rounded-lg shadow-xl border-2 border-[#6B9BB8] flex flex-col items-center justify-center"
-                          >
-                            <Building2 className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
-                            <span className="text-xs font-bold text-[#5A7A95] dark:text-[#6B9BB8] mt-1">45</span>
-                          </motion.div>
-                          <motion.div
-                            animate={{ scale: [1, 1.05, 1] }}
-                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
-                            className="w-16 h-20 bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-sm rounded-lg shadow-xl border-2 border-[#6B9BB8] flex flex-col items-center justify-center"
-                          >
-                            <Activity className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
-                            <span className="text-xs font-bold text-[#5A7A95] dark:text-[#6B9BB8] mt-1">98%</span>
-                          </motion.div>
-                        </div>
-                      </motion.div>
-                    </motion.div>
-                  </div>
-                </motion.div>
-              </div>
-
-              {/* Action Button Row */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                className="max-w-7xl mx-auto mt-8 flex justify-end"
-              >
-                <Button
-                  onClick={() => {
-                    setShowEmployeeModal(true);
-                    setNewEmployeePassword(null);
-                  }}
-                  className="bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-xl text-[#5A7A95] dark:text-[#6B9BB8] hover:bg-white dark:hover:bg-[#2F4156] border border-white/30 dark:border-gray-700/50 shadow-lg hover:shadow-xl transition-all"
-                >
-                  <Plus size={18} className="mr-2" />
-                  Add Employee
-                </Button>
-              </motion.div>
-            </div>
-          </motion.div>
-
           <div className="p-4 sm:p-6 lg:p-8">
 
           {/* School Overview Section - Premium Cards */}
@@ -2013,47 +2501,50 @@ export default function AdminDashboard() {
               transition={{ delay: 0.2 }}
             >
               {/* Signups + existing school cards reused here */}
-              <div className="flex items-center space-x-2 mb-6">
-                <button
-                  onClick={() => setSignupsViewMode('all')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    signupsViewMode === 'all'
-                      ? 'bg-black text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                  }`}
-                >
-                  Total
-                </button>
-                <button
-                  onClick={() => setSignupsViewMode('pending')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    signupsViewMode === 'pending'
-                      ? 'bg-black text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                  }`}
-                >
-                  Pending
-                </button>
-                <button
-                  onClick={() => setSignupsViewMode('accepted')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    signupsViewMode === 'accepted'
-                      ? 'bg-black text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                  }`}
-                >
-                  Approved
-                </button>
-                <button
-                  onClick={() => setSignupsViewMode('rejected')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    signupsViewMode === 'rejected'
-                      ? 'bg-black text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                  }`}
-                >
-                  Rejected
-                </button>
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">School Management</h2>
+                <div className="flex items-center space-x-3 bg-white dark:bg-[#1e293b] p-2 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                  <button
+                    onClick={() => setSignupsViewMode('all')}
+                    className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+                      signupsViewMode === 'all'
+                        ? 'bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] text-white shadow-lg'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-[#5A7A95] dark:hover:text-[#6B9BB8] hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    Total ({pendingSchools.length + acceptedSchools.length + rejectedSchools.length})
+                  </button>
+                  <button
+                    onClick={() => setSignupsViewMode('pending')}
+                    className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+                      signupsViewMode === 'pending'
+                        ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-300 shadow-md'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                    }`}
+                  >
+                    Pending ({pendingSchools.length})
+                  </button>
+                  <button
+                    onClick={() => setSignupsViewMode('accepted')}
+                    className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+                      signupsViewMode === 'accepted'
+                        ? 'bg-green-100 text-green-700 border-2 border-green-300 shadow-md'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20'
+                    }`}
+                  >
+                    Approved ({acceptedSchools.length})
+                  </button>
+                  <button
+                    onClick={() => setSignupsViewMode('rejected')}
+                    className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+                      signupsViewMode === 'rejected'
+                        ? 'bg-red-100 text-red-700 border-2 border-red-300 shadow-md'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20'
+                    }`}
+                  >
+                    Rejected ({rejectedSchools.length})
+                  </button>
+                </div>
               </div>
 
               <motion.div
@@ -2747,6 +3238,11 @@ export default function AdminDashboard() {
             </motion.div>
           )}
 
+          {/* Marks View */}
+          {viewMode === 'marks' && (
+            <AdminMarksEntryView acceptedSchools={acceptedSchools} />
+          )}
+
           {viewMode === 'attendance' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -2931,10 +3427,13 @@ export default function AdminDashboard() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8"
+            className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl max-w-md w-full p-8"
           >
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-black">Reject School</h2>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Reject School</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Provide a reason for rejection</p>
+              </div>
               <button
                 onClick={() => {
                   setShowRejectModal(false);
@@ -2942,16 +3441,21 @@ export default function AdminDashboard() {
                   setRejectionReason('');
                   setRejectionError('');
                 }}
-                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
-                <X size={24} />
+                <X size={24} className="text-gray-600 dark:text-gray-400" />
               </button>
             </div>
 
             <div className="space-y-4">
-              <p className="text-gray-600">
-                Please provide a reason for rejecting this school application.
-              </p>
+              {rejectionError && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <div className="flex items-start space-x-2">
+                    <AlertCircle className="text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" size={18} />
+                    <p className="text-sm text-red-700 dark:text-red-400 whitespace-pre-line">{rejectionError}</p>
+                  </div>
+                </div>
+              )}
               
               <Textarea
                 label="Rejection Reason"
@@ -2960,10 +3464,17 @@ export default function AdminDashboard() {
                   setRejectionReason(e.target.value);
                   setRejectionError('');
                 }}
-                placeholder="Enter the reason for rejection..."
-                error={rejectionError}
+                placeholder="Enter the reason for rejection (e.g., incomplete documentation, doesn't meet requirements, etc.)..."
+                error={rejectionError && !rejectionError.includes('Details:') && !rejectionError.includes('Hint:') ? rejectionError : undefined}
                 required
+                rows={5}
               />
+
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                  <strong>Note:</strong> This action cannot be undone. The school will be moved to the rejected list.
+                </p>
+              </div>
 
               <div className="flex space-x-3 pt-4">
                 <Button
@@ -2975,16 +3486,27 @@ export default function AdminDashboard() {
                     setRejectionReason('');
                     setRejectionError('');
                   }}
+                  disabled={updatingId === rejectingSchoolId}
                 >
                   Cancel
                 </Button>
                 <Button
                   variant="primary"
-                  className="flex-1 bg-red-600 hover:bg-red-700"
+                  className="flex-1 bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
                   onClick={handleReject}
-                  disabled={updatingId === rejectingSchoolId}
+                  disabled={updatingId === rejectingSchoolId || !rejectionReason.trim()}
                 >
-                  {updatingId === rejectingSchoolId ? 'Rejecting...' : 'Reject School'}
+                  {updatingId === rejectingSchoolId ? (
+                    <>
+                      <RefreshCw size={18} className="mr-2 animate-spin" />
+                      Rejecting...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle size={18} className="mr-2" />
+                      Reject School
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -3141,6 +3663,149 @@ export default function AdminDashboard() {
                   disabled={creatingEmployee}
                 >
                   {creatingEmployee ? 'Creating...' : 'Create Employee'}
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Edit Credentials Modal */}
+      {showEditCredentialsModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl max-w-md w-full p-8"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Credentials</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{editingSchoolName}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowEditCredentialsModal(false);
+                  setEditingSchoolId(null);
+                  setEditingSchoolName('');
+                  setEditForm({ school_code: '', password: '' });
+                  setEditErrors({});
+                }}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                <X size={24} className="text-gray-600 dark:text-gray-400" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {editErrors.general && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <p className="text-sm text-red-700 dark:text-red-400">{editErrors.general}</p>
+                </div>
+              )}
+
+              {/* School Code */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  School Code
+                </label>
+                <Input
+                  type="text"
+                  value={editForm.school_code}
+                  onChange={(e) => {
+                    setEditForm(prev => ({ ...prev, school_code: e.target.value.toUpperCase() }));
+                    if (editErrors.school_code) {
+                      setEditErrors(prev => {
+                        const next = { ...prev };
+                        delete next.school_code;
+                        return next;
+                      });
+                    }
+                  }}
+                  placeholder="Enter school code (e.g., SCH001)"
+                  error={editErrors.school_code}
+                  className="uppercase"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Leave empty to keep current school code
+                </p>
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  New Password
+                </label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    value={editForm.password}
+                    onChange={(e) => {
+                      setEditForm(prev => ({ ...prev, password: e.target.value }));
+                      if (editErrors.password) {
+                        setEditErrors(prev => {
+                          const next = { ...prev };
+                          delete next.password;
+                          return next;
+                        });
+                      }
+                    }}
+                    placeholder="Enter new password"
+                    error={editErrors.password}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Leave empty to keep current password. Minimum 6 characters.
+                </p>
+              </div>
+
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <p className="text-xs text-blue-700 dark:text-blue-400">
+                  <strong>Note:</strong> You can update either school code or password, or both. At least one field must be provided.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex space-x-3 pt-4">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowEditCredentialsModal(false);
+                    setEditingSchoolId(null);
+                    setEditingSchoolName('');
+                    setEditForm({ school_code: '', password: '' });
+                    setEditErrors({});
+                  }}
+                  disabled={updatingCredentials}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  className="flex-1 bg-[#5A7A95] hover:bg-[#4a6a85]"
+                  onClick={handleUpdateCredentials}
+                  disabled={updatingCredentials}
+                >
+                  {updatingCredentials ? (
+                    <>
+                      <RefreshCw size={18} className="mr-2 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Key size={18} className="mr-2" />
+                      Update Credentials
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

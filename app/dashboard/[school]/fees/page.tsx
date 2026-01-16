@@ -30,7 +30,7 @@ export default function FeesPage({
       description: 'Overview of collections and pending dues',
       icon: BarChart3,
       path: `/dashboard/${schoolCode}/fees/v2/dashboard`,
-      color: 'from-indigo-600 to-indigo-800',
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
     {
       id: 'v2-fee-heads',
@@ -38,7 +38,7 @@ export default function FeesPage({
       description: 'Manage fee types (Tuition, Transport, etc.)',
       icon: Tag,
       path: `/dashboard/${schoolCode}/fees/v2/fee-heads`,
-      color: 'from-blue-600 to-blue-800',
+      color: 'from-[#6B9BB8] to-[#7DB5D3]',
     },
     {
       id: 'v2-structures',
@@ -46,7 +46,7 @@ export default function FeesPage({
       description: 'Create and manage fee structures',
       icon: FileText,
       path: `/dashboard/${schoolCode}/fees/v2/fee-structures`,
-      color: 'from-purple-600 to-purple-800',
+      color: 'from-[#567C8D] to-[#5A7A95]',
     },
     {
       id: 'v2-collection',
@@ -54,7 +54,7 @@ export default function FeesPage({
       description: 'Collect fees from students',
       icon: CreditCard,
       path: `/dashboard/${schoolCode}/fees/v2/collection`,
-      color: 'from-green-600 to-green-800',
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
     {
       id: 'setup',
@@ -62,7 +62,7 @@ export default function FeesPage({
       description: 'Configure fee components, schedules, and assignments',
       icon: Settings,
       path: `/dashboard/${schoolCode}/fees/setup`,
-      color: 'from-[#1E3A8A] to-[#2F6FED]',
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
       subsections: [
         { label: 'Fee Components', path: '/components' },
         { label: 'Fee Schedules', path: '/schedules' },
@@ -75,7 +75,7 @@ export default function FeesPage({
       description: 'Collect fees from students and generate receipts',
       icon: CreditCard,
       path: `/dashboard/${schoolCode}/fees/collection`,
-      color: 'from-green-500 to-emerald-500',
+      color: 'from-[#6B9BB8] to-[#7DB5D3]',
     },
     {
       id: 'statements',
@@ -83,7 +83,7 @@ export default function FeesPage({
       description: 'View individual student fee history and pending amounts',
       icon: Receipt,
       path: `/dashboard/${schoolCode}/fees/statements`,
-      color: 'from-blue-500 to-cyan-500',
+      color: 'from-[#567C8D] to-[#5A7A95]',
     },
     {
       id: 'discounts',
@@ -91,7 +91,7 @@ export default function FeesPage({
       description: 'Manage fee discounts and late fee rules',
       icon: Tag,
       path: `/dashboard/${schoolCode}/fees/discounts-fines`,
-      color: 'from-purple-500 to-pink-500',
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
     {
       id: 'reports',
@@ -99,7 +99,7 @@ export default function FeesPage({
       description: 'View collection reports and analytics',
       icon: BarChart3,
       path: `/dashboard/${schoolCode}/fees/reports`,
-      color: 'from-indigo-500 to-purple-500',
+      color: 'from-[#6B9BB8] to-[#7DB5D3]',
     },
     {
       id: 'configuration',
@@ -107,7 +107,7 @@ export default function FeesPage({
       description: 'Configure receipt settings and payment modes',
       icon: FileText,
       path: `/dashboard/${schoolCode}/fees/configuration`,
-      color: 'from-[#3B82F6] to-[#60A5FA]',
+      color: 'from-[#567C8D] to-[#5A7A95]',
     },
   ];
 
@@ -145,33 +145,38 @@ export default function FeesPage({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
               >
-                <Card
-                  className="p-6 hover:shadow-lg transition-all duration-300 cursor-pointer group"
-                  onClick={() => router.push(section.path)}
+                <motion.div
+                  whileHover={{ y: -5, scale: 1.02 }}
+                  transition={{ duration: 0.2 }}
                 >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={`p-4 rounded-xl bg-gradient-to-br ${section.color} shadow-lg group-hover:scale-110 transition-transform`}
-                    >
-                      <Icon className="text-white" size={28} />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-[#2F6FED] transition-colors">
-                        {section.title}
-                      </h3>
-                      <p className="text-gray-600 text-sm mb-4">
-                        {section.description}
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="group-hover:border-[#2F6FED] group-hover:text-[#2F6FED]"
+                  <Card
+                    className="p-6 hover:shadow-xl transition-all duration-300 cursor-pointer group border-2 border-transparent hover:border-[#5A7A95]/30 dark:hover:border-[#6B9BB8]/30"
+                    onClick={() => router.push(section.path)}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div
+                        className={`p-4 rounded-xl bg-gradient-to-br ${section.color} shadow-lg group-hover:scale-110 transition-transform`}
                       >
-                        Open →
-                      </Button>
+                        <Icon className="text-white" size={28} />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-[#5A7A95] dark:group-hover:text-[#6B9BB8] transition-colors">
+                          {section.title}
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
+                          {section.description}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="group-hover:border-[#5A7A95] dark:group-hover:border-[#6B9BB8] group-hover:text-[#5A7A95] dark:group-hover:text-[#6B9BB8]"
+                        >
+                          Open →
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </Card>
+                  </Card>
+                </motion.div>
               </motion.div>
             );
           })}

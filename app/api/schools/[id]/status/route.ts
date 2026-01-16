@@ -146,37 +146,90 @@ export async function PATCH(
 
     // If rejected, save to rejected_schools table
     if (status === 'rejected') {
-      const { error: insertError } = await supabase
+      // Check if school is already in rejected_schools (prevent duplicates)
+      const { data: existingRejected, error: checkError } = await supabase
         .from('rejected_schools')
-        .insert([{
-          school_name: schoolData.school_name,
-          school_address: schoolData.school_address,
-          city: schoolData.city,
-          state: schoolData.state,
-          zip_code: schoolData.zip_code,
-          country: schoolData.country,
-          school_email: schoolData.school_email,
-          school_phone: schoolData.school_phone,
-          principal_name: schoolData.principal_name,
-          principal_email: schoolData.principal_email,
-          principal_phone: schoolData.principal_phone,
-          established_year: schoolData.established_year,
-          school_type: schoolData.school_type,
-          affiliation: schoolData.affiliation,
-          rejection_reason: rejection_reason,
-          rejected_by: rejected_by || null,
-        }]);
+        .select('id')
+        .eq('school_email', schoolData.school_email)
+        .single();
 
-      if (insertError) {
-        console.error('Error saving to rejected_schools:', insertError);
-        return NextResponse.json(
-          { 
-            error: 'Failed to save school to rejected_schools table', 
-            details: insertError.message,
-            hint: 'Please check if the rejected_schools table exists and has the correct schema'
-          },
-          { status: 500 }
-        );
+      // If already exists, update it instead of inserting
+      if (existingRejected && !checkError) {
+        const { error: updateRejectedError } = await supabase
+          .from('rejected_schools')
+          .update({
+            school_name: schoolData.school_name,
+            school_address: schoolData.school_address,
+            city: schoolData.city,
+            state: schoolData.state,
+            zip_code: schoolData.zip_code,
+            country: schoolData.country,
+            school_email: schoolData.school_email,
+            school_phone: schoolData.school_phone,
+            principal_name: schoolData.principal_name,
+            principal_email: schoolData.principal_email,
+            principal_phone: schoolData.principal_phone,
+            established_year: schoolData.established_year,
+            school_type: schoolData.school_type,
+            affiliation: schoolData.affiliation,
+            rejection_reason: rejection_reason,
+            rejected_by: rejected_by || null,
+            rejected_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingRejected.id);
+
+        if (updateRejectedError) {
+          console.error('Error updating rejected_schools:', updateRejectedError);
+          return NextResponse.json(
+            { 
+              error: 'Failed to update rejected school', 
+              details: updateRejectedError.message,
+            },
+            { status: 500 }
+          );
+        }
+      } else {
+        // Insert new rejected school
+        const { error: insertError } = await supabase
+          .from('rejected_schools')
+          .insert([{
+            school_name: schoolData.school_name,
+            school_address: schoolData.school_address,
+            city: schoolData.city,
+            state: schoolData.state,
+            zip_code: schoolData.zip_code,
+            country: schoolData.country,
+            school_email: schoolData.school_email,
+            school_phone: schoolData.school_phone,
+            principal_name: schoolData.principal_name,
+            principal_email: schoolData.principal_email,
+            principal_phone: schoolData.principal_phone,
+            established_year: schoolData.established_year,
+            school_type: schoolData.school_type,
+            affiliation: schoolData.affiliation,
+            rejection_reason: rejection_reason,
+            rejected_by: rejected_by || null,
+            rejected_at: new Date().toISOString(),
+          }]);
+
+        if (insertError) {
+          console.error('Error saving to rejected_schools:', insertError);
+          return NextResponse.json(
+            { 
+              error: 'Failed to save school to rejected_schools table', 
+              details: insertError.message,
+              hint: insertError.code === '42P01' 
+                ? 'The rejected_schools table does not exist. Please create it in your database.'
+                : insertError.code === '42703'
+                ? 'A required column is missing in rejected_schools table. Please check the schema.'
+                : insertError.code === '23505'
+                ? 'This school has already been rejected. Please refresh the page.'
+                : 'Please check if the rejected_schools table exists and has the correct schema'
+            },
+            { status: 500 }
+          );
+        }
       }
     }
 

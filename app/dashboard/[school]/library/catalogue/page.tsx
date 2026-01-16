@@ -341,20 +341,24 @@ export default function LibraryCataloguePage({
   });
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <BookOpen className="text-indigo-600" size={32} />
-            Book Catalogue
-          </h1>
-          <p className="text-gray-600 mt-2">Manage library book inventory for {schoolCode}</p>
-        </div>
+    <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6"
+        >
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
+                <BookOpen className="text-white" size={28} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Book Catalogue</h1>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Manage library book inventory for {schoolCode}</p>
+              </div>
+            </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={() => {}}>
             <Upload size={18} className="mr-2" />
@@ -369,32 +373,38 @@ export default function LibraryCataloguePage({
             Add Book
           </Button>
         </div>
+          </div>
       </motion.div>
 
-      {/* Success/Error Messages */}
-      {success && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2"
-        >
-          <CheckCircle size={20} />
-          {success}
-        </motion.div>
-      )}
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center gap-2"
-        >
-          <AlertCircle size={20} />
-          {error}
-        </motion.div>
-      )}
+        {/* Success/Error Messages */}
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-center gap-3"
+          >
+            <CheckCircle className="text-green-600 dark:text-green-400" size={20} />
+            <p className="text-green-800 dark:text-green-300 text-sm">{success}</p>
+          </motion.div>
+        )}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="text-red-600 dark:text-red-400" size={20} />
+              <p className="text-red-800 dark:text-red-300 text-sm">{error}</p>
+            </div>
+            <button onClick={() => setError('')} className="text-red-600 dark:text-red-400 hover:text-red-800">
+              <X size={18} />
+            </button>
+          </motion.div>
+        )}
 
-      {/* Filters */}
-      <Card>
+        {/* Filters */}
+        <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -443,92 +453,94 @@ export default function LibraryCataloguePage({
         </div>
       </Card>
 
-      {/* Books Table */}
-      <Card>
-        {loading ? (
-          <div className="text-center py-12">
-            <Loader2 className="animate-spin mx-auto mb-4 text-indigo-600" size={32} />
-            <p className="text-gray-600">Loading books...</p>
-          </div>
-        ) : filteredBooks.length === 0 ? (
-          <div className="text-center py-12">
-            <BookOpen className="mx-auto mb-4 text-gray-400" size={48} />
-            <p className="text-gray-600 text-lg">No books found</p>
-            <p className="text-sm text-gray-500 mt-2">
-              {searchTerm || sectionFilter || typeFilter
-                ? 'Try adjusting your filters'
-                : 'Add your first book to get started'}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+        {/* Books Table */}
+        <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 overflow-hidden">
+          {loading ? (
+            <div className="text-center py-12">
+              <Loader2 className="animate-spin mx-auto mb-4 text-[#5A7A95]" size={32} />
+              <p className="text-gray-600 dark:text-gray-400">Loading books...</p>
+            </div>
+          ) : filteredBooks.length === 0 ? (
+            <div className="text-center py-12">
+              <BookOpen className="mx-auto mb-4 text-gray-400" size={64} />
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No Books Found</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {searchTerm || sectionFilter || typeFilter
+                  ? 'Try adjusting your filters'
+                  : 'Add your first book to get started'}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Title</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Author</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">ISBN</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Section</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Type</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Copies</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Available</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredBooks.map((book) => (
-                  <tr key={book.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{book.title}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{book.author || 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 font-mono">{book.isbn || 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{book.section?.name || 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{book.material_type?.name || 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{book.total_copies || 0}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          book.available_copies > 0
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {book.available_copies || 0}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleViewCopies(book)}
-                        >
-                          <Copy size={14} className="mr-1" />
-                          Copies
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEditBook(book)}
-                        >
-                          <Edit size={14} />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDeleteBook(book.id)}
-                          className="text-red-600 border-red-300 hover:bg-red-50"
-                        >
-                          <Trash2 size={14} />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Title</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Author</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">ISBN</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Section</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Copies</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Available</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {filteredBooks.map((book) => (
+                      <tr key={book.id} className="hover:bg-[#5A7A95]/5 dark:hover:bg-[#6B9BB8]/10 transition-colors">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{book.title}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{book.author || 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 font-mono">{book.isbn || 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{book.section?.name || 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{book.material_type?.name || 'N/A'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{book.total_copies || 0}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              book.available_copies > 0
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                            }`}
+                          >
+                            {book.available_copies || 0}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleViewCopies(book)}
+                              className="border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
+                            >
+                              <Copy size={14} className="mr-1" />
+                              Copies
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEditBook(book)}
+                              className="border-[#6B9BB8]/30 text-[#6B9BB8] hover:bg-[#6B9BB8]/10"
+                            >
+                              <Edit size={14} />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteBook(book.id)}
+                              className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400"
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
 
       {/* Add/Edit Book Modal */}
       {bookModalOpen && (
@@ -753,6 +765,7 @@ export default function LibraryCataloguePage({
           </motion.div>
         </div>
       )}
+    </div>
     </div>
   );
 }

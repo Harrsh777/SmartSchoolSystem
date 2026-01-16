@@ -10,7 +10,6 @@ import {
   Save,
   Loader2,
   Folder,
-  Lock,
 } from 'lucide-react';
 
 interface SubModule {
@@ -299,12 +298,6 @@ export default function StaffPermissionsDetailPage({
           <h1 className="text-2xl font-bold text-teal-700">{staff.full_name}</h1>
         </div>
         <div className="flex items-center gap-3">
-          {/* Device Guard Settings Button (Premium) */}
-          <button className="px-4 py-2 bg-white border border-gray-300 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors shadow-sm">
-            <Lock size={18} className="text-gray-600" />
-            <span className="text-sm font-medium text-gray-700">DEVICE GUARD SETTINGS</span>
-            <span className="px-2 py-0.5 bg-green-500 text-white text-xs font-semibold rounded">PREMIUM</span>
-          </button>
           {/* Category Selector */}
           <div className="flex items-center gap-2">
             <Folder size={16} className="text-gray-400" />

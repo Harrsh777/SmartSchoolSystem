@@ -198,11 +198,18 @@ export default function RoleManagementPage({
       sub_modules: [
         { id: 'create-examination', name: 'Create Examination', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
         { id: 'grade-scale', name: 'Grade Scale', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
-        { id: 'marks-entry', name: 'Marks Entry', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
         { id: 'offline-tests', name: 'Offline Tests', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
         { id: 'report-card', name: 'Report Card', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
         { id: 'report-card-template', name: 'Report Card Template', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
         { id: 'examination-reports', name: 'Examination Reports', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false }
+      ]
+    },
+    {
+      id: 'marks',
+      name: 'Marks',
+      sub_modules: [
+        { id: 'marks-dashboard', name: 'Marks Dashboard', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: false },
+        { id: 'marks-entry', name: 'Mark Entry', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
       ]
     },
     {
@@ -1102,17 +1109,8 @@ export default function RoleManagementPage({
                 </div>
               </div>
               
-              {/* Second Row: Device Guard and Category */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  {/* Device Guard Settings Button (Premium) */}
-                  <button className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors shadow-sm text-sm">
-                    <Shield size={16} className="text-gray-600" />
-                    <span className="text-xs font-medium text-gray-700">DEVICE GUARD SETTINGS</span>
-                    <span className="px-1.5 py-0.5 bg-green-500 text-white text-xs font-semibold rounded">PREMIUM</span>
-                  </button>
-                </div>
-                {/* Category Selector */}
+              {/* Category Selector */}
+              <div className="flex items-center justify-end">
                 <div className="flex items-center gap-2">
                   <Folder size={14} className="text-gray-400" />
                   <select

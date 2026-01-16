@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Users, Plus, X, Loader2, Save, AlertCircle, CheckCircle, Search, UserMinus } from 'lucide-react';
+import { Users, Plus, X, Loader2, Save, AlertCircle, CheckCircle, Search, UserMinus, ArrowLeft, UserPlus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface Student {
   id: string;
@@ -31,6 +32,7 @@ export default function RouteStudentsPage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
+  const router = useRouter();
   const [routes, setRoutes] = useState<Route[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<string>('');
@@ -173,6 +175,49 @@ export default function RouteStudentsPage({
     }
   };
 
+  const handleAssignSingleStudent = async (studentId: string) => {
+    if (!selectedRoute) {
+      setError('Please select a route first');
+      return;
+    }
+
+    if (currentCount >= capacity) {
+      setError(`Route capacity reached (${capacity} students). Cannot add more students.`);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError('');
+      setSuccess('');
+
+      const response = await fetch('/api/transport/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          route_id: selectedRoute,
+          student_ids: [studentId],
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setSuccess(result.message || 'Student assigned successfully!');
+        fetchRouteStudents();
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(result.error || 'Failed to assign student');
+      }
+    } catch (err) {
+      console.error('Error assigning student:', err);
+      setError('Failed to assign student');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const filteredStudents = students.filter((student) => {
     const matchesSearch =
       student.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -193,276 +238,323 @@ export default function RouteStudentsPage({
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-[#5A7A95] mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Loading students...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <Users className="text-indigo-600" size={32} />
-              Route Students
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Assign students to transport routes for {schoolCode}
-            </p>
-          </div>
-        </div>
-      </motion.div>
-
-      {success && (
+    <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2"
+          className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6"
         >
-          <CheckCircle size={20} />
-          {success}
-        </motion.div>
-      )}
-
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center gap-2"
-        >
-          <AlertCircle size={20} />
-          {error}
-        </motion.div>
-      )}
-
-      <Card className="p-6">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select Route *
-            </label>
-            <select
-              value={selectedRoute}
-              onChange={(e) => setSelectedRoute(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">Select a route</option>
-              {routes.map((route) => (
-                <option key={route.id} value={route.id}>
-                  {route.route_name}
-                  {route.vehicle && ` (${route.vehicle.vehicle_code} - ${route.vehicle.seats} seats)`}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {selectedRoute && selectedRouteData && (
-            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-indigo-900">{selectedRouteData.route_name}</p>
-                  <p className="text-sm text-indigo-700">
-                    Capacity: {currentCount} / {capacity} students
-                  </p>
-                </div>
-                <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  currentCount >= capacity
-                    ? 'bg-red-100 text-red-700'
-                    : currentCount >= capacity * 0.8
-                    ? 'bg-yellow-100 text-yellow-700'
-                    : 'bg-green-100 text-green-700'
-                }`}>
-                  {Math.round((currentCount / capacity) * 100)}% Full
-                </div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/dashboard/${schoolCode}/transport`)}
+                className="border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
+              >
+                <ArrowLeft size={18} className="mr-2" />
+                Back
+              </Button>
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500 via-emerald-600 to-teal-600 flex items-center justify-center shadow-lg">
+                <Users className="text-white" size={28} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Route Students</h1>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Assign students to transport routes for {schoolCode}</p>
               </div>
             </div>
-          )}
-        </div>
-      </Card>
-
-      {selectedRoute && (
-        <>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <Input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search students..."
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <Button onClick={handleOpenModal} disabled={currentCount >= capacity}>
-              <Plus size={18} className="mr-2" />
-              Add Students
-            </Button>
           </div>
+        </motion.div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Assigned Students */}
-            <Card className="p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
-                Assigned Students ({routeStudents.length})
-              </h2>
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {routeStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:border-indigo-300 transition-all"
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{student.student_name}</p>
-                      <p className="text-sm text-gray-600">
-                        {student.admission_no} • {student.class}-{student.section}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleRemoveStudent(student.id)}
-                      className="text-red-600 border-red-300 hover:bg-red-50"
-                    >
-                      <UserMinus size={14} />
-                    </Button>
-                  </div>
-                ))}
-                {routeStudents.length === 0 && (
-                  <p className="text-center text-gray-500 py-8">No students assigned to this route</p>
-                )}
-              </div>
-            </Card>
-
-            {/* Available Students */}
-            <Card className="p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
-                Available Students ({availableStudents.length})
-              </h2>
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {availableStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    className="p-3 border border-gray-200 rounded-lg"
-                  >
-                    <p className="font-medium text-gray-900">{student.student_name}</p>
-                    <p className="text-sm text-gray-600">
-                      {student.admission_no} • {student.class}-{student.section}
-                    </p>
-                    {student.transport_route_id && (
-                      <p className="text-xs text-orange-600 mt-1">
-                        Already assigned to another route
-                      </p>
-                    )}
-                  </div>
-                ))}
-                {availableStudents.length === 0 && (
-                  <p className="text-center text-gray-500 py-8">No available students</p>
-                )}
-              </div>
-            </Card>
-          </div>
-        </>
-      )}
-
-      {!selectedRoute && (
-        <Card className="p-12 text-center">
-          <Users className="mx-auto mb-4 text-gray-400" size={48} />
-          <p className="text-gray-600 text-lg">Select a route to manage students</p>
-        </Card>
-      )}
-
-      {/* Add Students Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        {success && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-center gap-3"
           >
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Add Students to {selectedRouteData?.route_name}
-                </h2>
-                <button
-                  onClick={() => setModalOpen(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X size={24} />
-                </button>
-              </div>
-              <p className="text-sm text-gray-600 mt-2">
-                Available capacity: {capacity - currentCount} seats
-              </p>
+            <CheckCircle className="text-green-600 dark:text-green-400" size={20} />
+            <p className="text-green-800 dark:text-green-300 text-sm">{success}</p>
+          </motion.div>
+        )}
+
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="text-red-600 dark:text-red-400" size={20} />
+              <p className="text-red-800 dark:text-red-300 text-sm">{error}</p>
             </div>
-            <div className="p-6 space-y-2 max-h-[500px] overflow-y-auto">
-              {availableStudents
-                .filter((s) => !s.transport_route_id)
-                .slice(0, capacity - currentCount)
-                .map((student) => {
-                  const isSelected = selectedStudents.has(student.id);
-                  return (
-                    <label
+            <button onClick={() => setError('')} className="text-red-600 dark:text-red-400 hover:text-red-800">
+              <X size={18} />
+            </button>
+          </motion.div>
+        )}
+
+        <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Select Route *
+              </label>
+              <select
+                value={selectedRoute}
+                onChange={(e) => setSelectedRoute(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+              >
+                <option value="">Select a route</option>
+                {routes.map((route) => (
+                  <option key={route.id} value={route.id}>
+                    {route.route_name}
+                    {route.vehicle && ` (${route.vehicle.vehicle_code} - ${route.vehicle.seats} seats)`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedRoute && selectedRouteData && (
+              <div className="bg-gradient-to-r from-[#5A7A95]/10 via-[#6B9BB8]/10 to-[#7DB5D3]/10 dark:from-[#5A7A95]/20 dark:via-[#6B9BB8]/20 dark:to-[#7DB5D3]/20 border-2 border-[#5A7A95]/30 dark:border-[#6B9BB8]/30 rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">{selectedRouteData.route_name}</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      Capacity: {currentCount} / {capacity} students
+                    </p>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    currentCount >= capacity
+                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      : currentCount >= capacity * 0.8
+                      ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                      : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  }`}>
+                    {Math.round((currentCount / capacity) * 100)}% Full
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {selectedRoute && (
+          <>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 flex-1">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                  <Input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search students..."
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <Button 
+                onClick={handleOpenModal} 
+                disabled={currentCount >= capacity}
+                className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
+              >
+                <Plus size={18} className="mr-2" />
+                Add Students
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Assigned Students */}
+              <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                  Assigned Students ({routeStudents.length})
+                </h2>
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                  {routeStudents.map((student) => (
+                    <div
                       key={student.id}
-                      className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                        isSelected
-                          ? 'border-indigo-500 bg-indigo-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                      className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-[#5A7A95] dark:hover:border-[#6B9BB8] transition-all"
                     >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          const newSet = new Set(selectedStudents);
-                          if (e.target.checked) {
-                            if (newSet.size < capacity - currentCount) {
-                              newSet.add(student.id);
-                            }
-                          } else {
-                            newSet.delete(student.id);
-                          }
-                          setSelectedStudents(newSet);
-                        }}
-                        disabled={!isSelected && selectedStudents.size >= capacity - currentCount}
-                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                      />
                       <div className="flex-1">
-                        <p className="font-medium text-gray-900">{student.student_name}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="font-medium text-gray-900 dark:text-white">{student.student_name}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
                           {student.admission_no} • {student.class}-{student.section}
                         </p>
                       </div>
-                    </label>
-                  );
-                })}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleRemoveStudent(student.id)}
+                        className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        <UserMinus size={14} />
+                      </Button>
+                    </div>
+                  ))}
+                  {routeStudents.length === 0 && (
+                    <p className="text-center text-gray-500 dark:text-gray-400 py-8">No students assigned to this route</p>
+                  )}
+                </div>
+              </Card>
+
+              {/* Available Students */}
+              <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                  Available Students ({availableStudents.length})
+                </h2>
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                  {availableStudents.map((student) => {
+                    const isAlreadyAssigned = !!student.transport_route_id && student.transport_route_id !== selectedRoute;
+                    const canAssign = !isAlreadyAssigned && currentCount < capacity;
+                    
+                    return (
+                      <div
+                        key={student.id}
+                        className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-[#5A7A95] dark:hover:border-[#6B9BB8] transition-all"
+                      >
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 dark:text-white">{student.student_name}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {student.admission_no} • {student.class}-{student.section}
+                          </p>
+                          {isAlreadyAssigned && (
+                            <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                              Already assigned to another route
+                            </p>
+                          )}
+                        </div>
+                        {!isAlreadyAssigned && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleAssignSingleStudent(student.id)}
+                            disabled={!canAssign || saving}
+                            className="border-green-300 text-green-600 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <UserPlus size={14} className="mr-1" />
+                            Assign
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {availableStudents.length === 0 && (
+                    <p className="text-center text-gray-500 dark:text-gray-400 py-8">No available students</p>
+                  )}
+                </div>
+              </Card>
             </div>
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAssignStudents} disabled={saving || selectedStudents.size === 0}>
-                {saving ? (
-                  <>
-                    <Loader2 size={18} className="mr-2 animate-spin" />
-                    Assigning...
-                  </>
-                ) : (
-                  <>
-                    <Save size={18} className="mr-2" />
-                    Assign {selectedStudents.size} Student(s)
-                  </>
-                )}
-              </Button>
-            </div>
-          </motion.div>
-        </div>
-      )}
+          </>
+        )}
+
+        {!selectedRoute && (
+          <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-12 text-center">
+            <Users className="mx-auto mb-4 text-gray-400" size={64} />
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Select a Route</h3>
+            <p className="text-gray-600 dark:text-gray-400">Select a route to manage students</p>
+          </Card>
+        )}
+
+        {/* Add Students Modal */}
+        {modalOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                    Add Students to {selectedRouteData?.route_name}
+                  </h2>
+                  <button
+                    onClick={() => setModalOpen(false)}
+                    className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                  Available capacity: {capacity - currentCount} seats
+                </p>
+              </div>
+              <div className="p-6 space-y-2 max-h-[500px] overflow-y-auto">
+                {availableStudents
+                  .filter((s) => !s.transport_route_id)
+                  .slice(0, capacity - currentCount)
+                  .map((student) => {
+                    const isSelected = selectedStudents.has(student.id);
+                    return (
+                      <label
+                        key={student.id}
+                        className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-[#5A7A95] bg-[#5A7A95]/10 dark:border-[#6B9BB8] dark:bg-[#6B9BB8]/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedStudents);
+                            if (e.target.checked) {
+                              if (newSet.size < capacity - currentCount) {
+                                newSet.add(student.id);
+                              }
+                            } else {
+                              newSet.delete(student.id);
+                            }
+                            setSelectedStudents(newSet);
+                          }}
+                          disabled={!isSelected && selectedStudents.size >= capacity - currentCount}
+                          className="w-4 h-4 text-[#5A7A95] border-gray-300 rounded focus:ring-[#5A7A95]"
+                        />
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 dark:text-white">{student.student_name}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {student.admission_no} • {student.class}-{student.section}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })}
+              </div>
+              <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleAssignStudents} 
+                  disabled={saving || selectedStudents.size === 0}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 size={18} className="mr-2 animate-spin" />
+                      Assigning...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={18} className="mr-2" />
+                      Assign {selectedStudents.size} Student(s)
+                    </>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

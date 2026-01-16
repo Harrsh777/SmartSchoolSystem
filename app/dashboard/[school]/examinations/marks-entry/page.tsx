@@ -15,8 +15,15 @@ import {
   Save,
   Loader2,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  X,
 } from 'lucide-react';
+import {
+  calculatePercentage,
+  getGradeFromPercentage,
+  getGradeColor,
+  getPassStatusColor,
+} from '@/lib/grade-calculator';
 
 interface Student {
   id: string;
@@ -76,9 +83,11 @@ export default function MarksEntryPage({
   const [marks, setMarks] = useState<Record<string, Record<string, number>>>({});
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showTotals, setShowTotals] = useState(true);
 
   // Fetch classes and sections
   useEffect(() => {
@@ -256,20 +265,20 @@ export default function MarksEntryPage({
     }));
   };
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     if (!selectedClass || !selectedSection || !selectedExam || !selectedClassId) {
       setError('Please select class, section, and examination');
-      return;
+      return false;
     }
 
     if (students.length === 0) {
       setError('No students found');
-      return;
+      return false;
     }
 
     if (subjects.length === 0) {
       setError('No subjects found for this exam');
-      return;
+      return false;
     }
 
     // Get staff ID from session storage
@@ -286,7 +295,7 @@ export default function MarksEntryPage({
 
     if (!enteredBy) {
       setError('Please log in to save marks');
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -294,65 +303,136 @@ export default function MarksEntryPage({
     setSuccess('');
 
     try {
-      let successCount = 0;
-      let errorCount = 0;
-      const errors: string[] = [];
-
-      // Save marks for each student
-      for (const student of students) {
+      // Prepare bulk marks data
+      const bulkMarks = students.map((student) => {
         const studentMarks = marks[student.id] || {};
-        const marksArray = subjects.map((subject) => ({
-          subject_id: subject.id,
-          max_marks: subject.max_marks,
-          marks_obtained: studentMarks[subject.id] || 0,
-          remarks: '',
-        }));
+        return {
+          student_id: student.id,
+          subjects: subjects.map((subject) => ({
+            subject_id: subject.id,
+            max_marks: subject.max_marks,
+            marks_obtained: studentMarks[subject.id] || 0,
+            remarks: '',
+          })),
+        };
+      });
 
-        try {
-          const response = await fetch('/api/examinations/marks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              school_code: schoolCode,
-              exam_id: selectedExam,
-              student_id: student.id,
-              class_id: selectedClassId,
-              marks: marksArray,
-              entered_by: enteredBy,
-            }),
-          });
+      // Use bulk API for efficiency
+      const response = await fetch('/api/examinations/marks/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          exam_id: selectedExam,
+          class_id: selectedClassId,
+          marks: bulkMarks,
+          entered_by: enteredBy,
+        }),
+      });
 
-          const result = await response.json();
-          if (response.ok) {
-            successCount++;
-          } else {
-            errorCount++;
-            errors.push(`${student.student_name}: ${result.error || 'Failed to save marks'}`);
-          }
-        } catch (err) {
-          errorCount++;
-          errors.push(`${student.student_name}: Failed to save marks`);
-          console.error(`Error saving marks for student ${student.id}:`, err);
-        }
-      }
+      const result = await response.json();
 
-      if (errorCount === 0) {
-        setSuccess(`Marks saved successfully for all ${successCount} student(s)!`);
+      if (response.ok) {
+        const savedCount = result.summary?.total_students || students.length;
+        setSuccess(`Marks saved successfully for ${savedCount} student(s)!`);
         setTimeout(() => {
           setSuccess('');
-          // Optionally refresh the data
           fetchStudentsAndSubjects();
-        }, 3000);
-      } else if (successCount > 0) {
-        setError(`Saved marks for ${successCount} student(s), but ${errorCount} failed. ${errors.slice(0, 3).join('; ')}`);
+        }, 2000);
+        return true;
       } else {
-        setError(`Failed to save marks for all students. ${errors.slice(0, 3).join('; ')}`);
+        const errorMsg = result.error || 'Failed to save marks';
+        const details = result.errors ? `\n\nErrors: ${result.errors.slice(0, 3).map((e: { error: string }) => e.error).join('; ')}` : '';
+        setError(`${errorMsg}${details}`);
+        return false;
       }
     } catch (err) {
       console.error('Error saving marks:', err);
       setError('Failed to save marks. Please try again.');
+      return false;
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Calculate student totals and grades
+  const calculateStudentStats = (studentId: string) => {
+    const studentMarks = marks[studentId] || {};
+    let totalObtained = 0;
+    let totalMax = 0;
+
+    subjects.forEach((subject) => {
+      const marksObtained = studentMarks[subject.id] || 0;
+      totalObtained += marksObtained;
+      totalMax += subject.max_marks;
+    });
+
+    const percentage = totalMax > 0 ? calculatePercentage(totalObtained, totalMax) : 0;
+    const grade = getGradeFromPercentage(percentage);
+    const isPass = percentage >= 40;
+
+    return { totalObtained, totalMax, percentage, grade, isPass };
+  };
+
+  const handleSubmitForReview = async () => {
+    if (!selectedClass || !selectedSection || !selectedExam || !selectedClassId) {
+      setError('Please select class, section, and examination');
+      return;
+    }
+
+    if (students.length === 0) {
+      setError('No students found');
+      return;
+    }
+
+    if (subjects.length === 0) {
+      setError('No subjects found for this exam');
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      // First save all marks as draft
+      const saved = await handleSave();
+      
+      if (!saved) {
+        setSubmitting(false);
+        return;
+      }
+
+      // Wait a bit for save to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Then submit for review
+      const response = await fetch('/api/examinations/marks/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          exam_id: selectedExam,
+          class_id: selectedClassId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setSuccess(`Marks submitted for review successfully! ${result.submitted_count || 0} marks submitted.`);
+        setTimeout(() => {
+          setSuccess('');
+          fetchStudentsAndSubjects();
+        }, 3000);
+      } else {
+        setError(result.error || result.hint || 'Failed to submit marks for review');
+      }
+    } catch (err) {
+      console.error('Error submitting marks:', err);
+      setError('Failed to submit marks for review. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -367,231 +447,339 @@ export default function MarksEntryPage({
     : [];
 
   return (
-    <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg">
-              <FileText className="text-white" size={24} />
-            </div>
-            Marks Entry
-          </h1>
-          <p className="text-gray-600">Enter and manage examination marks</p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => router.push(`/dashboard/${schoolCode}/examinations`)}
-          className="border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
+    <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6"
         >
-          <ArrowLeft size={18} className="mr-2" />
-          Back
-        </Button>
-      </motion.div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/dashboard/${schoolCode}/examinations`)}
+                className="border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
+              >
+                <ArrowLeft size={18} className="mr-2" />
+                Back
+              </Button>
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
+                <FileText className="text-white" size={28} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Marks Entry</h1>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Enter and manage examination marks for {schoolCode}</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
 
-      {/* Error/Success Messages */}
-      {error && (
-        <Card className="bg-red-50 border-red-200">
-          <div className="flex items-center gap-3 text-red-800">
-            <AlertCircle size={20} />
-            <p>{error}</p>
-          </div>
-        </Card>
-      )}
-      {success && (
-        <Card className="bg-green-50 border-green-200">
-          <div className="flex items-center gap-3 text-green-800">
-            <CheckCircle size={20} />
-            <p>{success}</p>
-          </div>
-        </Card>
-      )}
+        {/* Error/Success Messages */}
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-center gap-3"
+          >
+            <CheckCircle className="text-green-600 dark:text-green-400" size={20} />
+            <p className="text-green-800 dark:text-green-300 text-sm">{success}</p>
+          </motion.div>
+        )}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex items-center justify-between"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" size={20} />
+              <div className="flex-1">
+                <p className="font-semibold text-red-800 dark:text-red-300 mb-1">Error</p>
+                <p className="text-sm text-red-700 dark:text-red-400 whitespace-pre-line">{error}</p>
+              </div>
+            </div>
+            <button onClick={() => setError('')} className="text-red-600 dark:text-red-400 hover:text-red-800 flex-shrink-0">
+              <X size={18} />
+            </button>
+          </motion.div>
+        )}
 
-      {/* Filters */}
-      <Card>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              <BookOpen size={14} className="inline mr-1" />
-              Class
-            </label>
-            <select
-              value={selectedClass}
-              onChange={(e) => {
-                setSelectedClass(e.target.value);
-                setSelectedSection('');
-                setSelectedExam('');
-                setSelectedClassId('');
-              }}
-              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
-            >
-              <option value="">Select Class</option>
-              {classes.map(cls => (
-                <option key={cls.class} value={cls.class}>{cls.class}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Section
-            </label>
-            <select
-              value={selectedSection}
-              onChange={(e) => {
-                setSelectedSection(e.target.value);
-                setSelectedExam('');
-              }}
-              disabled={!selectedClass}
-              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] disabled:bg-gray-100 disabled:cursor-not-allowed"
-            >
-              <option value="">Select Section</option>
-              {availableSections.map(sec => (
-                <option key={sec} value={sec}>{sec}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Examination
-            </label>
-            <select
-              value={selectedExam}
-              onChange={(e) => setSelectedExam(e.target.value)}
-              disabled={!selectedClass || !selectedSection}
-              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] disabled:bg-gray-100 disabled:cursor-not-allowed"
-            >
-              <option value="">Select Exam</option>
-              {exams.map(exam => (
-                <option key={exam.id} value={exam.id}>{exam.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-end">
-            <Button
-              onClick={handleSave}
-              disabled={saving || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
-              className="w-full bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white"
-            >
-              {saving ? (
-                <>
-                  <Loader2 size={18} className="mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save size={18} className="mr-2" />
-                  Save All Marks
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      {/* Loading State */}
-      {loadingStudents && (
-        <Card>
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={32} className="animate-spin text-[#1e3a8a] mr-3" />
-            <p className="text-gray-600">Loading students and marks...</p>
-          </div>
-        </Card>
-      )}
-
-      {/* Search */}
-      {students.length > 0 && !loadingStudents && (
-        <Card>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by student name or admission number..."
-              className="pl-10"
-            />
-          </div>
-        </Card>
-      )}
-
-      {/* Marks Table */}
-      {students.length > 0 && subjects.length > 0 && !loadingStudents && (
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Roll No</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Admission No</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Student Name</th>
-                  {subjects.map(subject => (
-                    <th key={subject.id} className="px-4 py-3 text-center text-sm font-semibold">
-                      {subject.name}
-                      <div className="text-xs font-normal opacity-90">(Max: {subject.max_marks})</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredStudents.map((student, index) => (
-                  <motion.tr
-                    key={student.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.02 }}
-                    className="hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                      {student.roll_number || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 font-mono">
-                      {student.admission_no}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                      {student.student_name}
-                    </td>
-                    {subjects.map(subject => (
-                      <td key={subject.id} className="px-4 py-3">
-                        <Input
-                          type="number"
-                          min="0"
-                          max={subject.max_marks}
-                          value={marks[student.id]?.[subject.id] || ''}
-                          onChange={(e) => handleMarksChange(student.id, subject.id, e.target.value)}
-                          placeholder="0"
-                          className="w-20 text-center"
-                        />
-                      </td>
-                    ))}
-                  </motion.tr>
+        {/* Filters */}
+        <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <BookOpen size={14} className="inline mr-1" />
+                Class
+              </label>
+              <select
+                value={selectedClass}
+                onChange={(e) => {
+                  setSelectedClass(e.target.value);
+                  setSelectedSection('');
+                  setSelectedExam('');
+                  setSelectedClassId('');
+                }}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+              >
+                <option value="">Select Class</option>
+                {classes.map(cls => (
+                  <option key={cls.class} value={cls.class}>{cls.class}</option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Section
+              </label>
+              <select
+                value={selectedSection}
+                onChange={(e) => {
+                  setSelectedSection(e.target.value);
+                  setSelectedExam('');
+                }}
+                disabled={!selectedClass}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+              >
+                <option value="">Select Section</option>
+                {availableSections.map(sec => (
+                  <option key={sec} value={sec}>{sec}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Examination
+              </label>
+              <select
+                value={selectedExam}
+                onChange={(e) => setSelectedExam(e.target.value)}
+                disabled={!selectedClass || !selectedSection}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+              >
+                <option value="">Select Exam</option>
+                {exams.map(exam => (
+                  <option key={exam.id} value={exam.id}>{exam.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end gap-2">
+              <Button
+                onClick={handleSave}
+                disabled={saving || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
+                variant="outline"
+                className="flex-1 border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 size={18} className="mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save size={18} className="mr-2" />
+                    Save as Draft
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleSubmitForReview}
+                disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
+                className="flex-1 bg-[#5A7A95] hover:bg-[#4a6a85] disabled:opacity-50"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={18} className="mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <FileText size={18} className="mr-2" />
+                    Submit for Review
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </Card>
-      )}
 
-      {/* Empty State */}
-      {!loadingStudents && (!selectedClass || !selectedSection || !selectedExam) && (
-        <Card>
-          <div className="text-center py-12">
-            <FileText size={48} className="mx-auto mb-4 text-gray-300" />
-            <p className="text-gray-500 font-medium">Select class, section, and examination to enter marks</p>
-          </div>
-        </Card>
-      )}
+        {/* Loading State */}
+        {loadingStudents && (
+          <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50">
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <Loader2 size={32} className="animate-spin text-[#5A7A95] mx-auto mb-4" />
+                <p className="text-gray-600 dark:text-gray-400">Loading students and marks...</p>
+              </div>
+            </div>
+          </Card>
+        )}
 
-      {!loadingStudents && selectedClass && selectedSection && selectedExam && students.length === 0 && (
-        <Card>
-          <div className="text-center py-12">
-            <Users size={48} className="mx-auto mb-4 text-gray-300" />
-            <p className="text-gray-500 font-medium">No students found for this class and section</p>
-          </div>
-        </Card>
-      )}
+        {/* Search and Toggle */}
+        {students.length > 0 && !loadingStudents && (
+          <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by student name or admission number..."
+                  className="pl-10 w-full"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showTotals}
+                    onChange={(e) => setShowTotals(e.target.checked)}
+                    className="w-4 h-4 text-[#5A7A95] focus:ring-[#5A7A95] rounded"
+                  />
+                  Show Totals
+                </label>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Marks Table */}
+        {students.length > 0 && subjects.length > 0 && !loadingStudents && (
+          <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase sticky left-0 bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] z-10">Roll</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase sticky left-[60px] bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] z-10">Adm No</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase sticky left-[140px] bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] z-10 min-w-[150px]">Student Name</th>
+                    {subjects.map(subject => (
+                      <th key={subject.id} className="px-3 py-3 text-center text-xs font-bold uppercase min-w-[120px]">
+                        <div className="font-bold">{subject.name}</div>
+                        <div className="text-xs font-normal opacity-90 mt-1">Max: {subject.max_marks}</div>
+                      </th>
+                    ))}
+                    {showTotals && (
+                      <>
+                        <th className="px-3 py-3 text-center text-xs font-bold uppercase bg-[#5A7A95]/20">Total</th>
+                        <th className="px-3 py-3 text-center text-xs font-bold uppercase bg-[#5A7A95]/20">%</th>
+                        <th className="px-3 py-3 text-center text-xs font-bold uppercase bg-[#5A7A95]/20">Grade</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {filteredStudents.map((student, index) => {
+                    const stats = calculateStudentStats(student.id);
+                    return (
+                      <motion.tr
+                        key={student.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.02 }}
+                        className={`hover:bg-[#5A7A95]/5 dark:hover:bg-[#6B9BB8]/10 transition-colors ${stats.isPass ? '' : 'bg-red-50/50 dark:bg-red-900/10'}`}
+                      >
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-[#1e293b] z-10">
+                          {student.roll_number || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 font-mono sticky left-[60px] bg-white dark:bg-[#1e293b] z-10">
+                          {student.admission_no}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900 dark:text-white sticky left-[140px] bg-white dark:bg-[#1e293b] z-10 min-w-[150px]">
+                          {student.student_name}
+                        </td>
+                        {subjects.map(subject => {
+                          const marksObtained = marks[student.id]?.[subject.id] || 0;
+                          const percentage = calculatePercentage(marksObtained, subject.max_marks);
+                          const grade = getGradeFromPercentage(percentage);
+                          const isPass = percentage >= 40;
+                          const isBorderline = percentage >= 35 && percentage < 40;
+                          
+                          return (
+                            <td key={subject.id} className="px-3 py-3">
+                              <div className="flex flex-col items-center gap-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max={subject.max_marks}
+                                  step="0.01"
+                                  value={marksObtained || ''}
+                                  onChange={(e) => handleMarksChange(student.id, subject.id, e.target.value)}
+                                  placeholder="0"
+                                  className={`w-20 text-center text-sm font-medium ${
+                                    isPass 
+                                      ? 'border-green-500 focus:ring-green-500' 
+                                      : isBorderline
+                                      ? 'border-yellow-500 focus:ring-yellow-500'
+                                      : 'border-red-500 focus:ring-red-500'
+                                  }`}
+                                />
+                                <div className="flex items-center gap-1 text-xs">
+                                  <span className={`font-semibold ${getGradeColor(grade)}`}>
+                                    {grade}
+                                  </span>
+                                  <span className="text-gray-500 dark:text-gray-400">
+                                    ({percentage.toFixed(1)}%)
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        })}
+                        {showTotals && (
+                          <>
+                            <td className="px-3 py-3 text-center bg-gray-50 dark:bg-gray-800/50">
+                              <div className="font-bold text-gray-900 dark:text-white">
+                                {stats.totalObtained} / {stats.totalMax}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-center bg-gray-50 dark:bg-gray-800/50">
+                              <div className={`font-bold ${stats.isPass ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {stats.percentage.toFixed(1)}%
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-center bg-gray-50 dark:bg-gray-800/50">
+                              <div className={`font-bold text-lg ${getGradeColor(stats.grade)}`}>
+                                {stats.grade}
+                              </div>
+                              <div className={`text-xs px-2 py-0.5 rounded-full mt-1 ${getPassStatusColor(stats.isPass ? 'pass' : 'fail')}`}>
+                                {stats.isPass ? 'Pass' : 'Fail'}
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </motion.tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {/* Empty State */}
+        {!loadingStudents && (!selectedClass || !selectedSection || !selectedExam) && (
+          <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50">
+            <div className="text-center py-12">
+              <FileText size={64} className="mx-auto mb-4 text-gray-300 dark:text-gray-600" />
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Ready to Enter Marks</h3>
+              <p className="text-gray-600 dark:text-gray-400">Select class, section, and examination to start entering marks</p>
+            </div>
+          </Card>
+        )}
+
+        {!loadingStudents && selectedClass && selectedSection && selectedExam && students.length === 0 && (
+          <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50">
+            <div className="text-center py-12">
+              <Users size={64} className="mx-auto mb-4 text-gray-300 dark:text-gray-600" />
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No Students Found</h3>
+              <p className="text-gray-600 dark:text-gray-400">No students found for {selectedClass}-{selectedSection}</p>
+            </div>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

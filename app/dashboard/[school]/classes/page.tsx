@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { Plus, Search, HelpCircle } from 'lucide-react';
+import { Plus, Search, HelpCircle, BookOpen } from 'lucide-react';
 import ClassesTable from '@/components/classes/ClassesTable';
 import AddClassModal from '@/components/classes/AddClassModal';
 import AssignTeacherModal from '@/components/classes/AssignTeacherModal';
@@ -146,8 +146,8 @@ export default function ClassesPage({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading classes...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95] border-t-transparent mx-auto mb-4"></div>
+          <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-medium">Loading classes...</p>
         </div>
       </div>
     );
@@ -162,8 +162,13 @@ export default function ClassesPage({
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Classes</h1>
-            <p className="text-gray-600">Manage class structure and assign class teachers</p>
+            <h1 className="text-3xl font-bold text-black dark:text-white mb-2 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                <BookOpen className="text-white" size={28} />
+              </div>
+              Classes
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">Manage class structure and assign class teachers</p>
           </div>
           <div className="flex gap-3">
             <Button
@@ -195,7 +200,7 @@ export default function ClassesPage({
               placeholder="Search classes by class, section, year, or teacher..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black"
+              className="w-full pl-10 pr-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
             />
           </div>
         </Card>

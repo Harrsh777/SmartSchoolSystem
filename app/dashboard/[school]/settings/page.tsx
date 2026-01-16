@@ -136,23 +136,32 @@ export default function SettingsPage({
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F0]">
+    <div className="min-h-screen bg-gradient-to-br from-[#F5EFEB] via-[#F0F5F9] to-[#EBF2F7] dark:bg-[#0f172a]">
       {/* Header */}
-      <div className="bg-orange-500 text-white px-6 py-5 flex items-center justify-between">
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white px-6 py-5 flex items-center justify-between shadow-lg"
+      >
         <div>
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="text-orange-100 text-sm mt-1">Please select any option you want to setup!</p>
+          <h1 className="text-3xl font-bold flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-white/20 backdrop-blur-sm">
+              <Folder className="text-white" size={28} />
+            </div>
+            Settings
+          </h1>
+          <p className="text-[#C8D9E6] text-sm mt-1">Please select any option you want to setup!</p>
         </div>
         <button
           onClick={() => router.push(`/dashboard/${schoolCode}`)}
-          className="text-white hover:bg-orange-600 rounded-lg p-2 transition-colors"
+          className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
         >
           <X size={24} />
         </button>
-      </div>
+      </motion.div>
 
       {/* Settings Grid */}
-      <div className="p-6 bg-[#F5F5F0] min-h-screen">
+      <div className="p-6 min-h-screen">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 max-w-7xl mx-auto">
           {settingsCards.map((card, index) => {
             return (
@@ -161,16 +170,17 @@ export default function SettingsPage({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
+                whileHover={{ y: -5, scale: 1.05 }}
                 onClick={() => handleCardClick(card)}
                 className="cursor-pointer group"
               >
-                <Card className="p-4 hover:shadow-md transition-all bg-white border border-gray-200 relative h-full flex flex-col items-center justify-center cursor-pointer">
+                <Card className="p-4 hover:shadow-xl transition-all bg-white dark:bg-[#1e293b] border-2 border-gray-200 dark:border-gray-700 hover:border-[#5A7A95]/30 dark:hover:border-[#6B9BB8]/30 relative h-full flex flex-col items-center justify-center cursor-pointer">
                   {/* Badge */}
                   {card.badge && (
                     <div className={`absolute top-2 right-2 px-2 py-0.5 rounded text-xs font-semibold ${
                       card.badge === 'PRO' 
-                        ? 'bg-orange-500 text-white' 
-                        : 'bg-green-500 text-white'
+                        ? 'bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] text-white' 
+                        : 'bg-gradient-to-r from-[#6B9BB8] to-[#7DB5D3] text-white'
                     }`}>
                       {card.badge}
                     </div>
@@ -180,20 +190,26 @@ export default function SettingsPage({
                   <div className="flex items-center justify-center mb-3">
                     {card.id === 'password-security' ? (
                       <div className="relative">
-                        <Lock className="text-orange-600" size={40} />
-                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center">
+                        <div className="p-3 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                          <Lock className="text-white" size={24} />
+                        </div>
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-[#6B9BB8] to-[#7DB5D3] rounded-full border-2 border-white flex items-center justify-center">
                           <Eye className="text-white" size={10} />
                         </div>
                       </div>
                     ) : card.id === 'fee' ? (
-                      <Receipt className="text-amber-700" size={40} />
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                        <Receipt className="text-white" size={24} />
+                      </div>
                     ) : (
-                      <Folder className="text-amber-700" size={40} />
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                        <Folder className="text-white" size={24} />
+                      </div>
                     )}
                   </div>
 
                   {/* Title */}
-                  <h3 className="text-xs font-medium text-gray-800 text-center line-clamp-2">
+                  <h3 className="text-xs font-medium text-gray-800 dark:text-gray-200 text-center line-clamp-2">
                     {card.title}
                   </h3>
                 </Card>
@@ -209,10 +225,10 @@ export default function SettingsPage({
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white dark:bg-[#1e293b] rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border-2 border-[#5A7A95]/20 dark:border-[#6B9BB8]/20"
           >
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h2>
               <button
                 onClick={() => setShowModal(false)}
                 className="text-gray-400 hover:text-gray-600"
