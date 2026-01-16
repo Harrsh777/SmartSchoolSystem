@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 // GET - Fetch all leave types for a school
 export async function GET(request: NextRequest) {
@@ -18,6 +13,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'School code is required' }, { status: 400 });
     }
 
+    const supabase = getServiceRoleClient();
     let query = supabase
       .from('leave_types')
       .select('*')
@@ -62,6 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get school ID
+    const supabase = getServiceRoleClient();
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
       .select('id')

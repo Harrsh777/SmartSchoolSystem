@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 // PATCH - Update a house
 export async function PATCH(
@@ -24,6 +19,7 @@ export async function PATCH(
       is_active?: boolean;
     }
 
+    const supabase = getServiceRoleClient();
     const updateData: HouseUpdateData = {
       updated_at: new Date().toISOString(),
     };
@@ -33,6 +29,7 @@ export async function PATCH(
     if (description !== undefined) updateData.description = description;
     if (is_active !== undefined) updateData.is_active = is_active;
 
+    const supabase = getServiceRoleClient();
     const { data, error } = await supabase
       .from('institute_houses')
       .update(updateData)
@@ -73,6 +70,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
+    const supabase = getServiceRoleClient();
     const { data, error } = await supabase
       .from('institute_houses')
       .update({ is_active: false, updated_at: new Date().toISOString() })

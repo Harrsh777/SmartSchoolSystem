@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 // PATCH - Update a leave type
 export async function PATCH(
@@ -31,6 +26,7 @@ export async function PATCH(
     if (carry_forward !== undefined) updateData.carry_forward = carry_forward;
     if (is_active !== undefined) updateData.is_active = is_active;
 
+    const supabase = getServiceRoleClient();
     const { data, error } = await supabase
       .from('leave_types')
       .update(updateData)
@@ -58,6 +54,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
+    const supabase = getServiceRoleClient();
     const { error } = await supabase
       .from('leave_types')
       .delete()

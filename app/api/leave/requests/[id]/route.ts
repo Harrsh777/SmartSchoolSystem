@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 // PATCH - Update leave request status (approve/reject)
 export async function PATCH(
@@ -42,6 +37,7 @@ export async function PATCH(
       updateData.rejected_reason = null;
     }
 
+    const supabase = getServiceRoleClient();
     const { data, error } = await supabase
       .from('staff_leave_requests')
       .update(updateData)

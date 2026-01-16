@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 // GET - Fetch houses for a school
 export async function GET(request: NextRequest) {
@@ -21,6 +16,7 @@ export async function GET(request: NextRequest) {
     }
 
     // First, get school_id if not provided
+    const supabase = getServiceRoleClient();
     let finalSchoolId = schoolId;
     if (!finalSchoolId) {
       const { data: school, error: schoolError } = await supabase
@@ -78,6 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get school_id if not provided
+    const supabase = getServiceRoleClient();
     let finalSchoolId = school_id;
     if (!finalSchoolId) {
       const { data: school, error: schoolError } = await supabase

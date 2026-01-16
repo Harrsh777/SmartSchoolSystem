@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +15,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert the help query
+    const supabase = getServiceRoleClient();
     const { data, error } = await supabase
       .from('help_queries')
       .insert({
