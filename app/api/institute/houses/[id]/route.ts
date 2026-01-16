@@ -29,7 +29,6 @@ export async function PATCH(
     if (description !== undefined) updateData.description = description;
     if (is_active !== undefined) updateData.is_active = is_active;
 
-    const supabase = getServiceRoleClient();
     const { data, error } = await supabase
       .from('institute_houses')
       .update(updateData)
