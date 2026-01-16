@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
     const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
     const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
+    const supabase = getServiceRoleClient();
     // Validate max_days if leave type has a limit
     const { data: leaveType, error: leaveTypeError } = await supabase
       .from('leave_types')
