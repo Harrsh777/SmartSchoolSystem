@@ -170,8 +170,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    interface WorkingDayInput {
+      day_name: string;
+      is_working_day?: boolean;
+      start_time?: string | null;
+      end_time?: string | null;
+    }
+
     // Upsert working days
-    const updates = working_days.map((day: any) => ({
+    const updates = working_days.map((day: WorkingDayInput) => ({
       school_id: finalSchoolId,
       school_code: school_code,
       day_name: day.day_name,

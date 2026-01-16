@@ -16,7 +16,6 @@ import {
   Receipt,
   Calendar,
   User,
-  DollarSign,
   Clock,
   CheckSquare,
   Square
@@ -59,6 +58,20 @@ interface FeeStatement {
   installments: Installment[];
 }
 
+interface Collection {
+  id: string;
+  receipt_no: string;
+  student?: {
+    student_name?: string;
+    admission_no?: string;
+    class?: string;
+    section?: string;
+  };
+  payment_date: string;
+  total_amount?: number;
+  payment_mode: string;
+}
+
 export default function FeeCollectionPage({
   params,
 }: {
@@ -92,7 +105,7 @@ export default function FeeCollectionPage({
   });
 
   // Collection list
-  const [collections, setCollections] = useState<any[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [collectionFilters, setCollectionFilters] = useState({
     start_date: '',
     end_date: '',
@@ -105,6 +118,7 @@ export default function FeeCollectionPage({
     } else {
       setStudents([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, schoolCode]);
 
   const searchStudents = useCallback(async () => {
@@ -129,7 +143,7 @@ export default function FeeCollectionPage({
       if (response.ok && result.data) {
         setFeeStatement(result.data);
         // Auto-select overdue installments
-        const overdueIds = new Set(
+        const overdueIds: Set<string> = new Set(
           result.data.installments
             .filter((inst: Installment) => inst.is_overdue && inst.pending_amount > 0)
             .map((inst: Installment) => inst.id)

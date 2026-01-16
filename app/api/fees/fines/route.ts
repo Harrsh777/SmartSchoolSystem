@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, fine_name, fine_type, fine_value, fine_amount, fine_percentage, daily_fine_amount, applicable_after_days, is_active, remarks, max_fine_amount } = body;
+    const { school_code, fine_name, fine_type, fine_value, fine_amount, fine_percentage, daily_fine_amount, is_active } = body;
 
     if (!school_code || !fine_name || !fine_type) {
       return NextResponse.json(
@@ -89,7 +89,19 @@ export async function POST(request: NextRequest) {
       fineValue = parseFloat(daily_fine_amount);
     }
 
-    const bodyData: any = {
+    interface FeeFineData {
+      school_id: string;
+      school_code: string;
+      fine_name: string;
+      fine_type: string;
+      fine_value: number;
+      is_active: boolean;
+      applicable_after_days?: number;
+      max_fine_amount?: number | null;
+      remarks?: string | null;
+    }
+
+    const bodyData: FeeFineData = {
       school_id: schoolData.id,
       school_code,
       fine_name,

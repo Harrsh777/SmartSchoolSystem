@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { CalendarDays } from 'lucide-react';
+import { getString } from '@/lib/type-utils';
 
 interface CalendarEntry {
   date?: string;
@@ -45,9 +46,10 @@ export default function CalendarPage() {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
+  const formatDate = (dateStr: unknown) => {
+    const dateString = getString(dateStr);
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
@@ -92,14 +94,23 @@ export default function CalendarPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {calendarEntries.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-700">{formatDate(entry.event_date)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{entry.title}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700 capitalize">{entry.event_type}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{entry.description || 'N/A'}</td>
-                  </tr>
-                ))}
+                {calendarEntries.map((entry, index) => {
+                  const entryId = getString(entry.id);
+                  const key = entryId || `entry-${index}`;
+                  const eventDate = entry.event_date;
+                  const title = getString(entry.title);
+                  const eventType = getString(entry.event_type);
+                  const description = getString(entry.description);
+                  
+                  return (
+                    <tr key={key} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-700">{formatDate(eventDate)}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{title || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 capitalize">{eventType || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{description.length > 0 ? description : 'N/A'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

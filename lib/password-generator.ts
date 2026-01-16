@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { hashPassword as hashPasswordUtil } from './password-utils';
 
 /**

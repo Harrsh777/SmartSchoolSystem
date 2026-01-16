@@ -9,7 +9,6 @@ import {
   ArrowLeft,
   Save,
   Loader2,
-  User,
   Folder,
   Lock,
 } from 'lucide-react';

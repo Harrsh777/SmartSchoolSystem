@@ -19,8 +19,6 @@ import {
   DollarSign,
   User,
   CreditCard,
-  Filter,
-  Download
 } from 'lucide-react';
 
 interface Expense {
@@ -44,7 +42,6 @@ export default function ManageExpensesPage({
   const { school: schoolCode } = use(params);
   const router = useRouter();
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
     category: '',
@@ -107,6 +104,7 @@ export default function ManageExpensesPage({
   useEffect(() => {
     // TODO: Fetch expenses
     setExpenses(mockExpenses);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode, filters]);
 
   const formatCurrency = (amount: number) => {

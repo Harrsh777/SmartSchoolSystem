@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import { Settings, CheckCircle2, Camera, Upload, X } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
+import { getString } from '@/lib/type-utils';
 
 export default function SettingsPage() {
   // router kept for potential future use
@@ -67,11 +69,20 @@ export default function SettingsPage() {
     setSaveSuccess(false);
 
     try {
-      const response = await fetch(`/api/staff/${teacher.id}`, {
+      const teacherId = getString(teacher.id);
+      const schoolCode = getString(teacher.school_code);
+      
+      if (!teacherId || !schoolCode) {
+        alert('Missing required information');
+        setSaving(false);
+        return;
+      }
+      
+      const response = await fetch(`/api/staff/${teacherId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          school_code: teacher.school_code,
+          school_code: schoolCode,
           phone: settingsData.phone,
           email: settingsData.email,
           address: settingsData.address,
@@ -132,10 +143,19 @@ export default function SettingsPage() {
 
     setUploadingPhoto(true);
     try {
+      const schoolCode = getString(teacher.school_code);
+      const staffId = getString(teacher.id);
+      
+      if (!schoolCode || !staffId) {
+        alert('Missing required information');
+        setUploadingPhoto(false);
+        return;
+      }
+      
       const formData = new FormData();
       formData.append('file', photoFile);
-      formData.append('school_code', teacher.school_code);
-      formData.append('staff_id', teacher.id);
+      formData.append('school_code', schoolCode);
+      formData.append('staff_id', staffId);
 
       const response = await fetch('/api/staff/photos/self', {
         method: 'POST',
@@ -192,10 +212,13 @@ export default function SettingsPage() {
               <div className="relative">
                 {photoPreview ? (
                   <div className="relative">
-                    <img
+                    <Image
                       src={photoPreview}
                       alt="Profile preview"
+                      width={128}
+                      height={128}
                       className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                      unoptimized
                     />
                     <button
                       type="button"

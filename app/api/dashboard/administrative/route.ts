@@ -90,9 +90,15 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(10);
 
+    interface LeaveRecord {
+      id: string;
+      created_at: string;
+      [key: string]: unknown;
+    }
+
     // Fetch pending leave approvals (staff and student leaves)
-    let pendingStaffLeaves: any[] = [];
-    let pendingStudentLeaves: any[] = [];
+    let pendingStaffLeaves: LeaveRecord[] = [];
+    let pendingStudentLeaves: LeaveRecord[] = [];
     
     try {
       const { data: staffLeaves } = await supabase
@@ -103,7 +109,7 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(10);
       pendingStaffLeaves = staffLeaves || [];
-    } catch (err) {
+    } catch {
       // Table might not exist, that's okay
       console.log('Staff leaves table not available');
     }
@@ -117,18 +123,18 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(10);
       pendingStudentLeaves = studentLeaves || [];
-    } catch (err) {
+    } catch {
       // Table might not exist, that's okay
       console.log('Student leaves table not available');
     }
 
     // Combine leave approvals
     const pendingLeaves = [
-      ...(pendingStaffLeaves || []).map((leave: any) => ({
+      ...(pendingStaffLeaves || []).map((leave: LeaveRecord) => ({
         ...leave,
         type: 'staff',
       })),
-      ...(pendingStudentLeaves || []).map((leave: any) => ({
+      ...(pendingStudentLeaves || []).map((leave: LeaveRecord) => ({
         ...leave,
         type: 'student',
       })),

@@ -62,7 +62,17 @@ export async function PATCH(
     }
 
     // Build update data
-    const updateData: any = {
+    interface GatePassUpdateData {
+      status: string;
+      updated_at: string;
+      approved_by?: string;
+      approved_by_name?: string | null;
+      approved_at?: string;
+      actual_return_time?: string;
+      marked_returned_at?: string;
+    }
+
+    const updateData: GatePassUpdateData = {
       status,
       updated_at: new Date().toISOString(),
     };

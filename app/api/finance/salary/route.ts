@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if salary already exists for this staff and month
-    const { data: existing, error: checkError } = await supabase
+    const { data: existing } = await supabase
       .from('salary_records')
       .select('id')
       .eq('school_code', school_code)

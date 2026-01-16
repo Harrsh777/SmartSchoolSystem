@@ -5,20 +5,16 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { 
   GraduationCap, 
-  Users, 
   UserCheck, 
   Calendar, 
   FileText, 
-  Bell, 
   Settings, 
   Menu, 
   X, 
-  LogOut, 
   Home, 
   Key, 
   Image,
   Building2,
-  Shield,
   BookOpen,
   DollarSign,
   Library,
@@ -31,10 +27,8 @@ import {
   CalendarX,
   TrendingUp,
   DoorOpen,
-  ChevronDown,
-  ExternalLink,
-  Search,
-  Lock
+  Lock,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/Button';
@@ -100,7 +94,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const [loading, setLoading] = useState(true);
   const [isClassTeacher, setIsClassTeacher] = useState(false);
   const [permissions, setPermissions] = useState<string[]>([]);
-  const [staffPermissions, setStaffPermissions] = useState<any>(null);
+  const [staffPermissions, setStaffPermissions] = useState<Record<string, unknown> | null>(null);
 
   // Session timeout (15 minutes)
   const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
@@ -153,11 +147,12 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
         
         // Extract enabled sub-modules and map to permission keys
         const enabledPermissions = new Set<string>();
-        result.data.modules?.forEach((module: any) => {
-          module.sub_modules?.forEach((subModule: any) => {
-            if (subModule.view_access || subModule.edit_access) {
+        result.data.modules?.forEach((module: { sub_modules?: Array<{ name?: string; view_access?: boolean; edit_access?: boolean }> }) => {
+          module.sub_modules?.forEach((subModule: { name?: string; view_access?: boolean; edit_access?: boolean }) => {
+            const subModuleName = subModule.name;
+            if ((subModule.view_access || subModule.edit_access) && subModuleName) {
               // Map sub-module names to permission keys
-              const permKeys = mapSubModuleToPermissions(subModule.name);
+              const permKeys = mapSubModuleToPermissions(subModuleName);
               permKeys.forEach(key => enabledPermissions.add(key));
             }
           });
@@ -448,7 +443,6 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                     const Icon = item.icon;
                     const active = isActive(item.path);
                     const enabled = hasPermission(item);
-                    const isTeacherItem = index < filteredTeacherItems.length;
                     const itemId = item.id;
                     
                     return (

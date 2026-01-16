@@ -62,11 +62,26 @@ export async function GET(
     }
 
     // Transform data to return just subject IDs and details
-    const subjects = (assignments || []).map((assignment: any) => {
+    interface AssignmentWithSubject {
+      subject_id: string;
+      subject: { id: string; name: string; color: string; school_code: string } | { id: string; name: string; color: string; school_code: string }[];
+    }
+
+    const subjects = (assignments || []).map((assignment: AssignmentWithSubject) => {
       const subject = Array.isArray(assignment.subject) ? assignment.subject[0] : assignment.subject;
+      if (!subject) {
+        return {
+          id: assignment.subject_id,
+          name: '',
+          color: '',
+          school_code: '',
+        };
+      }
       return {
         id: assignment.subject_id,
-        ...(subject || {}),
+        name: subject.name,
+        color: subject.color,
+        school_code: subject.school_code,
       };
     });
 
@@ -223,11 +238,26 @@ export async function POST(
       // Still return success since assignments were saved
     }
 
-    const subjects = (updatedAssignments || []).map((assignment: any) => {
+    interface AssignmentWithSubject {
+      subject_id: string;
+      subject: { id: string; name: string; color: string; school_code: string } | { id: string; name: string; color: string; school_code: string }[];
+    }
+
+    const subjects = (updatedAssignments || []).map((assignment: AssignmentWithSubject) => {
       const subject = Array.isArray(assignment.subject) ? assignment.subject[0] : assignment.subject;
+      if (!subject) {
+        return {
+          id: assignment.subject_id,
+          name: '',
+          color: '',
+          school_code: '',
+        };
+      }
       return {
         id: assignment.subject_id,
-        ...(subject || {}),
+        name: subject.name,
+        color: subject.color,
+        school_code: subject.school_code,
       };
     });
 

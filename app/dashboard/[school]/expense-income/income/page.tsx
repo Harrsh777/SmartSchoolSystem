@@ -18,8 +18,6 @@ import {
   Calendar,
   DollarSign,
   FileText,
-  Filter,
-  Download
 } from 'lucide-react';
 
 interface Income {
@@ -40,7 +38,6 @@ export default function ManageIncomePage({
   const { school: schoolCode } = use(params);
   const router = useRouter();
   const [incomeEntries, setIncomeEntries] = useState<Income[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
     source: '',
@@ -90,6 +87,7 @@ export default function ManageIncomePage({
   useEffect(() => {
     // TODO: Fetch income entries
     setIncomeEntries(mockIncome);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode, filters]);
 
   const formatCurrency = (amount: number) => {

@@ -26,7 +26,44 @@ export default function FeeReportsPage({
   
   const [activeReport, setActiveReport] = useState<'daily' | 'monthly' | 'pending' | 'overdue'>('daily');
   const [loading, setLoading] = useState(false);
-  const [reportData, setReportData] = useState<any>(null);
+  const [reportData, setReportData] = useState<{
+    // Daily report properties
+    summary?: {
+      total_pending?: number;
+      total_overdue?: number;
+      total_count?: number;
+      average_days_overdue?: number;
+      total_collected?: number;
+      transaction_count?: number;
+      students_count?: number;
+    };
+    date?: string;
+    collections?: Array<{
+      id: string;
+      receipt_no: string;
+      student?: { student_name?: string; admission_no?: string; class?: string; section?: string };
+      amount: number;
+      total_amount?: number;
+      payment_mode: string;
+      payment_date: string;
+    }>;
+    // Monthly report properties
+    total_collected?: number;
+    total_transactions?: number;
+    // Pending/Overdue report properties
+    installments?: Array<{
+      id: string;
+      student?: { student_name?: string; admission_no?: string; class?: string; section?: string };
+      installment_number: number;
+      due_date: string;
+      amount: number;
+      paid_amount: number;
+      pending_amount: number;
+      status: string;
+      fee_component?: { component_name?: string };
+      days_overdue?: number;
+    }>;
+  } | null>(null);
 
   // Daily report filters
   const [dailyDate, setDailyDate] = useState(new Date().toISOString().split('T')[0]);
@@ -109,7 +146,7 @@ export default function FeeReportsPage({
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setActiveReport(id as any)}
+              onClick={() => setActiveReport(id as 'daily' | 'monthly' | 'pending' | 'overdue')}
               className={`flex-1 px-6 py-4 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
                 activeReport === id
                   ? 'text-[#2F6FED] border-b-2 border-[#2F6FED] bg-blue-50'
@@ -178,19 +215,19 @@ export default function FeeReportsPage({
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <Card className="p-4">
                     <p className="text-sm text-gray-600 mb-1">Total Collected</p>
-                    <p className="text-2xl font-bold text-[#2F6FED]">₹{reportData.summary.total_collected.toLocaleString('en-IN')}</p>
+                    <p className="text-2xl font-bold text-[#2F6FED]">₹{reportData.summary.total_collected != null ? reportData.summary.total_collected.toLocaleString('en-IN') : '0'}</p>
                   </Card>
                   <Card className="p-4">
                     <p className="text-sm text-gray-600 mb-1">Transactions</p>
-                    <p className="text-2xl font-bold text-gray-900">{reportData.summary.transaction_count}</p>
+                    <p className="text-2xl font-bold text-gray-900">{reportData.summary.transaction_count || 0}</p>
                   </Card>
                   <Card className="p-4">
                     <p className="text-sm text-gray-600 mb-1">Students</p>
-                    <p className="text-2xl font-bold text-gray-900">{reportData.summary.students_count}</p>
+                    <p className="text-2xl font-bold text-gray-900">{reportData.summary.students_count || 0}</p>
                   </Card>
                   <Card className="p-4">
                     <p className="text-sm text-gray-600 mb-1">Date</p>
-                    <p className="text-lg font-semibold text-gray-900">{new Date(reportData.date).toLocaleDateString()}</p>
+                    <p className="text-lg font-semibold text-gray-900">{reportData.date ? new Date(reportData.date).toLocaleDateString() : 'N/A'}</p>
                   </Card>
                 </div>
               )}
@@ -199,11 +236,15 @@ export default function FeeReportsPage({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Card className="p-4">
                     <p className="text-sm text-gray-600 mb-1">Total Collected</p>
-                    <p className="text-2xl font-bold text-[#2F6FED]">₹{reportData.total_collected.toLocaleString('en-IN')}</p>
+                    <p className="text-2xl font-bold text-[#2F6FED]">
+                      ₹{reportData.total_collected != null ? reportData.total_collected.toLocaleString('en-IN') : '0'}
+                    </p>
                   </Card>
                   <Card className="p-4">
                     <p className="text-sm text-gray-600 mb-1">Transactions</p>
-                    <p className="text-2xl font-bold text-gray-900">{reportData.total_transactions}</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {reportData.total_transactions != null ? reportData.total_transactions : 0}
+                    </p>
                   </Card>
                   <Card className="p-4">
                     <p className="text-sm text-gray-600 mb-1">Month</p>
@@ -268,7 +309,7 @@ export default function FeeReportsPage({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {reportData.collections.map((collection: any) => (
+                        {reportData.collections?.map((collection) => (
                           <tr key={collection.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3 text-sm text-gray-900">{collection.receipt_no}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">
@@ -303,7 +344,7 @@ export default function FeeReportsPage({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {reportData.installments.slice(0, 100).map((inst: any) => (
+                        {reportData.installments?.slice(0, 100).map((inst) => (
                           <tr key={inst.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3 text-sm">
                               <div>

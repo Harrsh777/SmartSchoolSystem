@@ -12,10 +12,8 @@ import {
   Edit, 
   Trash2, 
   Award,
-  TrendingUp,
   Save,
   X,
-  Loader2
 } from 'lucide-react';
 
 interface GradeScale {
@@ -34,8 +32,6 @@ export default function GradeScalePage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
-  const [gradeScales, setGradeScales] = useState<GradeScale[]>([]);
-  const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({

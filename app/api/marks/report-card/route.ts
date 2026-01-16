@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     // Helper function to draw text
-    const drawText = (text: string, x: number, y: number, size: number, font: any = helveticaFont, color: any = rgb(0, 0, 0)) => {
+    const drawText = (text: string, x: number, y: number, size: number, font = helveticaFont, color = rgb(0, 0, 0)) => {
       page.drawText(text, {
         x,
         y,
@@ -133,7 +133,6 @@ export async function GET(request: NextRequest) {
     yPos -= 25;
 
     // Table Header
-    const tableStartY = yPos;
     const colWidths = [200, 80, 80, 80, 60, 80];
     const rowHeight = 20;
     let currentX = 50;

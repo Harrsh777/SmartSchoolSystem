@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import { Users, Search } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
+import { getString } from '@/lib/type-utils';
 
 export default function AllStaffPage() {
   // teacher kept for potential future use
@@ -27,7 +28,12 @@ export default function AllStaffPage() {
   const fetchStaff = async (teacherData: Staff) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/staff?school_code=${teacherData.school_code}`);
+      const schoolCode = getString(teacherData.school_code);
+      if (!schoolCode) {
+        setLoading(false);
+        return;
+      }
+      const response = await fetch(`/api/staff?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
         setStaff(result.data);
@@ -41,11 +47,16 @@ export default function AllStaffPage() {
 
   const filteredStaff = staff.filter((member) => {
     const query = searchQuery.toLowerCase();
+    const fullName = getString(member.full_name).toLowerCase();
+    const staffId = getString(member.staff_id).toLowerCase();
+    const role = getString(member.role).toLowerCase();
+    const department = getString(member.department).toLowerCase();
+    
     return (
-      member.full_name.toLowerCase().includes(query) ||
-      member.staff_id.toLowerCase().includes(query) ||
-      member.role.toLowerCase().includes(query) ||
-      (member.department && member.department.toLowerCase().includes(query))
+      fullName.includes(query) ||
+      staffId.includes(query) ||
+      role.includes(query) ||
+      department.includes(query)
     );
   });
 
@@ -111,15 +122,24 @@ export default function AllStaffPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredStaff.map((member) => (
-                  <tr key={member.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{member.staff_id}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{member.full_name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{member.role}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{member.department || 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{member.phone || 'N/A'}</td>
-                  </tr>
-                ))}
+                {filteredStaff.map((member, index) => {
+                  const memberId = getString(member.id) || `member-${index}`;
+                  const staffId = getString(member.staff_id);
+                  const fullName = getString(member.full_name);
+                  const role = getString(member.role);
+                  const department = getString(member.department);
+                  const phone = getString(member.phone);
+                  
+                  return (
+                    <tr key={memberId} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{staffId || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{fullName || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{role || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{department || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{phone || 'N/A'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

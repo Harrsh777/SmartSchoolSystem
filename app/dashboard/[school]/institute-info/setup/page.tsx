@@ -1,7 +1,6 @@
 'use client';
 
 import { use, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { 
   FileText, 
@@ -11,11 +10,7 @@ import {
   X, 
   Calendar, 
   Clock, 
-  User, 
-  CheckCircle, 
-  AlertCircle,
   Database,
-  BookOpen,
   Users,
   Camera,
   GraduationCap,
@@ -62,8 +57,7 @@ export default function SetupSchoolPage({
 }: {
   params: Promise<{ school: string }>;
 }) {
-  const { school: schoolCode } = use(params);
-  const router = useRouter();
+  use(params); // schoolCode extracted but not used in this component
   const [activeTab, setActiveTab] = useState('DATA IMPLEMENTATION');
   const [isEditMode, setIsEditMode] = useState(false);
   const [moduleData, setModuleData] = useState<ModuleData[]>(() => 

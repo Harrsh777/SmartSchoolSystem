@@ -1,15 +1,10 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { 
-  FiCheckCircle, FiUsers, FiTrendingUp, FiAward, FiBook, 
-  FiCreditCard, FiMessageCircle, FiSettings, FiBarChart2,
-  FiCalendar, FiFileText, FiMail, FiPhone, FiMapPin,
-  FiArrowRight, FiLayers, FiMonitor, FiServer, FiTool,
-  FiPlay, FiCheck
+  FiArrowRight, FiCheck, FiPlay
 } from 'react-icons/fi';
 import { 
   MdAccountBalance, MdAutoStories, MdArchitecture, 
@@ -17,7 +12,7 @@ import {
   MdLibraryBooks, MdDirectionsBus, MdChat, 
   MdAnalytics, MdAutoGraph,
   MdPlace, MdEmail, MdPhone, MdFormatQuote,
-  MdPlayArrow, MdTrendingUp, MdArrowForward, MdSchool
+  MdTrendingUp, MdArrowForward, MdSchool
 } from 'react-icons/md';
 
 export default function EduCoreLanding() {

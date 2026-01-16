@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, FileText, Loader2, AlertCircle, CheckCircle, XCircle, Edit2, Save, X } from 'lucide-react';
+import { ArrowLeft, FileText, Loader2, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 
 interface FeeStructureItem {
   id: string;
@@ -62,7 +62,6 @@ export default function FeeStructureDetailPage({
   const [structure, setStructure] = useState<FeeStructure | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchStructure();

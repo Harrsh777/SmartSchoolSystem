@@ -8,21 +8,9 @@ import {
   Folder,
   Receipt,
   Lock,
-  Calendar,
-  Users,
-  Search,
   Fingerprint,
   MessageCircle,
-  Layout,
-  ArrowLeft,
   X,
-  Settings as SettingsIcon,
-  Award,
-  Shield,
-  FileText,
-  Globe,
-  UserCog,
-  Home,
   Eye,
 } from 'lucide-react';
 
@@ -167,7 +155,6 @@ export default function SettingsPage({
       <div className="p-6 bg-[#F5F5F0] min-h-screen">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 max-w-7xl mx-auto">
           {settingsCards.map((card, index) => {
-            const Icon = card.icon;
             return (
               <motion.div
                 key={card.id}

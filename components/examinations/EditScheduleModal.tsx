@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { X, AlertCircle } from 'lucide-react';
 import type { Exam, ExamSchedule } from '@/lib/supabase';
+import { getString } from '@/lib/type-utils';
 
 interface ClassData {
   class: string;
@@ -36,16 +37,26 @@ export default function EditScheduleModal({
     'Mathematics', 'Science', 'English', 'Hindi', 'Social Studies',
     'Computer Science', 'Physical Education', 'Art', 'Music', 'Other'
   ]);
-  const [formData, setFormData] = useState({
-    class: schedule.class,
-    section: schedule.section,
-    subject: schedule.subject,
+  const [formData, setFormData] = useState<{
+    class: string;
+    section: string;
+    subject: string;
+    customSubject: string;
+    exam_date: string;
+    start_time: string;
+    end_time: string;
+    room: string;
+    notes: string;
+  }>({
+    class: getString(schedule.class) || '',
+    section: getString(schedule.section) || '',
+    subject: getString(schedule.subject) || '',
     customSubject: '',
-    exam_date: schedule.exam_date,
-    start_time: schedule.start_time,
-    end_time: schedule.end_time,
-    room: schedule.room || '',
-    notes: schedule.notes || '',
+    exam_date: getString(schedule.exam_date) || '',
+    start_time: getString(schedule.start_time) || '',
+    end_time: getString(schedule.end_time) || '',
+    room: getString(schedule.room) || '',
+    notes: getString(schedule.notes) || '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -94,11 +105,16 @@ export default function EditScheduleModal({
 
     if (formData.exam_date) {
       const examDate = new Date(formData.exam_date);
-      const examStart = new Date(exam.start_date);
-      const examEnd = new Date(exam.end_date);
+      const examStartDate = getString(exam.start_date);
+      const examEndDate = getString(exam.end_date);
       
-      if (examDate < examStart || examDate > examEnd) {
-        newErrors.exam_date = `Date must be between ${exam.start_date} and ${exam.end_date}`;
+      if (examStartDate && examEndDate) {
+        const examStart = new Date(examStartDate);
+        const examEnd = new Date(examEndDate);
+        
+        if (examDate < examStart || examDate > examEnd) {
+          newErrors.exam_date = `Date must be between ${examStartDate} and ${examEndDate}`;
+        }
       }
     }
 
@@ -242,8 +258,8 @@ export default function EditScheduleModal({
                 type="date"
                 value={formData.exam_date}
                 onChange={(e) => handleChange('exam_date', e.target.value)}
-                min={exam.start_date}
-                max={exam.end_date}
+                min={getString(exam.start_date) || undefined}
+                max={getString(exam.end_date) || undefined}
                 required
               />
               {errors.exam_date && (

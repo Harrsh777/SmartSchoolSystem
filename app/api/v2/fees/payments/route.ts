@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
     const allocationRecords = allocations.map((alloc: { student_fee_id: string; allocated_amount: number }) => ({
       payment_id: payment.id,
       student_fee_id: alloc.student_fee_id,
-      allocated_amount: parseFloat(alloc.allocated_amount),
+      allocated_amount: Number(alloc.allocated_amount),
     }));
 
     const { error: allocationsError } = await supabase

@@ -11,18 +11,11 @@ import {
   DollarSign,
   Search,
   User,
-  Plus,
-  Edit,
-  Trash2,
   CheckCircle2,
   XCircle,
-  AlertCircle,
-  Download,
   Receipt,
   Percent,
-  Calendar,
   Filter,
-  Loader2
 } from 'lucide-react';
 
 interface StudentFee {
@@ -42,14 +35,6 @@ interface StudentFee {
   last_payment_date?: string;
 }
 
-interface FeeComponent {
-  id: string;
-  name: string;
-  amount: number;
-  paid: number;
-  pending: number;
-  due_date: string;
-}
 
 export default function StudentWiseFeePage({
   params,
@@ -59,7 +44,6 @@ export default function StudentWiseFeePage({
   const { school: schoolCode } = use(params);
   const router = useRouter();
   const [studentFees, setStudentFees] = useState<StudentFee[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
@@ -137,6 +121,7 @@ export default function StudentWiseFeePage({
   useEffect(() => {
     // TODO: Fetch student fees
     setStudentFees(mockStudentFees);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClass, selectedSection, selectedStatus]);
 
   const formatCurrency = (amount: number) => {

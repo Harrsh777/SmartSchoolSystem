@@ -16,7 +16,15 @@ export async function PATCH(
     const body = await request.json();
     const { house_name, house_color, description, is_active } = body;
 
-    const updateData: any = {
+    interface HouseUpdateData {
+      updated_at: string;
+      house_name?: string;
+      house_color?: string;
+      description?: string;
+      is_active?: boolean;
+    }
+
+    const updateData: HouseUpdateData = {
       updated_at: new Date().toISOString(),
     };
 

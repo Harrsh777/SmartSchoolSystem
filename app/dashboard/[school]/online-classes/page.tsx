@@ -1,27 +1,22 @@
 'use client';
 
 import { use, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { 
   Video,
-  ArrowLeft,
   Plus,
   Search,
-  User,
-  Users,
   Calendar,
   Clock,
   Link2,
   Edit,
   Trash2,
-  CheckCircle2,
-  XCircle,
   Save,
-  X
+  X,
+  User,
 } from 'lucide-react';
 
 interface Class {
@@ -68,15 +63,13 @@ export default function OnlineClassesPage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
-  const router = useRouter();
   const [classes, setClasses] = useState<Class[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [onlineClasses, setOnlineClasses] = useState<OnlineClass[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedClass, setSelectedClass] = useState<string>('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [, setSelectedClass] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     class_id: '',
@@ -153,6 +146,7 @@ export default function OnlineClassesPage({
     setClasses(mockClasses);
     setTeachers(mockTeachers);
     setOnlineClasses(mockOnlineClasses);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const handleOpenCreateModal = (classId?: string) => {
@@ -708,6 +702,4 @@ export default function OnlineClassesPage({
     </div>
   );
 }
-
-
 

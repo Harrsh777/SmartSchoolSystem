@@ -15,7 +15,6 @@ import {
   X,
   FileText,
   Image,
-  Download,
   Users,
   Calendar,
 } from 'lucide-react';
@@ -342,6 +341,7 @@ export default function DigitalDiaryPage({
                       {att.file_type === 'PDF' ? (
                         <FileText size={16} />
                       ) : (
+                        // eslint-disable-next-line jsx-a11y/alt-text
                         <Image size={16} />
                       )}
                       <span className="text-xs">{att.file_name}</span>

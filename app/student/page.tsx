@@ -142,6 +142,7 @@ export default function StudentDashboard() {
       console.error('Error parsing student data:', err);
       router.push('/login');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const fetchAllData = async (studentData: Student) => {
@@ -330,6 +331,7 @@ export default function StudentDashboard() {
       fetchExams(student);
       fetchTimetable(student);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, student]);
 
   if (loading || !student) {

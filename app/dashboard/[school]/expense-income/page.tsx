@@ -14,9 +14,7 @@ import {
   TrendingUp,
   DollarSign,
   Users,
-  Calendar,
   X,
-  Search,
   Filter,
   Download,
 } from 'lucide-react';
@@ -303,10 +301,10 @@ export default function ExpenseIncomePage({
 
 // Overview Tab Component
 function OverviewTab({
-  schoolCode,
-  financialYearId,
+  // schoolCode,
+  // financialYearId,
   overviewData,
-  onRefresh,
+  // onRefresh,
 }: {
   schoolCode: string;
   financialYearId?: string | null;
@@ -1659,8 +1657,8 @@ function SalaryModal({
 
 // Reports Tab Component
 function ReportsTab({
-  schoolCode,
-  financialYearId,
+  // schoolCode,
+  // financialYearId,
 }: {
   schoolCode: string;
   financialYearId?: string | null;

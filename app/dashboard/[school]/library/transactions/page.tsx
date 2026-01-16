@@ -318,7 +318,7 @@ export default function LibraryTransactionsPage({
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
       const borrowerName =
-        borrowerType === 'student'
+        transaction.borrower_type === 'student'
           ? transaction.borrower?.student_name?.toLowerCase() || ''
           : transaction.borrower?.full_name?.toLowerCase() || '';
       const bookTitle = transaction.book_copy?.book?.title?.toLowerCase() || '';
@@ -467,12 +467,12 @@ export default function LibraryTransactionsPage({
                           <td className="px-4 py-3 text-sm">
                             <div>
                               <div className="font-medium text-gray-900">
-                                {borrowerType === 'student'
+                                {transaction.borrower_type === 'student'
                                   ? transaction.borrower?.student_name || 'N/A'
                                   : transaction.borrower?.full_name || 'N/A'}
                               </div>
                               <div className="text-xs text-gray-500">
-                                {borrowerType === 'student'
+                                {transaction.borrower_type === 'student'
                                   ? `${transaction.borrower?.class || ''} ${transaction.borrower?.section || ''}`
                                   : transaction.borrower?.staff_id || ''}
                               </div>
@@ -593,13 +593,17 @@ export default function LibraryTransactionsPage({
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">Select {borrowerType === 'student' ? 'Student' : 'Staff'}</option>
-                {(borrowerType === 'student' ? students : staff).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {borrowerType === 'student'
-                      ? `${item.student_name} (${item.admission_no}) - ${item.class}${item.section || ''}`
-                      : `${item.full_name} (${item.staff_id})`}
-                  </option>
-                ))}
+                {borrowerType === 'student'
+                  ? students.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {`${item.student_name} (${item.admission_no}) - ${item.class}${item.section || ''}`}
+                      </option>
+                    ))
+                  : staff.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {`${item.full_name} (${item.staff_id})`}
+                      </option>
+                    ))}
               </select>
               {selectedBorrower && (
                 <Button
@@ -665,7 +669,7 @@ export default function LibraryTransactionsPage({
 
             <Button
               onClick={handleIssueBook}
-              disabled={saving || !selectedBorrower || !selectedBook || !selectedCopy || (borrowerInfo && !borrowerInfo.canBorrow)}
+              disabled={saving || !selectedBorrower || !selectedBook || !selectedCopy || (borrowerInfo ? !borrowerInfo.canBorrow : false)}
               className="w-full"
             >
               {saving ? (

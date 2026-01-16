@@ -3,7 +3,6 @@
 import { use, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
 import { 
   Download, 
   Users, 
@@ -14,14 +13,11 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   AlertCircle,
-  FileDown,
   Database,
-  TrendingUp,
   Sparkles,
   ArrowRight,
   Zap,
   BarChart3,
-  Calendar,
   DownloadCloud,
   Info,
   FileCheck,

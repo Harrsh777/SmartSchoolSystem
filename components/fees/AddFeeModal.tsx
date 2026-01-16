@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import { X, DollarSign, Calendar, FileText, Download, CheckCircle, XCircle } from 'lucide-react';
+import { getString } from '@/lib/type-utils';
 
 interface AddFeeModalProps {
   student: {
@@ -135,19 +136,44 @@ export default function AddFeeModal({
   const downloadReceipt = () => {
     if (!submittedFee) return;
 
+    // Extract all values using getString to safely handle unknown types
+    const receiptNo = getString(submittedFee.receipt_no) || 'N/A';
+    const paymentDate = getString(submittedFee.payment_date);
+    const paymentMode = getString(submittedFee.payment_mode) || 'cash';
+    const remarks = getString(submittedFee.remarks);
+    const accountantName = (submittedFee.accountant && typeof submittedFee.accountant === 'object' && 'full_name' in submittedFee.accountant)
+      ? getString(submittedFee.accountant.full_name)
+      : null;
+    
+    const formAmount = submittedFormData ? getString(submittedFormData.amount) || '0' : '0';
+    const formTransportFee = submittedFormData ? getString(submittedFormData.transport_fee) : null;
+
     // Fetch student parent information
     fetch(`/api/students/${student.id}?school_code=${school.school_code}`)
       .then(res => res.json())
       .then(result => {
         const studentData = result.data || {};
-        const parentName = studentData.parent_name || 'N/A';
+        const parentName = getString(studentData.parent_name) || 'N/A';
+        
+        // Format payment date
+        const formattedPaymentDate = paymentDate 
+          ? new Date(paymentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+          : 'N/A';
+        
+        // Format payment mode
+        const formattedPaymentMode = paymentMode.charAt(0).toUpperCase() + paymentMode.slice(1).replace('_', ' ');
+        
+        // Calculate amounts
+        const amount = parseFloat(formAmount) || 0;
+        const transportFee = formTransportFee ? parseFloat(formTransportFee) : 0;
+        const totalAmount = amount + transportFee;
         
         // Create PDF content
         const receiptContent = `
           <!DOCTYPE html>
           <html>
             <head>
-              <title>Fee Receipt - ${submittedFee.receipt_no}</title>
+              <title>Fee Receipt - ${receiptNo}</title>
               <style>
                 body {
                   font-family: Arial, sans-serif;
@@ -215,11 +241,11 @@ export default function AddFeeModal({
               <div class="details">
                 <div class="detail-row">
                   <span class="detail-label">Receipt Number:</span>
-                  <span class="detail-value">${submittedFee.receipt_no}</span>
+                  <span class="detail-value">${receiptNo}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Payment Date:</span>
-                  <span class="detail-value">${new Date(submittedFee.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                  <span class="detail-value">${formattedPaymentDate}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Student Name:</span>
@@ -239,35 +265,35 @@ export default function AddFeeModal({
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Payment Mode:</span>
-                  <span class="detail-value">${submittedFee.payment_mode.charAt(0).toUpperCase() + submittedFee.payment_mode.slice(1).replace('_', ' ')}</span>
+                  <span class="detail-value">${formattedPaymentMode}</span>
                 </div>
               </div>
 
               <div class="amount-section">
                 <div class="detail-row">
                   <span class="detail-label">Fee Amount:</span>
-                  <span class="detail-value">₹${parseFloat(submittedFormData?.amount || '0').toLocaleString('en-IN')}</span>
+                  <span class="detail-value">₹${amount.toLocaleString('en-IN')}</span>
                 </div>
-                ${submittedFormData?.transport_fee ? `
+                ${transportFee > 0 ? `
                 <div class="detail-row">
                   <span class="detail-label">Transport Fee:</span>
-                  <span class="detail-value">₹${parseFloat(submittedFormData.transport_fee).toLocaleString('en-IN')}</span>
+                  <span class="detail-value">₹${transportFee.toLocaleString('en-IN')}</span>
                 </div>
                 ` : ''}
                 <div class="total">
-                  Total Amount: ₹${(parseFloat(submittedFormData?.amount || '0') + (submittedFormData?.transport_fee ? parseFloat(submittedFormData.transport_fee) : 0)).toLocaleString('en-IN')}
+                  Total Amount: ₹${totalAmount.toLocaleString('en-IN')}
                 </div>
               </div>
 
-              ${submittedFee.remarks ? `
+              ${remarks ? `
               <div class="details">
                 <div class="detail-label">Remarks:</div>
-                <div>${submittedFee.remarks}</div>
+                <div>${remarks}</div>
               </div>
               ` : ''}
 
               <div class="footer">
-                <div>Collected by: ${submittedFee.accountant?.full_name || accountant.full_name}</div>
+                <div>Collected by: ${accountantName || accountant.full_name}</div>
                 <div style="margin-top: 20px;">This is a computer-generated receipt.</div>
               </div>
             </body>
@@ -279,7 +305,7 @@ export default function AddFeeModal({
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Receipt-${submittedFee.receipt_no}.html`;
+        a.download = `Receipt-${receiptNo}.html`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -404,7 +430,7 @@ export default function AddFeeModal({
               </label>
               <select
                 value={formData.payment_mode}
-                onChange={(e) => setFormData({ ...formData, payment_mode: e.target.value as 'cash' | 'cheque' | 'online' | 'other' })}
+                onChange={(e) => setFormData({ ...formData, payment_mode: e.target.value as 'cash' | 'cheque' | 'online' | 'card' | 'bank_transfer' })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 required
               >

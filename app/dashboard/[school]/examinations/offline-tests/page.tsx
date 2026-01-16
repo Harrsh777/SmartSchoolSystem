@@ -41,7 +41,6 @@ export default function OfflineTestsPage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
-  const [tests, setTests] = useState<OfflineTest[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');

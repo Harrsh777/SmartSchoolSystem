@@ -50,8 +50,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    interface StaffData {
+      id: string;
+      full_name: string;
+      [key: string]: unknown;
+    }
+
     // Extract unique staff members
-    const staffMap = new Map<string, any>();
+    const staffMap = new Map<string, StaffData>();
     staffSubjects?.forEach((ss) => {
       if (ss.staff) {
         const staffData = Array.isArray(ss.staff) ? ss.staff[0] : ss.staff;

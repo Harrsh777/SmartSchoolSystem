@@ -2,7 +2,6 @@
 
 import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { 
@@ -97,6 +96,13 @@ export default function ViewStaffPage({
     }
   };
 
+  const safeString = (value: unknown): string => {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    return String(value);
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -127,10 +133,10 @@ export default function ViewStaffPage({
             <div className="w-32 h-32 rounded-full bg-gradient-to-br from-teal-500 to-blue-600 flex items-center justify-center text-white text-5xl font-bold mx-auto mb-4 shadow-lg">
               {staff.full_name?.[0]?.toUpperCase() || '?'}
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">{staff.full_name}</h2>
-            <p className="text-gray-600">Staff ID: {staff.staff_id}</p>
-            {staff.employee_code && (
-              <p className="text-gray-500 text-sm mt-1">Employee Code: {staff.employee_code}</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">{safeString(staff.full_name)}</h2>
+            <p className="text-gray-600">Staff ID: {safeString(staff.staff_id)}</p>
+            {!!staff.employee_code && (
+              <p className="text-gray-500 text-sm mt-1">Employee Code: {safeString(staff.employee_code)}</p>
             )}
             <span className={`inline-block mt-3 px-4 py-1 rounded-full text-sm font-semibold ${
               staff.is_active !== false
@@ -141,34 +147,34 @@ export default function ViewStaffPage({
             </span>
           </div>
           <div className="space-y-3 pt-6 border-t border-teal-200">
-            {staff.role && (
+            {!!staff.role && (
               <div className="flex items-center gap-3 text-gray-700">
                 <Briefcase size={18} className="text-teal-600" />
-                <span>{staff.role}</span>
+                <span>{safeString(staff.role)}</span>
               </div>
             )}
-            {staff.designation && (
+            {!!staff.designation && (
               <div className="flex items-center gap-3 text-gray-700">
                 <Award size={18} className="text-teal-600" />
-                <span>{staff.designation}</span>
+                <span>{safeString(staff.designation)}</span>
               </div>
             )}
-            {staff.department && (
+            {!!staff.department && (
               <div className="flex items-center gap-3 text-gray-700">
                 <Building2 size={18} className="text-teal-600" />
-                <span>{staff.department}</span>
+                <span>{safeString(staff.department)}</span>
               </div>
             )}
-            {staff.email && (
+            {!!staff.email && (
               <div className="flex items-center gap-3 text-gray-700">
                 <Mail size={18} className="text-teal-600" />
-                <span className="truncate">{staff.email}</span>
+                <span className="truncate">{safeString(staff.email)}</span>
               </div>
             )}
-            {staff.phone && (
+            {!!staff.phone && (
               <div className="flex items-center gap-3 text-gray-700">
                 <Phone size={18} className="text-teal-600" />
-                <span>{staff.phone}</span>
+                <span>{safeString(staff.phone)}</span>
               </div>
             )}
           </div>
@@ -188,32 +194,32 @@ export default function ViewStaffPage({
                   <label className="text-sm font-semibold text-gray-600">Staff ID</label>
                   <p className="text-lg font-medium text-black mt-1">{staff.staff_id}</p>
                 </div>
-                {staff.employee_code && (
+                {!!staff.employee_code && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600">Employee Code</label>
-                    <p className="text-lg font-medium text-black mt-1">{staff.employee_code}</p>
+                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.employee_code)}</p>
                   </div>
                 )}
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Full Name</label>
-                  <p className="text-lg font-medium text-black mt-1">{staff.full_name}</p>
+                  <p className="text-lg font-medium text-black mt-1">{safeString(staff.full_name)}</p>
                 </div>
-                {staff.role && (
+                {!!staff.role && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600">Role</label>
-                    <p className="text-lg font-medium text-black mt-1">{staff.role}</p>
+                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.role)}</p>
                   </div>
                 )}
-                {staff.designation && (
+                {!!staff.designation && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600">Designation</label>
-                    <p className="text-lg font-medium text-black mt-1">{staff.designation}</p>
+                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.designation)}</p>
                   </div>
                 )}
-                {staff.department && (
+                {!!staff.department && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600">Department</label>
-                    <p className="text-lg font-medium text-black mt-1">{staff.department}</p>
+                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.department)}</p>
                   </div>
                 )}
                 <div>
@@ -221,48 +227,48 @@ export default function ViewStaffPage({
                     <Calendar size={16} className="mr-1" />
                     Date of Joining
                   </label>
-                  <p className="text-lg font-medium text-black mt-1">{formatDate(staff.date_of_joining)}</p>
+                  <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.date_of_joining === 'string' ? staff.date_of_joining : undefined)}</p>
                 </div>
-                {staff.dop && (
+                {!!staff.dop && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600 flex items-center">
                       <Calendar size={16} className="mr-1" />
                       Date of Promotion
                     </label>
-                    <p className="text-lg font-medium text-black mt-1">{formatDate(staff.dop)}</p>
+                    <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.dop === 'string' ? staff.dop : undefined)}</p>
                   </div>
                 )}
-                {staff.gender && (
+                {!!staff.gender && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600">Gender</label>
-                    <p className="text-lg font-medium text-black mt-1">{staff.gender}</p>
+                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.gender)}</p>
                   </div>
                 )}
-                {staff.dob && (
+                {!!staff.dob && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600 flex items-center">
                       <Calendar size={16} className="mr-1" />
                       Date of Birth
                     </label>
-                    <p className="text-lg font-medium text-black mt-1">{formatDate(staff.dob)}</p>
+                    <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.dob === 'string' ? staff.dob : undefined)}</p>
                   </div>
                 )}
-                {staff.blood_group && (
+                {!!staff.blood_group && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600 flex items-center">
                       <Heart size={16} className="mr-1" />
                       Blood Group
                     </label>
-                    <p className="text-lg font-medium text-black mt-1">{staff.blood_group}</p>
+                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.blood_group)}</p>
                   </div>
                 )}
-                {staff.short_code && (
+                {!!staff.short_code && (
                   <div>
                     <label className="text-sm font-semibold text-gray-600 flex items-center">
                       <Hash size={16} className="mr-1" />
                       Short Code
                     </label>
-                    <p className="text-lg font-medium text-black mt-1">{staff.short_code}</p>
+                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.short_code)}</p>
                   </div>
                 )}
               </div>
@@ -270,7 +276,7 @@ export default function ViewStaffPage({
           </Card>
 
           {/* Contact Information */}
-          {(staff.email || staff.phone || staff.contact1 || staff.contact2) && (
+          {(!!staff.email || !!staff.phone || !!staff.contact1 || !!staff.contact2) && (
             <Card>
               <div className="space-y-6">
                 <h2 className="text-xl font-bold text-black mb-4 flex items-center">
@@ -278,40 +284,40 @@ export default function ViewStaffPage({
                   Contact Information
                 </h2>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {staff.email && (
+                  {!!staff.email && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <Mail size={16} className="mr-1" />
                         Email
                       </label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.email}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.email)}</p>
                     </div>
                   )}
-                  {staff.phone && (
+                  {!!staff.phone && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <Phone size={16} className="mr-1" />
                         Phone
                       </label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.phone}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.phone)}</p>
                     </div>
                   )}
-                  {staff.contact1 && (
+                  {!!staff.contact1 && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <Phone size={16} className="mr-1" />
                         Primary Contact
                       </label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.contact1}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.contact1)}</p>
                     </div>
                   )}
-                  {staff.contact2 && (
+                  {!!staff.contact2 && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <Phone size={16} className="mr-1" />
                         Secondary Contact
                       </label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.contact2}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.contact2)}</p>
                     </div>
                   )}
                 </div>
@@ -320,7 +326,7 @@ export default function ViewStaffPage({
           )}
 
           {/* Employment Details */}
-          {(staff.employment_type || staff.qualification || staff.experience_years || staff.alma_mater || staff.major) && (
+          {(!!staff.employment_type || !!staff.qualification || (staff.experience_years !== null && staff.experience_years !== undefined) || !!staff.alma_mater || !!staff.major) && (
             <Card>
               <div className="space-y-6">
                 <h2 className="text-xl font-bold text-black mb-4 flex items-center">
@@ -328,19 +334,19 @@ export default function ViewStaffPage({
                   Employment & Education Details
                 </h2>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {staff.employment_type && (
+                  {!!staff.employment_type && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600">Employment Type</label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.employment_type}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.employment_type)}</p>
                     </div>
                   )}
-                  {staff.qualification && (
+                  {!!staff.qualification && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <GraduationCap size={16} className="mr-1" />
                         Qualification
                       </label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.qualification}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.qualification)}</p>
                     </div>
                   )}
                   {staff.experience_years !== null && staff.experience_years !== undefined && (
@@ -349,22 +355,22 @@ export default function ViewStaffPage({
                         <Clock size={16} className="mr-1" />
                         Experience
                       </label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.experience_years} years</p>
+                      <p className="text-lg font-medium text-black mt-1">{typeof staff.experience_years === 'number' ? String(staff.experience_years) : safeString(staff.experience_years)} years</p>
                     </div>
                   )}
-                  {staff.alma_mater && (
+                  {!!staff.alma_mater && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <GraduationCap size={16} className="mr-1" />
                         Alma Mater
                       </label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.alma_mater}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.alma_mater)}</p>
                     </div>
                   )}
-                  {staff.major && (
+                  {!!staff.major && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600">Subject Specialization</label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.major}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.major)}</p>
                     </div>
                   )}
                 </div>
@@ -373,7 +379,7 @@ export default function ViewStaffPage({
           )}
 
           {/* Personal Details */}
-          {(staff.religion || staff.category || staff.nationality || staff.adhar_no || staff.rfid || staff.uuid) && (
+          {(!!staff.religion || !!staff.category || !!staff.nationality || !!staff.adhar_no || !!staff.rfid || !!staff.uuid) && (
             <Card>
               <div className="space-y-6">
                 <h2 className="text-xl font-bold text-black mb-4 flex items-center">
@@ -381,49 +387,49 @@ export default function ViewStaffPage({
                   Personal & Identification Details
                 </h2>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {staff.religion && (
+                  {!!staff.religion && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600">Religion</label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.religion}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.religion)}</p>
                     </div>
                   )}
-                  {staff.category && (
+                  {!!staff.category && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600">Category</label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.category}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.category)}</p>
                     </div>
                   )}
-                  {staff.nationality && (
+                  {!!staff.nationality && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600">Nationality</label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.nationality}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.nationality)}</p>
                     </div>
                   )}
-                  {staff.adhar_no && (
+                  {!!staff.adhar_no && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <CreditCard size={16} className="mr-1" />
                         Aadhaar Number
                       </label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.adhar_no}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.adhar_no)}</p>
                     </div>
                   )}
-                  {staff.rfid && (
+                  {!!staff.rfid && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <Shield size={16} className="mr-1" />
                         RFID Card Number
                       </label>
-                      <p className="text-lg font-medium text-black mt-1">{staff.rfid}</p>
+                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.rfid)}</p>
                     </div>
                   )}
-                  {staff.uuid && (
+                  {!!staff.uuid && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <Hash size={16} className="mr-1" />
                         UUID
                       </label>
-                      <p className="text-lg font-medium text-black mt-1 font-mono text-sm">{staff.uuid}</p>
+                      <p className="text-lg font-medium text-black mt-1 font-mono text-sm">{safeString(staff.uuid)}</p>
                     </div>
                   )}
                 </div>
@@ -432,20 +438,20 @@ export default function ViewStaffPage({
           )}
 
           {/* Address */}
-          {staff.address && (
+          {!!staff.address && (
             <Card>
               <div className="space-y-6">
                 <h2 className="text-xl font-bold text-black mb-4 flex items-center">
                   <MapPin size={24} className="mr-2" />
                   Address
                 </h2>
-                <p className="text-gray-700 text-lg">{staff.address}</p>
+                <p className="text-gray-700 text-lg">{safeString(staff.address)}</p>
               </div>
             </Card>
           )}
 
           {/* Additional Information */}
-          {(staff.website || staff.created_at || staff.updated_at) && (
+          {(!!staff.website || !!staff.created_at || !!staff.updated_at) && (
             <Card>
               <div className="space-y-6">
                 <h2 className="text-xl font-bold text-black mb-4 flex items-center">
@@ -453,29 +459,29 @@ export default function ViewStaffPage({
                   Additional Information
                 </h2>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {staff.website && (
+                  {!!staff.website && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600 flex items-center">
                         <Globe size={16} className="mr-1" />
                         Website
                       </label>
                       <p className="text-lg font-medium text-black mt-1">
-                        <a href={staff.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                          {staff.website}
+                        <a href={safeString(staff.website)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          {safeString(staff.website)}
                         </a>
                       </p>
                     </div>
                   )}
-                  {staff.created_at && (
+                  {!!staff.created_at && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600">Created At</label>
-                      <p className="text-lg font-medium text-black mt-1">{formatDate(staff.created_at)}</p>
+                      <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.created_at === 'string' ? staff.created_at : undefined)}</p>
                     </div>
                   )}
-                  {staff.updated_at && (
+                  {!!staff.updated_at && (
                     <div>
                       <label className="text-sm font-semibold text-gray-600">Last Updated</label>
-                      <p className="text-lg font-medium text-black mt-1">{formatDate(staff.updated_at)}</p>
+                      <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.updated_at === 'string' ? staff.updated_at : undefined)}</p>
                     </div>
                   )}
                 </div>

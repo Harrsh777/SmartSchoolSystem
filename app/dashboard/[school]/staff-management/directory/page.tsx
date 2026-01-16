@@ -22,8 +22,6 @@ import {
   Building2,
   ArrowLeft,
   CheckCircle2,
-  XCircle,
-  MoreVertical,
   Eye
 } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
@@ -44,8 +42,15 @@ export default function StaffDirectoryPage({
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
-  const handleStaffClick = (staffId: string) => {
-    router.push(`/dashboard/${schoolCode}/staff/${staffId}/view`);
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
+  
+  const handleStaffClick = (staffId: string | undefined) => {
+    if (staffId) {
+      router.push(`/dashboard/${schoolCode}/staff/${staffId}/view`);
+    }
   };
 
   useEffect(() => {
@@ -80,24 +85,30 @@ export default function StaffDirectoryPage({
     
     const roles = roleMap[role] || [];
     return staff.filter(s => {
+      const staffRole = getString(s.role);
       if (role === 'OTHERS') {
-        return !roleMap['TEACHING'].includes(s.role) && 
-               !roleMap['NON-TEACHING'].includes(s.role) && 
-               !roleMap['DRIVER/SUPPORTING STAFF'].includes(s.role) &&
-               !roleMap['ADMIN'].includes(s.role);
+        return !roleMap['TEACHING'].includes(staffRole) && 
+               !roleMap['NON-TEACHING'].includes(staffRole) && 
+               !roleMap['DRIVER/SUPPORTING STAFF'].includes(staffRole) &&
+               !roleMap['ADMIN'].includes(staffRole);
       }
-      return roles.includes(s.role);
+      return roles.includes(staffRole);
     });
   };
 
   const filteredStaff = getStaffByRole(selectedTab).filter(member => {
     const query = searchQuery.toLowerCase();
+    const fullName = getString(member.full_name).toLowerCase();
+    const staffId = getString(member.staff_id).toLowerCase();
+    const phone = getString(member.phone);
+    const email = getString(member.email).toLowerCase();
+    const employeeCode = getString(member.employee_code).toLowerCase();
     return (
-      member.full_name?.toLowerCase().includes(query) ||
-      member.staff_id?.toLowerCase().includes(query) ||
-      member.phone?.includes(query) ||
-      member.email?.toLowerCase().includes(query) ||
-      member.employee_code?.toLowerCase().includes(query)
+      fullName.includes(query) ||
+      staffId.includes(query) ||
+      phone.includes(query) ||
+      email.includes(query) ||
+      employeeCode.includes(query)
     );
   });
 
@@ -385,46 +396,51 @@ export default function StaffDirectoryPage({
                           <span className="text-gray-500 font-mono text-xs">
                             {String(startIndex + index + 1).padStart(2, '0')}.
                           </span>
-                          <span className="font-medium text-gray-900">{member.staff_id || '-'}</span>
+                          <span className="font-medium text-gray-900">{getString(member.staff_id) || '-'}</span>
                         </div>
                       </td>
                       <td className="px-4 py-4">
                         <div 
                           className="flex items-center gap-3 cursor-pointer"
-                          onClick={() => handleStaffClick(member.id!)}
+                          onClick={() => handleStaffClick(member.id)}
                         >
                           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold shadow-md group-hover:scale-110 transition-transform">
-                            {member.full_name?.charAt(0).toUpperCase() || '?'}
+                            {(() => {
+                              const fullName = getString(member.full_name);
+                              return fullName ? fullName.charAt(0).toUpperCase() : '?';
+                            })()}
                           </div>
                           <div>
                             <p className="font-semibold text-gray-900 group-hover:text-[#1e3a8a] transition-colors">
-                              {member.full_name}
+                              {getString(member.full_name)}
                             </p>
-                            {member.role && (
-                              <p className="text-xs text-gray-500">{member.role}</p>
+                            {!!member.role && (
+                              <p className="text-xs text-gray-500">{getString(member.role)}</p>
                             )}
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600">
-                        {member.designation || <span className="text-gray-400">-</span>}
+                        {getString(member.designation) || <span className="text-gray-400">-</span>}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600">
-                        {member.qualification || <span className="text-gray-400">-</span>}
+                        {getString(member.qualification) || <span className="text-gray-400">-</span>}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600">
-                        {member.department || <span className="text-gray-400">-</span>}
+                        {getString(member.department) || <span className="text-gray-400">-</span>}
                       </td>
                       <td className="px-4 py-4">
                         <div className="space-y-1">
-                          {member.phone && (
+                          {!!member.phone && (
                             <div className="flex items-center gap-2 text-sm">
                               <Phone size={14} className="text-gray-400" />
-                              <span className="text-gray-700">{member.phone}</span>
+                              <span className="text-gray-700">{getString(member.phone)}</span>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleCopy(member.phone || '', 'Phone', `phone-${member.id}`);
+                                  const phoneValue = getString(member.phone);
+                                  const memberId = member.id || '';
+                                  handleCopy(phoneValue, 'Phone', `phone-${memberId}`);
                                 }}
                                 className="text-[#1e3a8a] hover:text-[#3B82F6] transition-colors opacity-0 group-hover:opacity-100"
                                 title="Copy phone"
@@ -437,14 +453,16 @@ export default function StaffDirectoryPage({
                               </button>
                             </div>
                           )}
-                          {member.email && (
+                          {!!member.email && (
                             <div className="flex items-center gap-2 text-sm">
                               <Mail size={14} className="text-gray-400" />
-                              <span className="text-gray-700 truncate max-w-[150px]">{member.email}</span>
+                              <span className="text-gray-700 truncate max-w-[150px]">{getString(member.email)}</span>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleCopy(member.email || '', 'Email', `email-${member.id}`);
+                                  const emailValue = getString(member.email);
+                                  const memberId = member.id || '';
+                                  handleCopy(emailValue, 'Email', `email-${memberId}`);
                                 }}
                                 className="text-[#1e3a8a] hover:text-[#3B82F6] transition-colors opacity-0 group-hover:opacity-100"
                                 title="Copy email"
@@ -467,7 +485,7 @@ export default function StaffDirectoryPage({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleStaffClick(member.id!);
+                              handleStaffClick(member.id);
                             }}
                             className="p-2 text-[#1e3a8a] hover:bg-blue-50 rounded-lg transition-colors"
                             title="View Details"
@@ -477,7 +495,9 @@ export default function StaffDirectoryPage({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              router.push(`/dashboard/${schoolCode}/staff/${member.id}/edit`);
+                              if (member.id) {
+                                router.push(`/dashboard/${schoolCode}/staff/${member.id}/edit`);
+                              }
                             }}
                             className="p-2 text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
                             title="Edit"
@@ -487,7 +507,8 @@ export default function StaffDirectoryPage({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (confirm(`Are you sure you want to disable ${member.full_name}?`)) {
+                              const fullName = getString(member.full_name);
+                              if (confirm(`Are you sure you want to disable ${fullName}?`)) {
                                 // TODO: Implement disable functionality
                                 console.log('Disable staff:', member.id);
                               }

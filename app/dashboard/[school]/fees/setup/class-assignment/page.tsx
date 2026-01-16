@@ -22,6 +22,7 @@ interface FeeComponent {
   default_amount: number;
   fee_type: string;
   is_optional: boolean;
+  is_active?: boolean;
 }
 
 interface FeeSchedule {
@@ -65,23 +66,7 @@ export default function ClassFeeAssignmentPage({
   const [success, setSuccess] = useState('');
   const [studentCount, setStudentCount] = useState(0);
 
-  useEffect(() => {
-    fetchClasses();
-    fetchComponents();
-    fetchSchedules();
-  }, [schoolCode]);
-
-  useEffect(() => {
-    if (selectedClass && selectedAcademicYear) {
-      fetchAssignments();
-      fetchStudentCount();
-    } else {
-      setAssignments({});
-      setStudentCount(0);
-    }
-  }, [selectedClass, selectedAcademicYear, schoolCode]);
-
-  const fetchClasses = async () => {
+  const fetchClasses = useCallback(async () => {
     try {
       const response = await fetch(`/api/classes?school_code=${schoolCode}`);
       const result = await response.json();
@@ -91,23 +76,23 @@ export default function ClassFeeAssignmentPage({
     } catch (error) {
       console.error('Error fetching classes:', error);
     }
-  };
+  }, [schoolCode]);
 
-  const fetchComponents = async () => {
+  const fetchComponents = useCallback(async () => {
     try {
       const response = await fetch(`/api/fees/components?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setComponents(result.data.filter((c: FeeComponent) => c.is_active));
+        setComponents(result.data.filter((c: FeeComponent) => c.is_active !== false));
       }
     } catch (error) {
       console.error('Error fetching components:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolCode]);
 
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     try {
       const response = await fetch(`/api/fees/schedules?school_code=${schoolCode}`);
       const result = await response.json();
@@ -117,9 +102,15 @@ export default function ClassFeeAssignmentPage({
     } catch (error) {
       console.error('Error fetching schedules:', error);
     }
-  };
+  }, [schoolCode, selectedAcademicYear]);
 
-  const fetchStudentCount = async () => {
+  useEffect(() => {
+    fetchClasses();
+    fetchComponents();
+    fetchSchedules();
+  }, [fetchClasses, fetchComponents, fetchSchedules]);
+
+  const fetchStudentCount = useCallback(async () => {
     if (!selectedClass) return;
     try {
       const response = await fetch(`/api/students?school_code=${schoolCode}&class_id=${selectedClass}`);
@@ -130,9 +121,9 @@ export default function ClassFeeAssignmentPage({
     } catch (error) {
       console.error('Error fetching student count:', error);
     }
-  };
+  }, [schoolCode, selectedClass]);
 
-  const fetchAssignments = async () => {
+  const fetchAssignments = useCallback(async () => {
     if (!selectedClass || !selectedAcademicYear) return;
     
     try {
@@ -141,7 +132,13 @@ export default function ClassFeeAssignmentPage({
       
       if (response.ok && result.data) {
         const assignmentsMap: Record<string, Assignment> = {};
-        result.data.forEach((assignment: any) => {
+        result.data.forEach((assignment: {
+          fee_component_id?: string;
+          amount?: number;
+          fee_schedule_id?: string;
+          discount_amount?: number;
+          is_active?: boolean;
+        }) => {
           if (assignment.fee_component_id) {
             assignmentsMap[assignment.fee_component_id] = {
               fee_component_id: assignment.fee_component_id,
@@ -157,12 +154,23 @@ export default function ClassFeeAssignmentPage({
     } catch (error) {
       console.error('Error fetching assignments:', error);
     }
-  };
+  }, [schoolCode, selectedClass, selectedAcademicYear]);
+
+  useEffect(() => {
+    if (selectedClass && selectedAcademicYear) {
+      fetchAssignments();
+      fetchStudentCount();
+    } else {
+      setAssignments({});
+      setStudentCount(0);
+    }
+  }, [selectedClass, selectedAcademicYear, fetchAssignments, fetchStudentCount]);
 
   useEffect(() => {
     if (selectedAcademicYear) {
       fetchSchedules();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAcademicYear, schoolCode]);
 
   const handleAssignmentChange = (componentId: string, field: keyof Assignment, value: string | boolean) => {
@@ -231,7 +239,6 @@ export default function ClassFeeAssignmentPage({
     }
   };
 
-  const selectedClassData = classes.find(c => c.id === selectedClass);
   const currentYear = new Date().getFullYear();
   const academicYears = [
     `${currentYear}-${currentYear + 1}`,

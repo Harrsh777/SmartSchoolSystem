@@ -84,9 +84,31 @@ export async function GET(
       );
     }
 
+    interface PermissionData {
+      module_id: string;
+      module_name: string;
+      sub_module_id: string;
+      sub_module_name: string;
+      view_access: boolean;
+      edit_access: boolean;
+      supports_view_access: boolean;
+      supports_edit_access: boolean;
+    }
+
     // Group by module
-    const modulesMap = new Map();
-    permissionsData?.forEach((perm: any) => {
+    const modulesMap = new Map<string, {
+      id: string;
+      name: string;
+      sub_modules: Array<{
+        id: string;
+        name: string;
+        view_access: boolean;
+        edit_access: boolean;
+        supports_view_access: boolean;
+        supports_edit_access: boolean;
+      }>;
+    }>();
+    permissionsData?.forEach((perm: PermissionData) => {
       if (!modulesMap.has(perm.module_id)) {
         modulesMap.set(perm.module_id, {
           id: perm.module_id,
@@ -94,14 +116,17 @@ export async function GET(
           sub_modules: [],
         });
       }
-      modulesMap.get(perm.module_id).sub_modules.push({
-        id: perm.sub_module_id,
-        name: perm.sub_module_name,
-        view_access: perm.view_access,
-        edit_access: perm.edit_access,
-        supports_view_access: perm.supports_view_access,
-        supports_edit_access: perm.supports_edit_access,
-      });
+      const moduleData = modulesMap.get(perm.module_id);
+      if (moduleData) {
+        moduleData.sub_modules.push({
+          id: perm.sub_module_id,
+          name: perm.sub_module_name,
+          view_access: perm.view_access,
+          edit_access: perm.edit_access,
+          supports_view_access: perm.supports_view_access,
+          supports_edit_access: perm.supports_edit_access,
+        });
+      }
     });
 
     const modules = Array.from(modulesMap.values());
@@ -196,10 +221,16 @@ export async function POST(
       );
     }
 
+    interface PermissionInput {
+      sub_module_id: string;
+      view_access: boolean;
+      edit_access: boolean;
+    }
+
     // Insert new permissions
     const permissionsToInsert = permissions
-      .filter((p: any) => p.view_access || p.edit_access)
-      .map((p: any) => ({
+      .filter((p: PermissionInput) => p.view_access || p.edit_access)
+      .map((p: PermissionInput) => ({
         staff_id: staffData.id,
         sub_module_id: p.sub_module_id,
         category_id: category_id,

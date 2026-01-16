@@ -50,7 +50,6 @@ export default function PayeePage({
   const { school: schoolCode } = use(params);
   const router = useRouter();
   const [payees, setPayees] = useState<Payee[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -111,6 +110,7 @@ export default function PayeePage({
   useEffect(() => {
     // TODO: Fetch payees
     setPayees(mockPayees);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const handleOpenModal = (payee?: Payee) => {

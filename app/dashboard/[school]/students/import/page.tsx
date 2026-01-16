@@ -42,6 +42,11 @@ export default function ImportStudentsPage({
     errors: Array<{ row: number; error: string }>;
   } | null>(null);
 
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
+
   const handleFileUpload = (file: File) => {
     setUploadedFile(file);
     setCurrentStep(2);
@@ -93,10 +98,14 @@ export default function ImportStudentsPage({
       
       // Re-check duplicates for all rows after update
       return updated.map(row => {
+        const rowAdmissionNo = getString(row.data.admission_no);
         const duplicateCount = updated.filter(
-          (r) => r.data.admission_no === row.data.admission_no && 
-                 r.rowIndex !== row.rowIndex &&
-                 row.data.admission_no?.trim()
+          (r) => {
+            const rAdmissionNo = getString(r.data.admission_no);
+            return rAdmissionNo === rowAdmissionNo && 
+                   r.rowIndex !== row.rowIndex &&
+                   rowAdmissionNo.trim().length > 0;
+          }
         ).length;
         
         if (duplicateCount > 0 && !row.errors.includes('Duplicate admission number in file')) {
@@ -127,22 +136,31 @@ export default function ImportStudentsPage({
     const warnings: string[] = [];
 
     // Required fields
-    if (!data.admission_no?.trim()) errors.push('Admission number is required');
-    if (!data.student_name?.trim()) errors.push('Student name is required');
-    if (!data.class?.trim()) errors.push('Class is required');
-    if (!data.section?.trim()) errors.push('Section is required');
+    const admissionNo = getString(data.admission_no);
+    const studentName = getString(data.student_name);
+    const className = getString(data.class);
+    const section = getString(data.section);
+
+    if (!admissionNo.trim()) errors.push('Admission number is required');
+    if (!studentName.trim()) errors.push('Student name is required');
+    if (!className.trim()) errors.push('Class is required');
+    if (!section.trim()) errors.push('Section is required');
 
     // Check for duplicate admission numbers within the file
     const duplicateCount = allRows.filter(
-      (row) => row.data.admission_no === data.admission_no && 
+      (row) => {
+        const rowAdmissionNo = getString(row.data.admission_no);
+        return rowAdmissionNo === admissionNo && 
                row.rowIndex !== rowIndex &&
-               data.admission_no?.trim()
+               admissionNo.trim().length > 0;
+      }
     ).length;
     if (duplicateCount > 0) errors.push('Duplicate admission number in file');
 
     // Warnings
-    if (data.date_of_birth) {
-      const dob = new Date(data.date_of_birth);
+    const dateOfBirth = getString(data.date_of_birth);
+    if (dateOfBirth) {
+      const dob = new Date(dateOfBirth);
       if (!isNaN(dob.getTime())) {
         const age = new Date().getFullYear() - dob.getFullYear();
         if (age < 3 || age > 25) warnings.push('Unusual age detected');
@@ -151,7 +169,8 @@ export default function ImportStudentsPage({
       }
     }
 
-    if (data.parent_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.parent_email)) {
+    const parentEmail = getString(data.parent_email);
+    if (parentEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail)) {
       warnings.push('Invalid email format');
     }
 
@@ -212,16 +231,16 @@ export default function ImportStudentsPage({
     const csvContent = [
       headers.join(','),
       ...errorRows.map(row => [
-        row.data.admission_no || '',
-        row.data.student_name || '',
-        row.data.class || '',
-        row.data.section || '',
-        row.data.date_of_birth || '',
-        row.data.gender || '',
-        row.data.parent_name || '',
-        row.data.parent_phone || '',
-        row.data.parent_email || '',
-        row.data.address || '',
+        getString(row.data.admission_no) || '',
+        getString(row.data.student_name) || '',
+        getString(row.data.class) || '',
+        getString(row.data.section) || '',
+        getString(row.data.date_of_birth) || '',
+        getString(row.data.gender) || '',
+        getString(row.data.parent_name) || '',
+        getString(row.data.parent_phone) || '',
+        getString(row.data.parent_email) || '',
+        getString(row.data.address) || '',
         row.errors.join('; ')
       ].join(','))
     ].join('\n');

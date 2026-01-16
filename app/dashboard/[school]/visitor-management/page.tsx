@@ -3,6 +3,7 @@
 import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -15,7 +16,6 @@ import {
   Eye, 
   Edit, 
   Download,
-  Lock,
   User,
   Calendar,
   Clock,
@@ -44,6 +44,7 @@ interface Visitor {
   id_proof_number?: string;
   vehicle_number?: string;
   remarks?: string;
+  visitor_photo_url?: string;
 }
 
 interface Staff {
@@ -158,7 +159,7 @@ export default function VisitorManagementPage({
       const response = await fetch(`/api/students?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setStudentList(result.data.map((s: any) => ({
+        setStudentList(result.data.map((s: { id: string; student_name?: string; full_name?: string; first_name?: string; last_name?: string; class: string; section?: string }) => ({
           id: s.id,
           student_name: s.student_name || s.full_name || `${s.first_name || ''} ${s.last_name || ''}`.trim(),
           class: s.class,
@@ -230,7 +231,7 @@ export default function VisitorManagementPage({
           let hasPermission = false;
           for (const mod of modules) {
             if (mod.name && (mod.name.toLowerCase().includes('front office') || mod.name.toLowerCase().includes('front_office'))) {
-              const visitorSubModule = mod.sub_modules?.find((sm: any) => 
+              const visitorSubModule = mod.sub_modules?.find((sm: { name?: string }) => 
                 sm.name && (
                   sm.name.toLowerCase().includes('visitor') || 
                   sm.name.toLowerCase() === 'visitor management'
@@ -516,9 +517,11 @@ export default function VisitorManagementPage({
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         {visitor.visitor_photo_url ? (
-                          <img
+                          <Image
                             src={visitor.visitor_photo_url}
                             alt={visitor.visitor_name}
+                            width={32}
+                            height={32}
                             className="w-8 h-8 rounded-full object-cover"
                           />
                         ) : (

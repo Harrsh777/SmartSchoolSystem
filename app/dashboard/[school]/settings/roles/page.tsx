@@ -13,12 +13,10 @@ import {
   Plus,
   Save,
   Edit,
-  Trash2,
   Loader2,
   AlertCircle,
   Folder,
   ArrowLeft,
-  Lock,
   Search,
   Filter,
 } from 'lucide-react';
@@ -56,7 +54,7 @@ export default function RoleManagementPage({
 }) {
   const { school: schoolCode } = use(params);
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
@@ -295,12 +293,8 @@ export default function RoleManagementPage({
       id: 'certificate-management',
       name: 'Certificate Management',
       sub_modules: [
-        { id: 'template-selection', name: 'Template Selection', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
-        { id: 'manage-certificate', name: 'Manage Certificate', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
-        { id: 'classwise-student-certificate', name: 'Classwise student certificate', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
-        { id: 'certificate-send-to-student', name: 'Certificate Send to Student', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
-        { id: 'manage-certificates', name: 'Manage Certificates', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
-        { id: 'class-wise-student-certificates', name: 'Class wise student certificates', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
+        { id: 'certificate-dashboard', name: 'Certificate Dashboard', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true },
+        { id: 'new-certificate', name: 'New Certificate', view_access: false, edit_access: false, supports_view_access: true, supports_edit_access: true }
       ]
     },
     {
@@ -748,6 +742,7 @@ export default function RoleManagementPage({
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleEditRolePermissions = (role: Role) => {
     setSelectedRole(role);
     const rolePermissionIds = new Set(
@@ -793,6 +788,7 @@ export default function RoleManagementPage({
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteRole = async (roleId: string) => {
     if (!confirm('Are you sure you want to delete this role? This will remove it from all staff members.')) {
       return;
@@ -1460,4 +1456,5 @@ export default function RoleManagementPage({
     </div>
   );
 }
+
 

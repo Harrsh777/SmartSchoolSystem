@@ -1,12 +1,11 @@
 'use client';
 
 import { use, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { DoorOpen, Plus, Search, Users, X, Calendar, FileText, Phone } from 'lucide-react';
+import { DoorOpen, Plus, Search, Users, X, Calendar, FileText } from 'lucide-react';
 
 interface GatePass {
   id: string;
@@ -27,7 +26,8 @@ interface GatePass {
 
 interface Staff {
   id: string;
-  full_name: string;
+  full_name?: string;
+  role?: string;
 }
 
 export default function GatePassPage({
@@ -36,7 +36,6 @@ export default function GatePassPage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [gatePasses, setGatePasses] = useState<GatePass[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -75,19 +74,6 @@ export default function GatePassPage({
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatDateTime = (dateStr: string) => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    return date.toLocaleString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
   };
 
   return (
@@ -349,7 +335,7 @@ function CreateGatePassModal({
     if (searchStaffQuery) {
       setFilteredStaff(
         staffList.filter((staff) =>
-          staff.full_name.toLowerCase().includes(searchStaffQuery.toLowerCase())
+          staff.full_name?.toLowerCase().includes(searchStaffQuery.toLowerCase())
         )
       );
     } else {
@@ -375,7 +361,17 @@ function CreateGatePassModal({
       const response = await fetch(`/api/students?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        const studentsWithClass = result.data.map((s: any) => ({
+        interface StudentData {
+          id: string;
+          student_name?: string;
+          full_name?: string;
+          first_name?: string;
+          last_name?: string;
+          class?: string;
+          section?: string;
+        }
+
+        const studentsWithClass = result.data.map((s: StudentData) => ({
           id: s.id,
           student_name: s.student_name || s.full_name || `${s.first_name || ''} ${s.last_name || ''}`.trim(),
           class: s.class,
@@ -506,7 +502,7 @@ function CreateGatePassModal({
   };
 
   const selectPerson = (person: Staff | { id: string; student_name: string; class?: string; section?: string }) => {
-    const name = 'full_name' in person ? person.full_name : person.student_name;
+    const name = 'full_name' in person ? (person.full_name || '') : ('student_name' in person ? person.student_name : '');
     const selectedClass = 'class' in person && person.class ? person.class : formData.student_class;
     const selectedSection = 'section' in person && person.section ? person.section : formData.student_section;
     
@@ -687,7 +683,7 @@ function CreateGatePassModal({
                           onClick={() => selectPerson(person)}
                           className="w-full text-left px-4 py-2 hover:bg-gray-100"
                         >
-                          {'full_name' in person ? person.full_name : person.student_name}
+                          {'full_name' in person ? (person.full_name || '') : ('student_name' in person ? person.student_name : '')}
                           {'class' in person && person.class && (
                             <span className="text-xs text-gray-500 ml-2">({person.class}-{person.section})</span>
                           )}

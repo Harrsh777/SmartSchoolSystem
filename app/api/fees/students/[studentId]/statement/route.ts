@@ -109,7 +109,16 @@ export async function GET(
     // Fines can be calculated on-demand when viewing statements or during collection
     // For performance, we'll use the fine_amount already stored in installments
 
-    const processedInstallments = (installments || []).map((inst: any) => {
+    interface Installment {
+      amount?: string | number;
+      discount_amount?: string | number;
+      fine_amount?: string | number;
+      paid_amount?: string | number;
+      due_date: string;
+      [key: string]: unknown;
+    }
+
+    const processedInstallments = (installments || []).map((inst: Installment) => {
       const amount = parseFloat(inst.amount?.toString() || '0');
       const discount = parseFloat(inst.discount_amount?.toString() || '0');
       const fine = parseFloat(inst.fine_amount?.toString() || '0');

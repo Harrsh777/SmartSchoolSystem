@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import { GraduationCap, Search } from 'lucide-react';
 import type { Staff, Student } from '@/lib/supabase';
+import { getString } from '@/lib/type-utils';
 
 export default function AllStudentsPage() {
   // teacher kept for potential future use
@@ -41,11 +42,15 @@ export default function AllStudentsPage() {
 
   const filteredStudents = students.filter((student) => {
     const query = searchQuery.toLowerCase();
+    const studentName = getString(student.student_name).toLowerCase();
+    const admissionNo = getString(student.admission_no).toLowerCase();
+    const studentClass = getString(student.class).toLowerCase();
+    const section = getString(student.section).toLowerCase();
     return (
-      student.student_name.toLowerCase().includes(query) ||
-      student.admission_no.toLowerCase().includes(query) ||
-      student.class.toLowerCase().includes(query) ||
-      student.section.toLowerCase().includes(query)
+      studentName.includes(query) ||
+      admissionNo.includes(query) ||
+      studentClass.includes(query) ||
+      section.includes(query)
     );
   });
 
@@ -111,15 +116,23 @@ export default function AllStudentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredStudents.map((student) => (
-                  <tr key={student.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{student.admission_no}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{student.student_name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{student.class}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{student.section}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{student.parent_name || 'N/A'}</td>
-                  </tr>
-                ))}
+                {filteredStudents.map((student, index) => {
+                  const studentId = getString(student.id) || `student-${index}`;
+                  const admissionNo = getString(student.admission_no);
+                  const studentName = getString(student.student_name);
+                  const studentClass = getString(student.class);
+                  const section = getString(student.section);
+                  const parentName = getString(student.parent_name);
+                  return (
+                    <tr key={studentId} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{admissionNo || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{studentName || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{studentClass || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{section || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{parentName || 'N/A'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

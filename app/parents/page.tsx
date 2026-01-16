@@ -138,6 +138,7 @@ export default function ParentDashboard() {
       console.error('Error parsing student data:', err);
       router.push('/login');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const fetchAllData = async (studentData: Student) => {
@@ -302,6 +303,7 @@ export default function ParentDashboard() {
     if (student && classId) {
       fetchExams(student);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, student]);
 
   if (loading || !student) {

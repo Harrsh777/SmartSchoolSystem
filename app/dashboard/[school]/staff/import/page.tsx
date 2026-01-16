@@ -78,7 +78,7 @@ export default function ImportStaffPage({
       const updated = prev.map(row => {
         if (row.rowIndex === rowIndex) {
           const newData = { ...row.data, [field]: value };
-          const validation = validateRow(newData, rowIndex, prev);
+          const validation = validateRow(newData);
           return {
             ...row,
             data: newData,
@@ -92,10 +92,14 @@ export default function ImportStaffPage({
       
       // Re-check duplicates
       return updated.map(row => {
+        const staffId = typeof row.data.staff_id === 'string' ? row.data.staff_id : '';
         const duplicateCount = updated.filter(
-          (r) => r.data.staff_id === row.data.staff_id && 
-                 r.rowIndex !== row.rowIndex &&
-                 row.data.staff_id?.trim()
+          (r) => {
+            const rStaffId = typeof r.data.staff_id === 'string' ? r.data.staff_id : '';
+            return rStaffId === staffId && 
+                   r.rowIndex !== row.rowIndex &&
+                   staffId.trim().length > 0;
+          }
         ).length;
         
         if (duplicateCount > 0 && !row.errors.includes('Duplicate staff ID in file')) {
@@ -125,23 +129,35 @@ export default function ImportStaffPage({
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // Required fields
-    if (!data.staff_id?.trim()) errors.push('Staff ID is required');
-    if (!data.full_name?.trim()) errors.push('Full name is required');
-    if (!data.role?.trim()) errors.push('Role is required');
-    if (!data.phone?.trim()) errors.push('Phone is required');
-    if (!data.date_of_joining?.trim()) errors.push('Date of joining is required');
+    // Helper to safely get string value
+    const getString = (value: unknown): string => {
+      return typeof value === 'string' ? value : '';
+    };
+
+    // Required fields - ensure they're strings before calling trim
+    const staffId: string = getString(data.staff_id);
+    const fullName: string = getString(data.full_name);
+    const role: string = getString(data.role);
+    const phone: string = getString(data.phone);
+    const dateOfJoining: string = getString(data.date_of_joining);
+
+    if (!staffId.trim()) errors.push('Staff ID is required');
+    if (!fullName.trim()) errors.push('Full name is required');
+    if (!role.trim()) errors.push('Role is required');
+    if (!phone.trim()) errors.push('Phone is required');
+    if (!dateOfJoining.trim()) errors.push('Date of joining is required');
 
     // Date validation
-    if (data.date_of_joining) {
-      const date = new Date(data.date_of_joining);
+    if (dateOfJoining) {
+      const date = new Date(dateOfJoining);
       if (isNaN(date.getTime())) {
         errors.push('Invalid date format (use YYYY-MM-DD)');
       }
     }
 
     // Email validation
-    if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+    const email: string = getString(data.email);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       warnings.push('Invalid email format');
     }
 

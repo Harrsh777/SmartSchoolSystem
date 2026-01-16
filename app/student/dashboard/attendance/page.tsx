@@ -21,6 +21,10 @@ interface AttendanceRecord {
     full_name: string;
     staff_id: string;
   };
+  marked_by_staff?: {
+    full_name: string;
+    staff_id: string;
+  };
 }
 
 interface AttendanceStats {
@@ -45,12 +49,23 @@ export default function StudentAttendancePage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
+
   const fetchAttendance = useCallback(async (studentData: Student) => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      params.append('student_id', studentData.id);
-      params.append('school_code', studentData.school_code);
+      const studentId = getString(studentData.id);
+      const schoolCode = getString(studentData.school_code);
+      if (!studentId || !schoolCode) {
+        setLoading(false);
+        return;
+      }
+      params.append('student_id', studentId);
+      params.append('school_code', schoolCode);
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
 

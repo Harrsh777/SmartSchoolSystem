@@ -44,7 +44,7 @@ export async function PATCH(
     if (mode !== undefined) updateData.mode = mode;
     if (updated_by !== undefined) updateData.updated_by = updated_by;
 
-    const { data: updatedDiary, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from('diaries')
       .update(updateData)
       .eq('id', id)

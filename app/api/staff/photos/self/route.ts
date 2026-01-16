@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
-import { supabase } from '@/lib/supabase';
 
 /**
  * POST /api/staff/photos/self
@@ -65,7 +64,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await serviceClient.storage
+    const { error: uploadError } = await serviceClient.storage
       .from('staff-photos')
       .upload(storagePath, buffer, {
         contentType: file.type,

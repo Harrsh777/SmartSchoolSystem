@@ -1,8 +1,7 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -53,21 +52,7 @@ export default function ClasswiseCertificatesPage({
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    fetchClasses();
-    fetchTemplates();
-  }, [schoolCode]);
-
-  useEffect(() => {
-    if (selectedClassId) {
-      fetchStudents();
-    } else {
-      setStudents([]);
-      setSelectedStudents(new Set());
-    }
-  }, [selectedClassId, schoolCode]);
-
-  const fetchClasses = async () => {
+  const fetchClasses = useCallback(async () => {
     try {
       const response = await fetch(`/api/classes?school_code=${schoolCode}`);
       const result = await response.json();
@@ -77,9 +62,9 @@ export default function ClasswiseCertificatesPage({
     } catch (err) {
       console.error('Error fetching classes:', err);
     }
-  };
+  }, [schoolCode]);
 
-  const fetchTemplates = async () => {
+  const fetchTemplates = useCallback(async () => {
     try {
       // TODO: Replace with actual API call
       // const response = await fetch(`/api/certificates/templates?school_code=${schoolCode}`);
@@ -97,9 +82,9 @@ export default function ClasswiseCertificatesPage({
     } catch (err) {
       console.error('Error fetching templates:', err);
     }
-  };
+  }, []);
 
-  const fetchStudents = async () => {
+  const fetchStudents = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/students?school_code=${schoolCode}&class_id=${selectedClassId}`);
@@ -112,7 +97,21 @@ export default function ClasswiseCertificatesPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolCode, selectedClassId]);
+
+  useEffect(() => {
+    fetchClasses();
+    fetchTemplates();
+  }, [fetchClasses, fetchTemplates]);
+
+  useEffect(() => {
+    if (selectedClassId) {
+      fetchStudents();
+    } else {
+      setStudents([]);
+      setSelectedStudents(new Set());
+    }
+  }, [selectedClassId, fetchStudents]);
 
   const toggleStudent = (studentId: string) => {
     setSelectedStudents(prev => {

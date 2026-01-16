@@ -3,6 +3,7 @@
 import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -25,7 +26,7 @@ export default function AddStudentPage({
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [createdStudentId, setCreatedStudentId] = useState<string | null>(null);
+  const [, setCreatedStudentId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     // Required fields
     admission_no: '',
@@ -67,6 +68,7 @@ export default function AddStudentPage({
     
     // Parent/Guardian
     parent_name: '',
+    parent_phone: '',
     father_name: '',
     father_occupation: '',
     father_contact: '',
@@ -219,6 +221,7 @@ export default function AddStudentPage({
           apaar_no: formData.apaar_no.trim() || null,
           sr_no: formData.sr_no.trim() || null,
           parent_name: formData.parent_name.trim() || null,
+          parent_phone: cleanPhone(formData.parent_phone) || null,
           father_name: formData.father_name.trim() || null,
           father_occupation: formData.father_occupation.trim() || null,
           father_contact: cleanPhone(formData.father_contact) || null,
@@ -389,10 +392,13 @@ export default function AddStudentPage({
                 <div className="relative">
                   {photoPreview ? (
                     <div className="relative">
-                      <img
+                      <Image
                         src={photoPreview}
                         alt="Profile preview"
+                        width={128}
+                        height={128}
                         className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                        unoptimized
                       />
                       <button
                         type="button"

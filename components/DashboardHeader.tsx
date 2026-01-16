@@ -43,7 +43,7 @@ export default function DashboardHeader({
               <div className={`w-8 h-8 ${iconBgColor} rounded-lg flex items-center justify-center`}>
                 {icon}
               </div>
-              <span className="text-xl font-bold text-gray-900">EduYan</span>
+              <span className="text-xl font-bold text-gray-900">EduCore</span>
             </div>
             <div className="h-6 w-px bg-gray-300" />
             <div>

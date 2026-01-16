@@ -12,6 +12,8 @@ interface LeaveManagementModalProps {
 
 const menuItems = [
   { id: 'dashboard', label: 'Leave Dashboard', icon: Calendar, path: '/leave/dashboard' },
+  { id: 'student-leave', label: 'Student Leave', icon: Users, path: '/leave/student-leave' },
+  { id: 'staff-leave', label: 'Staff Leave', icon: User, path: '/leave/staff-leave' },
   { id: 'basics', label: 'Leave Basics', icon: Settings, path: '/leave/basics' },
 ];
 

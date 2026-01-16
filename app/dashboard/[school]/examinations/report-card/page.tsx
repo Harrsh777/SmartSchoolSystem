@@ -13,8 +13,6 @@ import {
   Download,
   Printer,
   Eye,
-  Filter,
-  Users,
   BookOpen,
   Calendar,
   Loader2
@@ -58,41 +56,40 @@ export default function ReportCardPage({
     { id: '2', name: 'Mid Term Exam', academic_year: '2024-2025' },
   ];
 
-  const mockReportCards: ReportCard[] = [
-    {
-      id: '1',
-      student_id: '1',
-      student_name: 'John Doe',
-      admission_no: 'STU001',
-      class: '10',
-      section: 'A',
-      exam_name: 'Mid Term Exam',
-      academic_year: '2024-2025',
-      total_marks: 500,
-      obtained_marks: 425,
-      percentage: 85,
-      grade: 'A',
-      status: 'generated',
-    },
-    {
-      id: '2',
-      student_id: '2',
-      student_name: 'Jane Smith',
-      admission_no: 'STU002',
-      class: '10',
-      section: 'A',
-      exam_name: 'Mid Term Exam',
-      academic_year: '2024-2025',
-      total_marks: 500,
-      obtained_marks: 380,
-      percentage: 76,
-      grade: 'B+',
-      status: 'generated',
-    },
-  ];
-
   useEffect(() => {
     // TODO: Fetch report cards based on filters
+    const mockReportCards: ReportCard[] = [
+      {
+        id: '1',
+        student_id: '1',
+        student_name: 'John Doe',
+        admission_no: 'STU001',
+        class: '10',
+        section: 'A',
+        exam_name: 'Mid Term Exam',
+        academic_year: '2024-2025',
+        total_marks: 500,
+        obtained_marks: 425,
+        percentage: 85,
+        grade: 'A',
+        status: 'generated',
+      },
+      {
+        id: '2',
+        student_id: '2',
+        student_name: 'Jane Smith',
+        admission_no: 'STU002',
+        class: '10',
+        section: 'A',
+        exam_name: 'Mid Term Exam',
+        academic_year: '2024-2025',
+        total_marks: 500,
+        obtained_marks: 380,
+        percentage: 76,
+        grade: 'B+',
+        status: 'generated',
+      },
+    ];
     setReportCards(mockReportCards);
   }, [selectedClass, selectedSection, selectedExam]);
 

@@ -98,14 +98,30 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    interface CopyCheckingRecord {
+      student_id: string;
+      status?: string;
+      remarks?: string;
+      topic?: string;
+    }
+
+    interface Student {
+      id: string;
+      student_name: string;
+      admission_no: string;
+      roll_number: string;
+      class: string;
+      section: string;
+    }
+
     // Map existing records by student_id
-    const recordsMap = new Map();
-    (existingRecords || []).forEach((record: any) => {
+    const recordsMap = new Map<string, CopyCheckingRecord>();
+    (existingRecords || []).forEach((record: CopyCheckingRecord) => {
       recordsMap.set(record.student_id, record);
     });
 
     // Combine students with their copy checking records
-    const studentsWithRecords = (students || []).map((student: any) => {
+    const studentsWithRecords = (students || []).map((student: Student) => {
       const record = recordsMap.get(student.id);
       return {
         ...student,
@@ -124,7 +140,7 @@ export async function GET(request: NextRequest) {
       not_marked: 0,
     };
 
-    studentsWithRecords.forEach((student: any) => {
+    studentsWithRecords.forEach((student) => {
       if (student.status === 'green') stats.green++;
       else if (student.status === 'yellow') stats.yellow++;
       else if (student.status === 'red') stats.red++;
@@ -185,8 +201,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    interface RecordInput {
+      student_id: string;
+      status?: string;
+      remarks?: string;
+    }
+
     // Upsert records for each student
-    const upsertPromises = records.map((record: any) => {
+    const upsertPromises = records.map((record: RecordInput) => {
       return supabase
         .from('copy_checking')
         .upsert({

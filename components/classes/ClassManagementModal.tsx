@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, BookOpen, Plus, UserCheck, ExternalLink } from 'lucide-react';
+import { X, BookOpen, Plus, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface ClassManagementModalProps {

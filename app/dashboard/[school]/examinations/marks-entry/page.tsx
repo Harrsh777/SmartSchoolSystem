@@ -69,13 +69,11 @@ export default function MarksEntryPage({
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
   const [classes, setClasses] = useState<ClassOption[]>([]);
-  const [sections, setSections] = useState<string[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [marks, setMarks] = useState<Record<string, Record<string, number>>>({});
-  const [loading, setLoading] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -86,7 +84,7 @@ export default function MarksEntryPage({
   useEffect(() => {
     const fetchClasses = async () => {
       try {
-        setLoading(true);
+        setLoadingStudents(true);
         const response = await fetch(`/api/examinations/classes?school_code=${schoolCode}`);
         const result = await response.json();
         if (response.ok && result.data) {
@@ -95,7 +93,7 @@ export default function MarksEntryPage({
       } catch (err) {
         console.error('Error fetching classes:', err);
       } finally {
-        setLoading(false);
+        setLoadingStudents(false);
       }
     };
     fetchClasses();
@@ -106,16 +104,13 @@ export default function MarksEntryPage({
     if (selectedClass) {
       const classData = classes.find(c => c.class === selectedClass);
       if (classData) {
-        setSections(classData.sections);
         if (!classData.sections.includes(selectedSection)) {
           setSelectedSection('');
         }
       } else {
-        setSections([]);
         setSelectedSection('');
       }
     } else {
-      setSections([]);
       setSelectedSection('');
     }
   }, [selectedClass, classes, selectedSection]);
@@ -248,7 +243,7 @@ export default function MarksEntryPage({
     } finally {
       setLoadingStudents(false);
     }
-  }, [selectedClass, selectedSection, selectedExam, schoolCode]);
+  }, [selectedClass, selectedSection, selectedExam, selectedClassId, schoolCode]);
 
   const handleMarksChange = (studentId: string, subjectId: string, value: string) => {
     const numValue = value === '' ? 0 : parseFloat(value);

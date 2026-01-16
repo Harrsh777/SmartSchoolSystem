@@ -13,7 +13,6 @@ import {
   Trash2, 
   ArrowLeft,
   Search,
-  Filter,
   X,
   Check,
   AlertCircle
@@ -458,7 +457,7 @@ export default function FeeComponentsPage({
                     </label>
                     <select
                       value={formData.fee_type}
-                      onChange={(e) => setFormData({ ...formData, fee_type: e.target.value as any })}
+                      onChange={(e) => setFormData({ ...formData, fee_type: e.target.value as 'annual' | 'quarterly' | 'monthly' | 'one_time' })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2F6FED]"
                       required
                     >

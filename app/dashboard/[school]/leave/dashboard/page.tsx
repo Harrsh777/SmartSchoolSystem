@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -16,17 +16,9 @@ import {
   User,
   Users,
   FileText,
-  Filter,
-  Download,
-  Settings,
   Paperclip,
-  TrendingUp,
-  AlertCircle,
-  Calendar,
-  Shield,
   RefreshCw,
-  Eye,
-  MoreVertical
+  Download
 } from 'lucide-react';
 
 interface StaffLeave {

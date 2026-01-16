@@ -99,6 +99,7 @@ export default function PaymentCollectionPage({
         // Ignore parse errors
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchStudents]);
 
   const fetchStaff = useCallback(async () => {

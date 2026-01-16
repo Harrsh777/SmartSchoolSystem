@@ -31,7 +31,13 @@ export async function PUT(
     }
 
     // Schema only supports: id, name, color, school_id, school_code, created_at, updated_at
-    const updateData: any = {
+    interface SubjectUpdateData {
+      name: string;
+      updated_at: string;
+      color?: string;
+    }
+
+    const updateData: SubjectUpdateData = {
       name: name.trim(),
       updated_at: new Date().toISOString(),
     };

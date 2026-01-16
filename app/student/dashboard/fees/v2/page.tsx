@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { DollarSign, Download, Clock, CheckCircle, AlertCircle, Loader2, Receipt, FileText } from 'lucide-react';
+import { DollarSign, Download, Clock, CheckCircle, AlertCircle, Loader2, Receipt } from 'lucide-react';
 
 interface StudentFee {
   id: string;
@@ -34,7 +34,6 @@ interface ReceiptRecord {
 }
 
 export default function StudentFeesPage() {
-  const [schoolCode, setSchoolCode] = useState('');
   const [fees, setFees] = useState<StudentFee[]>([]);
   const [receipts, setReceipts] = useState<ReceiptRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +61,7 @@ export default function StudentFeesPage() {
           setLoading(false);
           return;
         }
-        setSchoolCode(studentSchoolCode);
+        studentSchoolCode(studentSchoolCode);
 
         // Fetch fees
         const feesRes = await fetch(`/api/v2/fees/students/${studentId}/fees?school_code=${studentSchoolCode}`);

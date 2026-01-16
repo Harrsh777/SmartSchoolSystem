@@ -158,10 +158,25 @@ export default function ContestsPage() {
     }
   };
 
-  const statusColors = {
+  const statusColors: Record<'Upcoming' | 'Ongoing' | 'Completed', string> = {
     'Upcoming': 'bg-blue-100 text-blue-800',
     'Ongoing': 'bg-green-100 text-green-800',
     'Completed': 'bg-gray-100 text-gray-800',
+  };
+
+  const getContestStatus = (contest: Contest): 'Upcoming' | 'Ongoing' | 'Completed' => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const contestDate = new Date(contest.contestDate);
+    contestDate.setHours(0, 0, 0, 0);
+    
+    if (contestDate > today) {
+      return 'Upcoming';
+    } else if (contestDate.getTime() === today.getTime()) {
+      return 'Ongoing';
+    } else {
+      return 'Completed';
+    }
   };
 
   const categoryColors: Record<string, string> = {
@@ -239,6 +254,7 @@ export default function ContestsPage() {
               const canEnroll = contest.enrolledSchools.length < contest.maxParticipants;
               const isPastDeadline = new Date(contest.registrationDeadline) < new Date();
               const registrationOpen = isRegistrationOpen(contest);
+              const contestStatus = getContestStatus(contest);
 
               return (
                 <motion.div
@@ -257,9 +273,9 @@ export default function ContestsPage() {
                             {contest.category}
                           </span>
                           <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            statusColors[contest.status]
+                            statusColors[contestStatus]
                           }`}>
-                            {contest.status}
+                            {contestStatus}
                           </span>
                         </div>
                         <h3 className="text-xl font-bold text-black mb-2">{contest.name}</h3>
@@ -271,7 +287,7 @@ export default function ContestsPage() {
                       <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center space-x-2 text-gray-600">
                           <Calendar size={16} />
-                          <span>Start: {new Date(contest.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          <span>Start: {new Date(contest.contestDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                         </div>
                       </div>
                       <div className="flex items-center justify-between text-sm">
@@ -369,7 +385,7 @@ export default function ContestsPage() {
               <div className="text-center">
                 <Calendar className="mx-auto mb-3 text-green-500" size={32} />
                 <p className="text-3xl font-bold text-black mb-1">
-                  {contests.filter(c => c.status === 'Upcoming').length}
+                  {contests.filter(c => getContestStatus(c) === 'Upcoming').length}
                 </p>
                 <p className="text-sm text-gray-600">Upcoming</p>
               </div>
@@ -443,7 +459,7 @@ export default function ContestsPage() {
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Start Date</p>
                       <p className="font-semibold text-black">
-                        {new Date(selectedContest.startDate).toLocaleDateString('en-US', {
+                        {new Date(selectedContest.contestDate).toLocaleDateString('en-US', {
                           month: 'long',
                           day: 'numeric',
                           year: 'numeric',

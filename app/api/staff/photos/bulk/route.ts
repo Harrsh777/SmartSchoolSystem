@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
         const buffer = Buffer.from(arrayBuffer);
 
         // Upload to Supabase Storage
-        const { data: uploadData, error: uploadError } = await serviceClient.storage
+        const { error: uploadError } = await serviceClient.storage
           .from('staff-photos')
           .upload(storagePath, buffer, {
             contentType: file.type,

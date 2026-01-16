@@ -42,8 +42,12 @@ export async function GET(
       );
     }
 
+    interface StaffRoleData {
+      role: { id: string; name: string; description: string | null } | { id: string; name: string; description: string | null }[];
+    }
+
     const roles = (data || [])
-      .map((sr: any) => {
+      .map((sr: StaffRoleData) => {
         const role = Array.isArray(sr.role) ? sr.role[0] : sr.role;
         return role;
       })

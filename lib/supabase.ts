@@ -56,3 +56,110 @@ export interface Student {
   academic_year?: string;
   [key: string]: unknown;
 }
+
+export interface Class {
+  id: string;
+  school_id: string;
+  school_code: string;
+  class: string;
+  section: string;
+  academic_year: string;
+  class_teacher_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface ClassWithDetails extends Class {
+  student_count: number;
+  class_teacher: {
+    id: string;
+    full_name: string;
+    staff_id: string;
+  } | null;
+  class_teacher_staff_id?: string;
+}
+
+export interface Notice {
+  id: string;
+  school_id: string;
+  school_code: string;
+  title: string;
+  content: string;
+  category: string;
+  priority: string;
+  status: string;
+  publish_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface Examination {
+  id: string;
+  exam_name: string;
+  academic_year: string;
+  status: string;
+  school_code: string;
+  class_id?: string | null;
+  created_by?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface Mark {
+  id: string;
+  exam_id: string;
+  student_id: string;
+  class_id?: string | null;
+  school_code: string;
+  marks_obtained: number;
+  max_marks: number;
+  percentage?: number | null;
+  grade?: string | null;
+  remarks?: string | null;
+  entered_by?: string | null;
+  entered_by_name?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface Exam {
+  id: string;
+  exam_name: string;
+  name?: string;
+  academic_year: string;
+  status: string;
+  school_code: string;
+  class_id?: string | null;
+  created_by?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface ExamSchedule {
+  id: string;
+  exam_id: string;
+  school_code: string;
+  exam_date: string;
+  class: string;
+  section: string;
+  subject: string;
+  start_time: string;
+  end_time: string;
+  room?: string | null;
+  exam_name?: string | null;
+  duration_minutes?: number | null;
+  max_marks?: number | null;
+  instructions?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}

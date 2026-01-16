@@ -44,6 +44,7 @@ export default function AddClassModal({
     if (existingClass?.id) {
       fetchAssignedSubjects(existingClass.id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingClass?.id, schoolCode]);
 
   const fetchSubjects = async () => {

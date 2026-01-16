@@ -10,8 +10,6 @@ import {
   Download,
   Printer,
   FileText,
-  Award,
-  TrendingUp,
   BookOpen,
   Calendar,
   User,
@@ -29,15 +27,49 @@ export default function StudentReportPage({
   const examId = searchParams.get('exam_id');
 
   const [loading, setLoading] = useState(true);
-  const [student, setStudent] = useState<any>(null);
-  const [exam, setExam] = useState<any>(null);
-  const [marks, setMarks] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>(null);
+  const [student, setStudent] = useState<{
+    id: string;
+    student_name?: string;
+    full_name?: string;
+    admission_no?: string;
+    class?: string;
+    section?: string;
+    roll_number?: string;
+  } | null>(null);
+  const [exam, setExam] = useState<{
+    id: string;
+    exam_name?: string;
+    name?: string;
+    academic_year?: string;
+    start_date?: string;
+    end_date?: string;
+  } | null>(null);
+  const [marks, setMarks] = useState<Array<{
+    id: string;
+    subject_id: string;
+    subject_name?: string;
+    subject?: {
+      name?: string;
+    };
+    marks_obtained: number;
+    max_marks: number;
+    percentage?: number;
+    grade?: string;
+    remarks?: string;
+  }>>([]);
+  const [summary, setSummary] = useState<{
+    total_marks: number;
+    total_max_marks?: number;
+    obtained_marks: number;
+    percentage?: number;
+    grade: string;
+  } | null>(null);
 
   useEffect(() => {
     if (examId) {
       fetchReportData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId, examId, schoolCode]);
 
   const fetchReportData = async () => {
@@ -233,7 +265,7 @@ export default function StudentReportPage({
                       className={isSubjectPass ? 'bg-green-50' : 'bg-red-50'}
                     >
                       <td className="border border-gray-300 px-4 py-3 font-medium text-gray-900">
-                        {mark.subject?.name || 'N/A'}
+                        {mark.subject?.name || mark.subject_name || 'N/A'}
                       </td>
                       <td className="border border-gray-300 px-4 py-3 text-center text-gray-700">
                         {mark.max_marks}

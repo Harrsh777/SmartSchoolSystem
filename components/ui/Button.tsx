@@ -1,9 +1,22 @@
 'use client';
 
 import { forwardRef, ButtonHTMLAttributes } from 'react';
-import { motion } from 'framer-motion';
+import { motion, HTMLMotionProps } from 'framer-motion';
 
-type ExcludedProps = 'variant' | 'size';
+type ExcludedProps = 
+  | 'variant' 
+  | 'size' 
+  | 'onDrag' 
+  | 'onDragStart' 
+  | 'onDragEnd' 
+  | 'onDragEnter' 
+  | 'onDragExit' 
+  | 'onDragLeave' 
+  | 'onDragOver'
+  | 'onAnimationStart' 
+  | 'onAnimationEnd' 
+  | 'onAnimationIteration'
+  | 'onTransitionEnd';
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, ExcludedProps> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'dark';
@@ -35,7 +48,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         whileTap={disabled ? undefined : { scale: 0.98 }}
         disabled={disabled}
         className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
-        {...props}
+        {...(props as Omit<HTMLMotionProps<'button'>, 'ref' | 'variant' | 'size'>)}
       >
         {children}
       </motion.button>

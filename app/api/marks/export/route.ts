@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServiceRoleClient } from '@/lib/supabase-admin';
 import * as XLSX from 'xlsx';
 
 /**
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = getServiceRoleClient();
+    // Removed unused supabase variable - using fetch instead
 
     // Fetch marks data using the view API logic
     const params = new URLSearchParams({
@@ -45,9 +44,35 @@ export async function GET(request: NextRequest) {
 
     const marks = viewData.data || [];
 
+    interface MarkData {
+      student?: {
+        roll_number?: string;
+        student_name?: string;
+        full_name?: string;
+        admission_no?: string;
+        class?: string;
+        section?: string;
+      };
+      exam?: {
+        exam_name?: string;
+        name?: string;
+      };
+      total_marks?: number;
+      total_max_marks?: number;
+      percentage?: number;
+      grade?: string;
+      subject_marks?: Array<{
+        subject?: { name?: string };
+        marks_obtained?: number;
+        max_marks?: number;
+        percentage?: number;
+        grade?: string;
+      }>;
+    }
+
     // Prepare data for export
-    const exportData = marks.map((mark: any) => {
-      const row: Record<string, any> = {
+    const exportData = marks.map((mark: MarkData) => {
+      const row: Record<string, string | number> = {
         'Roll Number': mark.student?.roll_number || '',
         'Student Name': mark.student?.student_name || mark.student?.full_name || '',
         'Admission No': mark.student?.admission_no || '',
@@ -63,7 +88,7 @@ export async function GET(request: NextRequest) {
 
       // Add subject-wise marks
       if (mark.subject_marks && Array.isArray(mark.subject_marks)) {
-        mark.subject_marks.forEach((sm: any) => {
+        mark.subject_marks.forEach((sm) => {
           row[`${sm.subject?.name || 'Subject'} (Obtained)`] = sm.marks_obtained || 0;
           row[`${sm.subject?.name || 'Subject'} (Max)`] = sm.max_marks || 0;
           row[`${sm.subject?.name || 'Subject'} (%)`] = sm.percentage?.toFixed(2) || 0;
@@ -89,7 +114,7 @@ export async function GET(request: NextRequest) {
       const headers = Object.keys(exportData[0]);
       const csvRows = [
         headers.join(','),
-        ...exportData.map((row: Record<string, any>) =>
+        ...exportData.map((row: Record<string, string | number>) =>
           headers.map((header) => {
             const value = row[header];
             const stringValue = String(value || '');

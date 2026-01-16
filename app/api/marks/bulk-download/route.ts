@@ -71,10 +71,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    interface SummaryWithStudent {
+      student_id: string;
+      student?: {
+        class?: string;
+        section?: string;
+        student_name?: string;
+        full_name?: string;
+        roll_number?: string;
+        admission_no?: string;
+        id?: string;
+      };
+      [key: string]: unknown;
+    }
+
     // Filter by class and section if provided
     let filteredSummaries = summaries;
     if (classId || section) {
-      filteredSummaries = summaries.filter((s: any) => {
+      filteredSummaries = summaries.filter((s: SummaryWithStudent) => {
         const student = s.student;
         if (classId && student?.class !== classId) return false;
         if (section && student?.section !== section) return false;
@@ -118,7 +132,7 @@ export async function GET(request: NextRequest) {
         const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
         const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-        const drawText = (text: string, x: number, y: number, size: number, font: any = helveticaFont, color: any = rgb(0, 0, 0)) => {
+        const drawText = (text: string, x: number, y: number, size: number, font = helveticaFont, color = rgb(0, 0, 0)) => {
           page.drawText(text, { x, y, size, font, color });
         };
 
@@ -218,7 +232,7 @@ export async function GET(request: NextRequest) {
     await archive.finalize();
 
     // Return streaming response
-    return new NextResponse(archive as any, {
+    return new NextResponse(archive as unknown as ReadableStream, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',

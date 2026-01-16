@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
-import archiver from 'archiver';
-import { Readable } from 'stream';
 
 /**
  * POST /api/certificates/bulk/download
@@ -34,11 +32,6 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
-
-    // Create ZIP archive
-    const archive = archiver('zip', {
-      zlib: { level: 9 },
-    });
 
     // Add certificates to ZIP
     // Note: This is a simplified version. In production, you'd need to:

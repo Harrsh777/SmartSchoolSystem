@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
-import { GraduationCap, Eye, EyeOff, AlertCircle, User, Lock, BookOpen, Lightbulb, Calculator, Beaker, Sparkles, Building2 } from 'lucide-react';
+import { GraduationCap, Eye, EyeOff, AlertCircle, User, Lock, Lightbulb, Sparkles, Building2 } from 'lucide-react';
 
 export default function StudentLoginForm() {
   const router = useRouter();

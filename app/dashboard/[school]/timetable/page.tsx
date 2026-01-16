@@ -217,6 +217,16 @@ export default function TimetablePage({
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitWarning, setShowSubmitWarning] = useState(false);
 
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
+
+  // Helper to safely get number value
+  const getNumber = (value: unknown): number => {
+    return typeof value === 'number' ? value : 0;
+  };
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -731,17 +741,26 @@ export default function TimetablePage({
                 >
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-xl font-bold text-black">
-                      {cls.class}-{cls.section}
+                      {getString(cls.class)}-{getString(cls.section)}
                     </h3>
                     <BookOpen className="text-gray-400" size={20} />
                   </div>
-                  <p className="text-sm text-gray-600 mb-1">Academic Year: {cls.academic_year}</p>
-                  <p className="text-sm text-gray-600">Students: {cls.student_count || 0}</p>
-                  {cls.class_teacher && (
-                    <p className="text-sm text-gray-600 mt-2">
-                      Class Teacher: {cls.class_teacher.full_name}
-                    </p>
-                  )}
+                  <p className="text-sm text-gray-600 mb-1">Academic Year: {getString(cls.academic_year)}</p>
+                  <p className="text-sm text-gray-600">Students: {getNumber(cls.student_count)}</p>
+                  {(() => {
+                    const classTeacher = cls.class_teacher;
+                    if (classTeacher && typeof classTeacher === 'object' && 'full_name' in classTeacher) {
+                      const teacherName = getString(classTeacher.full_name);
+                      if (teacherName) {
+                        return (
+                          <p className="text-sm text-gray-600 mt-2">
+                            Class Teacher: {teacherName}
+                          </p>
+                        );
+                      }
+                    }
+                    return null;
+                  })()}
                 </motion.button>
               ))}
             </div>
@@ -815,7 +834,7 @@ export default function TimetablePage({
             </Button>
             {selectedClass?.class_teacher_id && (
               <Button
-                variant={isClassTeacherTimetable ? "default" : "outline"}
+                variant={isClassTeacherTimetable ? "primary" : "outline"}
                 onClick={() => setIsClassTeacherTimetable(!isClassTeacherTimetable)}
               >
                 <UserCheck size={18} className="mr-2" />
@@ -974,8 +993,8 @@ export default function TimetablePage({
                         const slotKey = `${day}-${period}`;
                         const isSaving = saving === slotKey;
                         const showFeedback = saveFeedback === slotKey;
-                        const hasTeacher = slot?.subject_id ? 
-                          ((slot.teacher_ids && slot.teacher_ids.length > 0) || slot.teacher_id) : 
+                        const hasTeacher: boolean = slot?.subject_id ? 
+                          (!!(slot.teacher_ids && slot.teacher_ids.length > 0) || !!(slot.teacher_id)) : 
                           true;
 
                         return (

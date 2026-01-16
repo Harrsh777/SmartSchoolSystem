@@ -49,6 +49,7 @@ interface PeriodGroup {
   class_start_time: string;
   selected_days: string[];
   periods: Period[];
+  is_active?: boolean;
 }
 
 interface TimetableSlot {
@@ -299,6 +300,7 @@ export default function ClassTimetablePage({
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const fetchData = async () => {
     if (!periodGroup) return;
     

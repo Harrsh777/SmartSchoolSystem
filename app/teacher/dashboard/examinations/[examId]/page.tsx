@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { ArrowLeft, User, CheckCircle, Clock, Search } from 'lucide-react';
+import { getString } from '@/lib/type-utils';
 
 interface Student {
   id: string;
@@ -49,8 +50,7 @@ export default function ExamMarkEntryPage({
   const { examId } = use(params);
   const router = useRouter();
   // teacher kept for potential future use
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [teacher, setTeacher] = useState<TeacherData | null>(null);
+  const [, setTeacher] = useState<TeacherData | null>(null);
   const [exam, setExam] = useState<ExamData | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [summaries, setSummaries] = useState<Record<string, ExamSummary>>({});
@@ -71,9 +71,16 @@ export default function ExamMarkEntryPage({
     try {
       setLoading(true);
 
+      const schoolCode = getString(teacherData.school_code);
+      const teacherId = getString(teacherData.id);
+      if (!schoolCode || !teacherId) {
+        setLoading(false);
+        return;
+      }
+
       // Fetch exam details
       const examResponse = await fetch(
-        `/api/examinations/${examId}?school_code=${teacherData.school_code}`
+        `/api/examinations/${examId}?school_code=${schoolCode}`
       );
       const examResult = await examResponse.json();
 
@@ -82,11 +89,12 @@ export default function ExamMarkEntryPage({
 
         // Fetch assigned class
         const queryParams = new URLSearchParams({
-          school_code: teacherData.school_code,
-          teacher_id: teacherData.id,
+          school_code: schoolCode,
+          teacher_id: teacherId,
         });
-        if (teacherData.staff_id) {
-          queryParams.append('staff_id', teacherData.staff_id);
+        const staffId = getString(teacherData.staff_id);
+        if (staffId) {
+          queryParams.append('staff_id', staffId);
         }
 
         const classResponse = await fetch(`/api/classes/teacher?${queryParams.toString()}`);
@@ -95,7 +103,7 @@ export default function ExamMarkEntryPage({
         if (classResponse.ok && classResult.data) {
           // Fetch students for this class
           const studentsResponse = await fetch(
-            `/api/students?school_code=${teacherData.school_code}&class=${classResult.data.class}&section=${classResult.data.section}&status=active`
+            `/api/students?school_code=${schoolCode}&class=${classResult.data.class}&section=${classResult.data.section}&status=active`
           );
           const studentsResult = await studentsResponse.json();
 
@@ -107,7 +115,7 @@ export default function ExamMarkEntryPage({
             await Promise.all(
               studentsResult.data.map(async (student: Student) => {
                 const summaryResponse = await fetch(
-                  `/api/examinations/summary?school_code=${teacherData.school_code}&exam_id=${examId}&student_id=${student.id}`
+                  `/api/examinations/summary?school_code=${schoolCode}&exam_id=${examId}&student_id=${student.id}`
                 );
                 const summaryResult = await summaryResponse.json();
                 if (summaryResponse.ok && summaryResult.data) {
@@ -186,7 +194,7 @@ export default function ExamMarkEntryPage({
             Back
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2">{exam.name}</h1>
+            <h1 className="text-3xl font-bold text-black mb-2">{getString(exam.name) || 'Examination'}</h1>
             {exam.class && typeof exam.class === 'object' && 'class' in exam.class && 'section' in exam.class ? (
               <p className="text-gray-600">
                 Class {(exam.class as { class: string; section: string }).class} - Section {(exam.class as { class: string; section: string }).section}

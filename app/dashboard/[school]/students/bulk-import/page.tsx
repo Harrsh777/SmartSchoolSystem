@@ -167,6 +167,11 @@ export default function BulkImportPage({
     setImportResult(null);
   };
 
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
+
   const validRows = validatedRows.filter(r => r.errors.length === 0);
   const invalidRows = validatedRows.filter(r => r.errors.length > 0);
 
@@ -402,16 +407,22 @@ export default function BulkImportPage({
                     </h3>
                     <div className="bg-green-50 rounded-lg p-4 max-h-64 overflow-y-auto">
                       <div className="space-y-2">
-                        {validRows.slice(0, 10).map((row) => (
-                          <div key={row.rowIndex} className="text-sm text-green-800">
-                            Row {row.rowIndex}: {row.data.student_name} - {row.data.admission_no} ({row.data.class}-{row.data.section})
-                            {row.warnings.length > 0 && (
-                              <span className="text-yellow-700 ml-2">
-                                (⚠ {row.warnings.length} warning{row.warnings.length > 1 ? 's' : ''})
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                        {validRows.slice(0, 10).map((row) => {
+                          const studentName = getString(row.data.student_name);
+                          const admissionNo = getString(row.data.admission_no);
+                          const className = getString(row.data.class);
+                          const section = getString(row.data.section);
+                          return (
+                            <div key={row.rowIndex} className="text-sm text-green-800">
+                              Row {row.rowIndex}: {studentName} - {admissionNo} ({className}-{section})
+                              {row.warnings.length > 0 && (
+                                <span className="text-yellow-700 ml-2">
+                                  (⚠ {row.warnings.length} warning{row.warnings.length > 1 ? 's' : ''})
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
                         {validRows.length > 10 && (
                           <p className="text-sm text-gray-600 mt-2">
                             ... and {validRows.length - 10} more valid rows

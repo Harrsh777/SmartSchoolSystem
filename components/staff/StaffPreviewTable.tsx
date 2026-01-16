@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Card from '@/components/ui/Card';
 import { CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import type { StaffRow } from '@/app/dashboard/[school]/staff/import/page';
+import { getString } from '@/lib/type-utils';
 
 interface StaffPreviewTableProps {
   rows: StaffRow[];
@@ -99,7 +100,7 @@ export default function StaffPreviewTable({ rows, onRowUpdate }: StaffPreviewTab
                   {editingCell?.row === row.rowIndex && editingCell?.field === 'staff_id' ? (
                     <input
                       type="text"
-                      defaultValue={row.data.staff_id || ''}
+                      defaultValue={getString(row.data.staff_id) || ''}
                       onBlur={(e) => handleCellSave(row.rowIndex, 'staff_id', e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -114,7 +115,7 @@ export default function StaffPreviewTable({ rows, onRowUpdate }: StaffPreviewTab
                       onClick={() => handleCellEdit(row.rowIndex, 'staff_id')}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
                     >
-                      {row.data.staff_id || '-'}
+                      {getString(row.data.staff_id) || '-'}
                     </span>
                   )}
                 </td>
@@ -122,7 +123,7 @@ export default function StaffPreviewTable({ rows, onRowUpdate }: StaffPreviewTab
                   {editingCell?.row === row.rowIndex && editingCell?.field === 'full_name' ? (
                     <input
                       type="text"
-                      defaultValue={row.data.full_name || ''}
+                      defaultValue={getString(row.data.full_name) || ''}
                       onBlur={(e) => handleCellSave(row.rowIndex, 'full_name', e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -137,7 +138,7 @@ export default function StaffPreviewTable({ rows, onRowUpdate }: StaffPreviewTab
                       onClick={() => handleCellEdit(row.rowIndex, 'full_name')}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
                     >
-                      {row.data.full_name || '-'}
+                      {getString(row.data.full_name) || '-'}
                     </span>
                   )}
                 </td>
@@ -145,7 +146,7 @@ export default function StaffPreviewTable({ rows, onRowUpdate }: StaffPreviewTab
                   {editingCell?.row === row.rowIndex && editingCell?.field === 'role' ? (
                     <input
                       type="text"
-                      defaultValue={row.data.role || ''}
+                      defaultValue={getString(row.data.role) || ''}
                       onBlur={(e) => handleCellSave(row.rowIndex, 'role', e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -160,24 +161,24 @@ export default function StaffPreviewTable({ rows, onRowUpdate }: StaffPreviewTab
                       onClick={() => handleCellEdit(row.rowIndex, 'role')}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
                     >
-                      {row.data.role || '-'}
+                      {getString(row.data.role) || '-'}
                     </span>
                   )}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.department || '-'}
+                  {getString(row.data.department) || '-'}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.designation || '-'}
+                  {getString(row.data.designation) || '-'}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.email || '-'}
+                  {getString(row.data.email) || '-'}
                 </td>
                 <td className="py-3 px-4">
                   {editingCell?.row === row.rowIndex && editingCell?.field === 'phone' ? (
                     <input
                       type="text"
-                      defaultValue={row.data.phone || ''}
+                      defaultValue={getString(row.data.phone) || ''}
                       onBlur={(e) => handleCellSave(row.rowIndex, 'phone', e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -192,12 +193,15 @@ export default function StaffPreviewTable({ rows, onRowUpdate }: StaffPreviewTab
                       onClick={() => handleCellEdit(row.rowIndex, 'phone')}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
                     >
-                      {row.data.phone || '-'}
+                      {getString(row.data.phone) || '-'}
                     </span>
                   )}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.date_of_joining || '-'}
+                  {(() => {
+                    const dateOfJoining = getString(row.data.date_of_joining);
+                    return dateOfJoining || '-';
+                  })()}
                 </td>
                 <td className="py-3 px-4">
                   <div className="space-y-1">

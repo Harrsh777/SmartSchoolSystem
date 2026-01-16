@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { ArrowLeft, Save, CheckCircle } from 'lucide-react';
+import { getString } from '@/lib/type-utils';
 
 interface ExamSubject {
   id: string;
@@ -59,7 +60,7 @@ export default function StudentMarkEntryPage({
   const { examId, studentId } = use(params);
   const router = useRouter();
   // teacher kept for potential future use
-  const [teacher] = useState<TeacherData | null>(null);
+  const [teacher, setTeacher] = useState<TeacherData | null>(null);
   const [exam, setExam] = useState<ExamData | null>(null);
   const [student, setStudent] = useState<StudentData | null>(null);
   const [subjects, setSubjects] = useState<ExamSubject[]>([]);
@@ -82,9 +83,15 @@ export default function StudentMarkEntryPage({
     try {
       setLoading(true);
 
+      const schoolCode = getString(teacherData.school_code);
+      if (!schoolCode) {
+        setLoading(false);
+        return;
+      }
+
       // Fetch exam details
       const examResponse = await fetch(
-        `/api/examinations/${examId}?school_code=${teacherData.school_code}`
+        `/api/examinations/${examId}?school_code=${schoolCode}`
       );
       const examResult = await examResponse.json();
 
@@ -107,7 +114,7 @@ export default function StudentMarkEntryPage({
 
       // Fetch student details
       const studentResponse = await fetch(
-        `/api/students/${studentId}?school_code=${teacherData.school_code}`
+        `/api/students/${studentId}?school_code=${schoolCode}`
       );
       const studentResult = await studentResponse.json();
 
@@ -192,6 +199,11 @@ export default function StudentMarkEntryPage({
       return;
     }
 
+    if (!exam || !teacher) {
+      alert('Missing exam or teacher data. Please refresh the page.');
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -202,6 +214,14 @@ export default function StudentMarkEntryPage({
         return;
       }
       const classId = exam.class.id;
+
+      const schoolCode = getString(teacher.school_code);
+      const teacherId = getString(teacher.id);
+      if (!schoolCode || !teacherId) {
+        alert('Missing school code or teacher ID. Please refresh the page.');
+        setSaving(false);
+        return;
+      }
 
       const marksArray = subjects.map((es) => ({
         subject_id: es.subject_id,
@@ -214,12 +234,12 @@ export default function StudentMarkEntryPage({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          school_code: teacher.school_code,
+          school_code: schoolCode,
           exam_id: examId,
           student_id: studentId,
           class_id: classId,
           marks: marksArray,
-          entered_by: teacher.id,
+          entered_by: teacherId,
         }),
       });
 
@@ -292,7 +312,7 @@ export default function StudentMarkEntryPage({
           <div>
             <h1 className="text-3xl font-bold text-black mb-2">Enter Marks</h1>
             <p className="text-gray-600">
-              {exam.name} - {student.student_name} ({student.admission_no})
+              {getString(exam.name) || 'Examination'} - {getString(student.student_name) || 'Student'} ({getString(student.admission_no) || 'N/A'})
             </p>
           </div>
         </div>

@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
-import { Image, Loader2, Filter } from 'lucide-react';
+import { Loader2, Filter, Images } from 'lucide-react';
 
 interface GalleryImage {
   id: string;
@@ -75,7 +76,7 @@ export default function StudentGalleryPage() {
       >
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <Image className="text-indigo-600" size={32} alt="" />
+            <Images className="text-indigo-600" size={32} />
             Gallery
           </h1>
           <p className="text-gray-600 mt-2">View school gallery images</p>
@@ -106,7 +107,7 @@ export default function StudentGalleryPage() {
       {/* Gallery Grid */}
       {images.length === 0 ? (
         <Card className="p-12 text-center">
-          <Image className="mx-auto mb-4 text-gray-400" size={48} alt="" />
+          <Images className="mx-auto mb-4 text-gray-400" size={48} />
           <p className="text-gray-600 text-lg">No images found</p>
         </Card>
       ) : (
@@ -119,12 +120,12 @@ export default function StudentGalleryPage() {
               transition={{ delay: index * 0.05 }}
             >
               <Card className="p-0 overflow-hidden">
-                <div className="aspect-square overflow-hidden bg-gray-100">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                <div className="relative aspect-square overflow-hidden bg-gray-100">
+                  <Image
                     src={image.image_url}
                     alt={image.title}
-                    className="w-full h-full object-cover"
+                    fill
+                    className="object-cover"
                   />
                 </div>
                 <div className="p-4">

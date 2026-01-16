@@ -53,8 +53,40 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch student leave requests' }, { status: 500 });
     }
 
+    interface StudentInfo {
+      id: string;
+      student_name: string;
+      admission_no: string;
+      class: string;
+      section?: string;
+    }
+
+    interface LeaveTypeInfo {
+      id: string;
+      abbreviation: string;
+      name: string;
+    }
+
+    interface StudentLeaveRequestItem {
+      id: string;
+      student_id: string;
+      leave_type_id: string;
+      leave_start_date: string;
+      leave_end_date: string;
+      leave_applied_date: string;
+      total_days?: number | null;
+      leave_title?: string | null;
+      reason?: string | null;
+      absent_form_submitted?: boolean;
+      attachment?: string | null;
+      status: string;
+      rejected_reason?: string | null;
+      student?: StudentInfo | null;
+      leave_type?: LeaveTypeInfo | null;
+    }
+
     // Transform the data to match the expected format
-    const transformedData = (data || []).map((item: any) => {
+    const transformedData = (data || []).map((item: StudentLeaveRequestItem) => {
       // Calculate total_days if not present in database
       let totalDays = item.total_days;
       if (!totalDays && item.leave_start_date && item.leave_end_date) {

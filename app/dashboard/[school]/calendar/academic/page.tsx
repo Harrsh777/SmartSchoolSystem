@@ -11,7 +11,6 @@ import {
   ChevronLeft, 
   ChevronRight,
   Clock,
-  MapPin,
   FileText,
   Sparkles,
   Loader2

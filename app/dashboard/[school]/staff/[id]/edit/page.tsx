@@ -3,6 +3,7 @@
 import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -266,10 +267,13 @@ export default function EditStaffPage({
                 <div className="relative">
                   {photoPreview ? (
                     <div className="relative">
-                      <img
+                      <Image
                         src={photoPreview}
                         alt="Profile preview"
+                        width={128}
+                        height={128}
                         className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                        unoptimized
                       />
                       <button
                         type="button"

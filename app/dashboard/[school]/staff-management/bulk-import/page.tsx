@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { Download, Upload, CheckCircle, AlertCircle, XCircle, ArrowRight, ArrowLeft, FileCheck } from 'lucide-react';
+import { getString } from '@/lib/type-utils';
 
 interface ValidatedRow {
   rowIndex: number;
@@ -394,16 +395,20 @@ export default function BulkImportPage({
                     </h3>
                     <div className="bg-green-50 rounded-lg p-4 max-h-64 overflow-y-auto">
                       <div className="space-y-2">
-                        {validRows.slice(0, 10).map((row) => (
-                          <div key={row.rowIndex} className="text-sm text-green-800">
-                            Row {row.rowIndex}: {row.data.full_name} - {row.data.role}
-                            {row.warnings.length > 0 && (
-                              <span className="text-yellow-700 ml-2">
-                                (⚠ {row.warnings.length} warning{row.warnings.length > 1 ? 's' : ''})
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                        {validRows.slice(0, 10).map((row) => {
+                          const fullName = getString(row.data.full_name);
+                          const role = getString(row.data.role);
+                          return (
+                            <div key={row.rowIndex} className="text-sm text-green-800">
+                              Row {row.rowIndex}: {fullName || 'N/A'} - {role || 'N/A'}
+                              {row.warnings.length > 0 && (
+                                <span className="text-yellow-700 ml-2">
+                                  (⚠ {row.warnings.length} warning{row.warnings.length > 1 ? 's' : ''})
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
                         {validRows.length > 10 && (
                           <p className="text-sm text-gray-600 mt-2">
                             ... and {validRows.length - 10} more valid rows

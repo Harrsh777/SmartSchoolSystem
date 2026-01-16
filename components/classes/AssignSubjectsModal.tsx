@@ -43,6 +43,7 @@ export default function AssignSubjectsModal({
     fetchSubjects();
     fetchAssignedSubjects();
     checkUsedSubjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, schoolCode]);
 
   const fetchSubjects = async () => {

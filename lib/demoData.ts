@@ -234,19 +234,29 @@ export interface CalendarEvent {
   label: string; // Event type label
   description?: string;
   time?: string; // Time in HH:MM AM/PM format
+  location?: string; // Event location
+}
+
+/**
+ * Event label style interface
+ */
+export interface EventLabelStyle {
+  color: string; // Hex color for inline styles
+  text: string; // Tailwind text color class
+  bgClass: string; // Tailwind background color class
 }
 
 /**
  * Event label color mapping
- * Maps event types to their display colors
+ * Maps event types to their display colors and text styles
  */
-export const eventLabels: Record<string, string> = {
-  'Holiday': '#FF6B6B',
-  'Exam': '#4ECDC4',
-  'Event': '#45B7D1',
-  'Meeting': '#FFA07A',
-  'Activity': '#98D8C8',
-  'Deadline': '#F7DC6F',
+export const eventLabels: Record<string, EventLabelStyle> = {
+  'Holiday': { color: '#FEE2E2', text: 'text-red-800', bgClass: 'bg-red-100' },
+  'Exam': { color: '#CFFAFE', text: 'text-cyan-800', bgClass: 'bg-cyan-100' },
+  'Event': { color: '#DBEAFE', text: 'text-blue-800', bgClass: 'bg-blue-100' },
+  'Meeting': { color: '#FFEDD5', text: 'text-orange-800', bgClass: 'bg-orange-100' },
+  'Activity': { color: '#D1FAE5', text: 'text-green-800', bgClass: 'bg-green-100' },
+  'Deadline': { color: '#FEF3C7', text: 'text-yellow-800', bgClass: 'bg-yellow-100' },
 } as const;
 
 /**

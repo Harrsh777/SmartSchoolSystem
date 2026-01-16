@@ -2,11 +2,11 @@
 
 import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, X, AlertCircle, Save, ArrowLeft, Users, Filter } from 'lucide-react';
+import { Calendar, CheckCircle, AlertCircle, Save, ArrowLeft, Users, Filter } from 'lucide-react';
 
 type AttendanceStatus = 'present' | 'absent' | 'late';
 
@@ -278,6 +278,7 @@ export default function MarkAttendancePage({
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const canMarkForClass = (classId: string): boolean => {
     if (isAdmin) return true;
     const classData = classes.find(c => c.id === classId);

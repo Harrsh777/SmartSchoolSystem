@@ -2,10 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import Card from '@/components/ui/Card';
-import { GraduationCap, UserCheck, Building2, ArrowLeft, Sparkles, ArrowRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { GraduationCap, UserCheck, Building2, ArrowLeft, ArrowRight } from 'lucide-react';
 import StudentLoginForm from '@/components/auth/StudentLoginForm';
 import TeacherLoginForm from '@/components/auth/TeacherLoginForm';
 import PrincipalLoginForm from '@/components/auth/PrincipalLoginForm';
@@ -104,7 +102,6 @@ function RoleCard({ role, index, onSelect }: RoleCardProps) {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<Role>(null);
 
   const handleGoBack = () => {

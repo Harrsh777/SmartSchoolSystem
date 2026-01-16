@@ -10,16 +10,12 @@ import {
   ArrowLeft, 
   CalendarX,
   Plus,
-  Edit,
   Trash2,
   Settings,
   Save,
   X,
-  ToggleLeft,
-  ToggleRight,
   RefreshCw,
-  FileText,
-  Download
+  FileText
 } from 'lucide-react';
 
 interface LeaveType {
@@ -40,8 +36,8 @@ export default function LeaveBasicsPage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
+  const [, setLoading] = useState(false);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
-  const [loading, setLoading] = useState(false);
   const [academicYear, setAcademicYear] = useState('');
   const [staffType, setStaffType] = useState('Teaching');
   const [showModal, setShowModal] = useState(false);

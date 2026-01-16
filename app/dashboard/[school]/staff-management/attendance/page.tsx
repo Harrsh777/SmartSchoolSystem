@@ -36,6 +36,7 @@ export default function StaffAttendancePage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isMarked, setIsMarked] = useState(false);
 
   useEffect(() => {

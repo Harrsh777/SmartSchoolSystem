@@ -51,6 +51,7 @@ interface BookCopy {
   accession_number: string;
   barcode: string | null;
   status: string;
+  location?: string | null;
 }
 
 export default function LibraryCataloguePage({

@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, X, Minus, Power, Filter, ArrowLeft, Users, RefreshCw, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, CheckCircle, X, Minus, Filter, ArrowLeft, Users, RefreshCw, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Class {
   id: string;
@@ -176,7 +176,6 @@ export default function StudentAttendancePage({
     if (!classData && !attendanceData) return null;
 
     const students = classData?.student_attendance || attendanceData?.student_attendance || [];
-    const classInfo = classData?.class || attendanceData?.class;
 
     if (students.length === 0) {
       return (

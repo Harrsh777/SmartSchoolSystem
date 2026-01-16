@@ -46,18 +46,35 @@ export default function StaffPage({
   };
 
   const filteredStaff = staff.filter(member => {
-    const matchesSearch = 
-      member.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.staff_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (member.department && member.department.toLowerCase().includes(searchQuery.toLowerCase()));
+    const searchLower = searchQuery.toLowerCase();
+    const fullName = typeof member.full_name === 'string' ? member.full_name : '';
+    const staffId = typeof member.staff_id === 'string' ? member.staff_id : '';
+    const role = typeof member.role === 'string' ? member.role : '';
+    const department = typeof member.department === 'string' ? member.department : '';
     
-    const matchesDepartment = departmentFilter === 'all' || member.department === departmentFilter;
+    const matchesSearch = 
+      fullName.toLowerCase().includes(searchLower) ||
+      staffId.toLowerCase().includes(searchLower) ||
+      role.toLowerCase().includes(searchLower) ||
+      department.toLowerCase().includes(searchLower);
+    
+    const matchesDepartment = departmentFilter === 'all' || department === departmentFilter;
     
     return matchesSearch && matchesDepartment;
   });
 
-  const uniqueDepartments = Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort();
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
+
+  const uniqueDepartments: string[] = Array.from(
+    new Set(
+      staff
+        .map(s => getString(s.department))
+        .filter(dept => dept.length > 0)
+    )
+  ).sort();
 
   const handleGeneratePasswords = async () => {
     if (!confirm('Are you sure you want to generate passwords for all staff members? This will create passwords for staff who don\'t have one.')) {
@@ -274,23 +291,31 @@ export default function StaffPage({
                   </div>
                   <div className="flex-1">
                     <h3 className="text-lg font-bold text-black mb-1">{member.full_name}</h3>
-                    <p className="text-sm text-gray-600 mb-2">{member.role}</p>
-                    {member.department && (
-                      <p className="text-xs text-gray-500 mb-3">{member.department}</p>
+                    {!!member.role && (
+                      <p className="text-sm text-gray-600 mb-2">{getString(member.role)}</p>
+                    )}
+                    {!!member.department && (
+                      <p className="text-xs text-gray-500 mb-3">{getString(member.department)}</p>
                     )}
                     <div className="space-y-2">
-                      {member.email && (
+                      {!!member.email && (
                         <div className="flex items-center space-x-2 text-xs text-gray-600">
                           <Mail size={14} />
-                          <span className="truncate">{member.email}</span>
+                          <span className="truncate">{getString(member.email)}</span>
                         </div>
                       )}
-                      <div className="flex items-center space-x-2 text-xs text-gray-600">
-                        <Phone size={14} />
-                        <span>{member.phone}</span>
-                      </div>
+                      {!!member.phone && (
+                        <div className="flex items-center space-x-2 text-xs text-gray-600">
+                          <Phone size={14} />
+                          <span>{getString(member.phone)}</span>
+                        </div>
+                      )}
                       <div className="text-xs text-gray-500 mt-2">
-                        Joined: {member.date_of_joining ? new Date(member.date_of_joining).toLocaleDateString() : 'N/A'}
+                        Joined: {(() => {
+                          const doj = typeof member.date_of_joining === 'string' ? member.date_of_joining : 
+                                     typeof member.date_of_joining === 'number' ? String(member.date_of_joining) : null;
+                          return doj ? new Date(doj).toLocaleDateString() : 'N/A';
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -309,8 +334,13 @@ export default function StaffPage({
                     Edit
                   </button>
                   <button 
-                    onClick={() => handleResetPassword(member.staff_id)}
-                    disabled={resettingPassword === member.staff_id}
+                    onClick={() => {
+                      const staffId = typeof member.staff_id === 'string' ? member.staff_id : '';
+                      if (staffId) {
+                        handleResetPassword(staffId);
+                      }
+                    }}
+                    disabled={resettingPassword === member.staff_id || !member.staff_id}
                     className="px-3 py-2 text-sm bg-yellow-100 hover:bg-yellow-200 text-yellow-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Reset Password"
                   >
@@ -354,7 +384,10 @@ export default function StaffPage({
               <div>
                 <p className="text-sm text-gray-600">Teachers</p>
                 <p className="text-2xl font-bold text-black">
-                  {staff.filter(s => s.role.toLowerCase().includes('teacher')).length}
+                  {staff.filter(s => {
+                    const role = typeof s.role === 'string' ? s.role : '';
+                    return role.toLowerCase().includes('teacher');
+                  }).length}
                 </p>
               </div>
             </div>

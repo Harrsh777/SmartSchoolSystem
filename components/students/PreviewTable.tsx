@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Card from '@/components/ui/Card';
 import { CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import type { StudentRow } from '@/app/dashboard/[school]/students/import/page';
+import { getString } from '@/lib/type-utils';
 
 interface PreviewTableProps {
   rows: StudentRow[];
@@ -101,7 +102,7 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
                   {editingCell?.row === row.rowIndex && editingCell?.field === 'admission_no' ? (
                     <input
                       type="text"
-                      defaultValue={row.data.admission_no || ''}
+                      defaultValue={getString(row.data.admission_no) || ''}
                       onBlur={(e) => handleCellSave(row.rowIndex, 'admission_no', e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -113,10 +114,10 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
                     />
                   ) : (
                     <span
-                      onClick={() => handleCellEdit(row.rowIndex, 'admission_no', row.data.admission_no || '')}
+                      onClick={() => handleCellEdit(row.rowIndex, 'admission_no')}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
                     >
-                      {row.data.admission_no || '-'}
+                      {getString(row.data.admission_no) || '-'}
                     </span>
                   )}
                 </td>
@@ -124,7 +125,7 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
                   {editingCell?.row === row.rowIndex && editingCell?.field === 'student_name' ? (
                     <input
                       type="text"
-                      defaultValue={row.data.student_name || ''}
+                      defaultValue={getString(row.data.student_name) || ''}
                       onBlur={(e) => handleCellSave(row.rowIndex, 'student_name', e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -136,10 +137,10 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
                     />
                   ) : (
                     <span
-                      onClick={() => handleCellEdit(row.rowIndex, 'student_name', row.data.student_name || '')}
+                      onClick={() => handleCellEdit(row.rowIndex, 'student_name')}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
                     >
-                      {row.data.student_name || '-'}
+                      {getString(row.data.student_name) || '-'}
                     </span>
                   )}
                 </td>
@@ -147,7 +148,7 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
                   {editingCell?.row === row.rowIndex && editingCell?.field === 'class' ? (
                     <input
                       type="text"
-                      defaultValue={row.data.class || ''}
+                      defaultValue={getString(row.data.class) || ''}
                       onBlur={(e) => handleCellSave(row.rowIndex, 'class', e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -159,10 +160,10 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
                     />
                   ) : (
                     <span
-                      onClick={() => handleCellEdit(row.rowIndex, 'class', row.data.class || '')}
+                      onClick={() => handleCellEdit(row.rowIndex, 'class')}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
                     >
-                      {row.data.class || '-'}
+                      {getString(row.data.class) || '-'}
                     </span>
                   )}
                 </td>
@@ -170,7 +171,7 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
                   {editingCell?.row === row.rowIndex && editingCell?.field === 'section' ? (
                     <input
                       type="text"
-                      defaultValue={row.data.section || ''}
+                      defaultValue={getString(row.data.section) || ''}
                       onBlur={(e) => handleCellSave(row.rowIndex, 'section', e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -182,30 +183,48 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
                     />
                   ) : (
                     <span
-                      onClick={() => handleCellEdit(row.rowIndex, 'section', row.data.section || '')}
+                      onClick={() => handleCellEdit(row.rowIndex, 'section')}
                       className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
                     >
-                      {row.data.section || '-'}
+                      {getString(row.data.section) || '-'}
                     </span>
                   )}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.date_of_birth || '-'}
+                  {(() => {
+                    const dateOfBirth = getString(row.data.date_of_birth);
+                    return dateOfBirth || '-';
+                  })()}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.gender || '-'}
+                  {(() => {
+                    const gender = getString(row.data.gender);
+                    return gender || '-';
+                  })()}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.parent_name || '-'}
+                  {(() => {
+                    const parentName = getString(row.data.parent_name);
+                    return parentName || '-';
+                  })()}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.parent_phone || '-'}
+                  {(() => {
+                    const parentPhone = getString(row.data.parent_phone);
+                    return parentPhone || '-';
+                  })()}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.parent_email || '-'}
+                  {(() => {
+                    const parentEmail = getString(row.data.parent_email);
+                    return parentEmail || '-';
+                  })()}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {row.data.address || '-'}
+                  {(() => {
+                    const address = getString(row.data.address);
+                    return address || '-';
+                  })()}
                 </td>
                 <td className="py-3 px-4">
                   <div className="space-y-1">

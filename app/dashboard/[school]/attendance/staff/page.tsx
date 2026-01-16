@@ -80,7 +80,7 @@ export default function StaffAttendancePage({
         const records: Record<string, AttendanceRecord> = {};
         interface StaffAttendanceRecord {
           staff_id: string;
-          status: string;
+          status: 'present' | 'absent' | 'late' | 'half_day' | 'leave' | 'holiday';
           check_in_time?: string;
           check_out_time?: string;
           remarks?: string;
@@ -174,7 +174,7 @@ export default function StaffAttendancePage({
     return member.department === filterDepartment;
   });
 
-  const uniqueDepartments = Array.from(new Set(staff.map(s => s.department).filter(Boolean))).sort();
+  const uniqueDepartments = Array.from(new Set(staff.map(s => s.department).filter((d): d is string => Boolean(d)))).sort();
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -310,7 +310,7 @@ export default function StaffAttendancePage({
                       <div className="text-sm text-gray-500">{member.role}</div>
                     </td>
                     <td className="py-3 px-4 text-gray-700">{member.staff_id}</td>
-                    <td className="py-3 px-4 text-gray-700">{member.department || '-'}</td>
+                    <td className="py-3 px-4 text-gray-700">{String(member.department || '-')}</td>
                     <td className="py-3 px-4">
                       <select
                         value={record.status}

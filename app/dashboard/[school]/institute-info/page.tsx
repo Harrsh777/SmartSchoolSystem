@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -64,7 +65,7 @@ export default function InstituteInfoPage({
     principal_name: '',
     principal_email: '',
     principal_phone: '',
-    established_year: '',
+    established_year: undefined,
     school_type: '',
     affiliation: '',
     logo_url: '',
@@ -232,11 +233,7 @@ export default function InstituteInfoPage({
   const handleCancel = () => {
     if (school) {
       setFormData(school);
-      if (school.logo_url) {
-        setLogoPreview(school.logo_url);
-      } else {
-        setLogoPreview(null);
-      }
+      setLogoPreview(typeof school.logo_url === 'string' && school.logo_url !== '' ? school.logo_url : null);
       setIsEditing(false);
       setError('');
       setSuccess('');
@@ -244,7 +241,14 @@ export default function InstituteInfoPage({
   };
 
   const handleChange = (field: keyof AcceptedSchool, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      // Convert established_year from string to number
+      if (field === 'established_year') {
+        const numValue = value === '' ? undefined : parseInt(value, 10);
+        return { ...prev, [field]: isNaN(numValue as number) ? undefined : numValue };
+      }
+      return { ...prev, [field]: value };
+    });
   };
 
   // Working Days Functions
@@ -523,11 +527,13 @@ export default function InstituteInfoPage({
           <div className="flex-shrink-0">
             {logoPreview ? (
               <div className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
                   src={logoPreview}
                   alt="School Logo"
-                  className="w-32 h-32 object-contain border-2 border-gray-200 rounded-lg p-2 bg-white"
+                  width={128}
+                  height={128}
+                  className="object-contain border-2 border-gray-200 rounded-lg p-2 bg-white"
+                  unoptimized
                 />
                 <button
                   onClick={async () => {
@@ -642,7 +648,8 @@ export default function InstituteInfoPage({
             />
             <Input
               label="Established Year"
-              value={formData.established_year || ''}
+              type="number"
+              value={formData.established_year?.toString() || ''}
               onChange={(e) => handleChange('established_year', e.target.value)}
               disabled={!isEditing}
               placeholder="e.g., 1990"

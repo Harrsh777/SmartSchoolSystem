@@ -10,17 +10,12 @@ import {
   ArrowLeft, 
   CreditCard,
   Search,
-  Filter,
   CheckCircle2,
   XCircle,
   Clock,
+  Printer,
   AlertCircle,
-  Calendar,
-  DollarSign,
-  User,
-  FileText,
   Download,
-  Printer
 } from 'lucide-react';
 
 interface PendingCheque {
@@ -48,7 +43,6 @@ export default function PendingChequePage({
   const { school: schoolCode } = use(params);
   const router = useRouter();
   const [cheques, setCheques] = useState<PendingCheque[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('pending');
   const [selectedDateRange, setSelectedDateRange] = useState({
@@ -131,6 +125,7 @@ export default function PendingChequePage({
   useEffect(() => {
     // TODO: Fetch pending cheques
     setCheques(mockCheques);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatCurrency = (amount: number) => {
@@ -447,7 +442,7 @@ export default function PendingChequePage({
                   </label>
                   <select
                     value={statusForm.status}
-                    onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value as any })}
+                    onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value as 'cleared' | 'bounced' | 'cancelled' })}
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
                   >
                     <option value="cleared">Cleared</option>

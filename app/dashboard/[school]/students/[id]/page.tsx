@@ -1,8 +1,9 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { 
@@ -12,29 +13,22 @@ import {
   Phone, 
   MapPin, 
   Calendar, 
-  Building2,
   GraduationCap,
   DollarSign,
   Clock,
-  BookOpen,
   Users,
-  Award,
   CheckCircle2,
   XCircle,
   AlertCircle,
   TrendingUp,
-  TrendingDown,
-  Download,
   Edit,
   FileText,
   School,
   Briefcase,
-  Heart,
   Shield,
   CreditCard,
   Receipt,
   BarChart3,
-  Sparkles,
   Loader2,
   RefreshCw
 } from 'lucide-react';
@@ -105,24 +99,12 @@ export default function StudentDetailPage({
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [feesLoading, setFeesLoading] = useState(false);
 
-  useEffect(() => {
-    fetchStudent();
-  }, [studentId, schoolCode]);
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
 
-  useEffect(() => {
-    if (student) {
-      if (activeTab === 'attendance') {
-        fetchAttendance();
-      } else if (activeTab === 'financial') {
-        fetchFees();
-      } else if (activeTab === 'academic') {
-        fetchClassInfo();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [student, activeTab]);
-
-  const fetchStudent = async () => {
+  const fetchStudent = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/students/${studentId}?school_code=${schoolCode}`);
@@ -139,7 +121,24 @@ export default function StudentDetailPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [studentId, schoolCode, router]);
+
+  useEffect(() => {
+    fetchStudent();
+  }, [fetchStudent]);
+
+  useEffect(() => {
+    if (student) {
+      if (activeTab === 'attendance') {
+        fetchAttendance();
+      } else if (activeTab === 'financial') {
+        fetchFees();
+      } else if (activeTab === 'academic') {
+        fetchClassInfo();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [student, activeTab]);
 
   const fetchAttendance = async () => {
     try {
@@ -298,10 +297,10 @@ export default function StudentDetailPage({
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg">
                 <User className="text-white" size={24} />
               </div>
-              {student.student_name}
+              {getString(student.student_name)}
             </h1>
             <p className="text-gray-600">
-              {student.admission_no} • {student.class}{student.section ? `-${student.section}` : ''}
+              {getString(student.admission_no)} • {getString(student.class)}{getString(student.section) ? `-${getString(student.section)}` : ''}
             </p>
           </div>
         </div>
@@ -359,8 +358,8 @@ export default function StudentDetailPage({
               <GraduationCap size={20} className="opacity-90" />
               <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Class</span>
             </div>
-            <p className="text-3xl font-bold mb-1">{student.class}</p>
-            <p className="text-xs text-purple-100">Section {student.section || 'N/A'}</p>
+            <p className="text-3xl font-bold mb-1">{getString(student.class)}</p>
+            <p className="text-xs text-purple-100">Section {getString(student.section) || 'N/A'}</p>
           </Card>
         </motion.div>
 
@@ -374,7 +373,7 @@ export default function StudentDetailPage({
               <Shield size={20} className="opacity-90" />
               <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Status</span>
             </div>
-            <p className="text-3xl font-bold mb-1 capitalize">{student.status || 'Active'}</p>
+            <p className="text-3xl font-bold mb-1 capitalize">{getString(student.status) || 'Active'}</p>
             <p className="text-xs text-orange-100">Student Status</p>
           </Card>
         </motion.div>
@@ -389,7 +388,7 @@ export default function StudentDetailPage({
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as 'overview' | 'attendance' | 'financial' | 'academic')}
                   className={`flex items-center gap-2 px-6 py-3 font-medium text-sm transition-all rounded-lg ${
                     activeTab === tab.id
                       ? 'bg-white text-[#1e3a8a] shadow-sm border border-[#1e3a8a]/20'
@@ -419,19 +418,19 @@ export default function StudentDetailPage({
                 <div className="grid md:grid-cols-3 gap-6">
                   <Card className="md:col-span-1 p-6 bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] text-white">
                     <div className="text-center">
-                      <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-4 border-white/30">
+                      <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-4 border-white/30 relative">
                         {student.photo_url ? (
-                          <img src={student.photo_url} alt={student.student_name} className="w-full h-full rounded-full object-cover" />
+                          <Image src={getString(student.photo_url)} alt={getString(student.student_name)} fill className="rounded-full object-cover" />
                         ) : (
                           <User size={48} className="text-white" />
                         )}
                       </div>
-                      <h2 className="text-2xl font-bold mb-1">{student.student_name}</h2>
-                      <p className="text-blue-100 mb-4">{student.admission_no}</p>
+                      <h2 className="text-2xl font-bold mb-1">{getString(student.student_name)}</h2>
+                      <p className="text-blue-100 mb-4">{getString(student.admission_no)}</p>
                       <div className="flex items-center justify-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg">
                         <School size={16} />
                         <span className="text-sm font-semibold">
-                          {student.class}{student.section ? `-${student.section}` : ''}
+                          {getString(student.class)}{getString(student.section) ? `-${getString(student.section)}` : ''}
                         </span>
                       </div>
                     </div>
@@ -445,36 +444,36 @@ export default function StudentDetailPage({
                     <div className="grid md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date of Birth</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{formatDate(student.date_of_birth)}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{formatDate(typeof student.date_of_birth === 'string' ? student.date_of_birth : undefined)}</p>
                       </div>
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gender</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{student.gender || 'Not provided'}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.gender) || 'Not provided'}</p>
                       </div>
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Blood Group</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{student.blood_group || 'Not provided'}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.blood_group) || 'Not provided'}</p>
                       </div>
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Roll Number</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{student.roll_number || 'Not assigned'}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.roll_number) || 'Not assigned'}</p>
                       </div>
-                      {student.email && (
+                      {!!student.email && (
                         <div className="md:col-span-2">
                           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
                             <Mail size={12} />
                             Email
                           </label>
-                          <p className="text-sm font-medium text-gray-900 mt-1">{student.email}</p>
+                          <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.email)}</p>
                         </div>
                       )}
-                      {student.student_contact && (
+                      {!!student.student_contact && (
                         <div>
                           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
                             <Phone size={12} />
                             Contact
                           </label>
-                          <p className="text-sm font-medium text-gray-900 mt-1">{student.student_contact}</p>
+                          <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.student_contact)}</p>
                         </div>
                       )}
                     </div>
@@ -482,51 +481,51 @@ export default function StudentDetailPage({
                 </div>
 
                 {/* Parent/Guardian Information */}
-                {(student.father_name || student.mother_name || student.parent_name) && (
+                {(!!student.father_name || !!student.mother_name || !!student.parent_name) && (
                   <Card>
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <Users size={20} className="text-[#1e3a8a]" />
                       Parent/Guardian Information
                     </h3>
                     <div className="grid md:grid-cols-2 gap-6">
-                      {student.father_name && (
+                      {!!student.father_name && (
                         <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
                           <div className="flex items-center gap-2 mb-3">
                             <User size={18} className="text-[#1e3a8a]" />
                             <h4 className="font-semibold text-gray-900">Father</h4>
                           </div>
-                          <p className="text-sm font-medium text-gray-900 mb-2">{student.father_name}</p>
-                          {student.father_occupation && (
+                          <p className="text-sm font-medium text-gray-900 mb-2">{getString(student.father_name)}</p>
+                          {!!student.father_occupation && (
                             <p className="text-xs text-gray-600 mb-1">
                               <Briefcase size={12} className="inline mr-1" />
-                              {student.father_occupation}
+                              {getString(student.father_occupation)}
                             </p>
                           )}
-                          {student.father_contact && (
+                          {!!student.father_contact && (
                             <p className="text-xs text-gray-600">
                               <Phone size={12} className="inline mr-1" />
-                              {student.father_contact}
+                              {getString(student.father_contact)}
                             </p>
                           )}
                         </div>
                       )}
-                      {student.mother_name && (
+                      {!!student.mother_name && (
                         <div className="p-4 bg-pink-50 rounded-lg border border-pink-100">
                           <div className="flex items-center gap-2 mb-3">
                             <User size={18} className="text-pink-600" />
                             <h4 className="font-semibold text-gray-900">Mother</h4>
                           </div>
-                          <p className="text-sm font-medium text-gray-900 mb-2">{student.mother_name}</p>
-                          {student.mother_occupation && (
+                          <p className="text-sm font-medium text-gray-900 mb-2">{getString(student.mother_name)}</p>
+                          {!!student.mother_occupation && (
                             <p className="text-xs text-gray-600 mb-1">
                               <Briefcase size={12} className="inline mr-1" />
-                              {student.mother_occupation}
+                              {getString(student.mother_occupation)}
                             </p>
                           )}
-                          {student.mother_contact && (
+                          {!!student.mother_contact && (
                             <p className="text-xs text-gray-600">
                               <Phone size={12} className="inline mr-1" />
-                              {student.mother_contact}
+                              {getString(student.mother_contact)}
                             </p>
                           )}
                         </div>
@@ -536,16 +535,16 @@ export default function StudentDetailPage({
                 )}
 
                 {/* Address */}
-                {student.address && (
+                {!!student.address && (
                   <Card>
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <MapPin size={20} className="text-[#1e3a8a]" />
                       Address
                     </h3>
-                    <p className="text-gray-700">{student.address}</p>
-                    {(student.city || student.state || student.pincode) && (
+                    <p className="text-gray-700">{getString(student.address)}</p>
+                    {(!!student.city || !!student.state || !!student.pincode) && (
                       <p className="text-sm text-gray-600 mt-2">
-                        {[student.city, student.state, student.pincode].filter(Boolean).join(', ')}
+                        {[getString(student.city), getString(student.state), getString(student.pincode)].filter(s => s.length > 0).join(', ')}
                       </p>
                     )}
                   </Card>
@@ -558,40 +557,40 @@ export default function StudentDetailPage({
                     Additional Information
                   </h3>
                   <div className="grid md:grid-cols-3 gap-4">
-                    {student.religion && (
+                    {!!student.religion && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Religion</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{student.religion}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.religion)}</p>
                       </div>
                     )}
-                    {student.category && (
+                    {!!student.category && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{student.category}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.category)}</p>
                       </div>
                     )}
-                    {student.nationality && (
+                    {!!student.nationality && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nationality</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{student.nationality}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.nationality)}</p>
                       </div>
                     )}
-                    {student.house && (
+                    {!!student.house && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">House</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{student.house}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.house)}</p>
                       </div>
                     )}
-                    {student.transport_type && (
+                    {!!student.transport_type && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Transport</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{student.transport_type}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.transport_type)}</p>
                       </div>
                     )}
-                    {student.academic_year && (
+                    {!!student.academic_year && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Academic Year</label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{student.academic_year}</p>
+                        <p className="text-sm font-medium text-gray-900 mt-1">{getString(student.academic_year)}</p>
                       </div>
                     )}
                   </div>
@@ -863,15 +862,15 @@ export default function StudentDetailPage({
                   <div className="grid md:grid-cols-3 gap-6">
                     <div className="p-4 bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] rounded-lg text-white">
                       <p className="text-xs text-blue-100 mb-1">Current Class</p>
-                      <p className="text-2xl font-bold">{student.class}</p>
+                      <p className="text-2xl font-bold">{getString(student.class)}</p>
                     </div>
                     <div className="p-4 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg text-white">
                       <p className="text-xs text-purple-100 mb-1">Section</p>
-                      <p className="text-2xl font-bold">{student.section || 'N/A'}</p>
+                      <p className="text-2xl font-bold">{getString(student.section) || 'N/A'}</p>
                     </div>
                     <div className="p-4 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg text-white">
                       <p className="text-xs text-teal-100 mb-1">Academic Year</p>
-                      <p className="text-lg font-bold">{student.academic_year || 'N/A'}</p>
+                      <p className="text-lg font-bold">{getString(student.academic_year) || 'N/A'}</p>
                     </div>
                   </div>
                 </Card>
@@ -930,40 +929,40 @@ export default function StudentDetailPage({
                     Academic Details
                   </h3>
                   <div className="grid md:grid-cols-2 gap-6">
-                    {student.roll_number && (
+                    {!!student.roll_number && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Roll Number</label>
-                        <p className="text-lg font-bold text-gray-900 mt-1">{student.roll_number}</p>
+                        <p className="text-lg font-bold text-gray-900 mt-1">{getString(student.roll_number)}</p>
                       </div>
                     )}
-                    {student.date_of_admission && (
+                    {!!student.date_of_admission && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date of Admission</label>
-                        <p className="text-lg font-bold text-gray-900 mt-1">{formatDate(student.date_of_admission)}</p>
+                        <p className="text-lg font-bold text-gray-900 mt-1">{formatDate(typeof student.date_of_admission === 'string' ? student.date_of_admission : undefined)}</p>
                       </div>
                     )}
-                    {student.last_class && (
+                    {!!student.last_class && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Previous Class</label>
-                        <p className="text-lg font-bold text-gray-900 mt-1">{student.last_class}</p>
+                        <p className="text-lg font-bold text-gray-900 mt-1">{getString(student.last_class)}</p>
                       </div>
                     )}
-                    {student.last_school_name && (
+                    {!!student.last_school_name && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Previous School</label>
-                        <p className="text-lg font-bold text-gray-900 mt-1">{student.last_school_name}</p>
+                        <p className="text-lg font-bold text-gray-900 mt-1">{getString(student.last_school_name)}</p>
                       </div>
                     )}
-                    {student.medium && (
+                    {!!student.medium && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Medium</label>
-                        <p className="text-lg font-bold text-gray-900 mt-1">{student.medium}</p>
+                        <p className="text-lg font-bold text-gray-900 mt-1">{getString(student.medium)}</p>
                       </div>
                     )}
-                    {student.schooling_type && (
+                    {!!student.schooling_type && (
                       <div>
                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Schooling Type</label>
-                        <p className="text-lg font-bold text-gray-900 mt-1">{student.schooling_type}</p>
+                        <p className="text-lg font-bold text-gray-900 mt-1">{getString(student.schooling_type)}</p>
                       </div>
                     )}
                   </div>

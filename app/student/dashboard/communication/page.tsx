@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { Bell } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
+import { getString } from '@/lib/type-utils';
 
 interface NoticeData {
   publish_at?: string | null;
@@ -84,35 +85,45 @@ export default function CommunicationPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {notices.map((notice) => (
-            <Card key={notice.id} hover>
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="text-xl font-bold text-black">{notice.title}</h3>
-                <div className="flex items-center gap-2">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    notice.priority === 'high' ? 'bg-red-100 text-red-800' :
-                    notice.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-blue-100 text-blue-800'
-                  }`}>
-                    {notice.priority}
-                  </span>
-                  {notice.category && (
-                    <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium">
-                      {notice.category}
+          {notices.map((notice, index) => {
+            const noticeId = getString(notice.id) || `notice-${index}`;
+            const title = getString(notice.title);
+            const priority = getString(notice.priority);
+            const category = getString(notice.category);
+            const content = getString(notice.content);
+            const createdAt = getString(notice.created_at);
+            return (
+              <Card key={noticeId} hover>
+                <div className="flex items-start justify-between mb-3">
+                  <h3 className="text-xl font-bold text-black">{title || 'Notice'}</h3>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      priority === 'high' ? 'bg-red-100 text-red-800' :
+                      priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-blue-100 text-blue-800'
+                    }`}>
+                      {priority || 'normal'}
                     </span>
-                  )}
+                    {category ? (
+                      <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium">
+                        {category}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-              <p className="text-gray-700 whitespace-pre-wrap mb-3">{notice.content}</p>
-              <p className="text-xs text-gray-500">
-                Posted on {new Date(notice.created_at).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
-              </p>
-            </Card>
-          ))}
+                <p className="text-gray-700 whitespace-pre-wrap mb-3">{content || 'No content'}</p>
+                {createdAt ? (
+                  <p className="text-xs text-gray-500">
+                    Posted on {new Date(createdAt).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </p>
+                ) : null}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

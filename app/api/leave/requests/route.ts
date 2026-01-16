@@ -53,8 +53,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch leave requests' }, { status: 500 });
     }
 
+    interface StaffInfo {
+      id: string;
+      full_name: string;
+      staff_id: string;
+      role?: string;
+      department?: string;
+    }
+
+    interface LeaveTypeInfo {
+      id: string;
+      abbreviation: string;
+      name: string;
+    }
+
+    interface LeaveRequestItem {
+      id: string;
+      staff_id: string;
+      staff?: StaffInfo | null;
+      leave_type?: LeaveTypeInfo | null;
+      leave_applied_date: string;
+      leave_start_date: string;
+      leave_end_date: string;
+      total_days: number;
+      comment?: string | null;
+      reason?: string | null;
+      status: string;
+      rejected_reason?: string | null;
+    }
+
     // Transform the data to match the expected format
-    const transformedData = (data || []).map((item: any) => ({
+    const transformedData = (data || []).map((item: LeaveRequestItem) => ({
       id: item.id,
       staff_id: item.staff_id,
       staff_name: item.staff?.full_name || '',

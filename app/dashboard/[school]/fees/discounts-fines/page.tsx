@@ -85,6 +85,7 @@ export default function DiscountsFinesPage({
   useEffect(() => {
     fetchDiscounts();
     fetchFines();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   const fetchDiscounts = useCallback(async () => {
@@ -230,7 +231,16 @@ export default function DiscountsFinesPage({
         : '/api/fees/fines';
       const method = editingItem ? 'PATCH' : 'POST';
 
-      const body: any = {
+      const body: {
+        school_code: string;
+        fine_name: string;
+        fine_type: 'fixed' | 'percentage' | 'daily';
+        fine_value: number;
+        applicable_from_days: number;
+        is_active: boolean;
+        max_fine_amount?: number;
+        remarks?: string;
+      } = {
         school_code: schoolCode,
         fine_name: fineForm.fine_name,
         fine_type: fineForm.fine_type,
@@ -498,7 +508,7 @@ export default function DiscountsFinesPage({
                             ? `: ${fine.fine_value}%`
                             : `: ₹${fine.fine_value.toLocaleString('en-IN')}${fine.fine_type === 'daily' ? ' per day' : ''}`
                           }
-                          <span>• Applicable after {(fine as any).applicable_after_days || fine.applicable_from_days || 1} days</span>
+                          <span>• Applicable after {fine.applicable_after_days || fine.applicable_from_days || 1} days</span>
                         </div>
                         {fine.remarks && (
                           <p className="text-sm text-gray-600 mt-2">{fine.remarks}</p>

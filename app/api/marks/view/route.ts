@@ -72,8 +72,40 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    interface SummaryItem {
+      student_id: string;
+      exam_id: string;
+      student?: {
+        class?: string;
+        section?: string;
+        student_name?: string;
+        full_name?: string;
+        roll_number?: string;
+        admission_no?: string;
+      };
+      exam?: {
+        class_id?: string;
+      };
+      percentage?: number;
+      [key: string]: unknown;
+    }
+
+    interface SubjectMark {
+      student_id: string;
+      exam_id: string;
+      subject_id?: string;
+      marks_obtained?: number;
+      max_marks?: number;
+      subject?: {
+        id: string;
+        name: string;
+        color?: string;
+      };
+      [key: string]: unknown;
+    }
+
     // Filter by class and section in memory (since they're in students table)
-    let filteredSummaries = (summaries || []).filter((summary: any) => {
+    let filteredSummaries = (summaries || []).filter((summary: SummaryItem) => {
       const student = summary.student;
       if (!student) return false;
 
@@ -100,8 +132,8 @@ export async function GET(request: NextRequest) {
 
     // If subject filter is applied, fetch detailed subject marks
     if (subjectId) {
-      const studentIds = filteredSummaries.map((s: any) => s.student_id);
-      const examIds = filteredSummaries.map((s: any) => s.exam_id);
+      const studentIds = filteredSummaries.map((s) => s.student_id);
+      const examIds = filteredSummaries.map((s) => s.exam_id);
 
       const { data: subjectMarks, error: marksError } = await supabase
         .from('student_subject_marks')
@@ -121,9 +153,9 @@ export async function GET(request: NextRequest) {
         console.error('Error fetching subject marks:', marksError);
       } else {
         // Merge subject marks into summaries
-        filteredSummaries = filteredSummaries.map((summary: any) => {
+        filteredSummaries = filteredSummaries.map((summary: SummaryItem) => {
           const subjectMark = subjectMarks?.find(
-            (m: any) => m.student_id === summary.student_id && m.exam_id === summary.exam_id
+            (m: SubjectMark) => m.student_id === summary.student_id && m.exam_id === summary.exam_id
           );
           return {
             ...summary,
@@ -133,8 +165,8 @@ export async function GET(request: NextRequest) {
       }
     } else {
       // Fetch all subject marks for each student
-      const studentIds = filteredSummaries.map((s: any) => s.student_id);
-      const examIds = [...new Set(filteredSummaries.map((s: any) => s.exam_id))];
+      const studentIds = filteredSummaries.map((s) => s.student_id);
+      const examIds = [...new Set(filteredSummaries.map((s) => s.exam_id))];
 
       if (studentIds.length > 0 && examIds.length > 0) {
         const { data: allSubjectMarks, error: marksError } = await supabase
@@ -152,9 +184,9 @@ export async function GET(request: NextRequest) {
 
         if (!marksError && allSubjectMarks) {
           // Group marks by student and exam
-          filteredSummaries = filteredSummaries.map((summary: any) => {
+          filteredSummaries = filteredSummaries.map((summary: SummaryItem) => {
             const studentMarks = allSubjectMarks.filter(
-              (m: any) => m.student_id === summary.student_id && m.exam_id === summary.exam_id
+              (m: SubjectMark) => m.student_id === summary.student_id && m.exam_id === summary.exam_id
             );
             return {
               ...summary,
@@ -168,15 +200,15 @@ export async function GET(request: NextRequest) {
     // Calculate analytics
     const analytics = {
       total_students: filteredSummaries.length,
-      passed: filteredSummaries.filter((s: any) => (s.percentage || 0) >= 40).length,
-      failed: filteredSummaries.filter((s: any) => (s.percentage || 0) < 40).length,
+      passed: filteredSummaries.filter((s) => (s.percentage || 0) >= 40).length,
+      failed: filteredSummaries.filter((s) => (s.percentage || 0) < 40).length,
       average_percentage: filteredSummaries.length > 0
-        ? filteredSummaries.reduce((sum: number, s: any) => sum + (s.percentage || 0), 0) / filteredSummaries.length
+        ? filteredSummaries.reduce((sum, s) => sum + (s.percentage || 0), 0) / filteredSummaries.length
         : 0,
       toppers: filteredSummaries
-        .sort((a: any, b: any) => (b.percentage || 0) - (a.percentage || 0))
+        .sort((a, b) => (b.percentage || 0) - (a.percentage || 0))
         .slice(0, 5)
-        .map((s: any) => ({
+        .map((s) => ({
           student_name: s.student?.student_name || s.student?.full_name || 'Unknown',
           percentage: s.percentage || 0,
           grade: s.grade || 'N/A',

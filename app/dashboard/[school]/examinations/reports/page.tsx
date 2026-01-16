@@ -12,10 +12,8 @@ import {
   Download,
   Filter,
   TrendingUp,
-  Users,
   BookOpen,
   Calendar,
-  Award,
   BarChart3,
   PieChart,
   LineChart

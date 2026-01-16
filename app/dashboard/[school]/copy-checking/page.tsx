@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -10,16 +10,11 @@ import {
   FileText, 
   Calendar, 
   Folder, 
-  Download, 
   X, 
   Save,
   Edit,
   User,
   ArrowLeft,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  Circle,
   BookOpen,
   TrendingUp
 } from 'lucide-react';
@@ -33,7 +28,13 @@ interface Student {
   section?: string;
   status: 'green' | 'yellow' | 'red' | 'not_marked';
   remarks: string;
-  copy_checking?: any;
+  copy_checking?: {
+    id?: string;
+    status?: string;
+    remarks?: string;
+    topic?: string;
+    [key: string]: unknown;
+  };
 }
 
 interface Class {
@@ -99,8 +100,8 @@ export default function CopyCheckingPage({
   useEffect(() => {
     // Extract unique academic years from classes
     if (classes.length > 0) {
-      const uniqueYears = Array.from(new Set(classes.map(c => c.academic_year).filter(Boolean))).sort().reverse();
-      const academicYearsData = uniqueYears.map(year => ({
+      const uniqueYears: string[] = Array.from(new Set(classes.map(c => c.academic_year).filter((year): year is string => Boolean(year)))).sort().reverse();
+      const academicYearsData: AcademicYear[] = uniqueYears.map(year => ({
         id: year,
         year_name: year,
         start_date: '',
@@ -112,7 +113,24 @@ export default function CopyCheckingPage({
         setSelectedAcademicYear(uniqueYears[0]);
       }
     }
-  }, [classes]);
+  }, [classes, selectedAcademicYear]);
+
+  const updateSections = useCallback(() => {
+    if (selectedClassName) {
+      const sections = classes
+        .filter(c => 
+          c.class === selectedClassName && 
+          (!selectedAcademicYear || c.academic_year === selectedAcademicYear) &&
+          c.section
+        )
+        .map(c => c.section!)
+        .filter((section, index, self) => self.indexOf(section) === index)
+        .sort();
+      setAvailableSections(sections);
+    } else {
+      setAvailableSections([]);
+    }
+  }, [selectedClassName, classes, selectedAcademicYear]);
 
   useEffect(() => {
     if (selectedClassName) {
@@ -134,8 +152,7 @@ export default function CopyCheckingPage({
       setSubjects([]);
       setSelectedSubjectId('');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClassName, classes, selectedAcademicYear]);
+  }, [selectedClassName, classes, selectedAcademicYear, updateSections]);
 
   useEffect(() => {
     if (selectedClassId) {
@@ -175,7 +192,7 @@ export default function CopyCheckingPage({
     }
   };
 
-  const fetchClassSubjects = async () => {
+  const fetchClassSubjects = useCallback(async () => {
     if (!selectedClassId) {
       setSubjects([]);
       return;
@@ -187,8 +204,14 @@ export default function CopyCheckingPage({
       );
       const result = await response.json();
       
+      interface SubjectApiData {
+        id: string;
+        name?: string;
+        subject_name?: string;
+      }
+
       if (response.ok && result.data) {
-        const mappedSubjects = result.data.map((subj: any) => ({
+        const mappedSubjects = result.data.map((subj: SubjectApiData) => ({
           id: subj.id,
           subject_name: subj.name || subj.subject_name,
         }));
@@ -206,31 +229,7 @@ export default function CopyCheckingPage({
       setSubjects([]);
       setSelectedSubjectId('');
     }
-  };
-
-  const updateSections = () => {
-    if (selectedClassName) {
-      // Get all unique sections for this class name
-      const sections = classes
-        .filter(c => c.class === selectedClassName && c.academic_year === selectedAcademicYear)
-        .map(c => c.section)
-        .filter((section): section is string => Boolean(section))
-        .filter((value, index, self) => self.indexOf(value) === index)
-        .sort();
-      
-      setAvailableSections(sections);
-      
-      // Auto-select section if only one available
-      if (sections.length === 1) {
-        setSelectedSection(sections[0]);
-      } else {
-        setSelectedSection('');
-      }
-    } else {
-      setAvailableSections([]);
-      setSelectedSection('');
-    }
-  };
+  }, [schoolCode, selectedClassId, selectedSubjectId]);
 
   const fetchStatsForOtherType = async () => {
     if (!selectedClassId || !selectedSubjectId || !selectedDate || !selectedAcademicYear) return;
@@ -438,7 +437,7 @@ export default function CopyCheckingPage({
           school_code: schoolCode,
           academic_year: selectedAcademicYear,
           class_id: selectedClassId,
-          section: selectedSection || selectedClassData?.section || null,
+          section: selectedSection || null,
           subject_id: selectedSubjectId,
           subject_name: selectedSubject?.subject_name || '',
           work_date: selectedDate,
@@ -467,19 +466,6 @@ export default function CopyCheckingPage({
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'green':
-        return <CheckCircle2 size={16} className="text-green-600" />;
-      case 'yellow':
-        return <AlertCircle size={16} className="text-yellow-600" />;
-      case 'red':
-        return <XCircle size={16} className="text-red-600" />;
-      default:
-        return <Circle size={16} className="text-gray-400" />;
-    }
-  };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'green':
@@ -492,8 +478,6 @@ export default function CopyCheckingPage({
         return 'bg-gray-200 text-gray-500 hover:bg-gray-300';
     }
   };
-
-  const selectedClass = classes.find(c => c.id === selectedClassId);
 
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">

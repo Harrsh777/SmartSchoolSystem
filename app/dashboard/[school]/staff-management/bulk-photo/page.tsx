@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { 
@@ -11,7 +12,6 @@ import {
   X, 
   CheckCircle2, 
   XCircle, 
-  AlertCircle,
   ArrowLeft,
   User,
   Loader2,
@@ -20,8 +20,6 @@ import {
   Sparkles,
   Zap,
   Image as ImageIcon,
-  FileCheck,
-  RefreshCw,
   Info,
   Check,
   AlertTriangle
@@ -48,19 +46,26 @@ export default function BulkPhotoPage({
   const router = useRouter();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [photos, setPhotos] = useState<PhotoFile[]>([]);
-  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [loading, setLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
+
   // Get school code from URL param (normalized to uppercase) or sessionStorage as fallback
   const getSchoolCode = useCallback((): string => {
     // First try URL param (normalized to uppercase)
     if (schoolCodeParam) {
-      return schoolCodeParam.toUpperCase();
+      const code = getString(schoolCodeParam);
+      return code.toUpperCase();
     }
     
     // Fallback to sessionStorage
@@ -68,8 +73,9 @@ export default function BulkPhotoPage({
       const storedSchool = sessionStorage.getItem('school');
       if (storedSchool) {
         const schoolData = JSON.parse(storedSchool);
-        if (schoolData.school_code) {
-          return schoolData.school_code.toUpperCase();
+        const code = getString(schoolData.school_code);
+        if (code) {
+          return code.toUpperCase();
         }
       }
     } catch {
@@ -162,14 +168,16 @@ export default function BulkPhotoPage({
 
     // Try to match against staff
     for (const staffMember of staff) {
-      const normalizedStaffId = normalizeFilename(staffMember.staff_id || '');
-      const normalizedEmployeeCode = normalizeFilename(staffMember.employee_code || '');
-      const staffId = (staffMember.staff_id || '').toUpperCase();
-      const employeeCode = (staffMember.employee_code || '').toUpperCase();
+      const staffIdValue = getString(staffMember.staff_id);
+      const employeeCodeValue = getString(staffMember.employee_code);
+      const normalizedStaffId = normalizeFilename(staffIdValue);
+      const normalizedEmployeeCode = normalizeFilename(employeeCodeValue);
+      const staffId = staffIdValue.toUpperCase();
+      const employeeCode = employeeCodeValue.toUpperCase();
       
       // Try exact match with normalized names
       if (normalizedName === normalizedStaffId || normalizedName === normalizedEmployeeCode) {
-        return staffMember.staff_id || staffMember.employee_code || null;
+        return staffIdValue || employeeCodeValue || null;
       }
       
       // Try pattern matching
@@ -181,7 +189,7 @@ export default function BulkPhotoPage({
           pattern === staffId ||
           pattern === employeeCode
         ) {
-          return staffMember.staff_id || staffMember.employee_code || null;
+          return staffIdValue || employeeCodeValue || null;
         }
       }
     }
@@ -199,10 +207,11 @@ export default function BulkPhotoPage({
       let matchMethod: 'auto' | 'manual' | null = null;
 
       if (extractedId) {
-        matchedStaff = staff.find(s => 
-          s.staff_id === extractedId || 
-          s.employee_code === extractedId
-        ) || null;
+        matchedStaff = staff.find(s => {
+          const sStaffId = getString(s.staff_id);
+          const sEmployeeCode = getString(s.employee_code);
+          return sStaffId === extractedId || sEmployeeCode === extractedId;
+        }) || null;
         if (matchedStaff) {
           matchMethod = 'auto';
         }
@@ -221,6 +230,7 @@ export default function BulkPhotoPage({
 
     setPhotos(prev => [...prev, ...newPhotos]);
     showToast(`${newPhotos.length} photo${newPhotos.length > 1 ? 's' : ''} added`, 'success');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staff]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -262,6 +272,7 @@ export default function BulkPhotoPage({
     } else {
       showToast('Please drop image files only', 'error');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoMatchPhotos]);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -424,11 +435,11 @@ export default function BulkPhotoPage({
         
         // Map backend results to frontend photos by filename
         const uploadResultsMap = new Map(
-          (uploadData.upload_results || []).map((result: any) => [result.filename, result])
+          (uploadData.upload_results || []).map((result: { filename: string; [key: string]: unknown }) => [result.filename, result])
         );
         
         const unmatchedFilenames = new Set(
-          (uploadData.unmatched_files || []).map((uf: any) => uf.filename)
+          (uploadData.unmatched_files || []).map((uf: { filename: string }) => uf.filename)
         );
 
         // Update photos based on backend response
@@ -451,7 +462,8 @@ export default function BulkPhotoPage({
           // Check upload results for this specific file
           const uploadResult = uploadResultsMap.get(filename);
           if (uploadResult) {
-            if (uploadResult.success) {
+            const result = uploadResult as { success?: boolean; error?: string };
+            if (result.success) {
               return { 
                 ...p, 
                 uploadStatus: 'success' as const, 
@@ -462,7 +474,7 @@ export default function BulkPhotoPage({
               return { 
                 ...p, 
                 uploadStatus: 'error' as const, 
-                error: uploadResult.error || 'Upload failed',
+                error: getString(result.error) || 'Upload failed',
                 progress: 0
               };
             }
@@ -492,7 +504,7 @@ export default function BulkPhotoPage({
 
         // Show unmatched files if any
         if (uploadData.unmatched_files && uploadData.unmatched_files.length > 0) {
-          const unmatchedNames = uploadData.unmatched_files.slice(0, 3).map((uf: any) => uf.filename).join(', ');
+          const unmatchedNames = uploadData.unmatched_files.slice(0, 3).map((uf: { filename: string }) => uf.filename).join(', ');
           showToast(
             `${uploadData.unmatched_files.length} file${uploadData.unmatched_files.length > 1 ? 's' : ''} couldn't be matched: ${unmatchedNames}${uploadData.unmatched_files.length > 3 ? '...' : ''}. Please match them manually.`,
             'error'
@@ -503,8 +515,8 @@ export default function BulkPhotoPage({
         await fetchStaff();
       } else {
         // Handle error response
-        const errorMessage = result.error || 'Failed to upload photos';
-        const errorDetails = result.details ? `: ${result.details}` : '';
+        const errorMessage = getString(result.error) || 'Failed to upload photos';
+        const errorDetails = result.details ? `: ${getString(result.details)}` : '';
         
         // Mark all as error
         setPhotos(prev => prev.map(p => {
@@ -547,10 +559,13 @@ export default function BulkPhotoPage({
 
   const filteredStaff = staff.filter(s => {
     const query = searchQuery.toLowerCase();
+    const fullName = getString(s.full_name).toLowerCase();
+    const staffId = getString(s.staff_id).toLowerCase();
+    const employeeCode = getString(s.employee_code).toLowerCase();
     return (
-      s.full_name?.toLowerCase().includes(query) ||
-      s.staff_id?.toLowerCase().includes(query) ||
-      s.employee_code?.toLowerCase().includes(query)
+      fullName.includes(query) ||
+      staffId.includes(query) ||
+      employeeCode.includes(query)
     );
   });
 
@@ -857,10 +872,12 @@ export default function BulkPhotoPage({
                     <Card className="p-3 hover:shadow-xl transition-all duration-300 border-2 hover:border-[#1e3a8a]/30 overflow-hidden">
                       {/* Photo Preview */}
                       <div className="relative aspect-square mb-3 rounded-lg overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 group-hover:scale-105 transition-transform duration-300">
-                        <img
+                        <Image
                           src={photo.preview}
                           alt={photo.file.name}
-                          className="w-full h-full object-cover"
+                          fill
+                          className="object-cover"
+                          unoptimized
                         />
                         
                         {/* Status Overlay */}
@@ -945,10 +962,10 @@ export default function BulkPhotoPage({
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-bold text-green-900 truncate">
-                                {photo.matchedStaff.full_name}
+                                {getString(photo.matchedStaff.full_name)}
                               </p>
                               <p className="text-xs text-green-700 font-mono">
-                                {photo.matchedStaff.staff_id}
+                                {getString(photo.matchedStaff.staff_id)}
                               </p>
                             </div>
                             {photo.matchMethod === 'auto' && (
@@ -1065,20 +1082,23 @@ export default function BulkPhotoPage({
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-lg shadow-md group-hover:scale-110 transition-transform">
-                            {member.full_name?.charAt(0).toUpperCase() || '?'}
+                            {(() => {
+                              const fullName = getString(member.full_name);
+                              return fullName ? fullName.charAt(0).toUpperCase() : '?';
+                            })()}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-bold text-gray-900 group-hover:text-[#1e3a8a] transition-colors truncate">
-                              {member.full_name}
+                              {getString(member.full_name)}
                             </p>
                             <p className="text-sm text-gray-600 mt-0.5">
-                              <span className="font-mono">{member.staff_id}</span>
-                              {member.employee_code && (
-                                <span className="text-gray-400"> • {member.employee_code}</span>
+                              <span className="font-mono">{getString(member.staff_id)}</span>
+                              {!!member.employee_code && (
+                                <span className="text-gray-400"> • {getString(member.employee_code)}</span>
                               )}
                             </p>
-                            {member.designation && (
-                              <p className="text-xs text-gray-500 mt-1">{member.designation}</p>
+                            {!!member.designation && (
+                              <p className="text-xs text-gray-500 mt-1">{getString(member.designation)}</p>
                             )}
                           </div>
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity">

@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Building2 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
+import { getString } from '@/lib/type-utils';
 
 export default function ViewStudentPage({
   params,
@@ -66,16 +67,17 @@ export default function ViewStudentPage({
     );
   }
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'Not provided';
+  const formatDate = (dateString: unknown) => {
+    const dateStr = getString(dateString);
+    if (!dateStr) return 'Not provided';
     try {
-      return new Date(dateString).toLocaleDateString('en-US', {
+      return new Date(dateStr).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
       });
     } catch {
-      return dateString;
+      return dateStr;
     }
   };
 
@@ -117,19 +119,19 @@ export default function ViewStudentPage({
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Admission Number</label>
-                  <p className="text-lg font-medium text-black mt-1">{student.admission_no}</p>
+                  <p className="text-lg font-medium text-black mt-1">{getString(student.admission_no) || 'N/A'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Student Name</label>
-                  <p className="text-lg font-medium text-black mt-1">{student.student_name}</p>
+                  <p className="text-lg font-medium text-black mt-1">{getString(student.student_name) || 'N/A'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Class</label>
-                  <p className="text-lg font-medium text-black mt-1">{student.class}</p>
+                  <p className="text-lg font-medium text-black mt-1">{getString(student.class) || 'N/A'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Section</label>
-                  <p className="text-lg font-medium text-black mt-1">{student.section}</p>
+                  <p className="text-lg font-medium text-black mt-1">{getString(student.section) || 'N/A'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-600 flex items-center">
@@ -140,73 +142,92 @@ export default function ViewStudentPage({
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Gender</label>
-                  <p className="text-lg font-medium text-black mt-1">{student.gender || 'Not provided'}</p>
+                  <p className="text-lg font-medium text-black mt-1">{getString(student.gender) || 'Not provided'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Status</label>
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-1 ${
-                    student.status === 'active' 
-                      ? 'bg-green-100 text-green-800'
-                      : student.status === 'inactive'
-                      ? 'bg-gray-100 text-gray-800'
-                      : 'bg-blue-100 text-blue-800'
-                  }`}>
-                    {student.status}
-                  </span>
+                  {(() => {
+                    const status = getString(student.status);
+                    return (
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-1 ${
+                        status === 'active' 
+                          ? 'bg-green-100 text-green-800'
+                          : status === 'inactive'
+                          ? 'bg-gray-100 text-gray-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {status || 'N/A'}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Academic Year</label>
-                  <p className="text-lg font-medium text-black mt-1">{student.academic_year}</p>
+                  <p className="text-lg font-medium text-black mt-1">{getString(student.academic_year) || 'N/A'}</p>
                 </div>
               </div>
             </div>
 
             {/* Parent/Guardian Information */}
-            {(student.parent_name || student.parent_phone || student.parent_email) && (
-              <div className="border-t border-gray-200 pt-8">
-                <h2 className="text-xl font-bold text-black mb-6 flex items-center">
-                  <User size={24} className="mr-2" />
-                  Parent/Guardian Information
-                </h2>
-                <div className="grid md:grid-cols-2 gap-6">
-                  {student.parent_name && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600">Parent Name</label>
-                      <p className="text-lg font-medium text-black mt-1">{student.parent_name}</p>
+            {(() => {
+              const parentName = getString(student.parent_name);
+              const parentPhone = getString(student.parent_phone);
+              const parentEmail = getString(student.parent_email);
+              if (parentName || parentPhone || parentEmail) {
+                return (
+                  <div className="border-t border-gray-200 pt-8">
+                    <h2 className="text-xl font-bold text-black mb-6 flex items-center">
+                      <User size={24} className="mr-2" />
+                      Parent/Guardian Information
+                    </h2>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {parentName && (
+                        <div>
+                          <label className="text-sm font-semibold text-gray-600">Parent Name</label>
+                          <p className="text-lg font-medium text-black mt-1">{parentName}</p>
+                        </div>
+                      )}
+                      {parentPhone && (
+                        <div>
+                          <label className="text-sm font-semibold text-gray-600 flex items-center">
+                            <Phone size={16} className="mr-1" />
+                            Parent Phone
+                          </label>
+                          <p className="text-lg font-medium text-black mt-1">{parentPhone}</p>
+                        </div>
+                      )}
+                      {parentEmail && (
+                        <div className="md:col-span-2">
+                          <label className="text-sm font-semibold text-gray-600 flex items-center">
+                            <Mail size={16} className="mr-1" />
+                            Parent Email
+                          </label>
+                          <p className="text-lg font-medium text-black mt-1">{parentEmail}</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {student.parent_phone && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Phone size={16} className="mr-1" />
-                        Parent Phone
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{student.parent_phone}</p>
-                    </div>
-                  )}
-                  {student.parent_email && (
-                    <div className="md:col-span-2">
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Mail size={16} className="mr-1" />
-                        Parent Email
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{student.parent_email}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             {/* Address */}
-            {student.address && (
-              <div className="border-t border-gray-200 pt-8">
-                <h2 className="text-xl font-bold text-black mb-6 flex items-center">
-                  <MapPin size={24} className="mr-2" />
-                  Address
-                </h2>
-                <p className="text-gray-700">{student.address}</p>
-              </div>
-            )}
+            {(() => {
+              const address = getString(student.address);
+              if (address) {
+                return (
+                  <div className="border-t border-gray-200 pt-8">
+                    <h2 className="text-xl font-bold text-black mb-6 flex items-center">
+                      <MapPin size={24} className="mr-2" />
+                      Address
+                    </h2>
+                    <p className="text-gray-700">{address}</p>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             {/* Additional Information */}
             <div className="border-t border-gray-200 pt-8">
@@ -218,13 +239,13 @@ export default function ViewStudentPage({
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Created At</label>
                   <p className="text-lg font-medium text-black mt-1">
-                    {student.created_at ? formatDate(student.created_at) : 'N/A'}
+                    {formatDate(student.created_at)}
                   </p>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-600">Last Updated</label>
                   <p className="text-lg font-medium text-black mt-1">
-                    {student.updated_at ? formatDate(student.updated_at) : 'N/A'}
+                    {formatDate(student.updated_at)}
                   </p>
                 </div>
               </div>

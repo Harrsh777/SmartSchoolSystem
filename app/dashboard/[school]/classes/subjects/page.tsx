@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -35,11 +35,7 @@ export default function SubjectsPage({
     color: '#6366f1',
   });
 
-  useEffect(() => {
-    fetchSubjects();
-  }, [schoolCode]);
-
-  const fetchSubjects = async () => {
+  const fetchSubjects = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/subjects?school_code=${schoolCode}`);
@@ -53,7 +49,11 @@ export default function SubjectsPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolCode]);
+
+  useEffect(() => {
+    fetchSubjects();
+  }, [fetchSubjects]);
 
   const handleAdd = () => {
     setEditingSubject(null);

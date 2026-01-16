@@ -6,17 +6,11 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { 
   DollarSign, 
-  Download,
-  Search,
-  User,
-  Calendar,
   FileText,
   Settings,
   BarChart3,
   CreditCard,
   Receipt,
-  GraduationCap,
-  Award,
   Tag
 } from 'lucide-react';
 import Button from '@/components/ui/Button';

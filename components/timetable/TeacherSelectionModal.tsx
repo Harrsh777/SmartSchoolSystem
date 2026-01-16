@@ -87,7 +87,14 @@ export default function TeacherSelectionModal({
         
         if (subjectId) {
           // Result from staff-subjects/by-subject already returns only staff who teach this subject
-          staffToShow = result.data.map((s: any) => ({
+          staffToShow = result.data.map((s: {
+            id: string;
+            full_name?: string;
+            staff_id?: string;
+            email?: string;
+            role?: string;
+            department?: string;
+          }) => ({
             id: s.id,
             staff_id: s.staff_id,
             full_name: s.full_name,

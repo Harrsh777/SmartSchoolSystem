@@ -2,10 +2,11 @@
 
 import { use, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Image, Plus, X, Loader2, Save, AlertCircle, CheckCircle, Trash2, Edit, Filter } from 'lucide-react';
+import { Plus, X, Loader2, Save, AlertCircle, CheckCircle, Trash2, Edit, Filter, Images } from 'lucide-react';
 
 interface GalleryImage {
   id: string;
@@ -277,7 +278,7 @@ export default function GalleryPage({
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <Image className="text-indigo-600" size={32} alt="Gallery icon" />
+              <Images className="text-indigo-600" size={32} />
               Gallery
             </h1>
             <p className="text-gray-600 mt-2">
@@ -339,7 +340,7 @@ export default function GalleryPage({
       {/* Gallery Grid */}
       {images.length === 0 ? (
         <Card className="p-12 text-center">
-          <Image className="mx-auto mb-4 text-gray-400" size={48} alt="No images icon" />
+          <Images className="mx-auto mb-4 text-gray-400" size={48} />
           <p className="text-gray-600 text-lg">No images found</p>
           <p className="text-gray-500 text-sm mt-2">Add your first image to get started</p>
         </Card>
@@ -354,11 +355,11 @@ export default function GalleryPage({
             >
               <Card className="p-0 overflow-hidden group hover:shadow-lg transition-all">
                 <div className="relative aspect-square overflow-hidden bg-gray-100">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <Image
                     src={image.image_url}
                     alt={image.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    fill
+                    className="object-cover group-hover:scale-110 transition-transform duration-300"
                   />
                   {isAdmin && (
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
@@ -430,12 +431,15 @@ export default function GalleryPage({
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                     {preview ? (
                       <div className="space-y-4">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={preview}
-                          alt="Preview"
-                          className="max-h-64 mx-auto rounded-lg"
-                        />
+                        <div className="relative max-h-64 mx-auto rounded-lg aspect-video">
+                          <Image
+                            src={preview}
+                            alt="Preview"
+                            fill
+                            className="object-contain rounded-lg"
+                            unoptimized
+                          />
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"
@@ -460,7 +464,7 @@ export default function GalleryPage({
                           htmlFor="file-upload"
                           className="cursor-pointer flex flex-col items-center"
                         >
-                          <Image className="text-gray-400 mb-2" size={48} alt="Upload icon" />
+                          <Images className="text-gray-400 mb-2" size={48} />
                           <p className="text-sm text-gray-600">
                             Click to upload or drag and drop
                           </p>

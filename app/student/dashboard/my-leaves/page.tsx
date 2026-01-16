@@ -30,7 +30,6 @@ interface LeaveRequest {
 
 export default function MyLeavesPage() {
   const router = useRouter();
-  const [student, setStudent] = useState<any>(null);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,13 +37,12 @@ export default function MyLeavesPage() {
   useEffect(() => {
     const storedStudent = sessionStorage.getItem('student');
     if (storedStudent) {
-      const studentData = JSON.parse(storedStudent);
-      setStudent(studentData);
+      const studentData: { id: string; school_code: string } = JSON.parse(storedStudent);
       fetchLeaves(studentData);
     }
   }, []);
 
-  const fetchLeaves = async (studentData: any) => {
+  const fetchLeaves = async (studentData: { id: string; school_code: string }) => {
     try {
       setLoading(true);
       const response = await fetch(`/api/leave/student-requests?school_code=${studentData.school_code}&student_id=${studentData.id}`);

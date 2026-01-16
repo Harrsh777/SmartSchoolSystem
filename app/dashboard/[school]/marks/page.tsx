@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -14,22 +14,18 @@ import {
   Filter,
   ArrowLeft,
   RefreshCw,
-  TrendingUp,
-  TrendingDown,
-  Award,
   Users,
   BarChart3,
   FileSpreadsheet,
-  FileDown,
-  Printer,
   CheckCircle2,
   XCircle,
   AlertCircle,
   GraduationCap,
   BookOpen,
-  Calendar,
+  TrendingUp,
+  Award,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
 interface StudentMark {
   id: string;
@@ -119,6 +115,7 @@ export default function MarksDashboardPage({
     fetchClasses();
     fetchExaminations();
     fetchSubjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   // Fetch marks when filters change
@@ -126,6 +123,7 @@ export default function MarksDashboardPage({
     if (filters.exam_id) {
       fetchMarks();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, schoolCode]);
 
   const fetchClasses = async () => {
@@ -135,7 +133,10 @@ export default function MarksDashboardPage({
       if (response.ok && result.data) {
         setClasses(result.data);
         // Extract unique sections
-        const uniqueSections = [...new Set(result.data.map((c: any) => c.section).filter(Boolean))];
+        const sectionsArray = (result.data as Array<{ section?: string }>)
+          .map((c) => c.section)
+          .filter((s): s is string => typeof s === 'string' && s.length > 0);
+        const uniqueSections: string[] = [...new Set(sectionsArray)];
         setSections(uniqueSections.sort());
       }
     } catch (err) {
@@ -323,7 +324,6 @@ export default function MarksDashboardPage({
     }));
   }, [marks]);
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
   return (
     <div className="space-y-6 pb-20">

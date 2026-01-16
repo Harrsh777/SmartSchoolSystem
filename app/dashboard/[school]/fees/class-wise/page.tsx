@@ -18,6 +18,13 @@ interface ClassFee {
   fee_schedule_id: string | null;
 }
 
+interface ScheduleData {
+  id: string;
+  schedule_name?: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
 export default function ClassWiseFeePage({
   params,
 }: {
@@ -30,11 +37,6 @@ export default function ClassWiseFeePage({
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingFee, setEditingFee] = useState<ClassFee | null>(null);
   const [classes, setClasses] = useState<string[]>([]);
-  interface ScheduleData {
-    id: string;
-    name?: string;
-    [key: string]: unknown;
-  }
   const [schedules, setSchedules] = useState<ScheduleData[]>([]);
 
   useEffect(() => {
@@ -68,7 +70,8 @@ export default function ClassWiseFeePage({
           class?: string;
           [key: string]: unknown;
         }
-        const uniqueClasses = Array.from(new Set(result.data.map((c: ClassData) => c.class).filter(Boolean)));
+        const classNames: (string | undefined)[] = result.data.map((c: ClassData) => c.class);
+        const uniqueClasses: string[] = Array.from(new Set(classNames.filter((cls: string | undefined): cls is string => Boolean(cls))));
         setClasses(uniqueClasses.sort());
       }
     } catch (err) {
@@ -433,7 +436,7 @@ function ClassFeeModal({
                   <option value="">Select Schedule</option>
                   {schedules.map(schedule => (
                     <option key={schedule.id} value={schedule.id}>
-                      {schedule.schedule_name}
+                      {schedule.schedule_name || schedule.name || 'Unnamed Schedule'}
                     </option>
                   ))}
                 </select>

@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { X, AlertCircle } from 'lucide-react';
 import type { Exam } from '@/lib/supabase';
+import { getString } from '@/lib/type-utils';
 
 interface ClassData {
   class: string;
@@ -129,11 +130,16 @@ export default function AddScheduleModal({
 
       if (formData.exam_date) {
         const examDate = new Date(formData.exam_date);
-        const examStart = new Date(exam.start_date);
-        const examEnd = new Date(exam.end_date);
+        const examStartDate = getString(exam.start_date);
+        const examEndDate = getString(exam.end_date);
         
-        if (examDate < examStart || examDate > examEnd) {
-          newErrors.exam_date = `Date must be between ${exam.start_date} and ${exam.end_date}`;
+        if (examStartDate && examEndDate) {
+          const examStart = new Date(examStartDate);
+          const examEnd = new Date(examEndDate);
+          
+          if (examDate < examStart || examDate > examEnd) {
+            newErrors.exam_date = `Date must be between ${examStartDate} and ${examEndDate}`;
+          }
         }
       }
 
@@ -329,66 +335,70 @@ export default function AddScheduleModal({
           )}
 
           {/* Step 3: Date & Time */}
-          {step === 3 && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-black mb-4">Step 3: Date & Time</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Exam Date <span className="text-red-500">*</span>
-                    </label>
-                    <Input
-                      type="date"
-                      value={formData.exam_date}
-                      onChange={(e) => handleChange('exam_date', e.target.value)}
-                      min={exam.start_date}
-                      max={exam.end_date}
-                      required
-                    />
-                    {errors.exam_date && (
-                      <p className="text-red-600 text-sm mt-1">{errors.exam_date}</p>
-                    )}
-                    <p className="text-xs text-gray-500 mt-1">
-                      Must be between {exam.start_date} and {exam.end_date}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
+          {step === 3 && (() => {
+            const examStartDate = getString(exam.start_date);
+            const examEndDate = getString(exam.end_date);
+            return (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-black mb-4">Step 3: Date & Time</h3>
+                  <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Start Time <span className="text-red-500">*</span>
+                        Exam Date <span className="text-red-500">*</span>
                       </label>
                       <Input
-                        type="time"
-                        value={formData.start_time}
-                        onChange={(e) => handleChange('start_time', e.target.value)}
+                        type="date"
+                        value={formData.exam_date}
+                        onChange={(e) => handleChange('exam_date', e.target.value)}
+                        min={examStartDate}
+                        max={examEndDate}
                         required
                       />
-                      {errors.start_time && (
-                        <p className="text-red-600 text-sm mt-1">{errors.start_time}</p>
+                      {errors.exam_date && (
+                        <p className="text-red-600 text-sm mt-1">{errors.exam_date}</p>
                       )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Must be between {examStartDate || 'N/A'} and {examEndDate || 'N/A'}
+                      </p>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        End Time <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        type="time"
-                        value={formData.end_time}
-                        onChange={(e) => handleChange('end_time', e.target.value)}
-                        required
-                      />
-                      {errors.end_time && (
-                        <p className="text-red-600 text-sm mt-1">{errors.end_time}</p>
-                      )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Start Time <span className="text-red-500">*</span>
+                        </label>
+                        <Input
+                          type="time"
+                          value={formData.start_time}
+                          onChange={(e) => handleChange('start_time', e.target.value)}
+                          required
+                        />
+                        {errors.start_time && (
+                          <p className="text-red-600 text-sm mt-1">{errors.start_time}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          End Time <span className="text-red-500">*</span>
+                        </label>
+                        <Input
+                          type="time"
+                          value={formData.end_time}
+                          onChange={(e) => handleChange('end_time', e.target.value)}
+                          required
+                        />
+                        {errors.end_time && (
+                          <p className="text-red-600 text-sm mt-1">{errors.end_time}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Step 4: Additional Info */}
           {step === 4 && (

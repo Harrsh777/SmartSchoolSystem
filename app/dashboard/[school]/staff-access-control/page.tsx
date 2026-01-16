@@ -3,6 +3,7 @@
 import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import {
@@ -11,7 +12,6 @@ import {
   Edit,
   Search,
   Bookmark,
-  FileText,
   User,
 } from 'lucide-react';
 
@@ -281,9 +281,11 @@ export default function StaffAccessControlPage({
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3">
                         {member.photo_url ? (
-                          <img
+                          <Image
                             src={member.photo_url}
                             alt={member.full_name}
+                            width={40}
+                            height={40}
                             className="w-10 h-10 rounded-full object-cover"
                           />
                         ) : (

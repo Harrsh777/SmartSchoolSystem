@@ -9,42 +9,31 @@ import {
   Users, 
   UserCheck, 
   DollarSign, 
-  Calendar, 
   Download,
   ChevronDown,
   RefreshCw,
   Play,
   TrendingUp,
   TrendingDown,
-  ArrowUp,
-  ArrowDown,
   Info,
   FileText,
   Plus,
   Bell,
   ChevronRight,
   Package,
-  CheckCircle,
-  XCircle,
-  Clock,
-  AlertCircle,
-  ChevronUp,
   Edit,
   Building2,
   Shield,
   Key,
   BookOpen,
   CalendarDays,
-  Library,
+  Calendar,
   Bus,
   MessageSquare,
   FileBarChart,
-  Image,
   Award,
   BookMarked,
-  DoorOpen,
   Settings,
-  Home,
   Database,
   UserPlus,
   GraduationCap,
@@ -56,7 +45,6 @@ import {
   AlertCircle as AlertCircleIcon,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import type { LucideIcon } from 'lucide-react';
 import type { AcceptedSchool } from '@/lib/supabase';
 
 interface DashboardStats {
@@ -159,20 +147,10 @@ export default function DashboardPage({
   const [loadingDetailed, setLoadingDetailed] = useState(false);
   const [loadingFinancial, setLoadingFinancial] = useState(false);
   const [feePeriod, setFeePeriod] = useState<'till_date' | 'annual'>('till_date');
-  interface Timetable {
-    class_id: string;
-    class: string;
-    section: string;
-    academic_year?: string;
-    slot_count?: number;
-    has_timetable?: boolean;
-    class_teacher?: {
-      full_name: string;
-    };
-  }
-  const [timetables, setTimetables] = useState<Timetable[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [timetables, setTimetables] = useState<unknown[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loadingTimetables, setLoadingTimetables] = useState(false);
-  const [selectedTimetableClass, setSelectedTimetableClass] = useState<string | null>(null);
   
   interface Exam {
     id: string;
@@ -507,15 +485,27 @@ export default function DashboardPage({
   };
 
   // Get today's date formatted
-  const today = new Date();
-  const formattedDate = today.toLocaleDateString('en-GB', { 
-    day: '2-digit', 
-    month: 'long', 
-    year: 'numeric' 
-  });
+  // const today = new Date();
+  // const formattedDate = today.toLocaleDateString('en-GB', { 
+  //   day: '2-digit', 
+  //   month: 'long', 
+  //   year: 'numeric' 
+  // });
 
   // Define menu items organized by category
-  const quickActionsMenuItems = {
+  type MenuItem = {
+    label: string;
+    path: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    color: string;
+    subItems?: Array<{
+      label: string;
+      path: string;
+      icon: React.ComponentType<{ size?: number; className?: string }>;
+    }>;
+  };
+
+  const quickActionsMenuItems: Record<string, MenuItem[]> = {
     quick: [
       { label: 'Student-wise Fee', path: '/fees/student-wise', icon: DollarSign, color: '#F97316' },
       { label: 'Create Diary', path: '/homework', icon: BookMarked, color: '#F97316' },
@@ -579,9 +569,8 @@ export default function DashboardPage({
       { label: 'Digital Diary', path: '/homework', icon: BookMarked, color: '#F97316', subItems: [] },
       { label: 'Copy Checking', path: '/copy-checking', icon: FileText, color: '#F97316', subItems: [] },
       { label: 'Certificate Management', path: '/certificates', icon: Award, color: '#F97316', subItems: [
-        { label: 'Template Selection', path: '/certificates/templates', icon: Award },
-        { label: 'Manage Certificates', path: '/certificates/manage', icon: Award },
-        { label: 'Class wise student certificates', path: '/certificates/classwise', icon: Award },
+        { label: 'Certificate Dashboard', path: '/certificates', icon: Award },
+        { label: 'New Certificate', path: '/certificates#new', icon: Award },
       ]},
     ],
     transport: [
@@ -1187,7 +1176,12 @@ export default function DashboardPage({
                       <Users className="text-[#F97316]" size={16} />
                     </div>
                     <span className="text-sm font-medium text-[#0F172A]">
-                      Students ({detailedStats?.genderStats?.total ?? 0})
+                      Students ({(() => {
+                        const male = detailedStats?.genderStats?.male ?? 0;
+                        const female = detailedStats?.genderStats?.female ?? 0;
+                        const other = detailedStats?.genderStats?.other ?? 0;
+                        return male + female + other;
+                      })()})
                           </span>
                         </div>
                   <button className="w-6 h-6 rounded-full bg-[#FFEDD5] flex items-center justify-center hover:bg-[#F97316]/20 transition-colors">
@@ -1198,70 +1192,84 @@ export default function DashboardPage({
                 {/* Gender Distribution Bar Chart */}
                 <div className="mb-2">
                   <div className="relative w-full h-6 bg-[#E5E7EB] rounded overflow-hidden flex">
-                    {detailedStats?.genderStats && (
-                      <>
-                        {detailedStats.genderStats.malePercent > 0 && (
-                        <motion.div
-                          initial={{ width: 0 }}
-                            animate={{ width: `${detailedStats.genderStats.malePercent}%` }}
-                            transition={{ duration: 0.8, ease: "easeOut" }}
-                            className="bg-[#38BDF8] h-full flex items-center justify-center"
-                          >
-                            <span className="text-[10px] text-white font-semibold px-1">
-                              {detailedStats.genderStats.malePercent.toFixed(1)}%
-                          </span>
-                          </motion.div>
-                        )}
-                        {detailedStats.genderStats.femalePercent > 0 && (
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${detailedStats.genderStats.femalePercent}%` }}
-                            transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
-                            className="bg-[#EF4444] h-full flex items-center justify-center"
-                          >
-                            <span className="text-[10px] text-white font-semibold px-1">
-                              {detailedStats.genderStats.femalePercent.toFixed(1)}%
-                            </span>
-                          </motion.div>
-                        )}
-                        {(100 - (detailedStats.genderStats.malePercent + detailedStats.genderStats.femalePercent)) > 0 && (
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${100 - (detailedStats.genderStats.malePercent + detailedStats.genderStats.femalePercent)}%` }}
-                            transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-                            className="bg-[#38BDF8] h-full flex items-center justify-center"
-                          >
-                            <span className="text-[10px] text-white font-semibold px-1">
-                              {(100 - (detailedStats.genderStats.malePercent + detailedStats.genderStats.femalePercent)).toFixed(1)}%
-                            </span>
-                          </motion.div>
-                        )}
-                      </>
-                    )}
+                    {detailedStats?.genderStats && (() => {
+                      const malePercent = detailedStats.genderStats.malePercent ?? 0;
+                      const femalePercent = detailedStats.genderStats.femalePercent ?? 0;
+                      const remainingPercent = 100 - (malePercent + femalePercent);
+                      return (
+                        <>
+                          {malePercent > 0 && (
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${malePercent}%` }}
+                              transition={{ duration: 0.8, ease: "easeOut" }}
+                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                            >
+                              <span className="text-[10px] text-white font-semibold px-1">
+                                {malePercent.toFixed(1)}%
+                              </span>
+                            </motion.div>
+                          )}
+                          {femalePercent > 0 && (
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${femalePercent}%` }}
+                              transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
+                              className="bg-[#EF4444] h-full flex items-center justify-center"
+                            >
+                              <span className="text-[10px] text-white font-semibold px-1">
+                                {femalePercent.toFixed(1)}%
+                              </span>
+                            </motion.div>
+                          )}
+                          {remainingPercent > 0 && (
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${remainingPercent}%` }}
+                              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                            >
+                              <span className="text-[10px] text-white font-semibold px-1">
+                                {remainingPercent.toFixed(1)}%
+                              </span>
+                            </motion.div>
+                          )}
+                        </>
+                      );
+                    })()}
                         </div>
                       </div>
                 
                 {/* Legend */}
                 <div className="flex items-center gap-4 text-xs">
-                  {detailedStats?.genderStats && detailedStats.genderStats.malePercent > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
-                      <span className="text-[#64748B]">Male ({detailedStats.genderStats.malePercent.toFixed(1)}%)</span>
-                    </div>
-                  )}
-                  {detailedStats?.genderStats && detailedStats.genderStats.femalePercent > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
-                      <span className="text-[#64748B]">Female ({detailedStats.genderStats.femalePercent.toFixed(1)}%)</span>
-                  </div>
-                  )}
-                  {detailedStats?.genderStats && (100 - (detailedStats.genderStats.malePercent + detailedStats.genderStats.femalePercent)) > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
-                      <span className="text-[#64748B]">Not Mapped ({(100 - (detailedStats.genderStats.malePercent + detailedStats.genderStats.femalePercent)).toFixed(1)}%)</span>
-                  </div>
-                )}
-              </div>
+                  {(() => {
+                    const malePercent = detailedStats?.genderStats?.malePercent ?? 0;
+                    const femalePercent = detailedStats?.genderStats?.femalePercent ?? 0;
+                    const remainingPercent = 100 - (malePercent + femalePercent);
+                    return (
+                      <>
+                        {malePercent > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
+                            <span className="text-[#64748B]">Male ({malePercent.toFixed(1)}%)</span>
+                          </div>
+                        )}
+                        {femalePercent > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
+                            <span className="text-[#64748B]">Female ({femalePercent.toFixed(1)}%)</span>
+                          </div>
+                        )}
+                        {remainingPercent > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
+                            <span className="text-[#64748B]">Not Mapped ({remainingPercent.toFixed(1)}%)</span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
 
               {/* Staffs Section */}
@@ -1283,58 +1291,61 @@ export default function DashboardPage({
                 {/* Gender Distribution Bar Chart */}
                 <div className="mb-2">
                   <div className="relative w-full h-6 bg-[#E5E7EB] rounded overflow-hidden flex">
-                    {detailedStats?.staffGenderStats ? (
-                      <>
-                        {detailedStats.staffGenderStats.malePercent > 0 && (
-                        <motion.div
-                          initial={{ width: 0 }}
-                            animate={{ width: `${detailedStats.staffGenderStats.malePercent}%` }}
-                            transition={{ duration: 0.8, ease: "easeOut" }}
-                            className="bg-[#38BDF8] h-full flex items-center justify-center"
-                          >
-                            <span className="text-[10px] text-white font-semibold px-1">
-                              {detailedStats.staffGenderStats.malePercent.toFixed(1)}%
-                          </span>
-                          </motion.div>
-                        )}
-                        {detailedStats.staffGenderStats.femalePercent > 0 && (
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${detailedStats.staffGenderStats.femalePercent}%` }}
-                            transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
-                            className="bg-[#EF4444] h-full flex items-center justify-center"
-                          >
-                            <span className="text-[10px] text-white font-semibold px-1">
-                              {detailedStats.staffGenderStats.femalePercent.toFixed(1)}%
-                            </span>
-                          </motion.div>
-                        )}
-                        {detailedStats.staffGenderStats.otherPercent > 0 && (
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${detailedStats.staffGenderStats.otherPercent}%` }}
-                            transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-                            className="bg-[#38BDF8] h-full flex items-center justify-center"
-                          >
-                            <span className="text-[10px] text-white font-semibold px-1">
-                              {detailedStats.staffGenderStats.otherPercent.toFixed(1)}%
-                            </span>
-                          </motion.div>
-                        )}
-                        {detailedStats.staffGenderStats.otherPercent === 0 && 
-                         detailedStats.staffGenderStats.malePercent === 0 && 
-                         detailedStats.staffGenderStats.femalePercent === 0 && (
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: '100%' }}
-                            transition={{ duration: 0.8, ease: "easeOut" }}
-                            className="bg-[#38BDF8] h-full flex items-center justify-center"
-                          >
-                            <span className="text-[10px] text-white font-semibold px-1">100.0%</span>
-                          </motion.div>
-                        )}
-                      </>
-                    ) : (
+                    {detailedStats?.staffGenderStats ? (() => {
+                      const malePercent = detailedStats.staffGenderStats.malePercent ?? 0;
+                      const femalePercent = detailedStats.staffGenderStats.femalePercent ?? 0;
+                      const otherPercent = detailedStats.staffGenderStats.otherPercent ?? 0;
+                      return (
+                        <>
+                          {malePercent > 0 && (
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${malePercent}%` }}
+                              transition={{ duration: 0.8, ease: "easeOut" }}
+                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                            >
+                              <span className="text-[10px] text-white font-semibold px-1">
+                                {malePercent.toFixed(1)}%
+                              </span>
+                            </motion.div>
+                          )}
+                          {femalePercent > 0 && (
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${femalePercent}%` }}
+                              transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
+                              className="bg-[#EF4444] h-full flex items-center justify-center"
+                            >
+                              <span className="text-[10px] text-white font-semibold px-1">
+                                {femalePercent.toFixed(1)}%
+                              </span>
+                            </motion.div>
+                          )}
+                          {otherPercent > 0 && (
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${otherPercent}%` }}
+                              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                            >
+                              <span className="text-[10px] text-white font-semibold px-1">
+                                {otherPercent.toFixed(1)}%
+                              </span>
+                            </motion.div>
+                          )}
+                          {otherPercent === 0 && malePercent === 0 && femalePercent === 0 && (
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: '100%' }}
+                              transition={{ duration: 0.8, ease: "easeOut" }}
+                              className="bg-[#38BDF8] h-full flex items-center justify-center"
+                            >
+                              <span className="text-[10px] text-white font-semibold px-1">100.0%</span>
+                            </motion.div>
+                          )}
+                        </>
+                      );
+                    })() : (
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: '100%' }}
@@ -1349,39 +1360,47 @@ export default function DashboardPage({
                 
                 {/* Legend */}
                 <div className="flex items-center gap-4 text-xs">
-                  {detailedStats?.staffGenderStats ? (
-                    <>
-                      {detailedStats.staffGenderStats.malePercent > 0 && (
+                  {(() => {
+                    const malePercent = detailedStats?.staffGenderStats?.malePercent ?? 0;
+                    const femalePercent = detailedStats?.staffGenderStats?.femalePercent ?? 0;
+                    const otherPercent = detailedStats?.staffGenderStats?.otherPercent ?? 0;
+                    const hasNoData = malePercent === 0 && femalePercent === 0 && otherPercent === 0;
+                    
+                    if (!detailedStats?.staffGenderStats || hasNoData) {
+                      return (
                         <div className="flex items-center gap-1.5">
                           <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
-                          <span className="text-[#64748B]">Male ({detailedStats.staffGenderStats.malePercent.toFixed(1)}%)</span>
-                    </div>
-                      )}
-                      {detailedStats.staffGenderStats.femalePercent > 0 && (
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
-                          <span className="text-[#64748B]">Female ({detailedStats.staffGenderStats.femalePercent.toFixed(1)}%)</span>
-                  </div>
-                      )}
-                      {(detailedStats.staffGenderStats.otherPercent > 0 || 
-                        (detailedStats.staffGenderStats.malePercent === 0 && detailedStats.staffGenderStats.femalePercent === 0)) && (
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
-                          <span className="text-[#64748B]">
-                            Not Mapped ({detailedStats.staffGenderStats.otherPercent > 0 
-                              ? detailedStats.staffGenderStats.otherPercent.toFixed(1) 
-                              : '100.0'}%)
-                        </span>
+                          <span className="text-[#64748B]">Not Mapped (100.0%)</span>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <>
+                        {malePercent > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
+                            <span className="text-[#64748B]">Male ({malePercent.toFixed(1)}%)</span>
+                          </div>
+                        )}
+                        {femalePercent > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
+                            <span className="text-[#64748B]">Female ({femalePercent.toFixed(1)}%)</span>
+                          </div>
+                        )}
+                        {(otherPercent > 0 || hasNoData) && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
+                            <span className="text-[#64748B]">
+                              Not Mapped ({otherPercent > 0 ? otherPercent.toFixed(1) : '100.0'}%)
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-[#38BDF8]"></div>
-                      <span className="text-[#64748B]">Not Mapped (100.0%)</span>
-                  </div>
-                )}
-              </div>
                     </div>
                   </div>
                 </div>

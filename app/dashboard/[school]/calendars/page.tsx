@@ -156,7 +156,10 @@ export default function CalendarsPage({
                     onChange={() => toggleLabel(label)}
                     className="w-4 h-4 rounded border-gray-300"
                   />
-                  <div className={`w-4 h-4 rounded ${style.color}`} />
+                  <div
+                    className={`w-4 h-4 rounded`}
+                    style={{ backgroundColor: style.color }}
+                  />
                   <span className="text-sm text-gray-700">{label}</span>
                 </label>
               ))}
@@ -172,8 +175,10 @@ export default function CalendarsPage({
             <div className="space-y-4">
               {currentWeekEvents.map((event) => {
                 const labelStyle = eventLabels[event.label];
+                if (!labelStyle) return null;
+                const borderColorClass = labelStyle.bgClass.replace('bg-', 'border-');
                 return (
-                  <div key={event.id} className="border-l-4 pl-3" style={{ borderColor: labelStyle.color.replace('bg-', '') }}>
+                  <div key={event.id} className={`border-l-4 pl-3 ${borderColorClass}`}>
                     <h4 className="font-semibold text-black text-sm mb-1">{event.title}</h4>
                     {event.description && (
                       <p className="text-xs text-gray-600 mb-2 line-clamp-2">{event.description}</p>
@@ -287,10 +292,11 @@ export default function CalendarsPage({
                         <div className="space-y-1">
                           {events.slice(0, 2).map((event) => {
                             const labelStyle = eventLabels[event.label];
+                            if (!labelStyle) return null;
                             return (
                               <div
                                 key={event.id}
-                                className={`text-xs px-2 py-1 rounded ${labelStyle.color} ${labelStyle.text} truncate`}
+                                className={`text-xs px-2 py-1 rounded ${labelStyle.bgClass} ${labelStyle.text} truncate`}
                                 title={event.title}
                               >
                                 {event.time ? `${event.time.split('-')[0]} ${event.title}` : event.title}
@@ -317,12 +323,13 @@ export default function CalendarsPage({
                   .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                   .map((event) => {
                     const labelStyle = eventLabels[event.label];
+                    if (!labelStyle) return null;
                     return (
                       <div
                         key={event.id}
                         className="flex items-center gap-4 p-4 border rounded-lg hover:bg-gray-50"
                       >
-                        <div className={`w-3 h-12 rounded ${labelStyle.color}`} />
+                        <div className={`w-3 h-12 rounded ${labelStyle.bgClass}`} />
                         <div className="flex-1">
                           <h4 className="font-semibold text-black">{event.title}</h4>
                           {event.description && (
@@ -340,12 +347,13 @@ export default function CalendarsPage({
                             {event.location && <span>{event.location}</span>}
                           </div>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${labelStyle.color} ${labelStyle.text}`}>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${labelStyle.bgClass} ${labelStyle.text}`}>
                           {event.label}
                         </span>
                       </div>
                     );
-                  })}
+                  })
+                  .filter(Boolean)}
               </div>
             )}
           </Card>

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
-import { UserCheck, Eye, EyeOff, AlertCircle, Building2, User, Lock, BookOpen, Chalkboard, Lightbulb, Sparkles, Award, ClipboardList, PenTool } from 'lucide-react';
+import { UserCheck, Eye, EyeOff, AlertCircle, Building2, User, Lock, BookOpen, Lightbulb, Sparkles, Award, ClipboardList, PenTool } from 'lucide-react';
 
 export default function TeacherLoginForm() {
   const router = useRouter();

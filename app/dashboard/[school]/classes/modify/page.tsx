@@ -261,7 +261,7 @@ export default function ModifyClassesPage({
                       <td className="px-4 py-3 text-sm text-[#0F172A]">
                         {subjects.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
-                            {subjects.map((subject, idx) => (
+                            {subjects.map((subject) => (
                               <span
                                 key={subject.id}
                                 className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-[#EAF1FF] text-[#1E3A8A] border border-[#DBEAFE]"

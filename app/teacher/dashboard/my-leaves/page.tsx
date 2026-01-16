@@ -29,7 +29,6 @@ interface LeaveRequest {
 
 export default function MyLeavesPage() {
   const router = useRouter();
-  const [teacher, setTeacher] = useState<any>(null);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,13 +36,12 @@ export default function MyLeavesPage() {
   useEffect(() => {
     const storedTeacher = sessionStorage.getItem('teacher');
     if (storedTeacher) {
-      const teacherData = JSON.parse(storedTeacher);
-      setTeacher(teacherData);
+      const teacherData: { id: string; school_code: string } = JSON.parse(storedTeacher);
       fetchLeaves(teacherData);
     }
   }, []);
 
-  const fetchLeaves = async (teacherData: any) => {
+  const fetchLeaves = async (teacherData: { id: string; school_code: string }) => {
     try {
       setLoading(true);
       const response = await fetch(`/api/leave/requests?school_code=${teacherData.school_code}&staff_id=${teacherData.id}`);

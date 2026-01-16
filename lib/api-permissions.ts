@@ -10,8 +10,7 @@ import { getServiceRoleClient } from '@/lib/supabase-admin';
  */
 export async function requirePermission(
   request: NextRequest,
-  permissionKey: string,
-  _schoolCode?: string
+  permissionKey: string
 ): Promise<NextResponse | null> {
   try {
     // Get staff ID from request headers (set by middleware or auth)

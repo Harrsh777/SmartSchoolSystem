@@ -8,8 +8,7 @@ import type { Student, Examination, Mark } from '@/lib/supabase';
 
 export default function ExaminationsPage() {
   // student kept for potential future use
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [student, setStudent] = useState<Student | null>(null);
+  const [, setStudent] = useState<Student | null>(null);
   const [exams, setExams] = useState<Examination[]>([]);
   const [marks, setMarks] = useState<Record<string, Mark>>({});
   const [loading, setLoading] = useState(true);
@@ -118,7 +117,7 @@ export default function ExaminationsPage() {
                         <div>
                           <p className="text-sm text-gray-600">Start Date</p>
                           <p className="font-medium text-black">
-                            {new Date(exam.start_date).toLocaleDateString()}
+                            {exam.start_date ? new Date(exam.start_date).toLocaleDateString() : 'N/A'}
                           </p>
                         </div>
                       </div>
@@ -127,7 +126,7 @@ export default function ExaminationsPage() {
                         <div>
                           <p className="text-sm text-gray-600">End Date</p>
                           <p className="font-medium text-black">
-                            {new Date(exam.end_date).toLocaleDateString()}
+                            {exam.end_date ? new Date(exam.end_date).toLocaleDateString() : 'N/A'}
                           </p>
                         </div>
                       </div>
@@ -136,9 +135,9 @@ export default function ExaminationsPage() {
                         <p className="font-medium text-black">{exam.academic_year}</p>
                       </div>
                     </div>
-                    
+
                     {/* Marks Display */}
-                    {mark && (
+                    {typeof mark === "object" && mark !== null && (
                       <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <div className="flex items-center gap-2 mb-3">
                           <Award className={isPass ? 'text-green-600' : 'text-red-600'} size={20} />
@@ -148,25 +147,41 @@ export default function ExaminationsPage() {
                           <div>
                             <p className="text-sm text-gray-600 mb-1">Marks Obtained</p>
                             <p className={`text-lg font-bold ${isPass ? 'text-green-600' : 'text-red-600'}`}>
-                              {mark.marks_obtained} / {mark.max_marks}
+                              {/* Safely access marks_obtained and max_marks */}
+                              {'marks_obtained' in mark && 'max_marks' in mark ? (
+                                <>
+                                  {mark.marks_obtained} / {mark.max_marks}
+                                </>
+                              ) : (
+                                'N/A'
+                              )}
                             </p>
                           </div>
                           <div>
                             <p className="text-sm text-gray-600 mb-1">Percentage</p>
                             <p className={`text-lg font-bold ${isPass ? 'text-green-600' : 'text-red-600'}`}>
-                              {(mark.percentage || 0).toFixed(2)}%
+                              {'percentage' in mark && typeof mark.percentage === 'number'
+                                ? mark.percentage.toFixed(2)
+                                : "0.00"
+                              }%
                             </p>
                           </div>
                           <div>
                             <p className="text-sm text-gray-600 mb-1">Grade</p>
                             <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-medium ${
-                              mark.grade === 'A+' || mark.grade === 'A' ? 'bg-green-100 text-green-800' :
-                              mark.grade === 'B+' || mark.grade === 'B' ? 'bg-blue-100 text-blue-800' :
-                              mark.grade === 'C' ? 'bg-yellow-100 text-yellow-800' :
-                              mark.grade === 'D' ? 'bg-orange-100 text-orange-800' :
-                              'bg-red-100 text-red-800'
+                              'grade' in mark && (
+                                mark.grade === 'A+' || mark.grade === 'A'
+                                  ? 'bg-green-100 text-green-800'
+                                  : mark.grade === 'B+' || mark.grade === 'B'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : mark.grade === 'C'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : mark.grade === 'D'
+                                  ? 'bg-orange-100 text-orange-800'
+                                  : 'bg-red-100 text-red-800'
+                              )
                             }`}>
-                              {mark.grade}
+                              {'grade' in mark ? mark.grade : 'N/A'}
                             </span>
                           </div>
                           <div>
@@ -176,7 +191,7 @@ export default function ExaminationsPage() {
                             </p>
                           </div>
                         </div>
-                        {mark.remarks && (
+                        {'remarks' in mark && mark.remarks && (
                           <div className="mt-3 pt-3 border-t border-gray-200">
                             <p className="text-sm text-gray-600">Remarks:</p>
                             <p className="text-sm text-gray-900">{mark.remarks}</p>
@@ -184,8 +199,8 @@ export default function ExaminationsPage() {
                         )}
                       </div>
                     )}
-                    
-                    {exam.description && (
+
+                    {typeof exam.description === "string" && exam.description.length > 0 && (
                       <p className="text-sm text-gray-600 mt-4">{exam.description}</p>
                     )}
                   </div>

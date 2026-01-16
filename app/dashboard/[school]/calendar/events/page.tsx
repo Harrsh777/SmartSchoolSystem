@@ -63,7 +63,7 @@ export default function EventsPage({
           class?: string;
           [key: string]: unknown;
         }
-        const uniqueClasses = Array.from(new Set(result.data.map((c: ClassData) => c.class).filter(Boolean)));
+        const uniqueClasses: string[] = Array.from(new Set(result.data.map((c: ClassData) => c.class).filter((cls: string | undefined): cls is string => Boolean(cls))));
         setClasses(uniqueClasses.sort());
       }
     } catch (err) {

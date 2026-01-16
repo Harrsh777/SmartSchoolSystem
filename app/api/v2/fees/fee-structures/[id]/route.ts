@@ -32,8 +32,8 @@ export async function GET(
       );
     }
 
-    // Now check permissions with the school_code from the structure
-    const permissionCheck = await requirePermission(request, 'view_fees', structure.school_code);
+    // Now check permissions
+    const permissionCheck = await requirePermission(request, 'view_fees');
     if (permissionCheck) {
       return permissionCheck;
     }

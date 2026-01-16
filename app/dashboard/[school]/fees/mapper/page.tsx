@@ -14,11 +14,9 @@ import {
   Calendar,
   Save,
   Plus,
-  X,
   Trash2,
   CheckCircle2,
-  AlertCircle,
-  Filter
+  Filter,
 } from 'lucide-react';
 
 interface FeeSchedule {
@@ -49,7 +47,6 @@ export default function FeeMapperPage({
   const router = useRouter();
   const [mappings, setMappings] = useState<ClassMapping[]>([]);
   const [feeSchedules, setFeeSchedules] = useState<FeeSchedule[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
@@ -118,6 +115,7 @@ export default function FeeMapperPage({
     // TODO: Fetch mappings and fee schedules
     setMappings(mockMappings);
     setFeeSchedules(mockFeeSchedules);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredMappings = mappings.filter(mapping => {

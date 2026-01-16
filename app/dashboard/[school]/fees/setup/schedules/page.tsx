@@ -134,6 +134,7 @@ export default function FeeSchedulesPage({
     if (formData.number_of_installments && formData.start_date && formData.collection_frequency) {
       generateInstallments();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.number_of_installments, formData.start_date, formData.collection_frequency]);
 
   const handleOpenModal = (schedule?: FeeSchedule) => {

@@ -15,7 +15,6 @@ import {
   Save,
   X,
   Eye,
-  Download,
   Palette,
   Type,
   Image as ImageIcon,
@@ -40,7 +39,6 @@ export default function ReportCardTemplatePage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
-  const [templates, setTemplates] = useState<Template[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({

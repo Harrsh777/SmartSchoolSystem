@@ -17,13 +17,12 @@ export default function TeacherAttendancePage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
-  const [existingAttendance, setExistingAttendance] = useState<Record<string, AttendanceStatus>>({});
-  const [isMarked, setIsMarked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isClassTeacher, setIsClassTeacher] = useState(false);
+  const [isMarked, setIsMarked] = useState(false);
 
   useEffect(() => {
     // Check if teacher is logged in
@@ -67,7 +66,6 @@ export default function TeacherAttendancePage() {
         result.data.forEach((record: AttendanceRecordData) => {
           existing[record.student_id] = record.status;
         });
-        setExistingAttendance(existing);
         
         // Merge with all students - set saved attendance for those who have it, default 'present' for others
         const mergedAttendance: Record<string, AttendanceStatus> = {};
@@ -87,7 +85,6 @@ export default function TeacherAttendancePage() {
           }
         });
         setAttendance(initialAttendance);
-        setExistingAttendance({});
         setIsMarked(false);
       }
     } catch (err) {
@@ -100,7 +97,6 @@ export default function TeacherAttendancePage() {
         }
       });
       setAttendance(initialAttendance);
-      setExistingAttendance({});
       setIsMarked(false);
     } finally {
       setLoadingAttendance(false);

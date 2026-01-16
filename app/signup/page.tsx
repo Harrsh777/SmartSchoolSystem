@@ -12,12 +12,9 @@ import {
   Building2, 
   MapPin, 
   Phone, 
-  Mail, 
   User, 
-  Calendar,
   GraduationCap,
   ArrowRight,
-  Shield,
   CheckCircle2,
   AlertCircle,
   Loader2

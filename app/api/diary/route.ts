@@ -156,7 +156,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Create diary entry
-    const diaryData: any = {
+    interface DiaryData {
+      school_id: string;
+      school_code: string;
+      title: string;
+      content: string | null;
+      type: string;
+      mode: string;
+      created_by: string | null;
+      academic_year_id?: string;
+    }
+
+    const diaryData: DiaryData = {
       school_id: schoolData.id,
       school_code,
       title: title.trim(),

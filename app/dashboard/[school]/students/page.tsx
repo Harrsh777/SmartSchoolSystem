@@ -24,6 +24,11 @@ export default function StudentsPage({
   const [showSetupGuide, setShowSetupGuide] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
 
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
+
   useEffect(() => {
     // Check if setup guide has been completed
     const setupCompleted = localStorage.getItem('student_setup_completed');
@@ -66,12 +71,18 @@ export default function StudentsPage({
   };
 
   const filteredStudents = students.filter(student => {
-    const matchesSearch = 
-      student.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.admission_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.class.toLowerCase().includes(searchQuery.toLowerCase());
+    const studentName = getString(student.student_name).toLowerCase();
+    const admissionNo = getString(student.admission_no).toLowerCase();
+    const className = getString(student.class).toLowerCase();
+    const query = searchQuery.toLowerCase();
     
-    const matchesClass = classFilter === 'all' || student.class === classFilter;
+    const matchesSearch = 
+      studentName.includes(query) ||
+      admissionNo.includes(query) ||
+      className.includes(query);
+    
+    const studentClass = getString(student.class);
+    const matchesClass = classFilter === 'all' || studentClass === classFilter;
     
     // Check URL params for additional filtering (from classes page)
     if (typeof window !== 'undefined') {
@@ -80,15 +91,19 @@ export default function StudentsPage({
       const sectionParam = params.get('section');
       const yearParam = params.get('year');
       
-      if (classParam && student.class !== classParam) return false;
-      if (sectionParam && student.section !== sectionParam) return false;
-      if (yearParam && student.academic_year !== yearParam) return false;
+      if (classParam && studentClass !== classParam) return false;
+      const studentSection = getString(student.section);
+      if (sectionParam && studentSection !== sectionParam) return false;
+      const studentYear = getString(student.academic_year);
+      if (yearParam && studentYear !== yearParam) return false;
     }
     
     return matchesSearch && matchesClass;
   });
 
-  const uniqueClasses = Array.from(new Set(students.map(s => s.class))).sort();
+  const uniqueClasses: string[] = Array.from(
+    new Set(students.map(s => getString(s.class)).filter(c => c.length > 0))
+  ).sort();
 
   if (loading) {
     return (
@@ -233,19 +248,22 @@ export default function StudentsPage({
                       transition={{ delay: 0.3 + index * 0.05 }}
                       className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
                     >
-                      <td className="py-4 px-4 font-medium text-black">{student.admission_no}</td>
-                      <td className="py-4 px-4 text-gray-700">{student.student_name}</td>
-                      <td className="py-4 px-4 text-gray-700">{student.class}</td>
-                      <td className="py-4 px-4 text-gray-700">{student.section}</td>
+                      <td className="py-4 px-4 font-medium text-black">{getString(student.admission_no) || 'N/A'}</td>
+                      <td className="py-4 px-4 text-gray-700">{getString(student.student_name) || 'N/A'}</td>
+                      <td className="py-4 px-4 text-gray-700">{getString(student.class) || 'N/A'}</td>
+                      <td className="py-4 px-4 text-gray-700">{getString(student.section) || 'N/A'}</td>
                       <td className="py-4 px-4">
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                          student.status === 'active' 
-                            ? 'bg-green-100 text-green-800'
-                            : student.status === 'inactive'
-                            ? 'bg-gray-100 text-gray-800'
-                            : 'bg-blue-100 text-blue-800'
+                          (() => {
+                            const status = getString(student.status);
+                            return status === 'active' 
+                              ? 'bg-green-100 text-green-800'
+                              : status === 'inactive'
+                              ? 'bg-gray-100 text-gray-800'
+                              : 'bg-blue-100 text-blue-800';
+                          })()
                         }`}>
-                          {student.status}
+                          {getString(student.status) || 'N/A'}
                         </span>
                       </td>
                       <td className="py-4 px-4">
@@ -301,7 +319,7 @@ export default function StudentsPage({
               <div>
                 <p className="text-sm text-gray-600">Active Students</p>
                 <p className="text-2xl font-bold text-black">
-                  {students.filter(s => s.status === 'active').length}
+                  {students.filter(s => getString(s.status) === 'active').length}
                 </p>
               </div>
             </div>

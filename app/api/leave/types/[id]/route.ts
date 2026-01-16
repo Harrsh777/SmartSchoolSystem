@@ -16,7 +16,15 @@ export async function PATCH(
     const body = await request.json();
     const { abbreviation, name, max_days, carry_forward, is_active } = body;
 
-    const updateData: any = {};
+    interface LeaveTypeUpdateData {
+      abbreviation?: string;
+      name?: string;
+      max_days?: number | null;
+      carry_forward?: boolean;
+      is_active?: boolean;
+    }
+
+    const updateData: LeaveTypeUpdateData = {};
     if (abbreviation !== undefined) updateData.abbreviation = abbreviation.toUpperCase();
     if (name !== undefined) updateData.name = name;
     if (max_days !== undefined) updateData.max_days = max_days ? parseInt(max_days) : null;

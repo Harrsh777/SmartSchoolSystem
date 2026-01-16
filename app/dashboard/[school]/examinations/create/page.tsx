@@ -32,6 +32,7 @@ export default function CreateExaminationPage({
     id: string;
     class: string;
     section: string;
+    academic_year?: string;
     [key: string]: unknown;
   }
   const [classes, setClasses] = useState<ClassData[]>([]);
@@ -258,7 +259,7 @@ export default function CreateExaminationPage({
                     <option value="">Select a class</option>
                     {classes.map(cls => (
                       <option key={cls.id} value={cls.id}>
-                        Class {cls.class} - Section {cls.section} ({cls.academic_year})
+                        Class {cls.class} - Section {cls.section} ({cls.academic_year || 'N/A'})
                       </option>
                     ))}
                   </select>

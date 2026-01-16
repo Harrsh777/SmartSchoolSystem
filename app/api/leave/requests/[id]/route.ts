@@ -20,7 +20,14 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid status. Must be approved or rejected' }, { status: 400 });
     }
 
-    const updateData: any = {
+    interface LeaveRequestUpdateData {
+      status: string;
+      updated_at: string;
+      updated_by?: string;
+      rejected_reason?: string | null;
+    }
+
+    const updateData: LeaveRequestUpdateData = {
       status,
       updated_at: new Date().toISOString(),
     };

@@ -96,20 +96,20 @@ export default function FeeBasicsPage({
   const [schedules, setSchedules] = useState<FeeSchedule[]>([]);
   const [components, setComponents] = useState<FeeComponent[]>([]);
   const [discounts, setDiscounts] = useState<FeeDiscount[]>([]);
-  const [miscFees, setMiscFees] = useState<MiscFee[]>([]);
+  const [, setMiscFees] = useState<MiscFee[]>([]);
   const [fines, setFines] = useState<FeeFine[]>([]);
   
   // Modal states
   const [showYearModal, setShowYearModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showComponentModal, setShowComponentModal] = useState(false);
+  const [, setShowComponentReorder] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [, setShowDiscountLogs] = useState(false);
   const [showMiscModal, setShowMiscModal] = useState(false);
+  const [, setShowMiscLogs] = useState(false);
   const [showFineModal, setShowFineModal] = useState(false);
-  const [showComponentReorder, setShowComponentReorder] = useState(false);
-  const [showDiscountLogs, setShowDiscountLogs] = useState(false);
-  const [showMiscLogs, setShowMiscLogs] = useState(false);
-  const [showFineLogs, setShowFineLogs] = useState(false);
+  const [, setShowFineLogs] = useState(false);
   
   // Editing states
   const [editingSchedule, setEditingSchedule] = useState<FeeSchedule | null>(null);

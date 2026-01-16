@@ -11,11 +11,8 @@ import {
   ArrowLeft,
   Search,
   Download,
-  Calendar,
-  CheckCircle,
   Clock,
-  AlertCircle,
-  DollarSign
+  Calendar,
 } from 'lucide-react';
 
 interface Student {
@@ -73,8 +70,8 @@ export default function FeeStatementsPage({
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [feeStatement, setFeeStatement] = useState<FeeStatement | null>(null);
-  const [loading, setLoading] = useState(false);
   const [academicYear, setAcademicYear] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (searchQuery.length >= 2) {
@@ -82,6 +79,7 @@ export default function FeeStatementsPage({
     } else {
       setStudents([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, schoolCode]);
 
   const searchStudents = async () => {
@@ -205,8 +203,16 @@ export default function FeeStatementsPage({
         </div>
       </Card>
 
+      {/* Loading State */}
+      {loading && (
+        <Card className="p-12 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#2F6FED] mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading fee statement...</p>
+        </Card>
+      )}
+
       {/* Fee Statement Display */}
-      {selectedStudent && feeStatement && (
+      {selectedStudent && !loading && feeStatement && (
         <>
           {/* Summary Card */}
           <Card className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">

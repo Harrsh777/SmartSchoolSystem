@@ -6,7 +6,6 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { 
   Settings, 
-  DollarSign,
   Calendar,
   Users,
   ArrowLeft,

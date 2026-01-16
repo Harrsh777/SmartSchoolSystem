@@ -15,7 +15,6 @@ import {
   Share2,
   ArrowLeft,
   BookOpen,
-  Filter,
   Calendar,
 } from 'lucide-react';
 

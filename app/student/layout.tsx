@@ -181,7 +181,7 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
                   <p className="text-xs text-[#5A7A9A]">Admission: {student.admission_no}</p>
                 </div>
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold">
-                  {student.student_name.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                  {(student.student_name?.split(' ').map(n => n?.[0]).join('') || '').substring(0, 2)}
                 </div>
               </div>
               <span className="px-3 py-1 bg-[#DBEAFE] text-[#1e3a8a] rounded-full text-sm font-medium border border-[#E1E1DB]">

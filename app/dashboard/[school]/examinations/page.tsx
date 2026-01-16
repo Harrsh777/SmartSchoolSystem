@@ -11,13 +11,10 @@ import {
   BookOpen, 
   Users, 
   FileText, 
-  Calendar, 
-  FileCheck, 
   GraduationCap,
   ClipboardList,
   FileBarChart,
   Award,
-  Settings,
   BarChart3
 } from 'lucide-react';
 

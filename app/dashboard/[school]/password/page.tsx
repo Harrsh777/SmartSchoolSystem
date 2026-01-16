@@ -23,19 +23,38 @@ export default function PasswordPage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
-  interface LoginCredentials {
-    students?: Array<{
-      admission_no: string;
-      password?: string;
-      [key: string]: unknown;
-    }>;
-    staff?: Array<{
-      staff_id: string;
-      password?: string;
-      [key: string]: unknown;
-    }>;
+  
+  interface StudentCredential {
+    admission_no: string;
+    password?: string;
+    name?: string;
+    class?: string;
+    section?: string;
+    hasPassword?: boolean;
     [key: string]: unknown;
   }
+
+  interface StaffCredential {
+    staff_id: string;
+    password?: string;
+    name?: string;
+    role?: string;
+    hasPassword?: boolean;
+    [key: string]: unknown;
+  }
+
+  interface LoginCredentials {
+    students?: StudentCredential[];
+    staff?: StaffCredential[];
+    summary?: {
+      totalStudents?: number;
+      studentsWithPassword?: number;
+      totalStaff?: number;
+      staffWithPassword?: number;
+    };
+    [key: string]: unknown;
+  }
+  
   const [loginCredentials, setLoginCredentials] = useState<LoginCredentials | null>(null);
   const [loadingCredentials, setLoadingCredentials] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
@@ -213,7 +232,7 @@ export default function PasswordPage({
   };
 
   // Filter and paginate students
-  const filteredStudents = loginCredentials?.students?.filter((student: LoginCredentials['students'][0]) => {
+  const filteredStudents = loginCredentials?.students?.filter((student: StudentCredential) => {
     const matchesSearch = 
       student.admission_no?.toLowerCase().includes(studentSearch.toLowerCase()) ||
       student.name?.toLowerCase().includes(studentSearch.toLowerCase()) ||
@@ -234,7 +253,7 @@ export default function PasswordPage({
   const totalStudentPages = Math.ceil(filteredStudents.length / itemsPerPage);
 
   // Filter and paginate staff
-  const filteredStaff = loginCredentials?.staff?.filter((member: LoginCredentials['staff'][0]) => {
+  const filteredStaff = loginCredentials?.staff?.filter((member: StaffCredential) => {
     const matchesSearch = 
       member.staff_id?.toLowerCase().includes(staffSearch.toLowerCase()) ||
       member.name?.toLowerCase().includes(staffSearch.toLowerCase()) ||
@@ -393,7 +412,7 @@ export default function PasswordPage({
                   </thead>
                   <tbody className="divide-y divide-[#E5E7EB] bg-white">
                     {paginatedStudents.length > 0 ? (
-                      paginatedStudents.map((student: LoginCredentials['students'][0]) => (
+                      paginatedStudents.map((student: StudentCredential) => (
                         <tr key={student.admission_no} className="hover:bg-[#F1F5F9] transition-colors">
                           <td className="px-3 py-2 text-xs text-[#0F172A] font-medium">{student.admission_no}</td>
                           <td className="px-3 py-2 text-xs text-[#0F172A]">{student.name}</td>
@@ -538,7 +557,7 @@ export default function PasswordPage({
                   </thead>
                   <tbody className="divide-y divide-[#E5E7EB] bg-white">
                     {paginatedStaff.length > 0 ? (
-                      paginatedStaff.map((member: LoginCredentials['staff'][0]) => (
+                      paginatedStaff.map((member: StaffCredential) => (
                         <tr key={member.staff_id} className="hover:bg-[#F1F5F9] transition-colors">
                           <td className="px-3 py-2 text-xs text-[#0F172A] font-medium">{member.staff_id}</td>
                           <td className="px-3 py-2 text-xs text-[#0F172A]">{member.name}</td>

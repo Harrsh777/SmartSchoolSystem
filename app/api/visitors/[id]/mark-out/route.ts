@@ -60,7 +60,15 @@ export async function PATCH(
     }
 
     // Update visitor
-    const updateData: any = {
+    interface VisitorUpdateData {
+      status: string;
+      time_out: string;
+      marked_out_by: string | null;
+      marked_out_at: string;
+      updated_at: string;
+    }
+
+    const updateData: VisitorUpdateData = {
       status: 'OUT',
       time_out: time_out || new Date().toTimeString().split(' ')[0].substring(0, 5),
       marked_out_by: markedOutBy,

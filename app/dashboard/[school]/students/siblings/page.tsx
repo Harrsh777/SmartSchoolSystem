@@ -25,6 +25,11 @@ export default function StudentSiblingsPage({
   const [loading, setLoading] = useState(true);
   const [matching, setMatching] = useState(false);
 
+  // Helper to safely get string value
+  const getString = (value: unknown): string => {
+    return typeof value === 'string' ? value : '';
+  };
+
   useEffect(() => {
     fetchStudents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,18 +64,22 @@ export default function StudentSiblingsPage({
 
     // Group students by parent matching criteria
     students.forEach(student => {
-      if (!student.parent_name || (!student.parent_phone && !student.parent_email)) {
+      const parentName = getString(student.parent_name);
+      const parentPhone = getString(student.parent_phone);
+      const parentEmail = getString(student.parent_email);
+
+      if (!parentName || (!parentPhone && !parentEmail)) {
         return; // Skip students without parent info
       }
 
       // Create a key based on parent name and contact info
-      const parentName = student.parent_name.toLowerCase().trim();
-      const parentPhone = student.parent_phone?.replace(/\D/g, '') || '';
-      const parentEmail = student.parent_email?.toLowerCase().trim() || '';
+      const normalizedParentName = parentName.toLowerCase().trim();
+      const normalizedParentPhone = parentPhone.replace(/\D/g, '');
+      const normalizedParentEmail = parentEmail.toLowerCase().trim();
 
       // Try to match by name + phone
-      if (parentPhone) {
-        const phoneKey = `${parentName}_${parentPhone}`;
+      if (normalizedParentPhone) {
+        const phoneKey = `${normalizedParentName}_${normalizedParentPhone}`;
         if (groups.has(phoneKey)) {
           groups.get(phoneKey)!.students.push(student);
           if (!groups.get(phoneKey)!.matchCriteria.includes('Phone')) {
@@ -86,8 +95,8 @@ export default function StudentSiblingsPage({
       }
 
       // Try to match by name + email
-      if (parentEmail) {
-        const emailKey = `${parentName}_${parentEmail}`;
+      if (normalizedParentEmail) {
+        const emailKey = `${normalizedParentName}_${normalizedParentEmail}`;
         if (groups.has(emailKey)) {
           const existingGroup = groups.get(emailKey)!;
           // Check if student is not already in the group
@@ -210,19 +219,28 @@ export default function StudentSiblingsPage({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {group.students.map((student) => (
-                      <tr key={student.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {student.admission_no || 'N/A'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{student.student_name || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{student.class || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{student.section || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{student.parent_name || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{student.parent_phone || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{student.parent_email || 'N/A'}</td>
-                      </tr>
-                    ))}
+                    {group.students.map((student) => {
+                      const admissionNo = getString(student.admission_no) || 'N/A';
+                      const studentName = getString(student.student_name) || 'N/A';
+                      const className = getString(student.class) || 'N/A';
+                      const section = getString(student.section) || 'N/A';
+                      const parentName = getString(student.parent_name) || 'N/A';
+                      const parentPhone = getString(student.parent_phone) || 'N/A';
+                      const parentEmail = getString(student.parent_email) || 'N/A';
+                      return (
+                        <tr key={student.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            {admissionNo}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{studentName}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{className}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{section}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{parentName}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{parentPhone}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{parentEmail}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

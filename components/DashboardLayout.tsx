@@ -17,7 +17,6 @@ import {
   Menu,
   X,
   CalendarDays,
-  Calendar,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
@@ -25,7 +24,6 @@ import {
   Building2,
   Shield,
   Key,
-  LogOut,
   Languages,
   ChevronDown,
   HelpCircle,
@@ -43,7 +41,6 @@ import {
   GripVertical,
   ClipboardList,
   BarChart3,
-  FileCheck,
   Tag,
   Receipt,
   CreditCard
@@ -115,7 +112,7 @@ interface SortableMenuItemProps {
   index: number;
   sidebarCollapsed: boolean;
   active: boolean;
-  subItems: Array<{ label: string; path: string; icon: any }>;
+  subItems: Array<{ label: string; path: string; icon: React.ComponentType<{ size?: number; className?: string }> }>;
   hasSubItems: boolean;
   isExpanded: boolean;
   basePath: string;
@@ -617,7 +614,6 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
   const [quickSearchDropdownOpen, setQuickSearchDropdownOpen] = useState(false);
   const [menuOrder, setMenuOrder] = useState<string[]>([]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   
   // Extract school code from pathname
   const schoolCode = pathname.split('/')[2] || '';
@@ -800,14 +796,12 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
   // Handle drag start
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragId(event.active.id as string);
-    setIsDragging(true);
   };
 
   // Handle drag end
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveDragId(null);
-    setIsDragging(false);
 
     if (!over || active.id === over.id) {
       return;
@@ -870,7 +864,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [sidebarCollapsed]);
 
   // Define all searchable menu items with sub-items
   const searchableMenuItems = [
@@ -963,6 +957,8 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     // Leave Management
     { label: 'Leave Management', path: '/leave', category: 'Leave Management', icon: CalendarDays },
     { label: 'Leave Dashboard', path: '/leave/dashboard', category: 'Leave Management', icon: CalendarDays, parent: 'Leave Management' },
+    { label: 'Student Leave', path: '/leave/student-leave', category: 'Leave Management', icon: Users, parent: 'Leave Management' },
+    { label: 'Staff Leave', path: '/leave/staff-leave', category: 'Leave Management', icon: User, parent: 'Leave Management' },
     { label: 'Leave Basics', path: '/leave/basics', category: 'Leave Management', icon: CalendarDays, parent: 'Leave Management' },
     
     // Communication
@@ -993,9 +989,8 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Copy Checking', path: '/copy-checking', category: 'Academic', icon: FileText },
     
     // Certificate Management
-    { label: 'Template Selection', path: '/certificates/templates', category: 'Academic', icon: Award, parent: 'Certificate Management' },
-    { label: 'Manage Certificates', path: '/certificates/manage', category: 'Academic', icon: Award, parent: 'Certificate Management' },
-    { label: 'Class wise student certificates', path: '/certificates/classwise', category: 'Academic', icon: Award, parent: 'Certificate Management' },
+    { label: 'Certificate Dashboard', path: '/certificates', category: 'Academic', icon: Award, parent: 'Certificate Management' },
+    { label: 'New Certificate', path: '/certificates#new', category: 'Academic', icon: Award, parent: 'Certificate Management' },
     
     // Attendance
     { label: 'Attendance', path: '/attendance', category: 'Attendance', icon: CalendarDays },
@@ -1064,6 +1059,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     }
   }, [languageDropdownOpen, notificationsDropdownOpen, searchDropdownOpen, expandedSections]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleSearchItemClick = (item: typeof searchableMenuItems[0]) => {
     // Handle dynamic routes
     const finalPath = item.path;
@@ -1793,4 +1789,3 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     </div>
   );
 }
-

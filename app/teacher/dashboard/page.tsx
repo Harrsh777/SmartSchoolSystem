@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, TrendingUp, CalendarDays, CalendarX, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, TrendingUp, CalendarDays, CalendarX, Clock } from 'lucide-react';
 import type { Staff, Student, Class, Exam, Notice } from '@/lib/supabase';
 import TeacherTimetableView from '@/components/timetable/TeacherTimetableView';
+import { getString } from '@/lib/type-utils';
 
 export default function TeacherDashboard() {
   const router = useRouter();
@@ -18,7 +20,7 @@ export default function TeacherDashboard() {
   const [attendanceStats, setAttendanceStats] = useState<{ percentage: number; present: number; total: number } | null>(null);
   const [upcomingExamsCount, setUpcomingExamsCount] = useState(0);
   const [noticesCount, setNoticesCount] = useState(0);
-  const [studentLeaveRequests, setStudentLeaveRequests] = useState<any[]>([]);
+  const [studentLeaveRequests, setStudentLeaveRequests] = useState<Array<{ id: string; [key: string]: unknown }>>([]);
   interface EventNotification {
     id: string;
     event: {
@@ -55,8 +57,13 @@ export default function TeacherDashboard() {
 
   const fetchDashboardData = async (teacherData: Staff) => {
     try {
+      const schoolCode = getString(teacherData.school_code);
+      if (!schoolCode) {
+        return;
+      }
+
       // Fetch students
-      const studentsResponse = await fetch(`/api/students?school_code=${teacherData.school_code}`);
+      const studentsResponse = await fetch(`/api/students?school_code=${schoolCode}`);
       const studentsResult = await studentsResponse.json();
       if (studentsResponse.ok && studentsResult.data) {
         setStudents(studentsResult.data);
@@ -65,13 +72,15 @@ export default function TeacherDashboard() {
       // Fetch assigned class (if teacher is a class teacher)
       // Pass both teacher_id and staff_id to check both fields
       const queryParams = new URLSearchParams({
-        school_code: teacherData.school_code,
+        school_code: schoolCode,
       });
-      if (teacherData.id) {
-        queryParams.append('teacher_id', teacherData.id);
+      const teacherId = getString(teacherData.id);
+      if (teacherId) {
+        queryParams.append('teacher_id', teacherId);
       }
-      if (teacherData.staff_id) {
-        queryParams.append('staff_id', teacherData.staff_id);
+      const staffId = getString(teacherData.staff_id);
+      if (staffId) {
+        queryParams.append('staff_id', staffId);
       }
       
       const assignedClassResponse = await fetch(
@@ -83,21 +92,28 @@ export default function TeacherDashboard() {
         setAssignedClass(assignedClassResult.data);
         
         // Fetch attendance statistics for the class
-        fetchAttendanceStats(teacherData.school_code, assignedClassResult.data.id);
+        const classId = getString(assignedClassResult.data.id);
+        if (classId) {
+          fetchAttendanceStats(schoolCode, classId);
+        }
       }
 
       // Fetch upcoming exams count
-      fetchUpcomingExamsCount(teacherData.school_code);
+      fetchUpcomingExamsCount(schoolCode);
 
       // Fetch notices count
-      fetchNoticesCount(teacherData.school_code);
+      fetchNoticesCount(schoolCode);
 
       // Fetch event notifications
       fetchEventNotifications(teacherData);
 
       // Fetch student leave requests for the class
       if (assignedClassResult.data) {
-        fetchStudentLeaveRequests(teacherData.school_code, assignedClassResult.data.class, assignedClassResult.data.section);
+        const className = getString(assignedClassResult.data.class);
+        const section = getString(assignedClassResult.data.section);
+        if (className && section) {
+          fetchStudentLeaveRequests(schoolCode, className, section);
+        }
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -162,8 +178,13 @@ export default function TeacherDashboard() {
 
   const fetchEventNotifications = async (teacherData: Staff) => {
     try {
+      const schoolCode = getString(teacherData.school_code);
+      const teacherId = getString(teacherData.id);
+      if (!schoolCode || !teacherId) {
+        return;
+      }
       const response = await fetch(
-        `/api/calendar/notifications?school_code=${teacherData.school_code}&user_type=teacher&user_id=${teacherData.id}&unread_only=true`
+        `/api/calendar/notifications?school_code=${schoolCode}&user_type=teacher&user_id=${teacherId}&unread_only=true`
       );
       const result = await response.json();
       if (response.ok && result.data) {
@@ -181,9 +202,24 @@ export default function TeacherDashboard() {
       const result = await response.json();
       if (response.ok && result.data) {
         // Filter leave requests for students in this class
-        const classLeaves = result.data.filter((leave: any) => 
-          leave.class === className && leave.section === section
-        );
+        interface LeaveRequest {
+          id: string;
+          student_id: string;
+          class?: string;
+          section?: string;
+          student_name?: string;
+          admission_no?: string;
+          leave_type?: string;
+          leave_start_date?: string;
+          leave_end_date?: string;
+          reason?: string;
+          [key: string]: unknown;
+        }
+        const classLeaves = result.data.filter((leave: LeaveRequest) => {
+          const leaveClass = getString(leave.class);
+          const leaveSection = getString(leave.section);
+          return leaveClass === className && leaveSection === section;
+        });
         setStudentLeaveRequests(classLeaves.slice(0, 5)); // Show latest 5
       }
     } catch (err) {
@@ -218,23 +254,32 @@ export default function TeacherDashboard() {
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="flex items-center gap-4">
-            {teacher?.photo_url ? (
-              <img
-                src={teacher.photo_url}
-                alt={teacher.full_name || 'Teacher'}
-                className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl">
-                {teacher?.full_name?.charAt(0).toUpperCase() || 'T'}
-              </div>
-            )}
+            {(() => {
+              const photoUrl = teacher ? getString(teacher.photo_url) : '';
+              const fullName = teacher ? getString(teacher.full_name) : '';
+              if (photoUrl) {
+                return (
+                  <Image
+                    src={photoUrl}
+                    alt={fullName || 'Teacher'}
+                    width={64}
+                    height={64}
+                    className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                  />
+                );
+              }
+              return (
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl">
+                  {fullName ? fullName.charAt(0).toUpperCase() : 'T'}
+                </div>
+              );
+            })()}
             <div>
               <h1 className="text-3xl font-bold text-black mb-2">
-                Welcome, {teacher?.full_name}
+                Welcome, {teacher ? getString(teacher.full_name) || 'Teacher' : 'Teacher'}
               </h1>
               <p className="text-gray-600">
-                Class Teacher of {assignedClass.class}-{assignedClass.section} ({assignedClass.academic_year})
+                Class Teacher of {getString(assignedClass.class)}-{getString(assignedClass.section)} ({getString(assignedClass.academic_year) || 'N/A'})
               </p>
             </div>
           </div>
@@ -417,21 +462,29 @@ export default function TeacherDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {classStudents.map((student) => (
-                      <tr key={student.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{student.admission_no}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{student.student_name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{student.parent_name || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {student.parent_phone || 'N/A'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {student.date_of_birth 
-                            ? new Date(student.date_of_birth).toLocaleDateString()
-                            : 'N/A'}
-                        </td>
-                      </tr>
-                    ))}
+                    {classStudents.map((student, index) => {
+                      const studentId = getString(student.id) || `student-${index}`;
+                      const admissionNo = getString(student.admission_no);
+                      const studentName = getString(student.student_name);
+                      const parentName = getString(student.parent_name);
+                      const parentPhone = getString(student.parent_phone);
+                      const dateOfBirth = getString(student.date_of_birth);
+                      return (
+                        <tr key={studentId} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{admissionNo || 'N/A'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{studentName || 'N/A'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{parentName || 'N/A'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {parentPhone || 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {dateOfBirth 
+                              ? new Date(dateOfBirth).toLocaleDateString()
+                              : 'N/A'}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -440,24 +493,31 @@ export default function TeacherDashboard() {
         </motion.div>
 
         {/* Timetable Section */}
-        {teacher && teacher.id && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Calendar className="text-blue-600" size={24} />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900">My Timetable</h2>
-            </div>
-            <TeacherTimetableView
-              schoolCode={teacher.school_code}
-              teacherId={teacher.id}
-            />
-          </motion.div>
-        )}
+        {(() => {
+          const schoolCode = teacher ? getString(teacher.school_code) : '';
+          const teacherId = teacher ? getString(teacher.id) : '';
+          if (schoolCode && teacherId) {
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Calendar className="text-blue-600" size={24} />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900">My Timetable</h2>
+                </div>
+                <TeacherTimetableView
+                  schoolCode={schoolCode}
+                  teacherId={teacherId}
+                />
+              </motion.div>
+            );
+          }
+          return null;
+        })()}
 
         {/* Student Leave Requests */}
         {studentLeaveRequests.length > 0 && (
@@ -481,55 +541,72 @@ export default function TeacherDashboard() {
             </div>
             <Card>
               <div className="space-y-3">
-                {studentLeaveRequests.map((leave) => (
-                  <div
-                    key={leave.id}
-                    className="p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold text-sm">
-                            {leave.student_name.charAt(0)}
+                {studentLeaveRequests.map((leave) => {
+                  const leaveId = getString(leave.id) || `leave-${Math.random()}`;
+                  const studentName = getString(leave.student_name) || 'Student';
+                  const admissionNo = getString(leave.admission_no) || 'N/A';
+                  const leaveClass = getString(leave.class) || 'N/A';
+                  const leaveSection = getString(leave.section) || 'N/A';
+                  const leaveType = getString(leave.leave_type) || 'Leave';
+                  const leaveStartDate = getString(leave.leave_start_date);
+                  const leaveEndDate = getString(leave.leave_end_date);
+                  const reason = getString(leave.reason) || 'N/A';
+                  
+                  return (
+                    <div
+                      key={leaveId}
+                      className="p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold text-sm">
+                              {studentName.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900">{studentName}</p>
+                              <p className="text-xs text-gray-600">{admissionNo} • {leaveClass}-{leaveSection}</p>
+                            </div>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#EAF1FF] text-[#2F6FED] border border-[#DBEAFE]">
+                              {leaveType}
+                            </span>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-yellow-100 text-yellow-800 border-yellow-200">
+                              <Clock size={12} className="mr-1" />
+                              Pending
+                            </span>
                           </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">{leave.student_name}</p>
-                            <p className="text-xs text-gray-600">{leave.admission_no} • {leave.class}-{leave.section}</p>
-                          </div>
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#EAF1FF] text-[#2F6FED] border border-[#DBEAFE]">
-                            {leave.leave_type}
-                          </span>
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-yellow-100 text-yellow-800 border-yellow-200">
-                            <Clock size={12} className="mr-1" />
-                            Pending
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 text-sm mt-3">
-                          <div>
-                            <p className="text-gray-600 mb-1">Start Date</p>
-                            <p className="font-medium text-gray-900">
-                              {new Date(leave.leave_start_date).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 mb-1">End Date</p>
-                            <p className="font-medium text-gray-900">
-                              {new Date(leave.leave_end_date).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 mb-1">Reason</p>
-                            <p className="font-medium text-gray-900 truncate">{leave.reason || 'N/A'}</p>
+                          <div className="grid grid-cols-3 gap-4 text-sm mt-3">
+                            <div>
+                              <p className="text-gray-600 mb-1">Start Date</p>
+                              <p className="font-medium text-gray-900">
+                                {leaveStartDate ? new Date(leaveStartDate).toLocaleDateString() : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600 mb-1">End Date</p>
+                              <p className="font-medium text-gray-900">
+                                {leaveEndDate ? new Date(leaveEndDate).toLocaleDateString() : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600 mb-1">Reason</p>
+                              <p className="font-medium text-gray-900 truncate">{reason}</p>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <Button
-                  onClick={() => router.push(`/dashboard/${teacher?.school_code}/leave/student`)}
+                  onClick={() => {
+                    const schoolCode = teacher ? getString(teacher.school_code) : '';
+                    if (schoolCode) {
+                      router.push(`/dashboard/${schoolCode}/leave/student`);
+                    }
+                  }}
                   variant="outline"
                   className="w-full border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
                 >
@@ -556,6 +633,10 @@ export default function TeacherDashboard() {
                 {eventNotifications.slice(0, 5).map((notification: EventNotification) => {
                   const event = notification.event;
                   if (!event) return null;
+                  const eventDate = getString(event.event_date);
+                  const eventTitle = getString(event.title);
+                  const eventDescription = getString(event.description);
+                  const eventType = getString(event.event_type);
                   return (
                     <div
                       key={notification.id}
@@ -565,19 +646,19 @@ export default function TeacherDashboard() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              event.event_type === 'holiday' 
+                              eventType === 'holiday' 
                                 ? 'bg-green-100 text-green-800' 
                                 : 'bg-blue-100 text-blue-800'
                             }`}>
-                              {event.event_type === 'holiday' ? 'Holiday' : 'Event'}
+                              {eventType === 'holiday' ? 'Holiday' : 'Event'}
                             </span>
                             <span className="text-sm text-gray-600">
-                              {new Date(event.event_date).toLocaleDateString()}
+                              {eventDate ? new Date(eventDate).toLocaleDateString() : 'N/A'}
                             </span>
                           </div>
-                          <h3 className="font-semibold text-gray-900">{event.title}</h3>
-                          {event.description && (
-                            <p className="text-sm text-gray-600 mt-1">{event.description}</p>
+                          <h3 className="font-semibold text-gray-900">{eventTitle || 'Event'}</h3>
+                          {eventDescription && (
+                            <p className="text-sm text-gray-600 mt-1">{eventDescription}</p>
                           )}
                         </div>
                       </div>
@@ -601,20 +682,29 @@ export default function TeacherDashboard() {
         animate={{ opacity: 1, y: 0 }}
       >
         <div className="flex items-center gap-4">
-          {teacher?.photo_url ? (
-            <img
-              src={teacher.photo_url}
-              alt={teacher.full_name || 'Teacher'}
-              className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
-            />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl">
-              {teacher?.full_name?.charAt(0).toUpperCase() || 'T'}
-            </div>
-          )}
+          {(() => {
+            const photoUrl = teacher ? getString(teacher.photo_url) : '';
+            const fullName = teacher ? getString(teacher.full_name) : '';
+            if (photoUrl) {
+              return (
+                <Image
+                  src={photoUrl}
+                  alt={fullName || 'Teacher'}
+                  width={64}
+                  height={64}
+                  className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                />
+              );
+            }
+            return (
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl">
+                {fullName ? fullName.charAt(0).toUpperCase() : 'T'}
+              </div>
+            );
+          })()}
           <div>
             <h1 className="text-3xl font-bold text-black mb-2">
-              Welcome, {teacher?.full_name}
+              Welcome, {teacher ? getString(teacher.full_name) || 'Teacher' : 'Teacher'}
             </h1>
             <p className="text-gray-600">Teacher Dashboard</p>
           </div>
@@ -776,6 +866,10 @@ export default function TeacherDashboard() {
               {eventNotifications.slice(0, 5).map((notification: EventNotification) => {
                 const event = notification.event;
                 if (!event) return null;
+                const eventDate = getString(event.event_date);
+                const eventTitle = getString(event.title);
+                const eventDescription = getString(event.description);
+                const eventType = getString(event.event_type);
                 return (
                   <div
                     key={notification.id}
@@ -785,19 +879,19 @@ export default function TeacherDashboard() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            event.event_type === 'holiday' 
+                            eventType === 'holiday' 
                               ? 'bg-green-100 text-green-800' 
                               : 'bg-blue-100 text-blue-800'
                           }`}>
-                            {event.event_type === 'holiday' ? 'Holiday' : 'Event'}
+                            {eventType === 'holiday' ? 'Holiday' : 'Event'}
                           </span>
                           <span className="text-sm text-gray-600">
-                            {new Date(event.event_date).toLocaleDateString()}
+                            {eventDate ? new Date(eventDate).toLocaleDateString() : 'N/A'}
                           </span>
                         </div>
-                        <h3 className="font-semibold text-gray-900">{event.title}</h3>
-                        {event.description && (
-                          <p className="text-sm text-gray-600 mt-1">{event.description}</p>
+                        <h3 className="font-semibold text-gray-900">{eventTitle || 'Event'}</h3>
+                        {eventDescription && (
+                          <p className="text-sm text-gray-600 mt-1">{eventDescription}</p>
                         )}
                       </div>
                     </div>

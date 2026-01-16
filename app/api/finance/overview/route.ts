@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       { data: expenseMonth, error: expenseMonthError },
       { data: incomeYear, error: incomeYearError },
       { data: expenseYear, error: expenseYearError },
-      { data: salariesMonth, error: salaryMonthError },
+      { error: salaryMonthError },
       { data: salariesYear, error: salaryYearError },
     ] = await Promise.all([
       incomeDateFilter,

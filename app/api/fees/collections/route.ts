@@ -83,7 +83,6 @@ export async function POST(request: NextRequest) {
       installment_ids, // Array of installment IDs to pay
       payment_mode,
       payment_date,
-      discount_id,
       discount_amount = 0,
       fine_amount = 0,
       cheque_number,

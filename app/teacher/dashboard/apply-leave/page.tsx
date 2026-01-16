@@ -26,7 +26,7 @@ interface LeaveType {
 
 export default function ApplyLeavePage() {
   const router = useRouter();
-  const [teacher, setTeacher] = useState<any>(null);
+  const [teacher, setTeacher] = useState<{ id: string; school_code: string } | null>(null);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);

@@ -111,7 +111,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare insert data
-    const insertData: any = {
+    interface GatePassData {
+      school_id: string;
+      school_code: string;
+      person_type: string;
+      person_id: string | null;
+      person_name: string;
+      class?: string | null;
+      section?: string | null;
+      academic_year?: string | null;
+      pass_type: string;
+      reason: string;
+      date: string;
+      time_out: string;
+      approved_by_name: string | null;
+      status: string;
+      created_by: string | null;
+      expected_return_time: string | null;
+    }
+
+    const insertData: GatePassData = {
       school_id: schoolData.id,
       school_code,
       person_type: person_type.toLowerCase(),

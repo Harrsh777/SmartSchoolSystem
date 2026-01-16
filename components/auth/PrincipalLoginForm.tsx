@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
-import { Building2, Eye, EyeOff, AlertCircle, User, Lock, Briefcase, Laptop, BookOpen, BarChart3, Shield, Sparkles, TrendingUp } from 'lucide-react';
+import { Building2, Eye, EyeOff, AlertCircle, Lock, Briefcase, BarChart3, Shield, TrendingUp } from 'lucide-react';
 
 export default function PrincipalLoginForm() {
   const router = useRouter();

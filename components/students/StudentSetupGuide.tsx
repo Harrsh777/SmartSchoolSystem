@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { Users, UserPlus, Upload, CheckCircle, ArrowRight } from 'lucide-react';
+import { getString } from '@/lib/type-utils';
 
 interface StudentSetupGuideProps {
   onComplete: () => void;
@@ -12,6 +13,9 @@ interface StudentSetupGuideProps {
 
 interface DetailData {
   type?: string;
+  title?: string;
+  description?: string;
+  steps?: string[];
   [key: string]: unknown;
 }
 
@@ -155,48 +159,75 @@ export default function StudentSetupGuide({ onComplete }: StudentSetupGuideProps
               <div className="bg-gray-50 rounded-lg p-6 space-y-4">
                 {currentStep === 1 && (
                   <ul className="space-y-3">
-                    {currentStepData.details.map((detail, idx) => (
-                      <li key={idx} className="flex items-start gap-3">
-                        <CheckCircle className="text-green-600 mt-0.5 flex-shrink-0" size={20} />
-                        <span className="text-gray-700">{detail}</span>
-                      </li>
-                    ))}
+                    {(() => {
+                      const details = currentStepData.details;
+                      if (Array.isArray(details) && details.length > 0 && typeof details[0] === 'string') {
+                        return (details as string[]).map((detail, idx) => (
+                          <li key={idx} className="flex items-start gap-3">
+                            <CheckCircle className="text-green-600 mt-0.5 flex-shrink-0" size={20} />
+                            <span className="text-gray-700">{detail}</span>
+                          </li>
+                        ));
+                      }
+                      return null;
+                    })()}
                   </ul>
                 )}
 
                 {currentStep === 2 && (
                   <div className="space-y-6">
-                    {currentStepData.details.map((detail: DetailData, idx: number) => (
-                      <div key={idx} className="border-l-4 border-gray-300 pl-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          {detail.type === 'single' ? (
-                            <UserPlus className="text-blue-600" size={20} />
-                          ) : (
-                            <Upload className="text-green-600" size={20} />
-                          )}
-                          <h4 className="font-semibold text-black">{detail.title}</h4>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-3">{detail.description}</p>
-                        <ol className="space-y-2 ml-6">
-                          {detail.steps.map((step: string, stepIdx: number) => (
-                            <li key={stepIdx} className="text-sm text-gray-700 list-decimal">
-                              {step}
-                            </li>
-                          ))}
-                        </ol>
-                      </div>
-                    ))}
+                    {(() => {
+                      const details = currentStepData.details;
+                      if (Array.isArray(details) && details.length > 0 && typeof details[0] === 'object') {
+                        return (details as DetailData[]).map((detail: DetailData, idx: number) => {
+                          const title = getString(detail.title) || '';
+                          const description = getString(detail.description) || '';
+                          const detailType = getString(detail.type);
+                          const steps = Array.isArray(detail.steps) ? detail.steps : [];
+                          return (
+                            <div key={idx} className="border-l-4 border-gray-300 pl-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                {detailType === 'single' ? (
+                                  <UserPlus className="text-blue-600" size={20} />
+                                ) : (
+                                  <Upload className="text-green-600" size={20} />
+                                )}
+                                <h4 className="font-semibold text-black">{title}</h4>
+                              </div>
+                              <p className="text-sm text-gray-600 mb-3">{description}</p>
+                              <ol className="space-y-2 ml-6">
+                                {steps.map((step: unknown, stepIdx: number) => {
+                                  const stepText = getString(step) || '';
+                                  return (
+                                    <li key={stepIdx} className="text-sm text-gray-700 list-decimal">
+                                      {stepText}
+                                    </li>
+                                  );
+                                })}
+                              </ol>
+                            </div>
+                          );
+                        });
+                      }
+                      return null;
+                    })()}
                   </div>
                 )}
 
                 {currentStep === 3 && (
                   <ul className="space-y-3">
-                    {currentStepData.details.map((detail, idx) => (
-                      <li key={idx} className="flex items-start gap-3">
-                        <CheckCircle className="text-purple-600 mt-0.5 flex-shrink-0" size={20} />
-                        <span className="text-gray-700">{detail}</span>
-                      </li>
-                    ))}
+                    {(() => {
+                      const details = currentStepData.details;
+                      if (Array.isArray(details) && details.length > 0 && typeof details[0] === 'string') {
+                        return (details as string[]).map((detail, idx) => (
+                          <li key={idx} className="flex items-start gap-3">
+                            <CheckCircle className="text-purple-600 mt-0.5 flex-shrink-0" size={20} />
+                            <span className="text-gray-700">{detail}</span>
+                          </li>
+                        ));
+                      }
+                      return null;
+                    })()}
                   </ul>
                 )}
               </div>
