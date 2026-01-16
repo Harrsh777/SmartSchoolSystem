@@ -16,15 +16,24 @@ function getSupabaseClient(): SupabaseClient {
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl) {
-    throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set');
+    const error = new Error('NEXT_PUBLIC_SUPABASE_URL is not set');
+    console.error('Supabase initialization error:', error.message);
+    throw error;
   }
 
   if (!supabaseKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set');
+    const error = new Error('SUPABASE_SERVICE_ROLE_KEY is not set');
+    console.error('Supabase initialization error:', error.message);
+    throw error;
   }
 
-  supabaseClient = createClient(supabaseUrl, supabaseKey);
-  return supabaseClient;
+  try {
+    supabaseClient = createClient(supabaseUrl, supabaseKey);
+    return supabaseClient;
+  } catch (error) {
+    console.error('Error creating Supabase client:', error);
+    throw error;
+  }
 }
 
 export const supabase = new Proxy({} as SupabaseClient, {

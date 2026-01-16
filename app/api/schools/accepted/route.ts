@@ -20,8 +20,11 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json({ data }, { status: 200 });
   } catch (error) {
     console.error('Error fetching accepted schools:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error('Error details:', { message: errorMessage, stack: errorStack });
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: errorMessage },
       { status: 500 }
     );
   }
