@@ -21,12 +21,19 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (staffError) {
+      console.error('Supabase error fetching staff:', staffError);
       return NextResponse.json(
-        { error: 'Failed to fetch staff', details: staffError.message },
+        { 
+          error: 'Failed to fetch staff', 
+          details: staffError.message,
+          code: staffError.code,
+          hint: staffError.hint 
+        },
         { status: 500 }
       );
     }
 
+    // Return empty array if no staff found (not an error)
     return NextResponse.json({ data: staff || [] }, { status: 200 });
   } catch (error) {
     console.error('Error fetching staff:', error);

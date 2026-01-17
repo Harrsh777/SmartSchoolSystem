@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { 
   Home, 
-  User, 
   Users, 
   GraduationCap, 
   Calendar, 
@@ -17,8 +17,16 @@ import {
   X, 
   LogOut,
   Key,
-  Image,
-  CalendarX
+  Image as ImageIcon,
+  CalendarX,
+  Search,
+  Settings,
+  ClipboardCheck,
+  BookOpen,
+  Award,
+  Bus,
+  BarChart3,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/Button';
@@ -30,20 +38,53 @@ interface StudentLayoutProps {
   children: React.ReactNode;
 }
 
-const menuItems = [
+// Menu structure with modules and sub-modules
+interface MenuItem {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  path: string;
+  isModule?: boolean; // If true, this is a module header (expandable)
+  parent?: string; // Parent module name for sub-items
+}
+
+const menuItems: MenuItem[] = [
+  // Home (always at top, no module)
   { icon: Home, label: 'Home', path: '/student/dashboard' },
-  { icon: User, label: 'Personal Info', path: '/student/dashboard/personal' },
-  { icon: Users, label: 'Parent Info', path: '/student/dashboard/parent' },
-  { icon: GraduationCap, label: 'My Class', path: '/student/dashboard/class' },
-  { icon: Calendar, label: 'Attendance', path: '/student/dashboard/attendance' },
-  { icon: CalendarDays, label: 'Calendar', path: '/student/dashboard/calendar' },
-  { icon: FileText, label: 'Examinations', path: '/student/dashboard/examinations' },
-  { icon: DollarSign, label: 'Fees', path: '/student/dashboard/fees' },
-  { icon: Bell, label: 'Communication', path: '/student/dashboard/communication' },
-  { icon: CalendarX, label: 'Apply for Leave', path: '/student/dashboard/apply-leave' },
-  { icon: Calendar, label: 'My Leaves', path: '/student/dashboard/my-leaves' },
-  { icon: Image, label: 'Gallery', path: '/student/dashboard/gallery' },
-  { icon: Key, label: 'Change Password', path: '/student/dashboard/change-password' },
+  
+  // Academics Module
+  { icon: GraduationCap, label: 'Academics', path: '#', isModule: true },
+  { icon: GraduationCap, label: 'My Class', path: '/student/dashboard/class', parent: 'Academics' },
+  { icon: Calendar, label: 'Attendance', path: '/student/dashboard/attendance', parent: 'Academics' },
+  { icon: FileText, label: 'Examinations', path: '/student/dashboard/examinations', parent: 'Academics' },
+  { icon: BarChart3, label: 'Marks', path: '/student/dashboard/marks', parent: 'Academics' },
+  { icon: ClipboardCheck, label: 'Copy Checking', path: '/student/dashboard/copy-checking', parent: 'Academics' },
+  { icon: CalendarDays, label: 'Academic Calendar', path: '/student/dashboard/calendar', parent: 'Academics' },
+  { icon: BookOpen, label: 'Digital Diary', path: '/student/dashboard/diary', parent: 'Academics' },
+  
+  // Fees & Transport Module
+  { icon: DollarSign, label: 'Fees & Transport', path: '#', isModule: true },
+  { icon: DollarSign, label: 'Fees', path: '/student/dashboard/fees', parent: 'Fees & Transport' },
+  { icon: Bus, label: 'Transport Info', path: '/student/dashboard/transport', parent: 'Fees & Transport' },
+  
+  // Requests Module
+  { icon: CalendarX, label: 'Requests', path: '#', isModule: true },
+  { icon: CalendarX, label: 'Apply for Leave', path: '/student/dashboard/apply-leave', parent: 'Requests' },
+  { icon: Calendar, label: 'My Leaves', path: '/student/dashboard/my-leaves', parent: 'Requests' },
+  { icon: Award, label: 'Certificate Management', path: '/student/dashboard/certificates', parent: 'Requests' },
+  
+  // Communication Module
+  { icon: Bell, label: 'Communication', path: '#', isModule: true },
+  { icon: Bell, label: 'Communication', path: '/student/dashboard/communication', parent: 'Communication' },
+  { icon: Users, label: 'Parent Info', path: '/student/dashboard/parent', parent: 'Communication' },
+  
+  // Media & Activities Module
+  { icon: ImageIcon, label: 'Media & Activities', path: '#', isModule: true },
+  { icon: ImageIcon, label: 'Gallery', path: '/student/dashboard/gallery', parent: 'Media & Activities' },
+  
+  // Account Module
+  { icon: Settings, label: 'Account', path: '#', isModule: true },
+  { icon: Settings, label: 'Settings', path: '/student/dashboard/settings', parent: 'Account' },
+  { icon: Key, label: 'Change Password', path: '/student/dashboard/change-password', parent: 'Account' },
 ];
 
 export default function StudentLayout({ children }: StudentLayoutProps) {
@@ -54,11 +95,12 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set(['Academics'])); // Default: Academics expanded
 
-  // Session timeout (15 minutes)
+  // Session timeout (20 minutes)
   const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
-    timeoutMinutes: 15,
-    warningMinutes: 14,
+    timeoutMinutes: 20,
+    warningMinutes: 19,
     loginPath: '/login',
   });
 
@@ -123,6 +165,30 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
     return pathname.startsWith(path);
   };
 
+  // Get sub-items for a module
+  const getSubItems = (moduleName: string) => {
+    return menuItems.filter(item => item.parent === moduleName);
+  };
+
+  // Toggle module expansion
+  const toggleModule = (moduleName: string) => {
+    setExpandedModules(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(moduleName)) {
+        newSet.delete(moduleName);
+      } else {
+        newSet.add(moduleName);
+      }
+      return newSet;
+    });
+  };
+
+  // Check if any sub-item is active
+  const isModuleActive = (moduleName: string) => {
+    const subItems = getSubItems(moduleName);
+    return subItems.some(item => isActive(item.path));
+  };
+
   if (loading || !student) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#ECEDED]">
@@ -140,7 +206,7 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
       <nav className="bg-[#FFFFFF]/80 backdrop-blur-lg border-b border-[#E1E1DB] sticky top-0 z-40 shadow-sm">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-4 flex-1">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="lg:hidden p-2 rounded-xl hover:bg-[#DBEAFE] transition-all"
@@ -148,12 +214,24 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
                 {sidebarOpen ? <X size={24} className="text-[#1e3a8a]" /> : <Menu size={24} className="text-[#1e3a8a]" />}
               </button>
               <Link href="/" className="text-xl font-bold text-[#1e3a8a]">
-                Edu<span className="text-[#5A7A9A]">-Yan</span>
+                Edu<span className="text-[#5A7A9A]">Core</span>
               </Link>
               <div className="hidden sm:block h-6 w-px bg-[#E1E1DB]" />
               <span className="hidden sm:block text-[#1e3a8a] font-semibold">
                 {school?.school_name || student.school_code}
               </span>
+              
+              {/* Search Bar */}
+              <div className="hidden md:block flex-1 max-w-md ml-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5A7A9A]" size={18} />
+                  <input
+                    className="w-full pl-10 pr-4 py-2 bg-[#F8F9FA] border border-[#E1E1DB] rounded-lg text-sm focus:ring-1 focus:ring-[#1e3a8a] focus:border-[#1e3a8a] transition-all outline-none"
+                    placeholder="Search everything..."
+                    type="text"
+                  />
+                </div>
+              </div>
             </div>
             <div className="flex items-center space-x-3">
               {/* Session Timer */}
@@ -178,15 +256,27 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
               <div className="hidden sm:flex items-center gap-3">
                 <div className="text-right">
                   <p className="text-sm font-medium text-[#1e3a8a]">{student.student_name}</p>
-                  <p className="text-xs text-[#5A7A9A]">Admission: {student.admission_no}</p>
+                  <p className="text-xs text-[#5A7A9A]">
+                    {student.class && student.section ? `${student.class}-${student.section}` : `Admission: ${student.admission_no}`}
+                  </p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold">
-                  {(student.student_name?.split(' ').map(n => n?.[0]).join('') || '').substring(0, 2)}
+                <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-[#E1E1DB] flex-shrink-0">
+                  {student.photo_url && typeof student.photo_url === 'string' && student.photo_url.trim() !== '' ? (
+                    <Image
+                      src={student.photo_url}
+                      alt={student.student_name || 'Student'}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                      sizes="40px"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold text-sm">
+                      {(student.student_name?.split(' ').map(n => n?.[0]).join('') || 'S').substring(0, 1).toUpperCase()}
+                    </div>
+                  )}
                 </div>
               </div>
-              <span className="px-3 py-1 bg-[#DBEAFE] text-[#1e3a8a] rounded-full text-sm font-medium border border-[#E1E1DB]">
-                Student
-              </span>
               <Button
                 variant="outline"
                 size="sm"
@@ -241,42 +331,119 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
                   {/* Menu Items */}
                   {menuItems.map((item, index) => {
                     const Icon = item.icon;
-                    const active = isActive(item.path);
+                    const isModule = item.isModule || false;
+                    const subItems = isModule ? getSubItems(item.label) : [];
+                    const isExpanded = expandedModules.has(item.label);
+                    const moduleActive = isModule ? isModuleActive(item.label) : false;
+                    const active = !isModule && isActive(item.path);
+                    
+                    // Skip sub-items in main loop (they'll be rendered under their parent)
+                    if (item.parent) {
+                      return null;
+                    }
                     
                     return (
                       <div key={item.label} className="relative sidebar-menu-item">
+                        {/* Module Header or Regular Item */}
                         <div className="flex items-center gap-1">
-                          <Link
-                            href={item.path}
-                            onClick={() => setSidebarOpen(false)}
-                            className={`group flex-1 flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 ${
-                              active
-                                ? 'bg-[#60A5FA] text-[#FFFFFF] shadow-xl shadow-[#60A5FA]/20 scale-[1.02]'
-                                : 'text-[#B8D4E8] hover:text-[#FFFFFF] hover:bg-[#2c4a6b]'
-                            }`}
-                          >
-                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
-                              active 
-                                ? 'bg-[#3B82F6] text-[#FFFFFF]' 
-                                : 'bg-[#2c4a6b] text-[#B8D4E8] group-hover:bg-[#3d5a7f] group-hover:text-[#FFFFFF]'
-                            }`}>
-                              {index + 1}
-                            </span>
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                              active 
-                                ? 'bg-[#3B82F6] shadow-lg' 
-                                : 'bg-transparent group-hover:bg-[#2c4a6b] group-hover:scale-110 group-hover:shadow-md'
-                            }`}>
-                              <Icon size={20} className={active ? 'text-[#FFFFFF]' : 'text-[#9BB8D4] group-hover:text-[#FFFFFF]'} />
-                            </div>
-                            <span className="font-semibold text-sm tracking-wide flex-1 text-left">
-                              {item.label}
-                            </span>
-                            {active && (
-                              <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
-                            )}
-                          </Link>
+                          {isModule ? (
+                            <button
+                              onClick={() => toggleModule(item.label)}
+                              className={`group flex-1 flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 ${
+                                moduleActive
+                                  ? 'bg-[#60A5FA] text-[#FFFFFF] shadow-xl shadow-[#60A5FA]/20'
+                                  : 'text-[#B8D4E8] hover:text-[#FFFFFF] hover:bg-[#2c4a6b]'
+                              }`}
+                            >
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                                moduleActive 
+                                  ? 'bg-[#3B82F6] shadow-lg' 
+                                  : 'bg-transparent group-hover:bg-[#2c4a6b] group-hover:scale-110 group-hover:shadow-md'
+                              }`}>
+                                <Icon size={20} className={moduleActive ? 'text-[#FFFFFF]' : 'text-[#9BB8D4] group-hover:text-[#FFFFFF]'} />
+                              </div>
+                              <span className="font-semibold text-sm tracking-wide flex-1 text-left">
+                                {item.label}
+                              </span>
+                              <ChevronRight 
+                                size={18} 
+                                className={`transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''} ${
+                                  moduleActive ? 'text-[#FFFFFF]' : 'text-[#9BB8D4]'
+                                }`} 
+                              />
+                            </button>
+                          ) : (
+                            <Link
+                              href={item.path}
+                              onClick={() => setSidebarOpen(false)}
+                              className={`group flex-1 flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 ${
+                                active
+                                  ? 'bg-[#60A5FA] text-[#FFFFFF] shadow-xl shadow-[#60A5FA]/20 scale-[1.02]'
+                                  : 'text-[#B8D4E8] hover:text-[#FFFFFF] hover:bg-[#2c4a6b]'
+                              }`}
+                            >
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
+                                active 
+                                  ? 'bg-[#3B82F6] text-[#FFFFFF]' 
+                                  : 'bg-[#2c4a6b] text-[#B8D4E8] group-hover:bg-[#3d5a7f] group-hover:text-[#FFFFFF]'
+                              }`}>
+                                {index + 1}
+                              </span>
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                                active 
+                                  ? 'bg-[#3B82F6] shadow-lg' 
+                                  : 'bg-transparent group-hover:bg-[#2c4a6b] group-hover:scale-110 group-hover:shadow-md'
+                              }`}>
+                                <Icon size={20} className={active ? 'text-[#FFFFFF]' : 'text-[#9BB8D4] group-hover:text-[#FFFFFF]'} />
+                              </div>
+                              <span className="font-semibold text-sm tracking-wide flex-1 text-left">
+                                {item.label}
+                              </span>
+                              {active && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+                              )}
+                            </Link>
+                          )}
                         </div>
+                        
+                        {/* Sub-items (if module is expanded) */}
+                        {isModule && isExpanded && subItems.length > 0 && (
+                          <AnimatePresence>
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="ml-4 mt-1 space-y-1 border-l-2 border-[#2c4a6b] pl-2"
+                            >
+                              {subItems.map((subItem) => {
+                                const SubIcon = subItem.icon;
+                                const subActive = isActive(subItem.path);
+                                
+                                return (
+                                  <Link
+                                    key={subItem.label}
+                                    href={subItem.path}
+                                    onClick={() => setSidebarOpen(false)}
+                                    className={`group flex items-center gap-3 px-3.5 py-2.5 rounded-lg transition-all duration-300 ${
+                                      subActive
+                                        ? 'bg-[#60A5FA] text-[#FFFFFF] shadow-lg shadow-[#60A5FA]/20'
+                                        : 'text-[#B8D4E8] hover:text-[#FFFFFF] hover:bg-[#2c4a6b]'
+                                    }`}
+                                  >
+                                    <SubIcon size={18} className={subActive ? 'text-[#FFFFFF]' : 'text-[#9BB8D4] group-hover:text-[#FFFFFF]'} />
+                                    <span className="font-medium text-sm tracking-wide flex-1 text-left">
+                                      {subItem.label}
+                                    </span>
+                                    {subActive && (
+                                      <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+                                    )}
+                                  </Link>
+                                );
+                              })}
+                            </motion.div>
+                          </AnimatePresence>
+                        )}
                       </div>
                     );
                   })}

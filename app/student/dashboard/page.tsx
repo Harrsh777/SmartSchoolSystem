@@ -1,1026 +1,527 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import Image from 'next/image';
-import Card from '@/components/ui/Card';
 import { 
-  User, 
-  GraduationCap, 
-  Calendar, 
-  FileText, 
-  DollarSign,
+  Trophy,
+  MessageSquare,
+  Calendar,
+  GraduationCap,
+  FileText,
+  User,
   CheckCircle,
-  Bell,
-  Mail,
-  Phone,
-  MapPin,
-  Award,
-  Eye,
-  Download,
-  FileImage,
 } from 'lucide-react';
-import type { Student, AcceptedSchool } from '@/lib/supabase';
+import type { Student } from '@/lib/supabase';
 import TimetableView from '@/components/timetable/TimetableView';
 
-interface ClassTeacher {
+interface Stats {
+  attendance: number;
+  attendance_change: number;
+  gpa: string;
+  gpa_rank: string;
+  merit_points: number;
+  progress_current: number;
+  progress_total: number;
+  term: string;
+}
+
+interface Performance {
   id: string;
+  subject: string;
+  type: string;
+  date: string;
+  grade: string;
+  grade_color: string;
+}
+
+interface UpcomingItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  month: string;
+  day: string;
+}
+
+interface ClassTeacher {
   full_name: string;
-  staff_id: string;
+  designation?: string;
   email?: string;
   phone?: string;
-  department?: string;
-  designation?: string;
-}
-
-interface ClassInfo {
-  class: string;
-  section: string;
-  academic_year: string;
-  class_id?: string;
-  class_teacher: ClassTeacher | null;
-}
-
-interface ExamData {
-  id?: string;
-  name?: string;
-  exam_name?: string;
-  title?: string;
-  start_date?: string;
-  end_date?: string;
-  status?: string;
-  academic_year?: string;
-  [key: string]: unknown;
-}
-
-interface NoticeData {
-  [key: string]: unknown;
-}
-
-interface EventNotificationData {
-  [key: string]: unknown;
-}
-
-interface MarkData {
-  id: string;
-  exam_id: string;
-  marks_obtained: number;
-  max_marks: number;
-  percentage?: number;
-  grade?: string;
-  remarks?: string;
-  examinations?: {
-    id: string;
-    exam_name: string;
-    academic_year: string;
-    start_date: string;
-    end_date: string;
-    status: string;
-  };
 }
 
 export default function StudentDashboardHome() {
   const router = useRouter();
   const [student, setStudent] = useState<Student | null>(null);
-  // school kept for potential future use
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [school, setSchool] = useState<AcceptedSchool | null>(null);
-  const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [performances, setPerformances] = useState<Performance[]>([]);
+  const [upcoming, setUpcoming] = useState<UpcomingItem[]>([]);
+  const [upcomingExamsCount, setUpcomingExamsCount] = useState(0);
+  const [classTeacher, setClassTeacher] = useState<ClassTeacher | null>(null);
+  const [classId, setClassId] = useState<string | null>(null);
+  const [, setWeeklyCompletion] = useState({ weekly_completion: 0, assignments_to_complete: 0 });
   const [loading, setLoading] = useState(true);
-  const [upcomingExams, setUpcomingExams] = useState<ExamData[]>([]);
-  const [recentNotices, setRecentNotices] = useState<NoticeData[]>([]);
-  const [eventNotifications, setEventNotifications] = useState<EventNotificationData[]>([]);
-  const [attendanceStats, setAttendanceStats] = useState<{
-    total: number;
-    present: number;
-    absent: number;
-    late: number;
-    percentage: number;
-  } | null>(null);
-  const [attendanceLoading, setAttendanceLoading] = useState(false);
-  const [examMarks, setExamMarks] = useState<MarkData[]>([]);
-  const [marksLoading, setMarksLoading] = useState(false);
-  const [certificates, setCertificates] = useState<Array<{
-    id: string;
-    certificate_image_url: string;
-    certificate_title?: string;
-    submitted_at: string;
-  }>>([]);
-  const [certificatesLoading, setCertificatesLoading] = useState(false);
 
-  // Helper to safely get string value
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
   };
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) {
+      return 'Good morning';
+    } else if (hour < 18) {
+      return 'Good afternoon';
+    } else {
+      return 'Good evening';
+    }
+  };
+
+  const fetchAllData = useCallback(async (studentData: Student) => {
+    const schoolCode = getString(studentData.school_code);
+    const studentId = getString(studentData.id);
+    
+    if (!schoolCode || !studentId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Fetch all data in parallel
+      const [statsRes, performanceRes, upcomingRes, weeklyRes, teacherRes] = await Promise.all([
+        fetch(`/api/student/stats?school_code=${schoolCode}&student_id=${studentId}`),
+        fetch(`/api/student/recent-performance?school_code=${schoolCode}&student_id=${studentId}&limit=3`),
+        fetch(`/api/student/upcoming-items?school_code=${schoolCode}&student_id=${studentId}&limit=3`),
+        fetch(`/api/student/weekly-completion?school_code=${schoolCode}&student_id=${studentId}`),
+        fetch(`/api/student/class-teacher?school_code=${schoolCode}&class=${getString(studentData.class)}&section=${getString(studentData.section)}&academic_year=${getString(studentData.academic_year)}`),
+      ]);
+
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setStats(statsData.data);
+      }
+
+      if (performanceRes.ok) {
+        const performanceData = await performanceRes.json();
+        setPerformances(performanceData.data || []);
+      }
+
+      if (upcomingRes.ok) {
+        const upcomingData = await upcomingRes.json();
+        setUpcoming(upcomingData.data || []);
+        // Count only examinations (not events)
+        const examsCount = (upcomingData.data || []).filter((item: UpcomingItem) => item.subtitle === 'Examination').length;
+        setUpcomingExamsCount(examsCount);
+      }
+      
+      // Also fetch total upcoming exams count
+      try {
+        const examsCountRes = await fetch(`/api/examinations?school_code=${schoolCode}&status=upcoming`);
+        if (examsCountRes.ok) {
+          const examsData = await examsCountRes.json();
+          if (examsData.data) {
+            const todayDate = new Date();
+            todayDate.setHours(0, 0, 0, 0);
+            interface Exam {
+              start_date?: string | null;
+              status?: string;
+            }
+            const upcomingExams = examsData.data.filter((exam: Exam) => {
+              if (!exam.start_date) return false;
+              const examDate = new Date(exam.start_date);
+              examDate.setHours(0, 0, 0, 0);
+              return (exam.status === 'upcoming' || exam.status === 'ongoing') && examDate >= todayDate;
+            });
+            setUpcomingExamsCount(upcomingExams.length);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching upcoming exams count:', err);
+      }
+
+      if (weeklyRes.ok) {
+        const weeklyData = await weeklyRes.json();
+        setWeeklyCompletion(weeklyData.data);
+      }
+
+      if (teacherRes.ok) {
+        const teacherData = await teacherRes.json();
+        if (teacherData.data?.class_teacher) {
+          setClassTeacher(teacherData.data.class_teacher);
+        }
+        if (teacherData.data?.class?.id) {
+          setClassId(teacherData.data.class.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const storedStudent = sessionStorage.getItem('student');
     if (storedStudent) {
       const studentData = JSON.parse(storedStudent);
       setStudent(studentData);
-      const schoolCode = getString(studentData.school_code);
-      if (schoolCode) {
-        fetchSchoolData(schoolCode);
-      }
-      fetchClassTeacher(studentData);
-      fetchUpcomingExams(studentData);
-      fetchRecentNotices(studentData);
-      fetchEventNotifications(studentData);
-      fetchMonthlyAttendance(studentData);
-      fetchExamMarks(studentData);
+      fetchAllData(studentData);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const fetchSchoolData = async (schoolCode: string) => {
-    try {
-      const response = await fetch('/api/schools/accepted');
-      const result = await response.json();
-      if (response.ok && result.data) {
-        const schoolData = result.data.find((s: AcceptedSchool) => s.school_code === schoolCode);
-        if (schoolData) {
-          setSchool(schoolData);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching school:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchClassTeacher = async (studentData: Student) => {
-    try {
-      const schoolCode = getString(studentData.school_code);
-      const studentClass = getString(studentData.class);
-      const section = getString(studentData.section);
-      const academicYear = getString(studentData.academic_year);
-      if (!schoolCode || !studentClass || !section || !academicYear) {
-        return;
-      }
-      const response = await fetch(
-        `/api/student/class-teacher?school_code=${schoolCode}&class=${studentClass}&section=${section}&academic_year=${academicYear}`
-      );
-      const result = await response.json();
-      if (response.ok && result.data) {
-        setClassInfo({
-          class: result.data.class.class,
-          section: result.data.class.section,
-          academic_year: result.data.class.academic_year,
-          class_id: result.data.class.id,
-          class_teacher: result.data.class_teacher,
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching class teacher:', err);
-    }
-  };
-
-  const fetchUpcomingExams = async (studentData: Student) => {
-    try {
-      const schoolCode = getString(studentData.school_code);
-      if (!schoolCode) return;
-      const response = await fetch(
-        `/api/examinations?school_code=${schoolCode}&status=upcoming`
-      );
-      const result = await response.json();
-      if (response.ok && result.data) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const upcoming = result.data
-          .filter((exam: ExamData) => {
-            if (!exam.start_date) return false;
-            const examDate = new Date(exam.start_date);
-            examDate.setHours(0, 0, 0, 0);
-            return (exam.status === 'upcoming' || exam.status === 'ongoing') && examDate >= today;
-          })
-          .slice(0, 3);
-        setUpcomingExams(upcoming);
-      } else {
-        // If no exams found, set empty array
-        setUpcomingExams([]);
-      }
-    } catch (err) {
-      console.error('Error fetching exams:', err);
-      setUpcomingExams([]);
-    }
-  };
-
-  const fetchRecentNotices = async (studentData: Student) => {
-    try {
-      const schoolCode = getString(studentData.school_code);
-      if (!schoolCode) return;
-      const response = await fetch(
-        `/api/communication/notices?school_code=${schoolCode}&status=active&limit=5`
-      );
-      const result = await response.json();
-      if (response.ok && result.data) {
-        setRecentNotices(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching notices:', err);
-    }
-  };
-
-  const fetchEventNotifications = async (studentData: Student) => {
-    try {
-      const schoolCode = getString(studentData.school_code);
-      const studentId = getString(studentData.id);
-      if (!schoolCode || !studentId) return;
-      const response = await fetch(
-        `/api/calendar/notifications?school_code=${schoolCode}&user_type=student&user_id=${studentId}&unread_only=true`
-      );
-      const result = await response.json();
-      if (response.ok && result.data) {
-        setEventNotifications(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching event notifications:', err);
-    }
-  };
-
-  const fetchMonthlyAttendance = async (studentData: Student) => {
-    try {
-      setAttendanceLoading(true);
-      const schoolCode = getString(studentData.school_code);
-      const studentId = getString(studentData.id);
-      if (!schoolCode || !studentId) {
-        setAttendanceLoading(false);
-        return;
-      }
-      // Get first and last day of current month
-      const now = new Date();
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      
-      const startDate = firstDay.toISOString().split('T')[0];
-      const endDate = lastDay.toISOString().split('T')[0];
-
-      const response = await fetch(
-        `/api/attendance/student?school_code=${schoolCode}&student_id=${studentId}&start_date=${startDate}&end_date=${endDate}`
-      );
-      const result = await response.json();
-      
-      if (response.ok && result.statistics) {
-        setAttendanceStats(result.statistics);
-      } else {
-        setAttendanceStats({
-          total: 0,
-          present: 0,
-          absent: 0,
-          late: 0,
-          percentage: 0,
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching monthly attendance:', err);
-      setAttendanceStats({
-        total: 0,
-        present: 0,
-        absent: 0,
-        late: 0,
-        percentage: 0,
-      });
-    } finally {
-      setAttendanceLoading(false);
-    }
-  };
-
-  const fetchExamMarks = async (studentData: Student) => {
-    try {
-      setMarksLoading(true);
-      const schoolCode = getString(studentData.school_code);
-      const studentId = getString(studentData.id);
-      if (!schoolCode || !studentId) {
-        setMarksLoading(false);
-        return;
-      }
-      const response = await fetch(
-        `/api/marks?school_code=${schoolCode}&student_id=${studentId}`
-      );
-      const result = await response.json();
-      
-      if (response.ok && result.data) {
-        // Sort by exam date (most recent first) and limit to 5 most recent
-        const sortedMarks = (result.data as MarkData[])
-          .filter((mark: MarkData) => mark.examinations) // Only show marks with exam details
-          .sort((a: MarkData, b: MarkData) => {
-            const dateA = a.examinations?.end_date || '';
-            const dateB = b.examinations?.end_date || '';
-            return dateB.localeCompare(dateA);
-          })
-          .slice(0, 5);
-        setExamMarks(sortedMarks);
-      } else {
-        setExamMarks([]);
-      }
-    } catch (err) {
-      console.error('Error fetching exam marks:', err);
-      setExamMarks([]);
-    } finally {
-      setMarksLoading(false);
-    }
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const fetchCertificates = async (studentData: Student) => {
-    try {
-      setCertificatesLoading(true);
-      const studentId = getString(studentData.id);
-      if (!studentId) {
-        setCertificatesLoading(false);
-        return;
-      }
-      const response = await fetch(
-        `/api/certificates/simple/student?student_id=${studentId}`
-      );
-      const result = await response.json();
-      
-      if (response.ok && result.data) {
-        setCertificates(result.data);
-      } else {
-        setCertificates([]);
-      }
-    } catch (err) {
-      console.error('Error fetching certificates:', err);
-      setCertificates([]);
-    } finally {
-      setCertificatesLoading(false);
-    }
-  };
+  }, [fetchAllData]);
 
   if (loading || !student) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
+  const studentName = getString(student.student_name);
+  const firstName = studentName.split(' ')[0] || 'Student';
+
   return (
-    <div className="space-y-6">
-      {/* Welcome Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="flex items-center gap-4">
-          {(() => {
-            const photoUrl = getString(student.photo_url);
-            const studentName = getString(student.student_name);
-            return photoUrl ? (
-              <Image
-                src={photoUrl}
-                alt={studentName || 'Student'}
-                width={64}
-                height={64}
-                className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl">
-                {studentName ? studentName.charAt(0).toUpperCase() : 'S'}
-              </div>
-            );
-          })()}
-          <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Welcome, {getString(student.student_name) || 'Student'}!</h1>
-            <p className="text-gray-600">
-              {getString(student.class) || 'N/A'} - {getString(student.section) || 'N/A'} • Academic Year {getString(student.academic_year) || 'N/A'}
+    <div className="min-h-screen bg-background">
+      <div className="p-6 lg:p-10 max-w-6xl mx-auto space-y-12">
+        {/* Hero Section */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+          <div className="lg:col-span-8">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="px-2.5 py-1 bg-primary/10 text-primary text-[10px] font-bold rounded uppercase tracking-widest">Dashboard</span>
+              <span className="text-muted-foreground text-[11px] font-medium tracking-wide">
+                {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
+            </div>
+            <h2 className="text-3xl lg:text-4xl text-foreground font-serif">
+              {getGreeting()}, <span className="italic text-muted-foreground">{firstName}</span>.
+            </h2>
+            <p className="mt-4 text-muted-foreground text-base leading-relaxed max-w-lg">
+              <span className="font-semibold text-foreground">
+                {getString(student.class) || 'N/A'}-{getString(student.section) || 'N/A'}
+              </span>
+              {stats?.attendance !== undefined && (
+                <>
+                  {' • '}
+                  {stats.attendance < 80 ? (
+                    <span className="text-orange-600 font-semibold">Improve the attendance</span>
+                  ) : (
+                    <span className="text-emerald-600 font-semibold">Keep it up</span>
+                  )}
+                </>
+              )}
             </p>
+            <div className="mt-8 flex gap-3">
+              <button 
+                onClick={() => router.push('/student/dashboard/examinations')}
+                className="bg-primary text-primary-foreground px-5 py-2.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
+              >
+                Resume Learning
+              </button>
+              <button 
+                onClick={() => router.push('/student/dashboard/calendar')}
+                className="bg-card text-foreground border border-input px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-muted transition-all"
+              >
+                My Schedule
+              </button>
+            </div>
           </div>
-        </div>
-      </motion.div>
+          <div className="lg:col-span-4 hidden lg:block">
+            <div className="relative bg-muted rounded-2xl p-6 border border-input flex items-center justify-center h-48">
+              <GraduationCap className="text-muted-foreground" size={120} />
+            </div>
+          </div>
+        </section>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <Card 
-            hover 
-            className="cursor-pointer"
-            onClick={() => router.push('/student/dashboard/attendance')}
-          >
-            <div className="flex items-center space-x-4">
-              <div className="bg-green-500 p-3 rounded-lg">
-                <CheckCircle className="text-white" size={24} />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-600">Attendance (This Month)</p>
-                {attendanceLoading ? (
-                  <p className="text-lg font-bold text-black">Loading...</p>
-                ) : attendanceStats ? (
-                  <div>
-                    <p className="text-2xl font-bold text-black">
-                      {attendanceStats.percentage}%
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {attendanceStats.present}/{attendanceStats.total} present
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-lg font-bold text-black">N/A</p>
-                )}
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <Card hover>
-            <div className="flex items-center space-x-4">
-              <div className="bg-blue-500 p-3 rounded-lg">
-                <FileText className="text-white" size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Upcoming Exams</p>
-                <p className="text-2xl font-bold text-black">{upcomingExams.length}</p>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <Card 
-            hover 
-            className="cursor-pointer"
-            onClick={() => router.push('/student/dashboard/communication')}
-          >
-            <div className="flex items-center space-x-4">
-              <div className="bg-purple-500 p-3 rounded-lg">
-                <Bell className="text-white" size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">New Notices</p>
-                <p className="text-2xl font-bold text-black">{recentNotices.length}</p>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-        >
-          <Card 
-            hover 
-            className="cursor-pointer"
-            onClick={() => router.push('/student/dashboard/fees')}
-          >
-            <div className="flex items-center space-x-4">
-              <div className="bg-orange-500 p-3 rounded-lg">
-                <DollarSign className="text-white" size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Fees</p>
-                <p className="text-2xl font-bold text-black">View</p>
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Personal Info */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <Card>
-            <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
-              <User size={20} />
-              Personal Information
-            </h2>
-            <div className="space-y-4">
-              {/* Student Photo */}
-              {(() => {
-                const photoUrl = getString(student.photo_url);
-                const studentName = getString(student.student_name);
-                return photoUrl ? (
-                  <div className="flex justify-center mb-4">
-                    <Image
-                      src={photoUrl}
-                      alt={studentName || 'Student'}
-                      width={128}
-                      height={128}
-                      className="w-32 h-32 rounded-full object-cover border-4 border-gray-200 shadow-lg"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex justify-center mb-4">
-                    <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-4xl shadow-lg">
-                      {studentName ? studentName.charAt(0).toUpperCase() : 'S'}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Student Name</p>
-                  <p className="font-medium text-black">{getString(student.student_name) || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Admission No</p>
-                  <p className="font-medium text-black font-mono">{getString(student.admission_no) || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Class & Section</p>
-                  <p className="font-medium text-black">{getString(student.class) || 'N/A'} - {getString(student.section) || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Academic Year</p>
-                  <p className="font-medium text-black">{getString(student.academic_year) || 'N/A'}</p>
-                </div>
-                {(() => {
-                  const gender = getString(student.gender);
-                  return gender ? (
-                    <div>
-                      <p className="text-sm text-gray-600">Gender</p>
-                      <p className="font-medium text-black">{gender}</p>
-                    </div>
-                  ) : null;
-                })()}
-                {(() => {
-                  const dob = getString(student.date_of_birth);
-                  return dob ? (
-                    <div>
-                      <p className="text-sm text-gray-600">Date of Birth</p>
-                      <p className="font-medium text-black">
-                        {new Date(dob).toLocaleDateString()}
-                      </p>
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-              {(() => {
-                const address = getString(student.address);
-                return address ? (
-                  <div>
-                    <p className="text-sm text-gray-600 flex items-center gap-1">
-                      <MapPin size={14} />
-                      Address
-                    </p>
-                    <p className="font-medium text-black mt-1">{address}</p>
-                  </div>
-                ) : null;
-              })()}
-            </div>
-          </Card>
-        </motion.div>
-
-        {/* Class Teacher Info */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <Card>
-            <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
-              <GraduationCap size={20} />
-              Class Teacher
-            </h2>
-            {classInfo?.class_teacher ? (
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm text-gray-600">Name</p>
-                  <p className="text-lg font-semibold text-black">{classInfo.class_teacher.full_name}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  {classInfo.class_teacher.staff_id && (
-                    <div>
-                      <p className="text-sm text-gray-600">Staff ID</p>
-                      <p className="font-medium text-black font-mono">{classInfo.class_teacher.staff_id}</p>
-                    </div>
-                  )}
-                  {classInfo.class_teacher.department && (
-                    <div>
-                      <p className="text-sm text-gray-600">Department</p>
-                      <p className="font-medium text-black">{classInfo.class_teacher.department}</p>
-                    </div>
-                  )}
-                  {classInfo.class_teacher.designation && (
-                    <div>
-                      <p className="text-sm text-gray-600">Designation</p>
-                      <p className="font-medium text-black">{classInfo.class_teacher.designation}</p>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2 pt-2 border-t border-gray-200">
-                  {classInfo.class_teacher.email && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Mail size={16} className="text-gray-400" />
-                      <span className="text-gray-700">{classInfo.class_teacher.email}</span>
-                    </div>
-                  )}
-                  {classInfo.class_teacher.phone && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Phone size={16} className="text-gray-400" />
-                      <span className="text-gray-700">{classInfo.class_teacher.phone}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <GraduationCap className="mx-auto mb-4 text-gray-400" size={48} />
-                <p className="text-gray-600">No class teacher assigned yet</p>
-              </div>
-            )}
-          </Card>
-        </motion.div>
-      </div>
-
-      {/* Timetable */}
-      {(() => {
-        const schoolCode = getString(student.school_code);
-        return classInfo?.class_id && student && schoolCode ? (
+        {/* Stats Cards */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Attendance Card */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+            className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
           >
-            <TimetableView
-              schoolCode={schoolCode}
-              classId={classInfo.class_id}
-            />
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-50">
+                <CheckCircle className="text-blue-500" size={24} />
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600">
+                {(stats?.attendance_change || 0) > 0 ? '+' : ''}{stats?.attendance_change || 0}%
+              </span>
+            </div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Attendance</p>
+            <p className="text-2xl font-bold text-gray-900 mb-3">{stats?.attendance || 0}%</p>
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(stats?.attendance || 0, 100)}%` }}
+              ></div>
+            </div>
           </motion.div>
-        ) : null;
-      })()}
 
-      {/* Upcoming Exams */}
-      {upcomingExams.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-        >
-          <Card>
-            <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
-              <FileText size={20} />
-              Upcoming Examinations
-            </h2>
-            <div className="space-y-3">
-              {upcomingExams.map((exam) => (
-                <div
-                  key={exam.id}
-                  className="p-4 border border-gray-200 rounded-lg hover:border-black transition-colors"
-                >
-                  <div className="flex items-start justify-between">
+          {/* Upcoming Examinations Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-purple-50">
+                <FileText className="text-purple-500" size={24} />
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600">
+                {upcomingExamsCount > 0 ? `${upcomingExamsCount} New` : 'None'}
+              </span>
+            </div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Upcoming Examinations</p>
+            <p className="text-2xl font-bold text-gray-900 mb-3">{upcomingExamsCount}</p>
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min((upcomingExamsCount / 10) * 100, 100)}%` }}
+              ></div>
+            </div>
+          </motion.div>
+
+          {/* Class Teacher Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-green-50">
+                <User className="text-green-500" size={24} />
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
+                {classTeacher ? 'Assigned' : 'Not Set'}
+              </span>
+            </div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">My Class Teacher</p>
+            <p className="text-lg font-bold text-gray-900 mb-1 truncate">
+              {classTeacher?.full_name || 'Not Assigned'}
+            </p>
+            {classTeacher?.designation && (
+              <p className="text-xs text-gray-500 mb-3">{classTeacher.designation}</p>
+            )}
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-green-500 rounded-full transition-all duration-500"
+                style={{ width: classTeacher ? '100%' : '0%' }}
+              ></div>
+            </div>
+          </motion.div>
+
+          {/* Academic Index Card (GPA) */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-orange-50">
+                <Trophy className="text-orange-500" size={24} />
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600">
+                {stats?.gpa_rank || 'A- Avg'}
+              </span>
+            </div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Academic Index</p>
+            <p className="text-2xl font-bold text-gray-900 mb-3">{stats?.gpa || '0.00'}</p>
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-orange-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min((parseFloat(stats?.gpa || '0') / 4) * 100, 100)}%` }}
+              ></div>
+            </div>
+          </motion.div>
+        </section>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          {/* Left Column - Timetable & Performance */}
+          <div className="lg:col-span-2 space-y-8">
+            {/* My Timetable */}
+            {classId && student ? (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass-card soft-shadow rounded-2xl border border-input overflow-hidden"
+              >
+                <div className="p-6 border-b border-input">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="font-semibold text-black">
-                        {exam.name || exam.exam_name || exam.title || 'Exam'}
-                      </h3>
-                      {exam.start_date && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          {new Date(exam.start_date).toLocaleDateString()}
-                          {exam.end_date && ` - ${new Date(exam.end_date).toLocaleDateString()}`}
-                        </p>
-                      )}
+                      <h3 className="text-lg font-semibold text-foreground">My Timetable</h3>
+                      <p className="text-xs text-muted-foreground mt-1">Weekly class schedule</p>
                     </div>
-                    {exam.academic_year && (
-                      <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                        {exam.academic_year}
-                      </span>
-                    )}
                   </div>
                 </div>
-              ))}
-            </div>
-          </Card>
-        </motion.div>
-      )}
-
-      {/* Exam Results */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-      >
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-black flex items-center gap-2">
-              <Award size={20} />
-              Exam Results
-            </h2>
-            {examMarks.length > 0 && (
-              <button
-                onClick={() => router.push('/student/dashboard/examinations')}
-                className="text-sm text-gray-600 hover:text-black transition-colors"
+                <div className="p-6">
+                  <TimetableView
+                    schoolCode={getString(student.school_code)}
+                    classId={classId}
+                  />
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass-card soft-shadow rounded-2xl p-8 border border-input"
               >
-                View All →
-              </button>
+                <div className="text-center py-8">
+                  <Calendar className="mx-auto mb-4 text-muted-foreground" size={48} />
+                  <p className="text-muted-foreground">Timetable information not available</p>
+                </div>
+              </motion.div>
             )}
-          </div>
-          {marksLoading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-2"></div>
-              <p className="text-gray-600 text-sm">Loading results...</p>
-            </div>
-          ) : examMarks.length === 0 ? (
-            <div className="text-center py-8">
-              <Award className="mx-auto mb-4 text-gray-400" size={48} />
-              <p className="text-gray-600 text-lg">No exam results available</p>
-              <p className="text-sm text-gray-500 mt-2">
-                Your exam results will appear here once they are published.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {examMarks.map((mark) => {
-                const exam = mark.examinations;
-                if (!exam) return null;
-                
-                const percentage = mark.percentage || (mark.max_marks > 0 
-                  ? Math.round((mark.marks_obtained / mark.max_marks) * 100) 
-                  : 0);
-                const isPass = percentage >= 40;
-                
-                return (
-                  <div
-                    key={mark.id}
-                    className="p-4 border border-gray-200 rounded-lg hover:border-black transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold text-black text-lg">{exam.exam_name}</h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {new Date(exam.end_date).toLocaleDateString('en-US', {
-                            month: 'long',
-                            year: 'numeric',
-                          })}
-                        </p>
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        exam.status === 'completed' 
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {exam.status}
-                      </span>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-3 border-t border-gray-200">
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">Marks</p>
-                        <p className={`text-lg font-bold ${isPass ? 'text-green-600' : 'text-red-600'}`}>
-                          {mark.marks_obtained} / {mark.max_marks}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">Percentage</p>
-                        <p className={`text-lg font-bold ${isPass ? 'text-green-600' : 'text-red-600'}`}>
-                          {percentage}%
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">Grade</p>
-                        {mark.grade ? (
-                          <span className={`inline-flex items-center px-3 py-1 rounded text-sm font-medium ${
-                            mark.grade === 'A+' || mark.grade === 'A' ? 'bg-green-100 text-green-800' :
-                            mark.grade === 'B+' || mark.grade === 'B' ? 'bg-blue-100 text-blue-800' :
-                            mark.grade === 'C' ? 'bg-yellow-100 text-yellow-800' :
-                            mark.grade === 'D' ? 'bg-orange-100 text-orange-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {mark.grade}
+
+            {/* Recent Performance */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="glass-card soft-shadow rounded-2xl p-8 border border-input"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-lg font-semibold text-foreground">Recent Performance</h3>
+                <button 
+                  onClick={() => router.push('/student/dashboard/examinations')}
+                  className="text-[11px] font-semibold text-primary uppercase tracking-wider hover:underline"
+                >
+                  Full Report
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold border-b border-input">
+                      <th className="pb-4 font-bold">Subject</th>
+                      <th className="pb-4 font-bold">Type</th>
+                      <th className="pb-4 font-bold">Date</th>
+                      <th className="pb-4 text-right font-bold">Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-input/50">
+                    {performances.length > 0 ? performances.map((perf) => (
+                      <tr key={perf.id} className="group">
+                        <td className="py-4 font-medium text-sm text-foreground">{perf.subject}</td>
+                        <td className="py-4 text-[11px] text-muted-foreground">{perf.type}</td>
+                        <td className="py-4 text-[11px] text-muted-foreground">{perf.date}</td>
+                        <td className="py-4 text-right">
+                          <span className={`px-2 py-1 ${perf.grade_color} text-xs font-bold rounded`}>
+                            {perf.grade}
                           </span>
-                        ) : (
-                          <p className="text-sm text-gray-500">-</p>
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">Status</p>
-                        <p className={`text-sm font-medium ${isPass ? 'text-green-600' : 'text-red-600'}`}>
-                          {isPass ? 'Passed' : 'Failed'}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {mark.remarks && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <p className="text-sm text-gray-600">Remarks:</p>
-                        <p className="text-sm text-gray-900 mt-1">{mark.remarks}</p>
-                      </div>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+                          No recent performance data available
+                        </td>
+                      </tr>
                     )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-      </motion.div>
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          </div>
 
-      {/* Recent Notices */}
-      {recentNotices.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-        >
-          <Card>
-            <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
-              <Bell size={20} />
-              Recent Notices
-            </h2>
-            <div className="space-y-3">
-              {recentNotices.map((notice, index) => {
-                const noticeId = getString(notice.id) || `notice-${index}`;
-                const title = getString(notice.title);
-                const priority = getString(notice.priority);
-                const content = getString(notice.content);
-                const createdAt = getString(notice.created_at);
-                return (
-                  <div
-                    key={noticeId}
-                    className="p-4 border border-gray-200 rounded-lg hover:border-black transition-colors"
+          {/* Right Column - Upcoming & Mentor */}
+          <div className="space-y-6">
+            {/* Upcoming */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="bg-muted rounded-2xl border border-input overflow-hidden"
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-sm font-semibold text-foreground">Upcoming</h3>
+                  <button 
+                    onClick={() => router.push('/student/dashboard/calendar')}
+                    className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest hover:text-foreground"
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold text-black">{title || 'Notice'}</h3>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        priority === 'high' ? 'bg-red-100 text-red-800' :
-                        priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-blue-100 text-blue-800'
-                      }`}>
-                        {priority || 'normal'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 line-clamp-2">{content || 'No content'}</p>
-                    {createdAt ? (
-                      <p className="text-xs text-gray-500 mt-2">
-                        {new Date(createdAt).toLocaleDateString()}
-                      </p>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        </motion.div>
-      )}
-
-      {/* Certificates */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
-      >
-        <Card>
-          <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
-            <Award size={20} />
-            My Certificates
-          </h2>
-          {certificatesLoading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-2"></div>
-              <p className="text-gray-600 text-sm">Loading certificates...</p>
-            </div>
-          ) : certificates.length === 0 ? (
-            <div className="text-center py-8">
-              <Award className="mx-auto mb-4 text-gray-400" size={48} />
-              <p className="text-gray-600 text-lg">No certificates available</p>
-              <p className="text-sm text-gray-500 mt-2">
-                Your certificates will appear here once they are issued.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {certificates.map((cert, index) => {
-                const certId = cert.id || `cert-${index}`;
-                const imageUrl = getString(cert.certificate_image_url);
-                const title = getString(cert.certificate_title);
-                const submittedAt = getString(cert.submitted_at);
-                return (
-                  <div
-                    key={certId}
-                    className="p-4 border border-gray-200 rounded-lg hover:border-black transition-colors"
-                  >
-                    <div className="relative w-full h-48 mb-3 rounded-lg overflow-hidden bg-gray-100">
-                      {imageUrl ? (
-                        <Image
-                          src={imageUrl}
-                          alt={title || 'Certificate'}
-                          fill
-                          className="object-contain"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <FileImage className="text-gray-400" size={48} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      {title ? (
-                        <h3 className="font-semibold text-gray-900">{title}</h3>
-                      ) : null}
-                      {submittedAt ? (
-                        <p className="text-xs text-gray-500">
-                          Issued: {new Date(submittedAt).toLocaleDateString()}
-                        </p>
-                      ) : null}
-                      <div className="flex items-center gap-2 pt-2">
-                        {imageUrl ? (
-                          <>
-                            <button
-                              onClick={() => window.open(imageUrl, '_blank')}
-                              className="flex-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
-                            >
-                              <Eye size={16} />
-                              View
-                            </button>
-                            <button
-                              onClick={() => {
-                                const link = document.createElement('a');
-                                link.href = imageUrl;
-                                link.download = `${title || 'certificate'}.jpg`;
-                                link.click();
-                              }}
-                              className="flex-1 px-3 py-2 text-sm bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors flex items-center justify-center gap-2"
-                            >
-                              <Download size={16} />
-                              Download
-                            </button>
-                          </>
-                        ) : null}
+                    View All
+                  </button>
+                </div>
+                <div className="space-y-5">
+                  {upcoming.length > 0 ? upcoming.map((item) => (
+                    <div key={item.id} className="flex items-start gap-3">
+                      <div className="w-9 h-9 shrink-0 bg-card border border-input rounded-lg flex flex-col items-center justify-center">
+                        <span className="text-[8px] font-bold text-muted-foreground leading-none">{item.month}</span>
+                        <span className="text-sm font-bold text-foreground leading-tight">{item.day}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">{item.title}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{item.subtitle}</p>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-      </motion.div>
+                  )) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No upcoming items</p>
+                  )}
+                </div>
+              </div>
 
-      {/* Event Notifications */}
-      {eventNotifications.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-        >
-          <Card>
-            <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
-              <Calendar size={20} />
-              New Events & Holidays
-            </h2>
-            <div className="space-y-3">
-              {eventNotifications.slice(0, 5).map((notification: EventNotificationData, index) => {
-                const notificationId = getString(notification.id) || `notification-${index}`;
-                const event = notification.event as Record<string, unknown> | undefined;
-                if (!event) return null;
-                const eventType = getString(event.event_type);
-                const eventDate = getString(event.event_date);
-                const eventTitle = getString(event.title);
-                const eventDescription = getString(event.description);
-                return (
-                  <div
-                    key={notificationId}
-                    className="p-3 bg-blue-50 border border-blue-200 rounded-lg"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            eventType === 'holiday' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {eventType === 'holiday' ? 'Holiday' : 'Event'}
-                          </span>
-                          {eventDate ? (
-                            <span className="text-sm text-gray-600">
-                              {new Date(eventDate).toLocaleDateString()}
-                            </span>
-                          ) : null}
-                        </div>
-                        <h3 className="font-semibold text-gray-900">{eventTitle || 'Event'}</h3>
-                        {eventDescription ? (
-                          <p className="text-sm text-gray-600 mt-1">{eventDescription}</p>
-                        ) : null}
+              <div className="mx-6 h-px bg-input"></div>
+
+              <div className="p-6">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-4">Mentor Contact</p>
+                {classTeacher ? (
+                  <>
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
+                        {classTeacher.full_name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">{classTeacher.full_name}</p>
+                        <p className="text-[10px] text-muted-foreground italic">{classTeacher.designation || 'Academic Advisor'}</p>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        </motion.div>
-      )}
+                    <button 
+                      onClick={() => router.push('/student/dashboard/communication')}
+                      className="w-full py-2.5 bg-card text-foreground text-xs font-medium rounded-lg border border-input hover:bg-muted transition-all flex items-center justify-center gap-2"
+                    >
+                      <MessageSquare size={16} />
+                      Chat with Mentor
+                    </button>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No mentor assigned</p>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Study Group CTA */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="bg-primary p-6 rounded-2xl relative overflow-hidden"
+            >
+              <div className="relative z-10">
+                <p className="text-[10px] font-bold text-primary-foreground/70 uppercase tracking-widest mb-1">Study Group</p>
+                <p className="text-sm text-primary-foreground font-medium mb-4 leading-relaxed">
+                  Join study sessions and collaborate with peers.
+                </p>
+                <button 
+                  onClick={() => router.push('/student/dashboard/communication')}
+                  className="w-full py-2 bg-primary-foreground text-primary text-xs font-bold rounded-lg hover:opacity-90 transition-colors"
+                >
+                  Launch Group Call
+                </button>
+              </div>
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary-foreground/10 rounded-full blur-2xl"></div>
+            </motion.div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

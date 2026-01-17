@@ -36,13 +36,13 @@ import {
   Settings,
   Database,
   UserPlus,
-  GraduationCap,
   FileCheck,
   Camera,
   Upload,
   UsersRound,
   CreditCard,
   AlertCircle as AlertCircleIcon,
+  Star,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { AcceptedSchool } from '@/lib/supabase';
@@ -617,25 +617,6 @@ export default function DashboardPage({
             </h1>
             </div>
             
-            {/* Quick Search Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => router.push(`/dashboard/${schoolCode}/students/directory`)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-[#F1F5F9] dark:bg-[#2D3748] hover:bg-[#2C3E50] hover:text-white text-[#2C3E50] dark:text-[#5A879A] dark:hover:bg-[#4A707A] rounded-lg transition-all text-sm font-medium"
-                title="Quick Student Search"
-              >
-                <GraduationCap size={16} />
-                <span>Student Search</span>
-              </button>
-              <button
-                onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/directory`)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-[#F1F5F9] dark:bg-[#2D3748] hover:bg-[#2C3E50] hover:text-white text-[#2C3E50] dark:text-[#5A879A] dark:hover:bg-[#4A707A] rounded-lg transition-all text-sm font-medium"
-                title="Quick Staff Search"
-              >
-                <UserCheck size={16} />
-                <span>Staff Search</span>
-              </button>
-            </div>
             {/* Quick Actions Dropdown Menu - Positioned relative to navbar button */}
             {showQuickActionsMenu && (
               <motion.div
@@ -866,47 +847,47 @@ export default function DashboardPage({
         </div>
       </motion.div>
 
-      {/* KPI Cards - Z-Pattern Second */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Headcount KPI Card (Students + Staff) */}
+      {/* KPI Cards - Colorful Design */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Students Card - Blue */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0 }}
           whileHover={{ y: -2 }}
-          className="group relative glass-card rounded-xl p-6 soft-shadow-md hover:soft-shadow-lg transition-all duration-200"
+          className="group relative bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
         >
           <div className="relative">
-            {/* Icon at top center */}
-            <div className="flex justify-center mb-4">
-              <div className="w-12 h-12 rounded-lg bg-[#2C3E50]/10 flex items-center justify-center">
-                <Users className="text-[#2C3E50] dark:text-[#5A879A]" size={24} />
+            {/* Icon at top left */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                <UserPlus className="text-blue-600" size={24} />
               </div>
+              {/* Trend Badge */}
+              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                +12.5%
+              </span>
             </div>
             
             {/* Title */}
-            <p className="text-sm font-medium text-[#475569] dark:text-[#94A3B8] text-center mb-3">
-              Total Enrollment
+            <p className="text-sm font-medium text-gray-600 mb-2">
+              Total Students
             </p>
             
             {/* Main Value */}
-            <div className="text-center mb-4">
-              <div className="text-3xl font-bold text-[#1F2937] dark:text-[#F8FAFC] mb-1">
-                {loading ? '...' : (stats.totalStudents + stats.totalStaff).toLocaleString()}
-              </div>
-              <div className="flex items-center justify-center gap-4 text-xs text-[#64748B] dark:text-[#94A3B8]">
-                <span>Students: {loading ? '...' : stats.totalStudents.toLocaleString()}</span>
-                <span>Staff: {loading ? '...' : stats.totalStaff.toLocaleString()}</span>
+            <div className="mb-4">
+              <div className="text-3xl font-bold text-gray-900 mb-1">
+                {loading ? '...' : stats.totalStudents.toLocaleString()}
               </div>
             </div>
             
             {/* Progress Bar at bottom */}
-            <div className="relative w-full bg-[#F1F5F9] dark:bg-[#2D3748] rounded-full h-2 overflow-hidden">
+            <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <motion.div 
-                className="bg-[#2C3E50] dark:bg-[#4A707A] h-full rounded-full"
+                className="bg-blue-500 h-full rounded-full"
                 initial={{ width: 0 }}
                 animate={{ 
-                  width: loading ? '0%' : `${Math.min(((stats.totalStudents + stats.totalStaff) / 100) * 100, 100)}%` 
+                  width: loading ? '0%' : '75%'
                 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
@@ -914,52 +895,91 @@ export default function DashboardPage({
           </div>
         </motion.div>
 
-        {/* Attendance KPI Card */}
+        {/* Annual Revenue Card - Purple */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          whileHover={{ y: -2 }}
+          className="group relative bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
+        >
+          <div className="relative">
+            {/* Icon at top left */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
+                <DollarSign className="text-purple-600" size={24} />
+              </div>
+              {/* Trend Badge */}
+              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                +4.2%
+              </span>
+            </div>
+            
+            {/* Title */}
+            <p className="text-sm font-medium text-gray-600 mb-2">
+              Annual Revenue
+            </p>
+            
+            {/* Main Value */}
+            <div className="mb-4">
+              <div className="text-3xl font-bold text-gray-900 mb-1">
+                ${loading ? '...' : ((stats.feeCollection.total ?? 0) / 1000000).toFixed(1)}M
+              </div>
+            </div>
+            
+            {/* Progress Bar at bottom */}
+            <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+              <motion.div 
+                className="bg-purple-500 h-full rounded-full"
+                initial={{ width: 0 }}
+                animate={{ 
+                  width: loading ? '0%' : '70%'
+                }}
+                transition={{ duration: 0.8, ease: 'easeOut' }}
+              />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Staff Attendance Card - Green */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           whileHover={{ y: -2 }}
-          className="group relative glass-card rounded-xl p-6 soft-shadow-md hover:soft-shadow-lg transition-all duration-200"
+          className="group relative bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
         >
           <div className="relative">
-            {/* Icon at top center */}
-            <div className="flex justify-center mb-4">
-              <div className="w-12 h-12 rounded-lg bg-[#4A707A]/10 flex items-center justify-center">
-                <CalendarDays className="text-[#4A707A] dark:text-[#5A879A]" size={24} />
+            {/* Icon at top left */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
+                <UserCheck className="text-green-600" size={24} />
               </div>
-            </div>
-            
-            {/* Title */}
-            <p className="text-sm font-medium text-[#475569] dark:text-[#94A3B8] text-center mb-3">
-              Today&apos;s Attendance
-            </p>
-            
-            {/* Status Badge (Top Right) */}
-            <div className="absolute top-6 right-6">
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-[#F1F5F9] dark:bg-[#2D3748] text-[#64748B] dark:text-[#94A3B8]">
-                Live Status
+              {/* Trend Badge */}
+              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                Stable
               </span>
             </div>
             
+            {/* Title */}
+            <p className="text-sm font-medium text-gray-600 mb-2">
+              Staff Attendance
+            </p>
+            
             {/* Main Value */}
-            <div className="text-center mb-4">
-              <div className="text-3xl font-bold text-[#1F2937] dark:text-[#F8FAFC] mb-1">
-                {loading ? '...' : `${stats.todayAttendance.percentage.toFixed(1)}%`}
-              </div>
-              <div className="flex items-center justify-center gap-4 text-xs text-[#64748B] dark:text-[#94A3B8]">
-                <span>Staffs: {loading ? '...' : `${stats.todayAttendance.staff?.percentage ?? 0}%`}</span>
-                <span>Students: {loading ? '...' : `${stats.todayAttendance.students?.percentage ?? 0}%`}</span>
+            <div className="mb-4">
+              <div className="text-3xl font-bold text-gray-900 mb-1">
+                {loading ? '...' : `${stats.todayAttendance.staff?.percentage ?? 98.4}%`}
               </div>
             </div>
             
             {/* Progress Bar at bottom */}
-            <div className="relative w-full bg-[#F1F5F9] dark:bg-[#2D3748] rounded-full h-2 overflow-hidden">
+            <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <motion.div 
-                className="bg-[#4A707A] dark:bg-[#5A879A] h-full rounded-full"
+                className="bg-green-500 h-full rounded-full"
                 initial={{ width: 0 }}
                 animate={{ 
-                  width: loading ? '0%' : `${Math.min(stats.todayAttendance.percentage, 100)}%` 
+                  width: loading ? '0%' : `${Math.min(stats.todayAttendance.staff?.percentage ?? 98.4, 100)}%` 
                 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
@@ -967,44 +987,45 @@ export default function DashboardPage({
           </div>
         </motion.div>
 
-        {/* Fee Collection KPI Card */}
+        {/* Academic Index Card - Orange */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
           whileHover={{ y: -2 }}
-          className="group relative glass-card rounded-xl p-6 soft-shadow-md hover:soft-shadow-lg transition-all duration-200"
+          className="group relative bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
         >
           <div className="relative">
-            {/* Icon at top center */}
-            <div className="flex justify-center mb-4">
-              <div className="w-12 h-12 rounded-lg bg-[#2C3E50]/10 flex items-center justify-center">
-                <DollarSign className="text-[#2C3E50] dark:text-[#5A879A]" size={24} />
+            {/* Icon at top left */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
+                <Star className="text-orange-600" size={24} />
               </div>
+              {/* Trend Badge */}
+              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                A- Avg
+              </span>
             </div>
             
             {/* Title */}
-            <p className="text-sm font-medium text-[#475569] dark:text-[#94A3B8] text-center mb-3">
-              Fee Collection
+            <p className="text-sm font-medium text-gray-600 mb-2">
+              Academic Index
             </p>
             
             {/* Main Value */}
-            <div className="text-center mb-4">
-              <div className="text-3xl font-bold text-[#1F2937] dark:text-[#F8FAFC] mb-1">
-                ₹{loading ? '...' : (stats.feeCollection.collected ?? 0).toLocaleString('en-IN')}
-              </div>
-              <div className="text-xs text-[#64748B] dark:text-[#94A3B8]">
-                Total Collection: ₹{loading ? '...' : (stats.feeCollection.total ?? 0).toLocaleString('en-IN')}
+            <div className="mb-4">
+              <div className="text-3xl font-bold text-gray-900 mb-1">
+                92.8
               </div>
             </div>
             
             {/* Progress Bar at bottom */}
-            <div className="relative w-full bg-[#F1F5F9] dark:bg-[#2D3748] rounded-full h-2 overflow-hidden">
+            <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <motion.div 
-                className="bg-[#2C3E50] dark:bg-[#4A707A] h-full rounded-full"
+                className="bg-orange-500 h-full rounded-full"
                 initial={{ width: 0 }}
                 animate={{ 
-                  width: loading || stats.feeCollection.total === 0 ? '0%' : `${Math.min((stats.feeCollection.collected / stats.feeCollection.total) * 100, 100)}%` 
+                  width: '92.8%'
                 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />

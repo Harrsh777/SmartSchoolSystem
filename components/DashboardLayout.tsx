@@ -1555,7 +1555,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                   marginLeft: 0
                 }}
               >
-                <nav className={`p-3 space-y-1.5 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${sidebarCollapsed ? 'px-2' : ''}`}>
+                <nav className={`py-3 ${sidebarCollapsed ? 'px-2' : 'px-1.5'} space-y-1.5 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`}>
                   {/* Search Menu Section */}
                   <div className="mb-4">
                     <div className="flex items-center gap-2">
@@ -1600,7 +1600,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                                         setSearchDropdownOpen(false);
                                         setSidebarOpen(false);
                                       }}
-                                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156] rounded-lg transition-colors group"
+                                      className="flex items-center gap-3 px-2 py-2.5 hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156] rounded-lg transition-colors group"
                                     >
                                       <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/50 dark:bg-[#2F4156] flex items-center justify-center flex-shrink-0 group-hover:bg-[#6B9BB8] transition-colors">
                                         <ItemIcon size={16} className="text-[#C8D9E6] group-hover:text-white" />

@@ -41,9 +41,11 @@ export default function TeacherSelectionModal({
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
+      setError(null); // Clear previous errors
       fetchStaff();
       setSelectedTeacherIds(new Set(existingTeacherIds || []));
     }
@@ -80,9 +82,32 @@ export default function TeacherSelectionModal({
         response = await fetch(`/api/staff?school_code=${schoolCode}`);
       }
       
+      if (!response.ok) {
+        // Try to get error details from response
+        let errorMessage = 'Failed to fetch staff';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+          if (errorData.details) {
+            errorMessage += `: ${errorData.details}`;
+          }
+        } catch {
+          // If response is not JSON, use status text
+          errorMessage = `Failed to fetch staff: ${response.statusText || 'Unknown error'}`;
+        }
+        console.error(errorMessage);
+        setError(errorMessage);
+        setStaff([]);
+        setFilteredStaff([]);
+        return;
+      }
+      
+      // Clear any previous errors on successful fetch
+      setError(null);
+      
       const result = await response.json();
 
-      if (response.ok && result.data) {
+      if (result.data) {
         let staffToShow: Staff[] = [];
         
         if (subjectId) {
@@ -96,8 +121,8 @@ export default function TeacherSelectionModal({
             department?: string;
           }) => ({
             id: s.id,
-            staff_id: s.staff_id,
-            full_name: s.full_name,
+            staff_id: s.staff_id || '',
+            full_name: s.full_name || '',
             role: s.role || '',
             department: s.department || '',
           }));
@@ -122,12 +147,17 @@ export default function TeacherSelectionModal({
         setStaff(staffToShow);
         setFilteredStaff(staffToShow);
       } else {
-        console.error('Failed to fetch staff:', result.error);
+        const errorMsg = result.error || 'No data in response';
+        console.error('Failed to fetch staff:', errorMsg, result);
+        setError(errorMsg);
         setStaff([]);
         setFilteredStaff([]);
       }
     } catch (error) {
       console.error('Error fetching staff:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('Error details:', errorMessage);
+      setError(`Network error: ${errorMessage}`);
       setStaff([]);
       setFilteredStaff([]);
     } finally {
@@ -197,6 +227,19 @@ export default function TeacherSelectionModal({
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+                </div>
+              ) : error ? (
+                <div className="text-center py-12">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+                    <p className="font-semibold mb-1">Error Loading Staff</p>
+                    <p className="text-sm">{error}</p>
+                    <button
+                      onClick={fetchStaff}
+                      className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
               ) : filteredStaff.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">

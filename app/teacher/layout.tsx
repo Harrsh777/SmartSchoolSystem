@@ -28,13 +28,19 @@ import {
   TrendingUp,
   DoorOpen,
   Lock,
-  LogOut
+  LogOut,
+  Search,
+  Bell,
+  HelpCircle,
+  Languages,
+  Zap,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Button from '@/components/ui/Button';
 import type { Staff, AcceptedSchool } from '@/lib/supabase';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
+import HelpModal from '@/components/help/HelpModal';
 
 interface TeacherLayoutProps {
   children: React.ReactNode;
@@ -74,7 +80,7 @@ const dashboardMenuItems: TeacherMenuItem[] = [
   { id: 'fees', icon: DollarSign, label: 'Fees', path: '/teacher/dashboard/fees', permission: 'manage_fees', viewPermission: 'view_fees' },
   { id: 'library', icon: Library, label: 'Library', path: '/teacher/dashboard/library', permission: 'manage_library', viewPermission: 'view_library' },
   { id: 'transport', icon: Bus, label: 'Transport', path: '/teacher/dashboard/transport', permission: 'manage_transport', viewPermission: 'view_transport' },
-  { id: 'communication', icon: MessageSquare, label: 'Communication', path: '/teacher/dashboard/communication', permission: 'manage_communication', viewPermission: 'view_communication' },
+  { id: 'communication', icon: MessageSquare, label: 'Communication', path: '/teacher/dashboard/communication', permission: null, viewPermission: null },
   { id: 'reports', icon: FileBarChart, label: 'Report', path: '/teacher/dashboard/reports', permission: 'view_reports', viewPermission: 'view_reports' },
   { id: 'gallery', icon: Image, label: 'Gallery', path: '/teacher/dashboard/gallery', permission: null, viewPermission: null },
   { id: 'certificates', icon: Award, label: 'Certificate Management', path: '/teacher/dashboard/certificates', permission: 'manage_certificates', viewPermission: 'view_certificates' },
@@ -96,12 +102,22 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [staffPermissions, setStaffPermissions] = useState<Record<string, unknown> | null>(null);
 
-  // Session timeout (15 minutes)
+  // Session timeout (20 minutes)
   const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
-    timeoutMinutes: 15,
-    warningMinutes: 14,
+    timeoutMinutes: 20,
+    warningMinutes: 19,
     loginPath: '/login',
   });
+  
+  // State for navbar dropdowns
+  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+  const [quickDropdownOpen, setQuickDropdownOpen] = useState(false);
+  const [notificationsDropdownOpen, setNotificationsDropdownOpen] = useState(false);
+  const [helpModalOpen, setHelpModalOpen] = useState(false);
+  const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(false);
+  const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const checkDesktop = () => {
@@ -110,6 +126,22 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     checkDesktop();
     window.addEventListener('resize', checkDesktop);
     return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.search-container')) setSearchDropdownOpen(false);
+      if (!target.closest('.quick-search-container')) setQuickDropdownOpen(false);
+      if (!target.closest('.notifications-dropdown-container')) setNotificationsDropdownOpen(false);
+      if (!target.closest('.language-dropdown-container')) setLanguageDropdownOpen(false);
+      if (!target.closest('.profile-dropdown-container')) setProfileDropdownOpen(false);
+      const settingsBtn = target.closest('button[title="Settings"]');
+      if (!settingsBtn && !target.closest('[title="Settings"]')?.nextElementSibling) setSettingsDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -377,29 +409,166 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
               <div className="hidden sm:block h-6 w-px bg-[#E1E1DB]" />
               <span className="hidden sm:block text-[#1e3a8a] font-semibold">{school?.school_name || teacher.school_code}</span>
             </div>
-            <div className="flex items-center space-x-3">
-              <div className="hidden sm:flex items-center gap-3">
-                <div className="text-right">
-                  <p className="text-sm font-medium text-[#1e3a8a]">{teacher.full_name}</p>
-                  <p className="text-xs text-[#5A7A9A]">{teacher.role || 'Teacher'}</p>
-                </div>
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold">
-                  {teacher.full_name.split(' ').map((n) => n[0] || '').join('').substring(0, 2)}
-                </div>
+            <div className="flex items-center space-x-2">
+              {/* Timer Display */}
+              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-[#1e3a8a]/10 rounded-lg border border-[#1e3a8a]/20">
+                <Clock size={16} className="text-[#1e3a8a]" />
+                <span className="text-sm font-medium text-[#1e3a8a] font-mono">
+                  {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+                </span>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  sessionStorage.removeItem('teacher');
-                  sessionStorage.removeItem('role');
-                  router.push('/login');
-                }}
-                className="border-[#E1E1DB] hover:bg-[#DBEAFE]"
+
+              {/* Search */}
+              <div className="relative search-container">
+                <button
+                  onClick={() => setSearchDropdownOpen(!searchDropdownOpen)}
+                  className="p-2 rounded-xl hover:bg-[#DBEAFE] transition-all relative"
+                  title="Search"
+                >
+                  <Search size={20} className="text-[#1e3a8a]" />
+                </button>
+                {searchDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-[#E1E1DB] z-50 p-3">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search..."
+                      className="w-full px-3 py-2 border border-[#E1E1DB] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
+                      autoFocus
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Actions */}
+              <div className="relative quick-search-container">
+                <button
+                  onClick={() => setQuickDropdownOpen(!quickDropdownOpen)}
+                  className="p-2 rounded-xl hover:bg-[#DBEAFE] transition-all"
+                  title="Quick Actions"
+                >
+                  <Zap size={20} className="text-[#1e3a8a]" />
+                </button>
+                {quickDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-[#E1E1DB] z-50 p-2">
+                    <Link href="/teacher/dashboard/attendance" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                      Mark Attendance
+                    </Link>
+                    <Link href="/teacher/dashboard/marks" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                      Marks Entry
+                    </Link>
+                    <Link href="/teacher/dashboard/communication" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                      Send Notice
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Notifications */}
+              <div className="relative notifications-dropdown-container">
+                <button
+                  onClick={() => setNotificationsDropdownOpen(!notificationsDropdownOpen)}
+                  className="p-2 rounded-xl hover:bg-[#DBEAFE] transition-all relative"
+                  title="Notifications"
+                >
+                  <Bell size={20} className="text-[#1e3a8a]" />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                </button>
+                {notificationsDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-[#E1E1DB] z-50 p-3">
+                    <p className="text-sm font-semibold text-[#1e3a8a] mb-2">Notifications</p>
+                    <p className="text-sm text-gray-500">No new notifications</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Help */}
+              <button
+                onClick={() => setHelpModalOpen(true)}
+                className="p-2 rounded-xl hover:bg-[#DBEAFE] transition-all"
+                title="Help"
               >
-                <LogOut size={18} className="mr-2" />
-                <span className="hidden sm:inline">Logout</span>
-              </Button>
+                <HelpCircle size={20} className="text-[#1e3a8a]" />
+              </button>
+
+              {/* Settings */}
+              <div className="relative">
+                <button
+                  onClick={() => setSettingsDropdownOpen(!settingsDropdownOpen)}
+                  className="p-2 rounded-xl hover:bg-[#DBEAFE] transition-all"
+                  title="Settings"
+                >
+                  <Settings size={20} className="text-[#1e3a8a]" />
+                </button>
+                {settingsDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-[#E1E1DB] z-50 p-2">
+                    <Link href="/teacher/dashboard/settings" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                      Profile Settings
+                    </Link>
+                    <Link href="/teacher/dashboard/password" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                      Change Password
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Translate */}
+              <div className="relative language-dropdown-container">
+                <button
+                  onClick={() => setLanguageDropdownOpen(!languageDropdownOpen)}
+                  className="p-2 rounded-xl hover:bg-[#DBEAFE] transition-all"
+                  title="Translate"
+                >
+                  <Languages size={20} className="text-[#1e3a8a]" />
+                </button>
+                {languageDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-[#E1E1DB] z-50 p-2">
+                    <button className="block w-full text-left px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                      English
+                    </button>
+                    <button className="block w-full text-left px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                      हिंदी
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Profile */}
+              <div className="relative profile-dropdown-container">
+                <button
+                  onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-[#DBEAFE] transition-all"
+                  title="Profile"
+                >
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold text-sm">
+                    {teacher.full_name.split(' ').map((n) => n[0] || '').join('').substring(0, 2)}
+                  </div>
+                  <span className="hidden lg:block text-sm font-medium text-[#1e3a8a]">{teacher.full_name}</span>
+                </button>
+                {profileDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-[#E1E1DB] z-50 p-2">
+                    <div className="px-3 py-2 border-b border-[#E1E1DB]">
+                      <p className="text-sm font-semibold text-[#1e3a8a]">{teacher.full_name}</p>
+                      <p className="text-xs text-[#5A7A9A]">{teacher.role || 'Teacher'}</p>
+                    </div>
+                    <Link href="/teacher/dashboard/settings" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                      Profile Settings
+                    </Link>
+                    <button
+                      onClick={() => {
+                        sessionStorage.removeItem('teacher');
+                        sessionStorage.removeItem('role');
+                        router.push('/login');
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-[#DBEAFE] rounded-lg flex items-center gap-2"
+                    >
+                      <LogOut size={16} />
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -491,9 +660,6 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                                 {item.label}
                               </span>
                               <Lock size={16} className="text-[#7FA3C4]" />
-                              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-[#2c4a6b] text-[#FFFFFF] text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 border border-[#3d5a7f]">
-                                This option is not enabled
-                              </div>
                             </div>
                           )}
                         </div>
@@ -521,6 +687,9 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
         onStayLoggedIn={resetTimer}
         onLogout={handleLogout}
       />
+
+      {/* Help Modal */}
+      <HelpModal isOpen={helpModalOpen} onClose={() => setHelpModalOpen(false)} schoolCode={''} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
@@ -40,10 +40,14 @@ import {
   Save,
   Loader2,
   Send,
+  Database,
+  ChevronRight,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { AnimatePresence } from 'framer-motion';
 import SchoolSupervisionView from '@/components/admin/SchoolSupervisionView';
+import AdminPasswordModal from '@/components/admin/AdminPasswordModal';
+import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 import {
   calculatePercentage,
   getGradeFromPercentage,
@@ -736,6 +740,146 @@ function AdminMarksEntryView({ acceptedSchools }: { acceptedSchools: AcceptedSch
 }
 
 export default function AdminDashboard() {
+  // Password authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // Session timeout (20 minutes)
+  const [sessionWarningShown, setSessionWarningShown] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(20 * 60); // 20 minutes in seconds
+  const lastActivityRef = useRef<number>(Date.now());
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const warningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const handleSessionLogout = useCallback(() => {
+    // Clear all timeouts
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (warningTimeoutRef.current) {
+      clearTimeout(warningTimeoutRef.current);
+      warningTimeoutRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    
+    setSessionWarningShown(false);
+    setIsAuthenticated(false);
+  }, []);
+
+  const resetSessionTimer = useCallback(() => {
+    // Clear existing timeouts
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (warningTimeoutRef.current) {
+      clearTimeout(warningTimeoutRef.current);
+      warningTimeoutRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    
+    lastActivityRef.current = Date.now();
+    setSessionWarningShown(false);
+    setTimeRemaining(20 * 60);
+    
+    // Update countdown every second
+    countdownIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - lastActivityRef.current;
+      const remaining = 20 * 60 * 1000 - elapsed;
+      const secondsRemaining = Math.max(0, Math.floor(remaining / 1000));
+      setTimeRemaining(secondsRemaining);
+      
+      // Show warning when 1 minute remaining
+      if (secondsRemaining <= 60 && secondsRemaining > 0 && !sessionWarningShown) {
+        setSessionWarningShown(true);
+      }
+      
+      if (secondsRemaining === 0) {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+        handleSessionLogout();
+      }
+    }, 1000);
+    
+    // Set logout timer (20 minutes)
+    timeoutRef.current = setTimeout(() => {
+      handleSessionLogout();
+    }, 20 * 60 * 1000);
+    
+    // Set warning timer (19 minutes - show warning 1 minute before logout)
+    warningTimeoutRef.current = setTimeout(() => {
+      setSessionWarningShown(true);
+    }, 19 * 60 * 1000);
+  }, [handleSessionLogout, sessionWarningShown]);
+  
+  const handleStayLoggedIn = () => {
+    resetSessionTimer();
+  };
+  
+  // Track user activity
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    // Initialize timer when authenticated
+    resetSessionTimer();
+    
+    // Track various user activities
+    const events = [
+      'mousedown',
+      'mousemove',
+      'keypress',
+      'scroll',
+      'touchstart',
+      'click',
+      'keydown',
+    ];
+    
+    const handleActivity = () => {
+      if (isAuthenticated) {
+        resetSessionTimer();
+      }
+    };
+    
+    // Add event listeners
+    events.forEach((event) => {
+      document.addEventListener(event, handleActivity, { passive: true });
+    });
+    
+    // Track window focus
+    const handleFocus = () => {
+      if (isAuthenticated) {
+        resetSessionTimer();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    
+    // Cleanup
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (warningTimeoutRef.current) {
+        clearTimeout(warningTimeoutRef.current);
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+      events.forEach((event) => {
+        document.removeEventListener(event, handleActivity);
+      });
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isAuthenticated, resetSessionTimer]);
+  
   const [pendingSchools, setPendingSchools] = useState<SchoolSignup[]>([]);
   const [acceptedSchools, setAcceptedSchools] = useState<AcceptedSchool[]>([]);
   const [rejectedSchools, setRejectedSchools] = useState<RejectedSchool[]>([]);
@@ -1662,7 +1806,26 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
+    <>
+      {/* Password Modal */}
+      <AdminPasswordModal 
+        isOpen={!isAuthenticated} 
+        onSuccess={() => setIsAuthenticated(true)} 
+      />
+
+      {/* Session Timeout Warning Modal */}
+      {isAuthenticated && (
+        <SessionTimeoutModal
+          isOpen={sessionWarningShown}
+          timeRemaining={timeRemaining}
+          onStayLoggedIn={handleStayLoggedIn}
+          onLogout={handleSessionLogout}
+        />
+      )}
+
+      {/* Admin Content - Only show if authenticated */}
+      {isAuthenticated ? (
+        <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
       {/* Header */}
       <nav className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl border-b border-white/60 dark:border-gray-700/50 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1762,6 +1925,35 @@ export default function AdminDashboard() {
         {/* Main Content */}
         <main className="flex-1 lg:ml-0 bg-[#F5EFEB] dark:bg-[#0f172a]">
           <div className="p-4 sm:p-6 lg:p-8">
+
+          {/* Database Tables Link */}
+          {viewMode === 'overview' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6"
+            >
+              <Link
+                href="/admin/tables"
+                className="glass-card soft-shadow rounded-xl p-6 hover:shadow-lg transition-all border border-white/20 dark:border-white/10 block group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <Database size={24} className="text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-foreground">Database Tables Viewer</h3>
+                      <p className="text-sm text-muted-foreground">
+                        View and manage data from all 92+ Supabase tables across all schools
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight size={20} className="text-muted-foreground group-hover:text-foreground transition-colors" />
+                </div>
+              </Link>
+            </motion.div>
+          )}
 
           {/* School Overview Section - Premium Cards */}
           {viewMode === 'overview' && (
@@ -3365,11 +3557,11 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      {/* Accept Confirmation Modal */}
-      {showAcceptModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
+          {/* Accept Confirmation Modal */}
+          {showAcceptModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8"
           >
@@ -3418,14 +3610,14 @@ export default function AdminDashboard() {
               </div>
             </div>
           </motion.div>
-        </div>
-      )}
+            </div>
+          )}
 
-      {/* Rejection Reason Modal */}
-      {showRejectModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
+          {/* Rejection Reason Modal */}
+          {showRejectModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl max-w-md w-full p-8"
           >
@@ -3511,14 +3703,14 @@ export default function AdminDashboard() {
               </div>
             </div>
           </motion.div>
-        </div>
-      )}
+            </div>
+          )}
 
-      {/* Add Employee Modal */}
-      {showEmployeeModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
+          {/* Add Employee Modal */}
+          {showEmployeeModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8 max-h-[90vh] overflow-y-auto"
           >
@@ -3667,14 +3859,14 @@ export default function AdminDashboard() {
               </div>
             </div>
           </motion.div>
-        </div>
-      )}
+            </div>
+          )}
 
-      {/* Edit Credentials Modal */}
-      {showEditCredentialsModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
+          {/* Edit Credentials Modal */}
+          {showEditCredentialsModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl max-w-md w-full p-8"
           >
@@ -3810,8 +4002,10 @@ export default function AdminDashboard() {
               </div>
             </div>
           </motion.div>
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      ) : null}
+    </>
   );
 }

@@ -1,28 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import { Settings, CheckCircle2, Camera, Upload, X, Key, Eye, EyeOff } from 'lucide-react';
-import type { Staff } from '@/lib/supabase';
+import { Settings, CheckCircle2, Camera, Upload, X, Key, Eye, EyeOff, MapPin, Calendar, GraduationCap, User } from 'lucide-react';
+import type { Student } from '@/lib/supabase';
 import { getString } from '@/lib/type-utils';
 
-export default function SettingsPage() {
-  // router kept for potential future use
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const router = useRouter();
-  const [teacher, setTeacher] = useState<Staff | null>(null);
+export default function StudentSettingsPage() {
+  const [student, setStudent] = useState<Student | null>(null);
   const [settingsData, setSettingsData] = useState({
     phone: '',
     email: '',
     address: '',
-    qualification: '',
-    experience_years: 0,
   });
   const [settingsChanged, setSettingsChanged] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -45,71 +39,64 @@ export default function SettingsPage() {
   const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
-    const storedTeacher = sessionStorage.getItem('teacher');
-    if (storedTeacher) {
-      const teacherData = JSON.parse(storedTeacher);
-      setTeacher(teacherData);
+    const storedStudent = sessionStorage.getItem('student');
+    if (storedStudent) {
+      const studentData = JSON.parse(storedStudent);
+      setStudent(studentData);
       setSettingsData({
-        phone: teacherData.phone || '',
-        email: teacherData.email || '',
-        address: teacherData.address || '',
-        qualification: teacherData.qualification || '',
-        experience_years: teacherData.experience_years || 0,
+        phone: studentData.phone || '',
+        email: studentData.email || '',
+        address: studentData.address || '',
       });
       // Set photo preview if exists
-      if (teacherData.photo_url) {
-        setPhotoPreview(teacherData.photo_url);
+      if (studentData.photo_url) {
+        setPhotoPreview(studentData.photo_url);
       }
     }
   }, []);
 
   useEffect(() => {
-    if (teacher) {
+    if (student) {
       const changed = 
-        settingsData.phone !== (teacher.phone || '') ||
-        settingsData.email !== (teacher.email || '') ||
-        settingsData.address !== (teacher.address || '') ||
-        settingsData.qualification !== (teacher.qualification || '') ||
-        settingsData.experience_years !== (teacher.experience_years || 0);
+        settingsData.phone !== (student.phone || '') ||
+        settingsData.email !== (student.email || '') ||
+        settingsData.address !== (student.address || '');
       setSettingsChanged(changed);
     }
-  }, [settingsData, teacher]);
+  }, [settingsData, student]);
 
   const handleSave = async () => {
-    if (!teacher || !settingsChanged) return;
+    if (!student || !settingsChanged) return;
 
     setSaving(true);
     setSaveSuccess(false);
 
     try {
-      const teacherId = getString(teacher.id);
-      const schoolCode = getString(teacher.school_code);
+      const studentId = getString(student.id);
+      const schoolCode = getString(student.school_code);
       
-      if (!teacherId || !schoolCode) {
+      if (!studentId || !schoolCode) {
         alert('Missing required information');
         setSaving(false);
         return;
       }
       
-      const response = await fetch(`/api/staff/${teacherId}`, {
+      const response = await fetch(`/api/students/${studentId}?school_code=${schoolCode}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          school_code: schoolCode,
           phone: settingsData.phone,
           email: settingsData.email,
           address: settingsData.address,
-          qualification: settingsData.qualification,
-          experience_years: settingsData.experience_years,
         }),
       });
 
       const result = await response.json();
 
       if (response.ok && result.data) {
-        const updatedTeacher = { ...teacher, ...result.data };
-        sessionStorage.setItem('teacher', JSON.stringify(updatedTeacher));
-        setTeacher(updatedTeacher);
+        const updatedStudent = { ...student, ...result.data };
+        sessionStorage.setItem('student', JSON.stringify(updatedStudent));
+        setStudent(updatedStudent);
         setSettingsChanged(false);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
@@ -152,14 +139,14 @@ export default function SettingsPage() {
   };
 
   const handlePhotoUpload = async () => {
-    if (!photoFile || !teacher) return;
+    if (!photoFile || !student) return;
 
     setUploadingPhoto(true);
     try {
-      const schoolCode = getString(teacher.school_code);
-      const staffId = getString(teacher.id);
+      const schoolCode = getString(student.school_code);
+      const studentId = getString(student.id);
       
-      if (!schoolCode || !staffId) {
+      if (!schoolCode || !studentId) {
         alert('Missing required information');
         setUploadingPhoto(false);
         return;
@@ -168,9 +155,9 @@ export default function SettingsPage() {
       const formData = new FormData();
       formData.append('file', photoFile);
       formData.append('school_code', schoolCode);
-      formData.append('staff_id', staffId);
+      formData.append('student_id', studentId);
 
-      const response = await fetch('/api/staff/photos/self', {
+      const response = await fetch('/api/students/photo', {
         method: 'POST',
         body: formData,
       });
@@ -178,10 +165,11 @@ export default function SettingsPage() {
       const result = await response.json();
 
       if (response.ok && result.data) {
-        // Update teacher state with new photo URL
-        const updatedTeacher = { ...teacher, photo_url: result.data.public_url };
-        sessionStorage.setItem('teacher', JSON.stringify(updatedTeacher));
-        setTeacher(updatedTeacher);
+        // Update student state with new photo URL
+        const photoUrl = result.data.photo_url || result.data.public_url;
+        const updatedStudent = { ...student, photo_url: photoUrl };
+        sessionStorage.setItem('student', JSON.stringify(updatedStudent));
+        setStudent(updatedStudent);
         setPhotoFile(null);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
@@ -198,7 +186,7 @@ export default function SettingsPage() {
   };
 
   const handleChangePassword = async () => {
-    if (!teacher) return;
+    if (!student) return;
 
     // Validation
     if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
@@ -226,20 +214,20 @@ export default function SettingsPage() {
     setPasswordSuccess(false);
 
     try {
-      const staffId = getString(teacher.id);
-      const schoolCode = getString(teacher.school_code);
+      const studentId = getString(student.id);
+      const schoolCode = getString(student.school_code);
       
-      if (!staffId || !schoolCode) {
+      if (!studentId || !schoolCode) {
         setPasswordError('Missing required information');
         setChangingPassword(false);
         return;
       }
 
-      const response = await fetch('/api/staff/change-password', {
+      const response = await fetch('/api/students/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: staffId, // API expects 'id' (UUID) not 'staff_id'
+          admission_no: getString(student.admission_no),
           school_code: schoolCode,
           current_password: passwordData.currentPassword,
           new_password: passwordData.newPassword,
@@ -269,6 +257,19 @@ export default function SettingsPage() {
     }
   };
 
+  if (!student) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const studentName = getString(student.student_name);
+
   return (
     <div className="space-y-6">
       <motion.div
@@ -276,21 +277,21 @@ export default function SettingsPage() {
         animate={{ opacity: 1, y: 0 }}
       >
         <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-gray-100 rounded-lg">
-            <Settings className="text-gray-600" size={24} />
+          <div className="p-2 bg-primary/10 rounded-lg">
+            <Settings className="text-primary" size={24} />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-            <p className="text-gray-600">Manage your profile and preferences</p>
+            <h1 className="text-3xl font-bold text-foreground">Settings</h1>
+            <p className="text-muted-foreground">Manage your profile and preferences</p>
           </div>
         </div>
       </motion.div>
 
-      <Card>
+      {/* Profile Photo Section */}
+      <Card className="glass-card soft-shadow">
         <div className="space-y-6">
-          {/* Profile Photo Section */}
-          <div className="pb-6 border-b border-gray-200">
-            <label className="block text-sm font-semibold text-gray-700 mb-4">
+          <div className="pb-6 border-b border-input">
+            <label className="block text-sm font-semibold text-foreground mb-4">
               Profile Photo
             </label>
             <div className="flex items-start gap-6">
@@ -302,20 +303,20 @@ export default function SettingsPage() {
                       alt="Profile preview"
                       width={128}
                       height={128}
-                      className="w-32 h-32 rounded-lg object-cover border-2 border-gray-200"
+                      className="w-32 h-32 rounded-lg object-cover border-2 border-input"
                       unoptimized
                     />
                     <button
                       type="button"
                       onClick={handleRemovePhoto}
-                      className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                      className="absolute -top-2 -right-2 p-1 bg-destructive text-destructive-foreground rounded-full hover:bg-destructive/90 transition-colors"
                     >
                       <X size={16} />
                     </button>
                   </div>
                 ) : (
-                  <div className="w-32 h-32 rounded-lg bg-gray-100 border-2 border-gray-200 flex items-center justify-center">
-                    <Camera className="text-gray-400" size={32} />
+                  <div className="w-32 h-32 rounded-lg bg-muted border-2 border-input flex items-center justify-center">
+                    <Camera className="text-muted-foreground" size={32} />
                   </div>
                 )}
               </div>
@@ -329,14 +330,14 @@ export default function SettingsPage() {
                 />
                 <label
                   htmlFor="photo-upload"
-                  className="inline-block px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium cursor-pointer transition-colors mb-2"
+                  className="inline-block px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg text-sm font-medium cursor-pointer transition-colors mb-2"
                 >
                   <Upload size={16} className="inline mr-2" />
                   {photoPreview ? 'Change Photo' : 'Upload Photo'}
                 </label>
                 {photoFile && (
                   <div className="mt-2">
-                    <p className="text-xs text-gray-600 mb-2">{photoFile.name}</p>
+                    <p className="text-xs text-muted-foreground mb-2">{photoFile.name}</p>
                     <Button
                       type="button"
                       onClick={handlePhotoUpload}
@@ -347,96 +348,133 @@ export default function SettingsPage() {
                     </Button>
                   </div>
                 )}
-                <p className="text-xs text-gray-500 mt-2">Max 5MB. Supported: JPG, PNG, GIF</p>
+                <p className="text-xs text-muted-foreground mt-2">Max 5MB. Supported: JPG, PNG, GIF</p>
               </div>
             </div>
           </div>
 
+          {/* Personal Information */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Phone</label>
-            <Input
-              type="tel"
-              value={settingsData.phone}
-              onChange={(e) => setSettingsData({ ...settingsData, phone: e.target.value })}
-              placeholder="Enter phone number"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
-            <Input
-              type="email"
-              value={settingsData.email}
-              onChange={(e) => setSettingsData({ ...settingsData, email: e.target.value })}
-              placeholder="Enter email address"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Address</label>
-            <Textarea
-              value={settingsData.address}
-              onChange={(e) => setSettingsData({ ...settingsData, address: e.target.value })}
-              placeholder="Enter address"
-              rows={3}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Qualification</label>
-            <Input
-              type="text"
-              value={settingsData.qualification}
-              onChange={(e) => setSettingsData({ ...settingsData, qualification: e.target.value })}
-              placeholder="Enter qualification"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Experience (Years)</label>
-            <Input
-              type="number"
-              value={settingsData.experience_years}
-              onChange={(e) => setSettingsData({ ...settingsData, experience_years: parseInt(e.target.value) || 0 })}
-              placeholder="Enter years of experience"
-              min="0"
-            />
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-            <div>
-              {saveSuccess && (
-                <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle2 size={18} />
-                  <span className="text-sm font-medium">Settings saved successfully!</span>
+            <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+              <User size={20} />
+              Personal Information
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Student Name</p>
+                <p className="font-medium text-foreground">{studentName || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Admission Number</p>
+                <p className="font-medium text-foreground font-mono">{getString(student.admission_no) || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                  <GraduationCap size={14} />
+                  Class & Section
+                </p>
+                <p className="font-medium text-foreground">
+                  {getString(student.class) || 'N/A'} - {getString(student.section) || 'N/A'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Academic Year</p>
+                <p className="font-medium text-foreground">{getString(student.academic_year) || 'N/A'}</p>
+              </div>
+              {getString(student.gender) && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Gender</p>
+                  <p className="font-medium text-foreground">{getString(student.gender)}</p>
+                </div>
+              )}
+              {getString(student.date_of_birth) && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                    <Calendar size={14} />
+                    Date of Birth
+                  </p>
+                  <p className="font-medium text-foreground">
+                    {new Date(getString(student.date_of_birth)).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </p>
                 </div>
               )}
             </div>
-            <Button
-              onClick={handleSave}
-              disabled={!settingsChanged || saving}
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
+          </div>
+
+          {/* Editable Fields */}
+          <div className="pt-6 border-t border-input space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-2">Phone</label>
+              <Input
+                type="tel"
+                value={settingsData.phone}
+                onChange={(e) => setSettingsData({ ...settingsData, phone: e.target.value })}
+                placeholder="Enter phone number"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-2">Email</label>
+              <Input
+                type="email"
+                value={settingsData.email}
+                onChange={(e) => setSettingsData({ ...settingsData, email: e.target.value })}
+                placeholder="Enter email address"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-2 flex items-center gap-1">
+                <MapPin size={14} />
+                Address
+              </label>
+              <Textarea
+                value={settingsData.address}
+                onChange={(e) => setSettingsData({ ...settingsData, address: e.target.value })}
+                placeholder="Enter address"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-input">
+              <div>
+                {saveSuccess && (
+                  <div className="flex items-center gap-2 text-emerald-600">
+                    <CheckCircle2 size={18} />
+                    <span className="text-sm font-medium">Settings saved successfully!</span>
+                  </div>
+                )}
+              </div>
+              <Button
+                onClick={handleSave}
+                disabled={!settingsChanged || saving}
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
 
       {/* Change Password Section */}
-      <Card>
+      <Card className="glass-card soft-shadow">
         <div className="space-y-6">
-          <div className="flex items-center gap-3 pb-4 border-b border-gray-200">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Key className="text-blue-600" size={20} />
+          <div className="flex items-center gap-3 pb-4 border-b border-input">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Key className="text-primary" size={20} />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Change Password</h2>
-              <p className="text-sm text-gray-600">Update your account password</p>
+              <h2 className="text-xl font-bold text-foreground">Change Password</h2>
+              <p className="text-sm text-muted-foreground">Update your account password</p>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-sm font-semibold text-foreground mb-2">
               Current Password
             </label>
             <div className="relative">
@@ -453,7 +491,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowPasswords({ ...showPasswords, current: !showPasswords.current })}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showPasswords.current ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -461,7 +499,7 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-sm font-semibold text-foreground mb-2">
               New Password
             </label>
             <div className="relative">
@@ -478,7 +516,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showPasswords.new ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -486,7 +524,7 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-sm font-semibold text-foreground mb-2">
               Confirm New Password
             </label>
             <div className="relative">
@@ -503,7 +541,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showPasswords.confirm ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -511,21 +549,21 @@ export default function SettingsPage() {
           </div>
 
           {passwordError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">{passwordError}</p>
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-sm text-red-600 dark:text-red-400">{passwordError}</p>
             </div>
           )}
 
           {passwordSuccess && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center gap-2 text-green-600">
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 size={18} />
                 <span className="text-sm font-medium">Password changed successfully!</span>
               </div>
             </div>
           )}
 
-          <div className="flex items-center justify-end pt-4 border-t border-gray-200">
+          <div className="flex items-center justify-end pt-4 border-t border-input">
             <Button
               onClick={handleChangePassword}
               disabled={changingPassword || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}
@@ -538,4 +576,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
