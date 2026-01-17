@@ -167,6 +167,7 @@ export default function DashboardPage({
     };
   }
   const [upcomingExams, setUpcomingExams] = useState<Exam[]>([]);
+  const [previousExams, setPreviousExams] = useState<Exam[]>([]);
   const [loadingExams, setLoadingExams] = useState(false);
   
   interface AdministrativeData {
@@ -223,6 +224,9 @@ export default function DashboardPage({
   const [showTeacherBirthdays, setShowTeacherBirthdays] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [classesCount, setClassesCount] = useState(0);
+  const [sectionsCount, setSectionsCount] = useState(0);
+  const [loadingClasses, setLoadingClasses] = useState(false);
 
   useEffect(() => {
     fetchSchoolData();
@@ -232,6 +236,7 @@ export default function DashboardPage({
     fetchTimetables();
     fetchUpcomingExaminations();
     fetchAdministrativeData();
+    fetchClassesAndSections();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
@@ -240,19 +245,22 @@ export default function DashboardPage({
     const handleNavbarButtonClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       const button = document.getElementById('quick-actions-navbar-button');
-      if (button && (button.contains(target) || target === button)) {
-        setShowQuickActionsMenu(!showQuickActionsMenu);
+      // Check if click is on the button or inside it
+      if (button && (button === target || button.contains(target))) {
+        event.preventDefault();
+        event.stopPropagation();
+        setShowQuickActionsMenu((prev) => !prev);
       }
     };
 
-    const navbarButton = document.getElementById('quick-actions-navbar-button');
-    if (navbarButton) {
-      navbarButton.addEventListener('click', handleNavbarButtonClick);
-      return () => {
-        navbarButton.removeEventListener('click', handleNavbarButtonClick);
-      };
-    }
-  }, [showQuickActionsMenu]);
+    // Use event delegation on document to catch clicks even if button isn't ready yet
+    // This ensures the listener works even on first load
+    document.addEventListener('click', handleNavbarButtonClick, true);
+    
+    return () => {
+      document.removeEventListener('click', handleNavbarButtonClick, true);
+    };
+  }, []);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -406,28 +414,85 @@ export default function DashboardPage({
   const fetchUpcomingExaminations = async () => {
     try {
       setLoadingExams(true);
-      const response = await fetch(`/api/examinations?school_code=${schoolCode}&status=upcoming`);
+      // Fetch all examinations
+      const response = await fetch(`/api/examinations?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const upcoming = result.data
-          .filter((exam: Exam) => {
-            if (!exam.start_date) return false;
-            const examDate = new Date(exam.start_date);
-            examDate.setHours(0, 0, 0, 0);
-            return (exam.status === 'upcoming' || exam.status === 'ongoing') && examDate >= today;
-          })
-          .slice(0, 10); // Limit to 10 upcoming exams
-        setUpcomingExams(upcoming);
+        
+        // Separate upcoming and previous exams
+        const upcoming: Exam[] = [];
+        const previous: Exam[] = [];
+        
+        result.data.forEach((exam: Exam) => {
+          if (!exam.start_date) return;
+          const examDate = new Date(exam.start_date);
+          examDate.setHours(0, 0, 0, 0);
+          
+          // Check if exam is upcoming or ongoing
+          if ((exam.status === 'upcoming' || exam.status === 'ongoing' || !exam.status) && examDate >= today) {
+            upcoming.push(exam);
+          } else if (examDate < today || exam.status === 'completed') {
+            // Previous exams are those with start_date < today or status = completed
+            previous.push(exam);
+          }
+        });
+        
+        // Sort upcoming by start_date ascending
+        upcoming.sort((a, b) => {
+          if (!a.start_date || !b.start_date) return 0;
+          return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
+        });
+        
+        // Sort previous by start_date descending (most recent first)
+        previous.sort((a, b) => {
+          if (!a.start_date || !b.start_date) return 0;
+          return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
+        });
+        
+        setUpcomingExams(upcoming.slice(0, 10)); // Limit to 10 upcoming exams
+        setPreviousExams(previous.slice(0, 10)); // Limit to 10 previous exams
       } else {
         setUpcomingExams([]);
+        setPreviousExams([]);
       }
     } catch (err) {
       console.error('Error fetching examinations:', err);
       setUpcomingExams([]);
+      setPreviousExams([]);
     } finally {
       setLoadingExams(false);
+    }
+  };
+
+  const fetchClassesAndSections = async () => {
+    try {
+      setLoadingClasses(true);
+      const response = await fetch(`/api/classes?school_code=${schoolCode}`);
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        const classes = result.data;
+        // Count unique classes
+        const uniqueClasses = new Set(classes.map((cls: { class: string }) => cls.class));
+        setClassesCount(uniqueClasses.size);
+        
+        // Count unique sections (class-section combinations)
+        const uniqueSections = new Set(
+          classes.map((cls: { class: string; section: string }) => `${cls.class}-${cls.section}`)
+        );
+        setSectionsCount(uniqueSections.size);
+      } else {
+        setClassesCount(0);
+        setSectionsCount(0);
+      }
+    } catch (err) {
+      console.error('Error fetching classes and sections:', err);
+      setClassesCount(0);
+      setSectionsCount(0);
+    } finally {
+      setLoadingClasses(false);
     }
   };
 
@@ -863,10 +928,6 @@ export default function DashboardPage({
               <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
                 <UserPlus className="text-blue-600" size={24} />
               </div>
-              {/* Trend Badge */}
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                +12.5%
-              </span>
             </div>
             
             {/* Title */}
@@ -881,13 +942,13 @@ export default function DashboardPage({
               </div>
             </div>
             
-            {/* Progress Bar at bottom */}
+            {/* Progress Bar at bottom - based on actual data */}
             <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <motion.div 
                 className="bg-blue-500 h-full rounded-full"
                 initial={{ width: 0 }}
                 animate={{ 
-                  width: loading ? '0%' : '75%'
+                  width: loading ? '0%' : stats.totalStudents > 0 ? '100%' : '0%'
                 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
@@ -909,10 +970,6 @@ export default function DashboardPage({
               <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
                 <DollarSign className="text-purple-600" size={24} />
               </div>
-              {/* Trend Badge */}
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                +4.2%
-              </span>
             </div>
             
             {/* Title */}
@@ -927,13 +984,13 @@ export default function DashboardPage({
               </div>
             </div>
             
-            {/* Progress Bar at bottom */}
+            {/* Progress Bar at bottom - based on actual data */}
             <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <motion.div 
                 className="bg-purple-500 h-full rounded-full"
                 initial={{ width: 0 }}
                 animate={{ 
-                  width: loading ? '0%' : '70%'
+                  width: loading ? '0%' : stats.feeCollection.total > 0 ? '100%' : '0%'
                 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
@@ -955,10 +1012,6 @@ export default function DashboardPage({
               <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
                 <UserCheck className="text-green-600" size={24} />
               </div>
-              {/* Trend Badge */}
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
-                Stable
-              </span>
             </div>
             
             {/* Title */}
@@ -969,17 +1022,17 @@ export default function DashboardPage({
             {/* Main Value */}
             <div className="mb-4">
               <div className="text-3xl font-bold text-gray-900 mb-1">
-                {loading ? '...' : `${stats.todayAttendance.staff?.percentage ?? 98.4}%`}
+                {loading ? '...' : `${stats.todayAttendance.staff?.percentage ?? 0}%`}
               </div>
             </div>
             
-            {/* Progress Bar at bottom */}
+            {/* Progress Bar at bottom - based on actual data */}
             <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <motion.div 
                 className="bg-green-500 h-full rounded-full"
                 initial={{ width: 0 }}
                 animate={{ 
-                  width: loading ? '0%' : `${Math.min(stats.todayAttendance.staff?.percentage ?? 98.4, 100)}%` 
+                  width: loading ? '0%' : `${Math.min(stats.todayAttendance.staff?.percentage ?? 0, 100)}%` 
                 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
@@ -987,7 +1040,7 @@ export default function DashboardPage({
           </div>
         </motion.div>
 
-        {/* Academic Index Card - Orange */}
+        {/* All Classes & Sections Card - Orange */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -999,33 +1052,38 @@ export default function DashboardPage({
             {/* Icon at top left */}
             <div className="flex items-start justify-between mb-4">
               <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
-                <Star className="text-orange-600" size={24} />
+                <BookOpen className="text-orange-600" size={24} />
               </div>
-              {/* Trend Badge */}
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                A- Avg
-              </span>
             </div>
             
             {/* Title */}
             <p className="text-sm font-medium text-gray-600 mb-2">
-              Academic Index
+              All Classes & Sections
             </p>
             
-            {/* Main Value */}
-            <div className="mb-4">
-              <div className="text-3xl font-bold text-gray-900 mb-1">
-                92.8
+            {/* Main Value - Two rows for Classes and Sections */}
+            <div className="mb-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Classes:</span>
+                <div className="text-2xl font-bold text-gray-900">
+                  {loadingClasses ? '...' : classesCount}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Sections:</span>
+                <div className="text-2xl font-bold text-gray-900">
+                  {loadingClasses ? '...' : sectionsCount}
+                </div>
               </div>
             </div>
             
-            {/* Progress Bar at bottom */}
+            {/* Progress Bar at bottom - based on sections count */}
             <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <motion.div 
                 className="bg-orange-500 h-full rounded-full"
                 initial={{ width: 0 }}
                 animate={{ 
-                  width: '92.8%'
+                  width: loadingClasses ? '0%' : sectionsCount > 0 ? '100%' : '0%'
                 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
@@ -1331,6 +1389,7 @@ export default function DashboardPage({
           ) : (
           <div className="space-y-3">
             {upcomingExams.length > 0 ? (
+              // Show upcoming examinations
               upcomingExams.map((exam) => (
                 <div
                   key={exam.id}
@@ -1374,7 +1433,47 @@ export default function DashboardPage({
                   <ChevronDown size={16} className="text-[#64748B] rotate-[-90deg]" />
                 </div>
               ))
+            ) : previousExams.length > 0 ? (
+              // If no upcoming exams, show previous examinations
+              previousExams.map((exam) => (
+                <div
+                  key={exam.id}
+                  className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB] hover:bg-[#F1F5F9] transition-colors cursor-pointer"
+                  onClick={() => router.push(`/dashboard/${schoolCode}/examinations`)}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-sm font-semibold text-[#0F172A]">{exam.exam_name}</h4>
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-[#FEF3C7] text-[#D97706]">
+                        Previous
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-[#64748B]">
+                      {exam.exam_type && (
+                        <span className="flex items-center gap-1">
+                          <FileText size={12} />
+                          {exam.exam_type}
+                    </span>
+                      )}
+                      {exam.start_date && (
+                        <span className="flex items-center gap-1">
+                          <Calendar size={12} />
+                          {new Date(exam.start_date).toLocaleDateString()}
+                    </span>
+                      )}
+                      {exam.class && (
+                        <span>
+                          {exam.class.class}-{exam.class.section}
+                          {exam.class.academic_year && ` (${exam.class.academic_year})`}
+                    </span>
+                      )}
+              </div>
+                </div>
+                  <ChevronDown size={16} className="text-[#64748B] rotate-[-90deg]" />
+                </div>
+              ))
             ) : (
+              // No examinations at all
               <div className="text-center py-12">
                 <FileText className="mx-auto text-[#64748B] mb-3" size={48} />
                 <p className="text-[#0F172A] font-medium mb-1">No upcoming examinations</p>
