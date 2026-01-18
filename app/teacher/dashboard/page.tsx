@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, TrendingUp, CalendarDays, CalendarX, Clock, ChevronLeft, ChevronRight, MapPin, Loader2, AlertTriangle, Link as LinkIcon, MessageSquare, Filter, Plus, Trash2, CheckCircle, Circle } from 'lucide-react';
+import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, TrendingUp, CalendarDays, CalendarX, Clock, Loader2, AlertTriangle, Link as LinkIcon, MessageSquare, Filter, Plus, Trash2, CheckCircle, Circle } from 'lucide-react';
 import type { Staff, Student, Class, Exam, Notice } from '@/lib/supabase';
 import TeacherTimetableView from '@/components/timetable/TeacherTimetableView';
 import { getString } from '@/lib/type-utils';
@@ -40,8 +40,8 @@ export default function TeacherDashboard() {
   const [noticesCount, setNoticesCount] = useState(0);
   const [recentNotices, setRecentNotices] = useState<Notice[]>([]);
   const [studentLeaveRequests, setStudentLeaveRequests] = useState<Array<{ id: string; [key: string]: unknown }>>([]);
-  const [dailyAgenda, setDailyAgenda] = useState<DailyAgendaSlot[]>([]);
-  const [loadingAgenda, setLoadingAgenda] = useState(false);
+  const [, setDailyAgenda] = useState<DailyAgendaSlot[]>([]);
+  const [, setLoadingAgenda] = useState(false);
   const [gradeDistribution, setGradeDistribution] = useState<{ aToB: number; cToD: number; belowE: number; passRate: number; total: number } | null>(null);
   const [todos, setTodos] = useState<Array<{ id: string; title: string; description?: string; priority?: string; status?: string; due_date?: string; due_time?: string; category?: string; [key: string]: unknown }>>([]);
   const [loadingTodos, setLoadingTodos] = useState(false);
@@ -658,110 +658,32 @@ export default function TeacherDashboard() {
               <div>
                 <h2 className="text-xl font-bold text-foreground">My Timetable</h2>
                 <p className="text-sm text-muted-foreground">
-                  {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  Weekly schedule view
                 </p>
-              </div>
-              <div className="flex gap-2">
-                <button className="text-muted-foreground hover:text-foreground transition-colors">
-                  <ChevronLeft size={20} />
-                </button>
-                <button className="text-muted-foreground hover:text-foreground transition-colors">
-                  <ChevronRight size={20} />
-                </button>
               </div>
             </div>
 
-            {loadingAgenda ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              </div>
-            ) : dailyAgenda.length === 0 ? (
-              <div className="text-center py-12">
-                <Calendar className="mx-auto text-muted-foreground mb-4" size={48} />
-                <p className="text-muted-foreground">No classes scheduled for today</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {dailyAgenda.map((session) => {
-                  const isTodo = session.type === 'todo';
-                  const isCurrent = session.status === 'Current' || session.status === 'current';
-                  const priorityColors: Record<string, string> = {
-                    urgent: 'bg-red-100 text-red-700 border-red-200',
-                    high: 'bg-orange-100 text-orange-700 border-orange-200',
-                    medium: 'bg-blue-100 text-blue-700 border-blue-200',
-                    low: 'bg-gray-100 text-gray-700 border-gray-200',
-                  };
-                  const priorityColor = priorityColors[session.priority || 'medium'] || priorityColors.medium;
-                  
-                  return (
-                    <div
-                      key={session.id}
-                      className={`border rounded-lg p-4 transition-colors ${
-                        isCurrent 
-                          ? 'bg-primary/10 border-primary shadow-md' 
-                          : isTodo
-                          ? 'border-input hover:border-accent'
-                          : 'border-input hover:border-primary'
-                      }`}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-center min-w-20">
-                          <p className={`text-sm font-medium ${isCurrent ? 'text-primary' : 'text-foreground'}`}>
-                            {session.time}
-                          </p>
-                          {session.duration && !isTodo && (
-                            <p className="text-xs text-muted-foreground">{session.duration} Min</p>
-                          )}
-                          {isTodo && session.priority && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full border ${priorityColor} mt-1 inline-block`}>
-                              {session.priority}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className={`font-semibold ${isCurrent ? 'text-primary' : 'text-foreground'}`}>
-                              {session.name}
-                            </h3>
-                            {isTodo && (
-                              <span className="inline-block bg-accent/10 text-accent text-xs px-2 py-0.5 rounded border border-accent/20">
-                                To-Do
-                              </span>
-                            )}
-                            {!isTodo && session.status && (
-                              <span className="inline-block bg-primary/10 text-primary text-xs px-2 py-1 rounded">
-                                {session.status}
-                              </span>
-                            )}
-                          </div>
-                          {!isTodo && session.room && session.class && (
-                            <p className={`text-sm flex items-center gap-1 ${isCurrent ? 'text-primary/80' : 'text-muted-foreground'}`}>
-                              <MapPin size={14} />
-                              {session.room} • {session.class}
-                            </p>
-                          )}
-                          {isTodo && session.category && (
-                            <p className="text-sm text-muted-foreground">
-                              {session.category}
-                            </p>
-                          )}
-                        </div>
-                        {!isTodo && (
-                          <button className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
-                            {isCurrent ? 'View Materials' : 'Start Class'}
-                          </button>
-                        )}
-                        {isTodo && (
-                          <button className="bg-accent text-accent-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-accent/90 transition-colors">
-                            Complete
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            {(() => {
+              const schoolCode = teacher ? getString(teacher.school_code) : '';
+              const teacherId = teacher ? getString(teacher.id) : '';
+              if (schoolCode && teacherId) {
+                return (
+                  <TeacherTimetableView
+                    schoolCode={schoolCode}
+                    teacherId={teacherId}
+                  />
+                );
+              }
+              return (
+                <div className="text-center py-12">
+                  <Calendar className="mx-auto text-muted-foreground mb-4" size={48} />
+                  <p className="text-muted-foreground">No timetable available</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Your timetable has not been assigned yet
+                  </p>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Right Sidebar - 1/3 width */}
@@ -1213,104 +1135,6 @@ export default function TeacherDashboard() {
           </div>
         </motion.div>
 
-        {/* My Class Students */}
-        <motion.div
-          id="class-students"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-primary/10 rounded-lg">
-                <UserCheck className="text-primary" size={24} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-serif font-bold text-foreground">
-                  My Class: {assignedClass.class}-{assignedClass.section}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {classStudents.length} {classStudents.length === 1 ? 'student' : 'students'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <Card className="glass-card soft-shadow">
-            {classStudents.length === 0 ? (
-              <div className="text-center py-12">
-                <GraduationCap className="mx-auto text-muted-foreground mb-4" size={48} />
-                <p className="text-muted-foreground">No students in this class</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-muted/50 border-b border-input">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Admission No</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Name</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Parent Name</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Contact</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Date of Birth</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-input">
-                    {classStudents.map((student, index) => {
-                      const studentId = getString(student.id) || `student-${index}`;
-                      const admissionNo = getString(student.admission_no);
-                      const studentName = getString(student.student_name);
-                      const parentName = getString(student.parent_name);
-                      const parentPhone = getString(student.parent_phone);
-                      const dateOfBirth = getString(student.date_of_birth);
-                      return (
-                        <tr key={studentId} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-4 py-3 text-sm font-medium text-foreground">{admissionNo || 'N/A'}</td>
-                          <td className="px-4 py-3 text-sm text-foreground">{studentName || 'N/A'}</td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">{parentName || 'N/A'}</td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">
-                            {parentPhone || 'N/A'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">
-                            {dateOfBirth 
-                              ? new Date(dateOfBirth).toLocaleDateString()
-                              : 'N/A'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-        </motion.div>
-
-        {/* Timetable Section */}
-        {(() => {
-          const schoolCode = teacher ? getString(teacher.school_code) : '';
-          const teacherId = teacher ? getString(teacher.id) : '';
-          if (schoolCode && teacherId) {
-            return (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-              >
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2.5 bg-primary/10 rounded-lg">
-                    <Calendar className="text-primary" size={24} />
-                  </div>
-                  <h2 className="text-2xl font-serif font-bold text-foreground">My Timetable</h2>
-                </div>
-                <TeacherTimetableView
-                  schoolCode={schoolCode}
-                  teacherId={teacherId}
-                />
-              </motion.div>
-            );
-          }
-          return null;
-        })()}
 
         {/* Student Leave Requests */}
         {studentLeaveRequests.length > 0 && (

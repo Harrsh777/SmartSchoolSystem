@@ -34,7 +34,12 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching student leave requests:', error);
-      return NextResponse.json({ error: 'Failed to fetch student leave requests' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Failed to fetch student leave requests', 
+        details: error.message,
+        code: error.code,
+        hint: error.hint
+      }, { status: 500 });
     }
 
     if (!leaveRequests || leaveRequests.length === 0) {
@@ -61,17 +66,37 @@ export async function GET(request: NextRequest) {
     const studentIds = [...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.student_id).filter(Boolean))];
     const leaveTypeIds = [...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.leave_type_id).filter(Boolean))];
 
-    // Fetch student information
-    const { data: studentsData } = await supabase
-      .from('students')
-      .select('id, student_name, admission_no, class, section')
-      .in('id', studentIds);
+    // Fetch student information (only if there are student IDs)
+    let studentsData = null;
+    if (studentIds.length > 0) {
+      const { data, error: studentsError } = await supabase
+        .from('students')
+        .select('id, student_name, admission_no, class, section')
+        .in('id', studentIds);
+      
+      if (studentsError) {
+        console.error('Error fetching students:', studentsError);
+        // Continue without student data rather than failing completely
+      } else {
+        studentsData = data;
+      }
+    }
 
-    // Fetch leave types
-    const { data: leaveTypesData } = await supabase
-      .from('leave_types')
-      .select('id, abbreviation, name')
-      .in('id', leaveTypeIds);
+    // Fetch leave types (only if there are leave type IDs)
+    let leaveTypesData = null;
+    if (leaveTypeIds.length > 0) {
+      const { data, error: leaveTypesError } = await supabase
+        .from('leave_types')
+        .select('id, abbreviation, name')
+        .in('id', leaveTypeIds);
+      
+      if (leaveTypesError) {
+        console.error('Error fetching leave types:', leaveTypesError);
+        // Continue without leave type data rather than failing completely
+      } else {
+        leaveTypesData = data;
+      }
+    }
 
     // Create lookup maps
     interface Student {

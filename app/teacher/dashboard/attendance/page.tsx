@@ -146,8 +146,17 @@ export default function TeacherAttendancePage() {
     try {
       setLoading(true);
       
-      if (!teacherData.id || !teacherData.school_code) {
-        console.error('Missing required teacher data');
+      // Validate teacher data
+      const schoolCode = getString(teacherData.school_code);
+      const teacherId = getString(teacherData.id);
+      const staffId = teacherData.staff_id ? getString(teacherData.staff_id) : null;
+      
+      if (!schoolCode || (!teacherId && !staffId)) {
+        console.error('Missing required teacher data:', { 
+          school_code: schoolCode, 
+          teacher_id: teacherId, 
+          staff_id: staffId 
+        });
         setIsClassTeacher(false);
         setStudents([]);
         return;
@@ -155,51 +164,71 @@ export default function TeacherAttendancePage() {
       
       // Fetch all classes assigned to this teacher - pass both teacher_id and staff_id, request array
       const queryParams = new URLSearchParams({
-        school_code: teacherData.school_code,
-        teacher_id: teacherData.id,
+        school_code: schoolCode,
         array: 'true', // Request array of classes
       });
-      if (teacherData.staff_id) {
-        queryParams.append('staff_id', teacherData.staff_id);
+      
+      if (teacherId) {
+        queryParams.append('teacher_id', teacherId);
+      }
+      if (staffId) {
+        queryParams.append('staff_id', staffId);
       }
       
       const classResponse = await fetch(`/api/classes/teacher?${queryParams.toString()}`);
       const classResult = await classResponse.json();
       
+      // Check if there's an error in the response
+      if (classResult.error && !classResult.data) {
+        // If there's an error and no data, it's a real error (not just "no classes assigned")
+        if (classResult.error !== 'No classes assigned') {
+          console.error('API error:', classResult.error, classResult.details);
+          throw new Error(classResult.error || 'Failed to fetch class information');
+        }
+        // "No classes assigned" is not an error, just means teacher has no classes
+        setIsClassTeacher(false);
+        setStudents([]);
+        return;
+      }
+      
       if (classResponse.ok && classResult.data) {
         // Handle both array and single class responses
         const classesData = Array.isArray(classResult.data) ? classResult.data : [classResult.data];
         
-        if (classesData.length > 0 && classesData[0]) {
-          // Filter out null/undefined classes
-          const validClasses = classesData.filter((cls: Class | null) => cls && cls.class && cls.section);
+        // Filter out null/undefined classes and ensure data is valid
+        const validClasses = classesData.filter((cls: Class | null) => cls && cls.class && cls.section);
+        
+        if (validClasses.length > 0) {
+          setAssignedClasses(validClasses);
+          setIsClassTeacher(true);
           
-          if (validClasses.length > 0) {
-            setAssignedClasses(validClasses);
-            setIsClassTeacher(true);
-            
-            // Set first class as selected by default
-            setSelectedClass(validClasses[0]);
-            
-            // Fetch students for the first class
-            fetchStudentsForClass(validClasses[0]);
-          } else {
-            setIsClassTeacher(false);
-            setStudents([]);
-          }
+          // Set first class as selected by default
+          setSelectedClass(validClasses[0]);
+          
+          // Fetch students for the first class
+          fetchStudentsForClass(validClasses[0]);
         } else {
-          // Teacher is not assigned to any class
+          // No valid classes found
           setIsClassTeacher(false);
           setStudents([]);
         }
-      } else {
-        // Teacher is not assigned to any class
+      } else if (classResponse.ok) {
+        // Response is OK but no data (empty array case)
         setIsClassTeacher(false);
         setStudents([]);
+      } else {
+        // Response is not OK - treat as error
+        const errorMsg = classResult.error || `HTTP ${classResponse.status}: Failed to fetch class information`;
+        console.error('API request failed:', errorMsg, classResult.details);
+        throw new Error(errorMsg);
       }
     } catch (err) {
       console.error('Error fetching classes and students:', err);
-      alert('Failed to load class information');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load class information';
+      // Only show alert for actual errors, not for "no classes assigned"
+      if (!errorMessage.includes('No classes assigned')) {
+        alert(errorMessage);
+      }
       setIsClassTeacher(false);
       setStudents([]);
     } finally {
@@ -220,12 +249,14 @@ export default function TeacherAttendancePage() {
     try {
       const teacherData = JSON.parse(storedTeacher);
       setTeacher(teacherData);
+      // Call fetchClassAndStudents directly with teacherData - don't include it in deps to avoid infinite loop
       fetchClassAndStudents(teacherData);
     } catch (err) {
       console.error('Error parsing teacher data:', err);
       router.push('/login');
     }
-  }, [router, fetchClassAndStudents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]); // Only depend on router, not fetchClassAndStudents to avoid infinite loop
 
   const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
     setAttendance((prev) => ({

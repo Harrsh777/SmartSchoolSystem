@@ -42,7 +42,6 @@ import {
   UsersRound,
   CreditCard,
   AlertCircle as AlertCircleIcon,
-  Star,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { AcceptedSchool } from '@/lib/supabase';

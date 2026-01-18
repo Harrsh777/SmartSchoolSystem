@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
 
     // Get slots where teacher_id matches OR teacher_id is in teacher_ids array
     // First get slots with direct teacher_id match
+    // Note: class_reference is a JSON column, not a relationship, so we select it directly
     const { data: directSlots, error: directError } = await supabase
       .from('timetable_slots')
       .select(`
@@ -49,17 +50,6 @@ export async function GET(request: NextRequest) {
           id,
           name,
           color
-        ),
-        class:class_id (
-          id,
-          class,
-          section
-        ),
-        class_reference (
-          class_id,
-          class,
-          section,
-          academic_year
         )
       `)
       .eq('school_code', schoolCode)
@@ -75,27 +65,31 @@ export async function GET(request: NextRequest) {
           id,
           name,
           color
-        ),
-        class:class_id (
-          id,
-          class,
-          section
-        ),
-        class_reference (
-          class_id,
-          class,
-          section,
-          academic_year
         )
       `)
       .eq('school_code', schoolCode)
       .eq('day', todayDayName)
       .contains('teacher_ids', [teacherId]);
 
-    if (directError || arrayError) {
-      console.error('Error fetching daily agenda:', directError || arrayError);
+    // Handle errors - log but try to continue if possible
+    if (directError) {
+      console.error('Error fetching direct slots:', directError);
+      // Don't fail completely - continue with array slots if available
+    }
+    if (arrayError) {
+      console.error('Error fetching array slots:', arrayError);
+      // Don't fail completely - continue with direct slots if available
+    }
+    
+    // If both queries failed, return error
+    if (directError && arrayError) {
       return NextResponse.json(
-        { error: 'Failed to fetch daily agenda', details: (directError || arrayError)?.message },
+        { 
+          error: 'Failed to fetch daily agenda', 
+          details: directError.message || arrayError.message,
+          code: directError.code || arrayError.code,
+          hint: directError.hint || arrayError.hint
+        },
         { status: 500 }
       );
     }
@@ -113,13 +107,10 @@ export async function GET(request: NextRequest) {
       subject?: {
         name?: string;
       } | null;
-      class?: {
-        class: string;
-        section?: string | null;
-      } | null;
       class_reference?: {
         class: string;
         section?: string | null;
+        academic_year?: string | null;
       } | null;
     }
     const allSlots = [...(directSlots || []), ...(arraySlots || [])];
@@ -138,8 +129,8 @@ export async function GET(request: NextRequest) {
 
     // Map slots to include class information and format for daily agenda
     const agendaSlots: AgendaItem[] = (sortedSlots || []).map((slot: TimetableSlot) => {
-      // Get class info from class_reference or class
-      const classInfo = slot.class_reference || slot.class;
+      // Get class info from class_reference (class relationship removed due to FK constraint)
+      const classInfo = slot.class_reference;
       
       // Format class name
       const className = classInfo 

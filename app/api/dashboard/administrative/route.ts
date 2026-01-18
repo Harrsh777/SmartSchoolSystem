@@ -65,23 +65,46 @@ export async function GET(request: NextRequest) {
       total: totalStaff || 0,
     };
 
-    // Fetch recent notices (active, published)
+    // Fetch recent notices (active, published) - try new ones first
     const now = new Date();
     const { data: notices } = await supabase
       .from('notices')
-      .select('id, title, message, category, priority, created_at, publish_at')
+      .select('id, title, content, category, priority, created_at, publish_at')
       .eq('school_code', schoolCode)
       .eq('status', 'Active')
       .order('created_at', { ascending: false })
       .limit(5);
 
-    // Filter published notices
-    const publishedNotices = (notices || []).filter(notice => {
+    // Filter published notices and map content to message
+    let publishedNotices = (notices || []).filter(notice => {
       if (!notice.publish_at) return true;
       return new Date(notice.publish_at) <= now;
-    });
+    }).map(notice => ({
+      ...notice,
+      message: notice.content, // Map content to message for frontend compatibility
+    }));
 
-    // Fetch pending visitors
+    // If no published active notices, fetch previous notices (all recent notices regardless of status)
+    if (publishedNotices.length === 0) {
+      const { data: allNotices } = await supabase
+        .from('notices')
+        .select('id, title, content, category, priority, created_at, publish_at')
+        .eq('school_code', schoolCode)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      if (allNotices && allNotices.length > 0) {
+        publishedNotices = allNotices.filter(notice => {
+          if (!notice.publish_at) return true;
+          return new Date(notice.publish_at) <= now;
+        }).map(notice => ({
+          ...notice,
+          message: notice.content, // Map content to message for frontend compatibility
+        }));
+      }
+    }
+
+    // Fetch pending visitors - try new ones first
     const { data: pendingVisitors } = await supabase
       .from('visitors')
       .select('id, visitor_name, purpose_of_visit, created_at, status')
@@ -90,13 +113,28 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(10);
 
+    // If no pending visitors, fetch previous visitors (any status)
+    let visitorsToShow = pendingVisitors || [];
+    if (visitorsToShow.length === 0) {
+      const { data: previousVisitors } = await supabase
+        .from('visitors')
+        .select('id, visitor_name, purpose_of_visit, created_at, status')
+        .eq('school_code', schoolCode)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (previousVisitors && previousVisitors.length > 0) {
+        visitorsToShow = previousVisitors;
+      }
+    }
+
     interface LeaveRecord {
       id: string;
       created_at: string;
       [key: string]: unknown;
     }
 
-    // Fetch pending leave approvals (staff and student leaves)
+    // Fetch pending leave approvals (staff and student leaves) - try new ones first
     let pendingStaffLeaves: LeaveRecord[] = [];
     let pendingStudentLeaves: LeaveRecord[] = [];
     
@@ -128,6 +166,37 @@ export async function GET(request: NextRequest) {
       console.log('Student leaves table not available');
     }
 
+    // If no pending leaves, fetch previous leaves (any status)
+    if (pendingStaffLeaves.length === 0 && pendingStudentLeaves.length === 0) {
+      try {
+        const { data: previousStaffLeaves } = await supabase
+          .from('staff_leaves')
+          .select('id, staff_id, leave_type, leave_start_date, leave_end_date, created_at')
+          .eq('school_code', schoolCode)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (previousStaffLeaves && previousStaffLeaves.length > 0) {
+          pendingStaffLeaves = previousStaffLeaves;
+        }
+      } catch {
+        console.log('Staff leaves table not available');
+      }
+
+      try {
+        const { data: previousStudentLeaves } = await supabase
+          .from('student_leaves')
+          .select('id, student_id, leave_title, leave_start_date, leave_end_date, created_at')
+          .eq('school_code', schoolCode)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (previousStudentLeaves && previousStudentLeaves.length > 0) {
+          pendingStudentLeaves = previousStudentLeaves;
+        }
+      } catch {
+        console.log('Student leaves table not available');
+      }
+    }
+
     // Combine leave approvals
     const pendingLeaves = [
       ...(pendingStaffLeaves || []).map((leave: LeaveRecord) => ({
@@ -152,7 +221,7 @@ export async function GET(request: NextRequest) {
         },
         recentUpdates: {
           notices: publishedNotices || [],
-          visitors: pendingVisitors || [],
+          visitors: visitorsToShow || [],
           leaves: pendingLeaves || [],
         },
       },
