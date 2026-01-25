@@ -952,12 +952,12 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     
     // Transport
     { label: 'Transport', path: '/transport', category: 'Transport', icon: Bus },
-    { label: 'Transport Basics', path: '/transport/basics', category: 'Transport', icon: Bus, parent: 'Transport' },
+    { label: 'Transport Dashboard', path: '/transport/dashboard', category: 'Transport', icon: Bus, parent: 'Transport' },
     { label: 'Vehicles', path: '/transport/vehicles', category: 'Transport', icon: Bus, parent: 'Transport' },
     { label: 'Stops', path: '/transport/stops', category: 'Transport', icon: Bus, parent: 'Transport' },
     { label: 'Routes', path: '/transport/routes', category: 'Transport', icon: Bus, parent: 'Transport' },
     { label: 'Student Route Mapping', path: '/transport/route-students', category: 'Transport', icon: Bus, parent: 'Transport' },
-    { label: 'Vehicle Expenses', path: '/transport/expenses', category: 'Transport', icon: Bus, parent: 'Transport' },
+  
     
     // Leave Management
     { label: 'Leave Management', path: '/leave', category: 'Leave Management', icon: CalendarDays },

@@ -639,12 +639,12 @@ export default function DashboardPage({
     ],
     transport: [
       { label: 'Transport', path: '/transport', icon: Bus, color: '#2F6FED', subItems: [
-        { label: 'Transport Basics', path: '/transport/basics', icon: Bus },
+        { label: 'Transport Dashboard', path: '/transport/dashboard', icon: Bus },
         { label: 'Vehicles', path: '/transport/vehicles', icon: Bus },
         { label: 'Stops', path: '/transport/stops', icon: Bus },
         { label: 'Routes', path: '/transport/routes', icon: Bus },
         { label: 'Student Route Mapping', path: '/transport/route-students', icon: Users },
-        { label: 'Vehicle Expenses', path: '/transport/expenses', icon: Bus },
+      
       ]},
     ],
     communication: [

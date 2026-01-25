@@ -27,7 +27,6 @@ import {
   Bell,
   Menu,
   Search,
-  Briefcase,
   TrendingUp,
   Activity,
   Key,
@@ -74,6 +73,7 @@ interface AcceptedSchool {
   affiliation?: string;
   approved_at?: string;
   created_at?: string;
+  is_hold?: boolean;
   [key: string]: unknown;
 }
 
@@ -82,6 +82,7 @@ interface AdminEmployee {
   emp_id: string;
   full_name: string;
   email: string | null;
+  phone?: string | null;
   created_at: string;
   employee_schools?: Array<{
     school_id: string;
@@ -900,6 +901,7 @@ export default function AdminDashboard() {
   const [employeeForm, setEmployeeForm] = useState({
     full_name: '',
     email: '',
+    phone: '',
     school_ids: [] as string[],
   });
   const [employeeErrors, setEmployeeErrors] = useState<Record<string, string>>({});
@@ -918,6 +920,12 @@ export default function AdminDashboard() {
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [updatingCredentials, setUpdatingCredentials] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Hold school modal state
+  const [showHoldModal, setShowHoldModal] = useState(false);
+  const [holdingSchoolId, setHoldingSchoolId] = useState<string | null>(null);
+  const [holdingSchoolName, setHoldingSchoolName] = useState('');
+  const [isHolding, setIsHolding] = useState(false);
   
   // Data states for admin views
   interface StudentData {
@@ -946,21 +954,6 @@ export default function AdminDashboard() {
     name: string;
     [key: string]: unknown;
   }
-  interface PasswordGenerationResult {
-    success?: boolean;
-    error?: string;
-    results?: Record<string, {
-      school_name?: string;
-      students?: { created: number; processed: number };
-      staff?: { created: number; processed: number };
-    }>;
-    totals?: {
-      schools?: number;
-      students?: { created: number; processed: number };
-      staff?: { created: number; processed: number };
-      totalPasswords?: number;
-    } | null;
-  }
   const [students, setStudents] = useState<StudentData[]>([]);
   const [staff, setStaff] = useState<StaffData[]>([]);
   const [classes, setClasses] = useState<ClassData[]>([]);
@@ -969,8 +962,7 @@ export default function AdminDashboard() {
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [loadingExams, setLoadingExams] = useState(false);
-  const [generatingPasswords, setGeneratingPasswords] = useState(false);
-  const [passwordGenerationResult, setPasswordGenerationResult] = useState<PasswordGenerationResult | null>(null);
+
   
   // Filter states
   const [studentSearch, setStudentSearch] = useState('');
@@ -1412,6 +1404,48 @@ export default function AdminDashboard() {
     setShowEditCredentialsModal(true);
   };
 
+  const openHoldModal = (school: AcceptedSchool) => {
+    setHoldingSchoolId(school.id);
+    setHoldingSchoolName(school.school_name);
+    setIsHolding(school.is_hold || false);
+    setShowHoldModal(true);
+  };
+
+  const handleHoldSchool = async () => {
+    if (!holdingSchoolId) return;
+
+    try {
+      setUpdatingId(holdingSchoolId);
+      
+      const response = await fetch(`/api/schools/${holdingSchoolId}/hold`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          is_hold: !isHolding
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setShowHoldModal(false);
+        setHoldingSchoolId(null);
+        setHoldingSchoolName('');
+        await fetchAllSchools();
+        alert(result.message || (isHolding ? 'School hold removed successfully' : 'School has been put on hold'));
+      } else {
+        alert(result.error || 'Failed to update school hold status');
+      }
+    } catch (error) {
+      console.error('Error updating school hold status:', error);
+      alert('An error occurred while updating school hold status');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const handleUpdateCredentials = async () => {
     if (!editingSchoolId) return;
 
@@ -1532,6 +1566,14 @@ export default function AdminDashboard() {
     if (!employeeForm.full_name.trim()) {
       errs.full_name = 'Full name is required';
     }
+    if (!employeeForm.phone.trim()) {
+      errs.phone = 'Phone number is required';
+    } else if (!/^[\d\s\-\+\(\)]+$/.test(employeeForm.phone.trim())) {
+      errs.phone = 'Please enter a valid phone number';
+    }
+    if (employeeForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeForm.email)) {
+      errs.email = 'Please enter a valid email address';
+    }
     if (!employeeForm.school_ids.length) {
       errs.school_ids = 'Select at least one school';
     }
@@ -1630,6 +1672,11 @@ export default function AdminDashboard() {
                       }`}>
                         {isAccepted ? 'Approved' : isRejectedStatus ? 'Rejected' : 'Pending'}
                       </span>
+                      {isAccepted && (school as AcceptedSchool).is_hold && (
+                        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
+                          On Hold
+                        </span>
+                      )}
                       {schoolCode && (
                         <span className="px-3 py-1 rounded-full text-xs font-mono font-semibold bg-[#5A7A95]/10 text-[#5A7A95] border border-[#5A7A95]/20">
                           {schoolCode}
@@ -1689,18 +1736,33 @@ export default function AdminDashboard() {
                 </>
               )}
               {isAccepted && schoolId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const acceptedSchool = school as AcceptedSchool;
-                    openEditCredentialsModal(acceptedSchool);
-                  }}
-                  className="border-[#5A7A95] text-[#5A7A95] hover:bg-[#5A7A95]/10"
-                >
-                  <Edit size={18} className="mr-2" />
-                  Edit Credentials
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const acceptedSchool = school as AcceptedSchool;
+                      openEditCredentialsModal(acceptedSchool);
+                    }}
+                    className="border-[#5A7A95] text-[#5A7A95] hover:bg-[#5A7A95]/10"
+                  >
+                    <Edit size={18} className="mr-2" />
+                    Edit Credentials
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const acceptedSchool = school as AcceptedSchool;
+                      openHoldModal(acceptedSchool);
+                    }}
+                    disabled={updatingId === schoolId}
+                    className={`border-red-300 text-red-600 hover:bg-red-50 ${(school as AcceptedSchool).is_hold ? 'bg-red-100' : ''}`}
+                  >
+                    <AlertCircle size={18} className="mr-2" />
+                    {(school as AcceptedSchool).is_hold ? 'On Hold' : 'Hold School'}
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -1798,6 +1860,49 @@ export default function AdminDashboard() {
                     : 'N/A'}
                 </p>
               </div>
+
+              {/* Admin Credentials - Only show for accepted schools */}
+              {isAccepted && schoolId && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center mr-2">
+                      <Key size={16} className="text-blue-600 dark:text-blue-400" />
+                    </div>
+                    Admin Credentials
+                  </h4>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">School Code</p>
+                      <p className="text-sm font-mono font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-2 rounded border border-gray-200 dark:border-gray-700">
+                        {schoolCode || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Admin Password</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-mono font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 flex-1">
+                          ••••••••••
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const acceptedSchool = school as AcceptedSchool;
+                            openEditCredentialsModal(acceptedSchool);
+                          }}
+                          className="border-blue-300 text-blue-600 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                        >
+                          <Edit size={16} className="mr-1" />
+                          Edit
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Password is encrypted for security
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </Card>
@@ -1967,38 +2072,70 @@ export default function AdminDashboard() {
                   School Overview
                 </motion.h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {/* Total Students Card */}
+                  {/* Total Accepted Schools Card */}
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     whileHover={{ scale: 1.02, y: -4 }}
                     className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(90,122,149,0.15)] hover:bg-white dark:hover:bg-[#2F4156] transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden"
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#6B9BB8]/20 to-[#7DB5D3]/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-500/20 to-emerald-500/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg shadow-[#6B9BB8]/30">
-                          <Users className="text-white" size={24} />
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500 via-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-green-500/30">
+                          <CheckCircle className="text-white" size={24} />
                         </div>
-                        <TrendingUp className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={20} />
+                        <TrendingUp className="text-green-500 dark:text-emerald-400" size={20} />
                       </div>
-                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Students</p>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Accepted Schools</p>
                       {loading ? (
                         <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                       ) : (
                         <motion.p
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
+                          className="text-4xl font-bold bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 bg-clip-text text-transparent dark:text-white"
                         >
-                          {overview?.totals.students?.toLocaleString() ?? 0}
+                          {acceptedSchools.length.toLocaleString()}
                         </motion.p>
                       )}
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Across all schools</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Approved schools</p>
                     </div>
                   </motion.div>
 
-                  {/* Total Staff Card */}
+                  {/* Total Rejected Schools Card */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.05 }}
+                    whileHover={{ scale: 1.02, y: -4 }}
+                    className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(90,122,149,0.15)] hover:bg-white dark:hover:bg-[#2F4156] transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-500/20 to-rose-500/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
+                    <div className="relative z-10">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-red-500 via-rose-500 to-pink-500 flex items-center justify-center shadow-lg shadow-red-500/30">
+                          <XCircle className="text-white" size={24} />
+                        </div>
+                        <TrendingUp className="text-red-500 dark:text-rose-400" size={20} />
+                      </div>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Rejected Schools</p>
+                      {loading ? (
+                        <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                      ) : (
+                        <motion.p
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="text-4xl font-bold bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 bg-clip-text text-transparent dark:text-white"
+                        >
+                          {rejectedSchools.length.toLocaleString()}
+                        </motion.p>
+                      )}
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Not approved</p>
+                    </div>
+                  </motion.div>
+
+                  {/* Total Pending Schools Card */}
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -2006,61 +2143,30 @@ export default function AdminDashboard() {
                     whileHover={{ scale: 1.02, y: -4 }}
                     className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(90,122,149,0.15)] hover:bg-white dark:hover:bg-[#2F4156] transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden"
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#6B9BB8]/20 to-[#7DB5D3]/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-yellow-500/20 to-amber-500/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
                     <div className="relative z-10">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg shadow-[#6B9BB8]/30">
-                          <Briefcase className="text-white" size={24} />
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-yellow-500 via-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-yellow-500/30">
+                          <Clock className="text-white" size={24} />
                         </div>
-                        <TrendingUp className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={20} />
+                        <TrendingUp className="text-yellow-500 dark:text-amber-400" size={20} />
                       </div>
-                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Staff</p>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Pending Schools</p>
                       {loading ? (
                         <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                       ) : (
                         <motion.p
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
+                          className="text-4xl font-bold bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 bg-clip-text text-transparent dark:text-white"
                         >
-                          {overview?.totals.staff?.toLocaleString() ?? 0}
+                          {pendingSchools.length.toLocaleString()}
                         </motion.p>
                       )}
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Teaching & non-teaching</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Awaiting review</p>
                     </div>
                   </motion.div>
 
-                  {/* Active Classes Card */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    whileHover={{ scale: 1.02, y: -4 }}
-                    className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_15px_40px_rgba(90,122,149,0.15)] hover:bg-white dark:hover:bg-[#2F4156] transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden"
-                  >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#6B9BB8]/20 to-[#7DB5D3]/20 opacity-50 rounded-full -mr-16 -mt-16 blur-xl" />
-                    <div className="relative z-10">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg shadow-[#6B9BB8]/30">
-                          <Building2 className="text-white" size={24} />
-                        </div>
-                        <TrendingUp className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={20} />
-                      </div>
-                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Active Classes</p>
-                      {loading ? (
-                        <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                      ) : (
-                        <motion.p
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
-                        >
-                          {overview?.totals.classes?.toLocaleString() ?? 0}
-                        </motion.p>
-                      )}
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Currently running</p>
-                    </div>
-                  </motion.div>
 
                   {/* Attendance Rate Card */}
                   <motion.div
@@ -2445,200 +2551,6 @@ export default function AdminDashboard() {
             </motion.div>
           )}
 
-          {/* Password Generation Section */}
-          {viewMode === 'overview' && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.75 }}
-              className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 mb-8"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                    <Key className="text-indigo-600" size={24} />
-                    Password Management
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">Generate passwords for all existing students and staff</p>
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="text-amber-600 mt-0.5" size={20} />
-                    <div>
-                      <p className="text-sm font-medium text-amber-900 mb-1">Important</p>
-                      <p className="text-sm text-amber-700">
-                        This will generate passwords for all students and staff who don&apos;t have passwords yet. 
-                        New passwords will be automatically generated during bulk import.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-4">
-                  <Button
-                    onClick={async () => {
-                      setGeneratingPasswords(true);
-                      setPasswordGenerationResult(null);
-                      try {
-                        const response = await fetch('/api/admin/generate-passwords-all', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({}),
-                        });
-                        const data = await response.json();
-                        if (response.ok) {
-                          setPasswordGenerationResult(data);
-                        } else {
-                          setPasswordGenerationResult({ error: data.error || 'Failed to generate passwords' });
-                        }
-                      } catch {
-                        setPasswordGenerationResult({ error: 'Network error. Please try again.' });
-                      } finally {
-                        setGeneratingPasswords(false);
-                      }
-                    }}
-                    disabled={generatingPasswords}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                  >
-                    {generatingPasswords ? (
-                      <>
-                        <RefreshCw className="mr-2 animate-spin" size={18} />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Key className="mr-2" size={18} />
-                        Generate Passwords (All Users)
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      setGeneratingPasswords(true);
-                      setPasswordGenerationResult(null);
-                      try {
-                        const response = await fetch('/api/admin/generate-student-passwords-only', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({}),
-                        });
-                        const data = await response.json();
-                        if (response.ok) {
-                          setPasswordGenerationResult(data);
-                        } else {
-                          setPasswordGenerationResult({ error: data.error || 'Failed to generate passwords' });
-                        }
-                      } catch {
-                        setPasswordGenerationResult({ error: 'Network error. Please try again.' });
-                      } finally {
-                        setGeneratingPasswords(false);
-                      }
-                    }}
-                    disabled={generatingPasswords}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    {generatingPasswords ? (
-                      <>
-                        <RefreshCw className="mr-2 animate-spin" size={18} />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <GraduationCap className="mr-2" size={18} />
-                        Generate Passwords (Students Only)
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                {passwordGenerationResult && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`rounded-lg p-4 ${
-                      passwordGenerationResult.error
-                        ? 'bg-red-50 border border-red-200'
-                        : 'bg-green-50 border border-green-200'
-                    }`}
-                  >
-                    {passwordGenerationResult.error ? (
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="text-red-600 mt-0.5" size={20} />
-                        <div>
-                          <p className="text-sm font-medium text-red-900">Error</p>
-                          <p className="text-sm text-red-700">{passwordGenerationResult.error}</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="flex items-start gap-3 mb-4">
-                          <CheckCircle className="text-green-600 mt-0.5" size={20} />
-                          <div>
-                            <p className="text-sm font-medium text-green-900">Password Generation Complete</p>
-                            <p className="text-sm text-green-700 mt-1">
-                              Processed {passwordGenerationResult.totals?.schools || 0} school(s)
-                            </p>
-                          </div>
-                        </div>
-                        
-                        {passwordGenerationResult.totals && (
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                            <div className="bg-white rounded-lg p-3 border border-green-200">
-                              <p className="text-xs text-gray-600 mb-1">Students Created</p>
-                              <p className="text-2xl font-bold text-gray-900">
-                                {passwordGenerationResult.totals.students?.created || 0}
-                              </p>
-                            </div>
-                            <div className="bg-white rounded-lg p-3 border border-green-200">
-                              <p className="text-xs text-gray-600 mb-1">Staff Created</p>
-                              <p className="text-2xl font-bold text-gray-900">
-                                {passwordGenerationResult.totals.staff?.created || 0}
-                              </p>
-                            </div>
-                            <div className="bg-white rounded-lg p-3 border border-green-200">
-                              <p className="text-xs text-gray-600 mb-1">Total Passwords</p>
-                              <p className="text-2xl font-bold text-gray-900">
-                                {passwordGenerationResult.totals.totalPasswords || 0}
-                              </p>
-                            </div>
-                            <div className="bg-white rounded-lg p-3 border border-green-200">
-                              <p className="text-xs text-gray-600 mb-1">Schools Processed</p>
-                              <p className="text-2xl font-bold text-gray-900">
-                                {passwordGenerationResult.totals.schools || 0}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {passwordGenerationResult.results && Object.keys(passwordGenerationResult.results).length > 0 && (
-                          <div className="mt-4">
-                            <p className="text-sm font-medium text-gray-900 mb-2">Details by School:</p>
-                            <div className="space-y-2 max-h-64 overflow-y-auto">
-                              {passwordGenerationResult.results && Object.entries(passwordGenerationResult.results).map(([schoolCode, data]) => {
-                                const schoolData = data as NonNullable<PasswordGenerationResult['results']>[string];
-                                return (
-                                  <div key={schoolCode} className="bg-white rounded-lg p-3 border border-gray-200">
-                                    <p className="text-sm font-semibold text-gray-900 mb-1">{schoolData.school_name || schoolCode}</p>
-                                    <div className="flex items-center gap-4 text-xs text-gray-600">
-                                      <span>Students: {schoolData.students?.created || 0}/{schoolData.students?.processed || 0}</span>
-                                      <span>Staff: {schoolData.staff?.created || 0}/{schoolData.staff?.processed || 0}</span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </div>
-            </motion.div>
-          )}
 
           {/* Main Content Sections */}
           {viewMode === 'overview' && overview && (
@@ -3504,15 +3416,41 @@ export default function AdminDashboard() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-4"
             >
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Internal Employees</h2>
+              <div className="mb-6 flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Internal Employees</h2>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setShowEmployeeModal(true);
+                    setEmployeeForm({ full_name: '', email: '', phone: '', school_ids: [] });
+                    setEmployeeErrors({});
+                    setNewEmployeePassword(null);
+                  }}
+                  className="bg-[#5A7A95] hover:bg-[#4a6a85]"
+                >
+                  <User size={18} className="mr-2" />
+                  Add Employee
+                </Button>
               </div>
               {employees.length === 0 ? (
                 <Card>
                   <div className="text-center py-12">
                     <User className="mx-auto mb-4 text-gray-400" size={48} />
                     <p className="text-gray-600 text-lg">No employees created yet</p>
-                    <p className="text-sm text-gray-500 mt-2">Click &quot;Add Employee&quot; to create internal employees</p>
+                    <p className="text-sm text-gray-500 mt-2 mb-4">Click &quot;Add Employee&quot; to create internal employees</p>
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        setShowEmployeeModal(true);
+                        setEmployeeForm({ full_name: '', email: '', phone: '', school_ids: [] });
+                        setEmployeeErrors({});
+                        setNewEmployeePassword(null);
+                      }}
+                      className="bg-[#5A7A95] hover:bg-[#4a6a85]"
+                    >
+                      <User size={18} className="mr-2" />
+                      Add Employee
+                    </Button>
                   </div>
                 </Card>
               ) : (
@@ -3524,6 +3462,7 @@ export default function AdminDashboard() {
                           <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Employee ID</th>
                           <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Full Name</th>
                           <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Email</th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Phone</th>
                           <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Assigned Schools</th>
                           <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Created</th>
                         </tr>
@@ -3534,6 +3473,7 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-sm text-gray-900 font-mono">{employee.emp_id}</td>
                             <td className="px-4 py-3 text-sm text-gray-900">{employee.full_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">{employee.email || 'N/A'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{employee.phone || 'N/A'}</td>
                             <td className="px-4 py-3 text-sm text-gray-600">
                               {(() => {
                                 const emp = employee as { schools?: unknown[] };
@@ -3719,7 +3659,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => {
                   setShowEmployeeModal(false);
-                  setEmployeeForm({ full_name: '', email: '', school_ids: [] });
+                  setEmployeeForm({ full_name: '', email: '', phone: '', school_ids: [] });
                   setEmployeeErrors({});
                   setNewEmployeePassword(null);
                 }}
@@ -3755,6 +3695,20 @@ export default function AdminDashboard() {
                   onChange={(e) => handleEmployeeInputChange('email', e.target.value)}
                   placeholder="Enter email address"
                   error={employeeErrors.email}
+                />
+              </div>
+
+              {/* Phone Number */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Phone Number <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="tel"
+                  value={employeeForm.phone}
+                  onChange={(e) => handleEmployeeInputChange('phone', e.target.value)}
+                  placeholder="Enter phone number"
+                  error={employeeErrors.phone}
                 />
               </div>
 
@@ -3840,7 +3794,7 @@ export default function AdminDashboard() {
                   className="flex-1"
                   onClick={() => {
                     setShowEmployeeModal(false);
-                    setEmployeeForm({ full_name: '', email: '', school_ids: [] });
+                    setEmployeeForm({ full_name: '', email: '', phone: '', school_ids: [] });
                     setEmployeeErrors({});
                     setNewEmployeePassword(null);
                   }}
@@ -4002,6 +3956,99 @@ export default function AdminDashboard() {
               </div>
             </div>
           </motion.div>
+            </div>
+          )}
+
+          {/* Hold School Confirmation Modal */}
+          {showHoldModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl max-w-md w-full p-8"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {isHolding ? 'Remove Hold' : 'Hold School'}
+                    </h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{holdingSchoolName}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowHoldModal(false);
+                      setHoldingSchoolId(null);
+                      setHoldingSchoolName('');
+                    }}
+                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <X size={24} className="text-gray-600 dark:text-gray-400" />
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                    <div className="flex items-start space-x-3">
+                      <AlertCircle className="text-red-600 dark:text-red-400 mt-0.5" size={20} />
+                      <div>
+                        <p className="text-sm font-semibold text-red-800 dark:text-red-300 mb-2">
+                          {isHolding 
+                            ? 'Are you sure you want to remove the hold from this school?'
+                            : 'Are you sure you want to hold this school?'}
+                        </p>
+                        {!isHolding && (
+                          <p className="text-sm text-red-700 dark:text-red-400">
+                            When a school is on hold, all users (students, staff, and principals) with this school ID will not be able to login. They will see a message: This school is on hold. Please contact admin.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex space-x-3 pt-4">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => {
+                        setShowHoldModal(false);
+                        setHoldingSchoolId(null);
+                        setHoldingSchoolName('');
+                      }}
+                      disabled={updatingId === holdingSchoolId}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className={`flex-1 ${isHolding ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+                      onClick={handleHoldSchool}
+                      disabled={updatingId === holdingSchoolId}
+                    >
+                      {updatingId === holdingSchoolId ? (
+                        <>
+                          <Loader2 size={18} className="mr-2 animate-spin" />
+                          {isHolding ? 'Removing...' : 'Holding...'}
+                        </>
+                      ) : (
+                        <>
+                          {isHolding ? (
+                            <>
+                              <CheckCircle size={18} className="mr-2" />
+                              Remove Hold
+                            </>
+                          ) : (
+                            <>
+                              <AlertCircle size={18} className="mr-2" />
+                              Yes, Hold School
+                            </>
+                          )}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
             </div>
           )}
         </div>

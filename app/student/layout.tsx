@@ -33,6 +33,7 @@ import Button from '@/components/ui/Button';
 import type { Student, AcceptedSchool } from '@/lib/supabase';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
+import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
 
 interface StudentLayoutProps {
   children: React.ReactNode;
@@ -103,6 +104,20 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
     warningMinutes: 19,
     loginPath: '/login',
   });
+
+  // Setup API interceptor for session management
+  useEffect(() => {
+    // Set logout handler for API interceptor
+    setLogoutHandler(handleLogout);
+    
+    // Setup fetch interceptor
+    setupApiInterceptor();
+
+    // Cleanup on unmount
+    return () => {
+      removeApiInterceptor();
+    };
+  }, [handleLogout]);
 
   // Format time remaining as MM:SS
   const formatTime = (seconds: number) => {

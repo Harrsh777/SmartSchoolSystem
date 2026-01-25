@@ -14,6 +14,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Step 0: Check if school is on hold
+    const { data: school, error: schoolError } = await supabase
+      .from('accepted_schools')
+      .select('is_hold')
+      .eq('school_code', school_code.toUpperCase())
+      .single();
+
+    if (!schoolError && school && school.is_hold) {
+      return NextResponse.json(
+        { error: 'This school is on hold. Please contact admin.' },
+        { status: 403 }
+      );
+    }
+
     // Step 1: Authenticate from student_login table
     const { data: loginData, error: loginError } = await supabase
       .from('student_login')

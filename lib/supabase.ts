@@ -64,6 +64,7 @@ export interface AcceptedSchool {
   affiliation?: string;
   approved_at?: string;
   created_at?: string;
+  is_hold?: boolean;
   [key: string]: unknown;
 }
 

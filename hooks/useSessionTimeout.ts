@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { markUserInteraction } from '@/lib/api-interceptor';
 
 interface UseSessionTimeoutOptions {
   timeoutMinutes?: number;
@@ -8,47 +9,82 @@ interface UseSessionTimeoutOptions {
   loginPath?: string;
 }
 
+const LAST_ACTIVITY_KEY = 'lastActivity';
+const SESSION_LIMIT_MS = 20 * 60 * 1000; // 20 minutes
+const WARNING_LIMIT_MS = 19 * 60 * 1000; // 19 minutes (1 minute before timeout)
+const MIN_ACTIVITY_INTERVAL_MS = 5 * 1000; // Only update activity if 5+ seconds have passed
+
+/**
+ * Updates the last activity timestamp in localStorage
+ * This is called on user activity (click, keydown, successful API calls)
+ * Throttled to prevent rapid resets from background API calls
+ */
+export function updateActivity(): void {
+  if (typeof window === 'undefined') return;
+  
+  const lastActivity = getLastActivity();
+  const now = Date.now();
+  
+  // If no last activity recorded, set it now
+  if (lastActivity === null) {
+    localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+    return;
+  }
+  
+  const timeSinceLastActivity = now - lastActivity;
+  
+  // Only update if enough time has passed (throttle rapid updates)
+  // This prevents background API calls from constantly resetting the timer
+  if (timeSinceLastActivity >= MIN_ACTIVITY_INTERVAL_MS) {
+    localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+  }
+}
+
+/**
+ * Gets the last activity timestamp from localStorage
+ * Returns null if no activity has been recorded
+ */
+function getLastActivity(): number | null {
+  if (typeof window === 'undefined') return null;
+  const stored = localStorage.getItem(LAST_ACTIVITY_KEY);
+  return stored ? Number(stored) : null;
+}
+
+/**
+ * Simple, accurate session timeout hook
+ * Uses timestamp-based calculation to avoid drift
+ * Tracks: click, keydown, and successful API calls
+ */
 export function useSessionTimeout({
-  timeoutMinutes = 15,
-  warningMinutes = 14,
+  timeoutMinutes = 20,
+  warningMinutes = 19,
   onLogout,
   loginPath = '/login',
 }: UseSessionTimeoutOptions = {}) {
   const router = useRouter();
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const warningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastActivityRef = useRef<number>(Date.now());
-  const timeoutMinutesRef = useRef(timeoutMinutes);
-  const warningMinutesRef = useRef(warningMinutes);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const checkSessionRef = useRef<(() => void) | null>(null);
+  const resetTimerRef = useRef<(() => void) | null>(null);
   const [showWarning, setShowWarning] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(timeoutMinutes * 60);
-
-  // Update refs when props change
-  timeoutMinutesRef.current = timeoutMinutes;
-  warningMinutesRef.current = warningMinutes;
-
-  const clearTimeouts = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    if (warningTimeoutRef.current) {
-      clearTimeout(warningTimeoutRef.current);
-      warningTimeoutRef.current = null;
-    }
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
-  };
+  
+  const sessionLimitMs = timeoutMinutes * 60 * 1000;
+  const warningLimitMs = warningMinutes * 60 * 1000;
 
   const handleLogout = useCallback(() => {
-    clearTimeouts();
+    // Clear interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
     setShowWarning(false);
     
-    // Clear session storage
-    sessionStorage.clear();
+    // Clear storage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(LAST_ACTIVITY_KEY);
+      sessionStorage.clear();
+    }
     
     // Call custom logout handler if provided
     if (onLogout) {
@@ -60,87 +96,98 @@ export function useSessionTimeout({
   }, [onLogout, loginPath, router]);
 
   const resetTimer = useCallback(() => {
-    clearTimeouts();
-    lastActivityRef.current = Date.now();
+    // Update last activity timestamp (with throttling)
+    updateActivity();
     setShowWarning(false);
-    const currentTimeout = timeoutMinutesRef.current;
-    const currentWarning = warningMinutesRef.current;
-    setTimeRemaining(currentTimeout * 60); // Initialize with full time
+  }, []);
 
-    // Calculate warning threshold in seconds (1 minute before timeout)
-    const warningThresholdSeconds = (currentTimeout - currentWarning) * 60;
+  // Check session status based on timestamp
+  const checkSession = useCallback(() => {
+    const lastActivity = getLastActivity();
+    
+    // If no activity recorded, initialize it now
+    if (!lastActivity) {
+      updateActivity();
+      setTimeRemaining(timeoutMinutes * 60);
+      setShowWarning(false);
+      return;
+    }
+    
+    const elapsed = Date.now() - lastActivity;
+    const remaining = sessionLimitMs - elapsed;
+    const secondsRemaining = Math.max(0, Math.floor(remaining / 1000));
+    
+    setTimeRemaining(secondsRemaining);
 
-    // Update countdown every second from the start
-    countdownIntervalRef.current = setInterval(() => {
-      const elapsed = Date.now() - lastActivityRef.current;
-      const remaining = currentTimeout * 60 * 1000 - elapsed;
-      const secondsRemaining = Math.max(0, Math.floor(remaining / 1000));
-      setTimeRemaining(secondsRemaining);
+    // Show warning when 1 minute or less remaining
+    if (secondsRemaining <= 60 && secondsRemaining > 0) {
+      setShowWarning(true);
+    } else if (secondsRemaining > 60) {
+      setShowWarning(false);
+    }
 
-      // Show warning when threshold is reached (e.g., 1 minute before timeout)
-      if (secondsRemaining <= warningThresholdSeconds && secondsRemaining > 0) {
-        setShowWarning(true);
-      } else if (secondsRemaining > warningThresholdSeconds) {
-        // Hide warning if time increases (user was active)
-        setShowWarning(false);
-      }
-
-      if (secondsRemaining === 0) {
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
-        handleLogout();
-      }
-    }, 1000);
-
-    // Set logout timer (logout at timeoutMinutes)
-    const logoutDelay = currentTimeout * 60 * 1000;
-    timeoutRef.current = setTimeout(() => {
+    // Logout when time expires
+    if (elapsed >= sessionLimitMs) {
       handleLogout();
-    }, logoutDelay);
-  }, [handleLogout]);
+    }
+  }, [sessionLimitMs, handleLogout, timeoutMinutes]);
 
-  const handleActivity = useCallback(() => {
-    resetTimer();
-  }, [resetTimer]);
+  // Store latest callbacks in refs
+  checkSessionRef.current = checkSession;
+  resetTimerRef.current = resetTimer;
 
   useEffect(() => {
-    // Initialize timer
-    resetTimer();
+    // Initialize: set last activity if not exists or expired
+    if (typeof window !== 'undefined') {
+      const lastActivity = getLastActivity();
+      const now = Date.now();
+      
+      // If no activity recorded or session expired, initialize fresh
+      if (!lastActivity || (lastActivity && (now - lastActivity) > sessionLimitMs)) {
+        updateActivity();
+      }
+    }
 
-    // Track various user activities
-    const events = [
-      'mousedown',
-      'mousemove',
-      'keypress',
-      'scroll',
-      'touchstart',
-      'click',
-      'keydown',
-      'focus',
-    ];
-
-    // Add event listeners
-    events.forEach((event) => {
-      document.addEventListener(event, handleActivity, { passive: true });
-    });
-
-    // Also track window focus
-    const handleFocus = () => {
-      resetTimer();
+    // Check session status every second
+    // Use ref to access latest checkSession without re-running effect
+    const checkSessionWrapper = () => {
+      if (checkSessionRef.current) {
+        checkSessionRef.current();
+      }
     };
-    window.addEventListener('focus', handleFocus);
+    
+    checkSessionWrapper(); // Initial check
+    intervalRef.current = setInterval(checkSessionWrapper, 1000);
+
+    // Track basic user activity: click and keydown only
+    const handleClick = () => {
+      markUserInteraction(); // Mark for API interceptor
+      if (resetTimerRef.current) {
+        resetTimerRef.current();
+      }
+    };
+
+    const handleKeydown = () => {
+      markUserInteraction(); // Mark for API interceptor
+      if (resetTimerRef.current) {
+        resetTimerRef.current();
+      }
+    };
+
+    window.addEventListener('click', handleClick, { passive: true });
+    window.addEventListener('keydown', handleKeydown, { passive: true });
 
     // Cleanup
     return () => {
-      clearTimeouts();
-      events.forEach((event) => {
-        document.removeEventListener(event, handleActivity);
-      });
-      window.removeEventListener('focus', handleFocus);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      window.removeEventListener('click', handleClick);
+      window.removeEventListener('keydown', handleKeydown);
     };
-  }, [handleActivity, resetTimer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - we only want this to run once on mount
 
   return {
     showWarning,
@@ -149,4 +196,3 @@ export function useSessionTimeout({
     resetTimer,
   };
 }
-

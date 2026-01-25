@@ -28,6 +28,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if school is on hold
+    if (school.is_hold) {
+      return NextResponse.json(
+        { error: 'This school is on hold. Please contact admin.' },
+        { status: 403 }
+      );
+    }
+
     // Verify password (support both hashed and plain for migration)
     let isPasswordValid = false;
     if (school.password.startsWith('$2')) {

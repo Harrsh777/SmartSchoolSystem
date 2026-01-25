@@ -28,6 +28,7 @@ export async function GET() {
         emp_id,
         full_name,
         email,
+        phone,
         created_at,
         employee_schools:employee_schools(
           school_id,
@@ -64,12 +65,20 @@ export async function POST(request: NextRequest) {
     const {
       full_name,
       email,
+      phone,
       school_ids,
-    }: { full_name: string; email?: string; school_ids: string[] } = body;
+    }: { full_name: string; email?: string; phone?: string; school_ids: string[] } = body;
 
     if (!full_name || !full_name.trim()) {
       return NextResponse.json(
         { error: 'Employee full name is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!phone || !phone.trim()) {
+      return NextResponse.json(
+        { error: 'Phone number is required' },
         { status: 400 }
       );
     }
@@ -115,6 +124,7 @@ export async function POST(request: NextRequest) {
           emp_id: empId,
           full_name: full_name.trim(),
           email: email?.trim() || null,
+          phone: phone?.trim() || null,
           password_hash: passwordHash,
         },
       ])

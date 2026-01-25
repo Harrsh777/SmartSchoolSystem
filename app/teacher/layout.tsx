@@ -41,6 +41,7 @@ import type { Staff, AcceptedSchool } from '@/lib/supabase';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 import HelpModal from '@/components/help/HelpModal';
+import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
 
 interface TeacherLayoutProps {
   children: React.ReactNode;
@@ -108,6 +109,20 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     warningMinutes: 19,
     loginPath: '/login',
   });
+
+  // Setup API interceptor for session management
+  useEffect(() => {
+    // Set logout handler for API interceptor
+    setLogoutHandler(handleLogout);
+    
+    // Setup fetch interceptor
+    setupApiInterceptor();
+
+    // Cleanup on unmount
+    return () => {
+      removeApiInterceptor();
+    };
+  }, [handleLogout]);
   
   // State for navbar dropdowns
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);

@@ -9,7 +9,6 @@ import {
   Route,
   Users,
   MapPin,
-  DollarSign,
   X,
   ExternalLink
 } from 'lucide-react';
@@ -21,12 +20,11 @@ interface TransportManagementModalProps {
 }
 
 const menuItems = [
-  { id: 'basics', label: 'Transport Basics', icon: Settings, path: '/transport/basics' },
+  { id: 'basics', label: 'Transport Dashboard', icon: Settings, path: '/transport/dashboard' },
   { id: 'vehicles', label: 'Vehicles', icon: Truck, path: '/transport/vehicles' },
   { id: 'stops', label: 'Stops', icon: MapPin, path: '/transport/stops' },
   { id: 'routes', label: 'Routes', icon: Route, path: '/transport/routes' },
   { id: 'student-route-mapping', label: 'Student Route Mapping', icon: Users, path: '/transport/route-students' },
-  { id: 'vehicle-expenses', label: 'Vehicle Expenses', icon: DollarSign, path: '/transport/expenses' },
 ];
 
 export default function TransportManagementModal({ isOpen, onClose, schoolCode }: TransportManagementModalProps) {
