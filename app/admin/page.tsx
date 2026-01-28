@@ -28,6 +28,8 @@ import {
   Menu,
   Search,
   TrendingUp,
+  TrendingDown,
+  Minus,
   Activity,
   Key,
   HelpCircle,
@@ -45,6 +47,7 @@ import {
   LineChart,
   UserCheck,
   ChevronDown,
+  ClipboardList,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { AnimatePresence } from 'framer-motion';
@@ -52,6 +55,7 @@ import SchoolSupervisionView from '@/components/admin/SchoolSupervisionView';
 import AdminPasswordModal from '@/components/admin/AdminPasswordModal';
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
+import { useFakeAnalytics } from '@/hooks/useFakeAnalytics';
 import { setActivityPrefix } from '@/lib/api-interceptor';
 import {
   calculatePercentage,
@@ -158,7 +162,8 @@ type ViewMode =
   | 'help-queries'
   | 'employees'
   | 'signups'
-  | 'school-supervision';
+  | 'school-supervision'
+  | 'demo-query';
 
 interface OverviewSchoolRow {
   id: string;
@@ -183,6 +188,16 @@ interface AdminOverview {
     exams: number;
   };
   schools: OverviewSchoolRow[];
+}
+
+interface DemoRequestRow {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  demo_date: string;
+  demo_time: string;
+  created_at: string | null;
 }
 
 interface EventData {
@@ -782,6 +797,9 @@ export default function AdminDashboard() {
     return () => setActivityPrefix(undefined);
   }, [isAuthenticated, resetTimer]);
 
+  // Simulated real-time analytics (replace with real API when available)
+  const fakeAnalytics = useFakeAnalytics();
+
   const [pendingSchools, setPendingSchools] = useState<SchoolSignup[]>([]);
   const [acceptedSchools, setAcceptedSchools] = useState<AcceptedSchool[]>([]);
   const [rejectedSchools, setRejectedSchools] = useState<RejectedSchool[]>([]);
@@ -809,7 +827,9 @@ export default function AdminDashboard() {
   const [creatingEmployee, setCreatingEmployee] = useState(false);
   const [newEmployeePassword, setNewEmployeePassword] = useState<string | null>(null);
   const [signupsViewMode, setSignupsViewMode] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all');
-  
+  const [demoRequests, setDemoRequests] = useState<DemoRequestRow[]>([]);
+  const [demoRequestsLoading, setDemoRequestsLoading] = useState(false);
+
   // Edit credentials modal state
   const [showEditCredentialsModal, setShowEditCredentialsModal] = useState(false);
   const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
@@ -995,6 +1015,8 @@ export default function AdminDashboard() {
       fetchAnalytics();
     } else if (viewMode === 'users') {
       fetchUsers();
+    } else if (viewMode === 'demo-query') {
+      fetchDemoRequests();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
@@ -1299,6 +1321,24 @@ export default function AdminDashboard() {
       console.error('Error fetching system settings:', error);
     } finally {
       setLoadingSystemSettings(false);
+    }
+  };
+
+  const fetchDemoRequests = async () => {
+    try {
+      setDemoRequestsLoading(true);
+      const response = await fetch('/api/admin/demo-requests');
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setDemoRequests(result.data as DemoRequestRow[]);
+      } else {
+        setDemoRequests([]);
+      }
+    } catch (error) {
+      console.error('Error fetching demo requests:', error);
+      setDemoRequests([]);
+    } finally {
+      setDemoRequestsLoading(false);
     }
   };
 
@@ -2000,14 +2040,6 @@ export default function AdminDashboard() {
               EduCore Admin
             </Link>
             <div className="flex items-center space-x-4">
-              {isAuthenticated && (
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/10 rounded-lg border border-[#5A7A95]/20 dark:border-[#6B9BB8]/20">
-                  <Clock size={16} className="text-[#5A7A95] dark:text-[#6B9BB8]" />
-                  <span className="text-sm font-medium text-[#5A7A95] dark:text-[#6B9BB8] font-mono">
-                    {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
-                  </span>
-                </div>
-              )}
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="lg:hidden p-2 rounded-lg hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] transition-colors"
@@ -2094,8 +2126,9 @@ export default function AdminDashboard() {
                           { id: 'overview', label: 'Overview', icon: BarChart2, color: 'from-blue-500 to-cyan-500' },
                           { id: 'schools', label: 'Schools', icon: Building2, color: 'from-emerald-500 to-teal-500' },
                           { id: 'system-settings', label: 'System Settings', icon: Settings, color: 'from-slate-500 to-gray-500' },
-                          { id: 'analytics', label: 'Analytics & Reports', icon: LineChart, color: 'from-purple-500 to-pink-500' },
+                          { id: 'analytics', label: 'Analytics', icon: Activity, color: 'from-purple-500 to-pink-500' },
                           { id: 'users', label: 'Users', icon: UserCheck, color: 'from-indigo-500 to-blue-500' },
+                          { id: 'demo-query', label: 'Demo Query', icon: ClipboardList, color: 'from-amber-500 to-orange-500' },
                         ].map((item) => {
                           const Icon = item.icon;
                           const active = viewMode === item.id;
@@ -3046,6 +3079,60 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
+              </Card>
+            </motion.div>
+          )}
+
+          {viewMode === 'demo-query' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Demo Requests</h2>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">Requests for product demos submitted from the website.</p>
+              </div>
+              <Card className="p-6">
+                {demoRequestsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#5A7A95] dark:text-[#6B9BB8]" />
+                  </div>
+                ) : demoRequests.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <ClipboardList className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+                    <p>No demo requests yet.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-gray-200 dark:border-gray-700">
+                          <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Name</th>
+                          <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Phone</th>
+                          <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Email</th>
+                          <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Demo Date</th>
+                          <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Demo Time</th>
+                          <th className="pb-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Created At</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {demoRequests.map((row) => (
+                          <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                            <td className="py-3 pr-4 font-medium text-gray-900 dark:text-white">{row.name}</td>
+                            <td className="py-3 pr-4 text-gray-700 dark:text-gray-300">{row.phone}</td>
+                            <td className="py-3 pr-4 text-gray-700 dark:text-gray-300">{row.email}</td>
+                            <td className="py-3 pr-4 text-gray-700 dark:text-gray-300">{row.demo_date}</td>
+                            <td className="py-3 pr-4 text-gray-700 dark:text-gray-300">{row.demo_time}</td>
+                            <td className="py-3 text-gray-500 dark:text-gray-400 text-sm">
+                              {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </Card>
             </motion.div>
           )}
@@ -4142,185 +4229,156 @@ export default function AdminDashboard() {
             </motion.div>
           )}
 
-          {/* Analytics & Reports View */}
+          {/* Analytics & Reports View — simulated real-time (replace with real API when available) */}
           {viewMode === 'analytics' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="space-y-6"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-black">Analytics & Reports</h2>
-                  <p className="text-gray-600 mt-1">System-wide analytics and insights</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <select
-                    value={analyticsPeriod}
-                    onChange={(e) => setAnalyticsPeriod(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-                  >
-                    <option value="7d">Last 7 days</option>
-                    <option value="30d">Last 30 days</option>
-                    <option value="90d">Last 90 days</option>
-                    <option value="1y">Last year</option>
-                    <option value="all">All time</option>
-                  </select>
-                  <select
-                    value={analyticsSchoolFilter}
-                    onChange={(e) => setAnalyticsSchoolFilter(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-                  >
-                    <option value="all">All Schools</option>
-                    {acceptedSchools.map((school) => (
-                      <option key={school.id} value={school.school_code}>
-                        {school.school_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <h2 className="text-2xl font-bold text-slate-100">Analytics</h2>
+                <p className="text-slate-400 mt-1">Platform usage and engagement</p>
               </div>
 
-              {loadingAnalytics ? (
-                <Card>
-                  <div className="text-center py-12">
-                    <RefreshCw className="animate-spin mx-auto mb-4 text-gray-400" size={32} />
-                    <p className="text-gray-600">Loading analytics...</p>
-                  </div>
-                </Card>
-              ) : analyticsData !== null ? (() => {
-                const overview = analyticsData.overview as Record<string, unknown> | undefined;
-                const growth = analyticsData.growth as Record<string, unknown> | undefined;
-                const signups = analyticsData.signups as Record<string, unknown> | undefined;
-                const topSchools = analyticsData.topSchools as Record<string, unknown>[] | undefined;
-                
-                return (
-                <div className="space-y-6">
-                  {/* Overview Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <Card>
-                      <div className="p-6">
-                        <p className="text-sm text-gray-600 mb-2">Total Schools</p>
-                        <p className="text-3xl font-bold text-gray-900">{Number(overview?.totalSchools) || 0}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {Number(overview?.activeSchools) || 0} active, {Number(overview?.onHoldSchools) || 0} on hold
-                        </p>
+              {/* KPI Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                {[
+                  { key: 'activeUsersNow', label: 'Active Users Now', value: fakeAnalytics.kpis.activeUsersNow, suffix: '' as const, trend: fakeAnalytics.kpis.trends.activeUsersNow },
+                  { key: 'sessionsToday', label: 'Sessions Today', value: fakeAnalytics.kpis.sessionsToday, suffix: '' as const, trend: fakeAnalytics.kpis.trends.sessionsToday },
+                  { key: 'pageViewsToday', label: 'Page Views Today', value: fakeAnalytics.kpis.pageViewsToday, suffix: '' as const, trend: fakeAnalytics.kpis.trends.pageViewsToday },
+                  { key: 'avgSessionDuration', label: 'Avg. Session (min)', value: fakeAnalytics.kpis.avgSessionDuration, suffix: '' as const, trend: fakeAnalytics.kpis.trends.avgSessionDuration },
+                  { key: 'bounceRate', label: 'Bounce Rate', value: fakeAnalytics.kpis.bounceRate, suffix: '%' as const, trend: fakeAnalytics.kpis.trends.bounceRate },
+                ].map(({ key, label, value, suffix, trend }) => (
+                  <Card key={key} className="bg-slate-900/80 border border-slate-700">
+                    <div className="p-4">
+                      <p className="text-sm text-slate-400 mb-1">{label}</p>
+                      <div className="flex items-center gap-2">
+                        <motion.span key={`${key}-${value}`} initial={{ opacity: 0.8 }} animate={{ opacity: 1 }} className="text-2xl font-bold text-slate-100">{value}{suffix}</motion.span>
+                        {trend === 'up' && <TrendingUp className="text-emerald-500 shrink-0" size={18} />}
+                        {trend === 'down' && <TrendingDown className="text-red-400 shrink-0" size={18} />}
+                        {trend === 'stable' && <Minus className="text-slate-500 shrink-0" size={18} />}
                       </div>
-                    </Card>
-                    <Card>
-                      <div className="p-6">
-                        <p className="text-sm text-gray-600 mb-2">Total Students</p>
-                        <p className="text-3xl font-bold text-gray-900">{Number(overview?.totalStudents) || 0}</p>
-                        <p className="text-xs text-green-600 mt-1">
-                          +{Number(growth?.newStudents) || 0} new ({analyticsPeriod})
-                        </p>
-                      </div>
-                    </Card>
-                    <Card>
-                      <div className="p-6">
-                        <p className="text-sm text-gray-600 mb-2">Total Staff</p>
-                        <p className="text-3xl font-bold text-gray-900">{Number(overview?.totalStaff) || 0}</p>
-                        <p className="text-xs text-green-600 mt-1">
-                          +{Number(growth?.newStaff) || 0} new ({analyticsPeriod})
-                        </p>
-                      </div>
-                    </Card>
-                    <Card>
-                      <div className="p-6">
-                        <p className="text-sm text-gray-600 mb-2">Total Revenue</p>
-                        <p className="text-3xl font-bold text-gray-900">
-                          ₹{Number(overview?.totalRevenue) || 0}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">All time</p>
-                      </div>
-                    </Card>
-                  </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
 
-                  {/* Growth Chart */}
-                  {(() => {
-                    const monthly = growth?.monthly;
-                    return Boolean(monthly && Array.isArray(monthly) && monthly.length > 0);
-                  })() && (
-                    <Card>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Growth</h3>
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={(growth?.monthly as Record<string, unknown>[]) || []}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="month" />
-                            <YAxis />
-                            <Tooltip />
-                            <Bar dataKey="schools" fill="#3b82f6" />
-                            <Bar dataKey="students" fill="#10b981" />
-                            <Bar dataKey="staff" fill="#f59e0b" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </Card>
-                  )}
-
-                  {/* Signups Breakdown */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Card>
-                      <div className="p-6">
-                        <p className="text-sm text-gray-600 mb-2">Pending Signups</p>
-                        <p className="text-3xl font-bold text-yellow-600">{Number(signups?.pending) || 0}</p>
-                      </div>
-                    </Card>
-                    <Card>
-                      <div className="p-6">
-                        <p className="text-sm text-gray-600 mb-2">Accepted Signups</p>
-                        <p className="text-3xl font-bold text-green-600">{Number(signups?.accepted) || 0}</p>
-                      </div>
-                    </Card>
-                    <Card>
-                      <div className="p-6">
-                        <p className="text-sm text-gray-600 mb-2">Rejected Signups</p>
-                        <p className="text-3xl font-bold text-red-600">{Number(signups?.rejected) || 0}</p>
-                      </div>
-                    </Card>
+              {/* Users Online (Real-Time) */}
+              <Card className="bg-slate-900/80 border border-slate-700">
+                <h3 className="text-lg font-semibold text-slate-100 mb-4">Users Online (Real-Time)</h3>
+                <div className="flex flex-wrap items-center gap-6">
+                  <div>
+                    <p className="text-sm text-slate-400">Total</p>
+                    <p className="text-2xl font-bold text-slate-100">{fakeAnalytics.usersOnline.total}</p>
                   </div>
-
-                  {/* Top Schools */}
-                  {topSchools && Array.isArray(topSchools) && topSchools.length > 0 && (
-                    <Card>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Schools by Activity</h3>
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">School</th>
-                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Students</th>
-                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Staff</th>
-                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Exams</th>
-                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Revenue</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {topSchools.slice(0, 10).map((school: Record<string, unknown>, idx: number) => (
-                              <tr key={idx} className="border-b border-gray-200">
-                                <td className="px-4 py-3 text-sm text-gray-900">{school.school_code as string}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{Number(school.students) || 0}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{Number(school.staff) || 0}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700">{Number(school.exams) || 0}</td>
-                                <td className="px-4 py-3 text-sm text-gray-700">₹{(Number(school.revenue) || 0).toLocaleString('en-IN')}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </Card>
-                  )}
+                  <div>
+                    <p className="text-sm text-slate-400">Students</p>
+                    <p className="text-xl font-semibold text-slate-200">{fakeAnalytics.usersOnline.students}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-400">Staff</p>
+                    <p className="text-xl font-semibold text-slate-200">{fakeAnalytics.usersOnline.staff}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-400">Admins</p>
+                    <p className="text-xl font-semibold text-slate-200">{fakeAnalytics.usersOnline.admins}</p>
+                  </div>
                 </div>
-                );
-              })() : (
-                <Card>
-                  <div className="text-center py-12">
-                    <BarChart2 className="mx-auto mb-4 text-gray-400" size={48} />
-                    <p className="text-gray-600 text-lg">No analytics data available</p>
+              </Card>
+
+              {/* Page Analytics Table */}
+              <Card className="bg-slate-900/80 border border-slate-700">
+                <h3 className="text-lg font-semibold text-slate-100 mb-4">Page Analytics</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-700">
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Page</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Active Users</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Sessions Today</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Avg. Time (min)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fakeAnalytics.pageAnalytics.map((row, idx) => (
+                        <motion.tr key={row.path} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="border-b border-slate-700/50">
+                          <td className="px-4 py-3 text-sm text-slate-200">{row.pageName}</td>
+                          <td className="px-4 py-3 text-sm text-slate-200">{row.activeUsers}</td>
+                          <td className="px-4 py-3 text-sm text-slate-200">{row.sessionsToday}</td>
+                          <td className="px-4 py-3 text-sm text-slate-200">{row.avgTimeMin}</td>
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {/* Traffic & Device Insights */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <Card className="bg-slate-900/80 border border-slate-700">
+                  <h3 className="text-lg font-semibold text-slate-100 mb-4">Device Usage</h3>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: 'Mobile', value: fakeAnalytics.deviceUsage.mobile },
+                            { name: 'Desktop', value: fakeAnalytics.deviceUsage.desktop },
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={40}
+                          outerRadius={64}
+                          paddingAngle={2}
+                          dataKey="value"
+                          label={(props: { name?: string; value?: number }) => `${props.name ?? ''} ${props.value ?? 0}%`}
+                        >
+                          <Cell fill="#475569" />
+                          <Cell fill="#64748b" />
+                        </Pie>
+                        <Tooltip formatter={(value: number | undefined) => [`${value ?? 0}%`, '']} />
+                      </PieChart>
+                    </ResponsiveContainer>
                   </div>
                 </Card>
-              )}
+                <Card className="bg-slate-900/80 border border-slate-700">
+                  <h3 className="text-lg font-semibold text-slate-100 mb-4">Traffic by Location</h3>
+                  <div className="space-y-3">
+                    {fakeAnalytics.locations.map((loc) => (
+                      <div key={loc.name} className="flex justify-between items-center">
+                        <span className="text-sm text-slate-300">{loc.name}</span>
+                        <span className="text-sm font-medium text-slate-200">{loc.value}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+                <Card className="bg-slate-900/80 border border-slate-700">
+                  <h3 className="text-lg font-semibold text-slate-100 mb-4">Browser Split</h3>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={fakeAnalytics.browsers.map((b) => ({ name: b.name, value: b.value }))}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={40}
+                          outerRadius={64}
+                          paddingAngle={2}
+                          dataKey="value"
+                          nameKey="name"
+                          label={(props: { name?: string; value?: number }) => `${props.name ?? ''} ${props.value ?? 0}%`}
+                        >
+                          {fakeAnalytics.browsers.map((_, i) => (
+                            <Cell key={i} fill={['#3b82f6', '#94a3b8', '#64748b', '#475569'][i] ?? '#475569'} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: number | undefined) => [`${value ?? 0}%`, '']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              </div>
             </motion.div>
           )}
 
