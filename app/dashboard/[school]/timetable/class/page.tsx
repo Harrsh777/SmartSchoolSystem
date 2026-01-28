@@ -24,7 +24,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, GripVertical, Loader2, UserPlus, Save, CheckCircle } from 'lucide-react';
+import { ArrowLeft, GripVertical, Loader2, UserPlus, Save, CheckCircle, Download } from 'lucide-react';
 import TeacherSelectionModal from '@/components/timetable/TeacherSelectionModal';
 
 interface Subject {
@@ -290,13 +290,69 @@ export default function ClassTimetablePage({
     
     try {
       const response = await fetch(`/api/timetable/slots?school_code=${schoolCode}&class_id=${selectedClass.id}`);
-      const result = await response.json();
+      
+      let result;
+      try {
+        result = await response.json();
+      } catch {
+        // If response is not JSON, try to get text
+        const text = await response.text();
+        console.error('Failed to parse response as JSON:', {
+          status: response.status,
+          statusText: response.statusText,
+          text: text.substring(0, 500), // First 500 chars
+        });
+        setSlots([]);
+        return;
+      }
+      
+      if (!response.ok) {
+        console.error('HTTP error fetching timetable slots:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: result.error,
+          details: result.details,
+          code: result.code,
+          hint: result.hint,
+          fullResult: result,
+        });
+        setSlots([]);
+        return;
+      }
 
-      if (response.ok && result.data) {
-        setSlots(result.data);
+      if (result.error) {
+        console.error('API error fetching timetable slots:', {
+          error: result.error,
+          details: result.details,
+          code: result.code,
+          hint: result.hint,
+        });
+        setSlots([]);
+        return;
+      }
+
+      if (result.data) {
+        // Map slots to include subject and teacher information
+        // Keep all slots (including those with null subject_id for empty slots)
+        const mappedSlots = result.data.map((slot: TimetableSlot) => {
+          // Ensure period_order is set correctly
+          if (!slot.period_order && (slot as { period?: number }).period) {
+            const periodNum = parseInt(String((slot as { period?: number }).period), 10);
+            if (!isNaN(periodNum)) {
+              slot.period_order = periodNum;
+            }
+          }
+          return slot;
+        });
+        console.log('Successfully loaded timetable slots:', mappedSlots.length);
+        setSlots(mappedSlots);
+      } else {
+        console.warn('No data in response, but request was successful:', result);
+        setSlots([]);
       }
     } catch (error) {
-      console.error('Error fetching timetable slots:', error);
+      console.error('Exception fetching timetable slots:', error);
+      setSlots([]);
     }
   };
 
@@ -363,37 +419,9 @@ export default function ClassTimetablePage({
       const result = await response.json();
 
       if (response.ok) {
-        // Update local state with teacher data if available
-        const slotData = result.data;
-        const existingSlot = slots.find(s => s.day === day && s.period_order === periodOrder);
-        const subject = subjects.find(sub => sub.id === subjectId);
-        
-        if (existingSlot) {
-          setSlots(prev => prev.map(s =>
-            s.day === day && s.period_order === periodOrder
-              ? { 
-                  ...s, 
-                  subject_id: subjectId, 
-                  subject: subject,
-                  teacher_id: slotData.teacher_id,
-                  teacher_ids: slotData.teacher_ids,
-                  teachers: slotData.teachers || [],
-                }
-              : s
-          ));
-        } else {
-          const newSlot: TimetableSlot = {
-            id: slotData.id || `slot-${Date.now()}`,
-            day: day,
-            period_order: periodOrder,
-            subject_id: subjectId,
-            subject: subject,
-            teacher_id: slotData.teacher_id,
-            teacher_ids: slotData.teacher_ids,
-            teachers: slotData.teachers || [],
-          };
-          setSlots(prev => [...prev, newSlot]);
-        }
+        // Refresh slots from server to ensure we have the latest data
+        // This ensures that when updating a subject, the old one is properly replaced
+        await fetchTimetableSlots();
       } else {
         console.error('Failed to save slot:', result);
         const errorDetails = result.details ? `\nDetails: ${result.details}` : '';
@@ -412,6 +440,10 @@ export default function ClassTimetablePage({
   const handleClearSlot = async (day: string, periodOrder: number) => {
     if (!selectedClass || !periodGroup) return;
 
+    if (!confirm('Are you sure you want to remove this subject from the timetable?')) {
+      return;
+    }
+
     setSaving(`${day}-${periodOrder}`);
 
     try {
@@ -429,13 +461,21 @@ export default function ClassTimetablePage({
       const result = await response.json();
 
       if (response.ok) {
+        // Remove from local state immediately for better UX
         setSlots(prev => prev.filter(s => !(s.day === day && s.period_order === periodOrder)));
+        // Refresh slots from server to ensure consistency
+        await fetchTimetableSlots();
       } else {
+        console.error('Failed to clear slot:', result);
         alert(result.error || 'Failed to clear slot. Please try again.');
+        // Refresh to get current state
+        await fetchTimetableSlots();
       }
     } catch (error) {
       console.error('Error clearing slot:', error);
       alert('Failed to clear slot. Please try again.');
+      // Refresh to get current state
+      await fetchTimetableSlots();
     } finally {
       setSaving(null);
     }
@@ -444,6 +484,27 @@ export default function ClassTimetablePage({
   const handleAddTeachers = (day: string, periodOrder: number) => {
     setSelectedSlot({ day, periodOrder });
     setTeacherModalOpen(true);
+  };
+
+  const handleDownloadTimetable = async () => {
+    if (!selectedClass || !periodGroup) {
+      alert('Please select a class first');
+      return;
+    }
+
+    try {
+      const className = selectedClass.class + (selectedClass.section ? `-${selectedClass.section}` : '');
+      const url = `/api/timetable/download?school_code=${schoolCode}&class_id=${selectedClass.id}`;
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `timetable_${className}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Error downloading timetable:', error);
+      alert('Failed to download timetable. Please try again.');
+    }
   };
 
   const handleSaveTeachers = async (teacherIds: string[]) => {
@@ -484,16 +545,28 @@ export default function ClassTimetablePage({
               }
             : s
         ));
+        setTeacherModalOpen(false);
+        setSelectedSlot(null);
+      } else if (response.status === 409 && result.code === 'TEACHER_CONFLICT') {
+        // Handle teacher conflict - prevent saving and show detailed error
+        const conflictMessages = result.conflicts?.map((c: { teacherName: string; className: string }) => 
+          `• ${c.teacherName} is already assigned to ${c.className}`
+        ).join('\n') || 'One or more teachers have conflicts';
+        
+        const conflictMessage = `⚠️ TEACHER CONFLICT DETECTED!\n\n${conflictMessages}\n\n⚠️ WARNING: Cannot save. This would create a scheduling conflict.\n\nPlease resolve the conflict first:\n1. Remove the teacher from the conflicting class\n2. Choose a different teacher\n3. Change the time slot`;
+        
+        alert(conflictMessage);
+        // Don't close modal on error so user can fix the selection
       } else {
-        alert(result.error || 'Failed to save teachers');
+        console.error('Failed to save teachers:', result);
+        alert(result.error || 'Failed to save teachers. Please try again.');
+        // Don't close modal on error so user can fix the selection
       }
     } catch (error) {
       console.error('Error saving teachers:', error);
       alert('Failed to save teachers. Please try again.');
     } finally {
       setSaving(null);
-      setTeacherModalOpen(false);
-      setSelectedSlot(null);
     }
   };
 
@@ -507,7 +580,7 @@ export default function ClassTimetablePage({
     setSaveSuccess(false);
 
     try {
-      // Save all slots that have subjects assigned
+      // Save all slots that have subjects assigned (allow partial saves)
       const slotsToSave = slots.filter(slot => slot.subject_id);
       
       if (slotsToSave.length === 0) {
@@ -518,6 +591,12 @@ export default function ClassTimetablePage({
 
       // Get period group ID if available
       const periodGroupId = periodGroup?.id || null;
+
+      // Calculate total possible slots (all days × all periods excluding breaks)
+      const allDays = periodGroup.selected_days || [];
+      const allPeriods = periodGroup.periods.filter(p => !p.is_break);
+      const totalPossibleSlots = allDays.length * allPeriods.length;
+      const missingSlots = totalPossibleSlots - slotsToSave.length;
 
       // Save each slot with period_group_id and auto-generate teacher timetables
       const savePromises = slotsToSave.map(slot =>
@@ -538,25 +617,72 @@ export default function ClassTimetablePage({
 
       const results = await Promise.all(savePromises);
       
-      // Check each result for errors
+      // Check each result for errors and conflicts
       const errors: string[] = [];
+      const conflicts: Array<{ teacher: string; class: string }> = [];
       await Promise.all(
         results.map(async (r, index) => {
           if (!r.ok) {
             const errorData = await r.json().catch(() => ({ error: 'Unknown error' }));
-            errors.push(`Slot ${index + 1}: ${errorData.error || 'Failed to save'}`);
+            const errorMsg = errorData.error || 'Failed to save';
+            if (errorMsg.includes('conflict') || errorMsg.includes('already assigned')) {
+              const slot = slotsToSave[index];
+              conflicts.push({ 
+                teacher: 'Unknown', 
+                class: slot ? `${slot.day}, Period ${slot.period_order}` : `Slot ${index + 1}` 
+              });
+            } else {
+              errors.push(`Slot ${index + 1}: ${errorMsg}`);
+            }
+          } else {
+            // Check response for conflict warnings
+            const resultData = await r.json().catch(() => ({}));
+            if (resultData.conflicts && resultData.conflicts.length > 0) {
+              resultData.conflicts.forEach((conflict: { teacher_name?: string; class_name: string }) => {
+                conflicts.push({
+                  teacher: conflict.teacher_name || 'Teacher',
+                  class: conflict.class_name,
+                });
+              });
+            }
           }
         })
       );
 
+      // Build success message
+      const className = selectedClass.class + (selectedClass.section ? `-${selectedClass.section}` : '');
+      let message = `Timetable for class ${className} is saved`;
+      
+      if (missingSlots > 0) {
+        message += `\n\nNote: ${missingSlots} period(s) are not yet assigned.`;
+      }
+      
+      if (conflicts.length > 0) {
+        const conflictMessages = conflicts.map(c => 
+          `${c.teacher} is already assigned to ${c.class} at the same time`
+        );
+        message += `\n\n⚠️ Conflicts detected:\n${conflictMessages.join('\n')}`;
+      }
+
       if (errors.length === 0) {
         setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
+        setTimeout(() => setSaveSuccess(false), 5000);
+        alert(message);
         // Refresh slots to get latest data
         await fetchTimetableSlots();
       } else {
         console.error('Some slots failed to save:', errors);
-        alert(`Some slots failed to save:\n${errors.join('\n')}\n\nPlease check and try again.`);
+        let errorMessage = `Some slots failed to save:\n${errors.join('\n')}`;
+        if (conflicts.length > 0) {
+          const conflictMessages = conflicts.map(c => 
+            `${c.teacher} is already assigned to ${c.class} at the same time`
+          );
+          errorMessage += `\n\n⚠️ Conflicts detected:\n${conflictMessages.join('\n')}`;
+        }
+        if (missingSlots > 0) {
+          errorMessage += `\n\nNote: ${missingSlots} period(s) are not yet assigned.`;
+        }
+        alert(errorMessage);
       }
     } catch (error) {
       console.error('Error saving timetable:', error);
@@ -687,6 +813,15 @@ export default function ClassTimetablePage({
           <p className="text-[#64748B]">Drag and drop subjects to create class timetables</p>
         </div>
         <div className="flex items-center gap-4">
+          {selectedClass && (
+            <Button
+              onClick={handleDownloadTimetable}
+              className="flex items-center gap-2"
+            >
+              <Download size={18} />
+              Download Timetable
+            </Button>
+          )}
           <div className="flex items-center gap-2">
             <label className="text-sm font-semibold text-[#0F172A] whitespace-nowrap">Period Group:</label>
             <select
@@ -911,6 +1046,9 @@ export default function ClassTimetablePage({
           subjectName={getSlot(selectedSlot.day, selectedSlot.periodOrder)?.subject?.name || ''}
           subjectId={getSlot(selectedSlot.day, selectedSlot.periodOrder)?.subject_id || null}
           existingTeacherIds={getSlot(selectedSlot.day, selectedSlot.periodOrder)?.teacher_ids || []}
+          day={selectedSlot.day}
+          periodOrder={selectedSlot.periodOrder}
+          currentClassId={selectedClass?.id || null}
         />
       )}
     </div>

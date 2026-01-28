@@ -25,8 +25,8 @@ export default function DashboardHeader({
 }: DashboardHeaderProps) {
   const router = useRouter();
 
-  const handleLogout = () => {
-    // Clear all session data
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     sessionStorage.removeItem('student');
     sessionStorage.removeItem('teacher');
     sessionStorage.removeItem('school');

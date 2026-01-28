@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { GraduationCap, UserCheck, Building2, ArrowLeft, ArrowRight } from 'lucide-react';
-import StudentLoginForm from '@/components/auth/StudentLoginForm';
-import TeacherLoginForm from '@/components/auth/TeacherLoginForm';
-import PrincipalLoginForm from '@/components/auth/PrincipalLoginForm';
+// Login forms are now in dedicated pages: /student/login, /staff/login, /admin/login
 
 type Role = 'student' | 'teacher' | 'principal' | null;
 
@@ -102,12 +101,10 @@ function RoleCard({ role, index, onSelect }: RoleCardProps) {
 }
 
 export default function LoginPage() {
+  const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<Role>(null);
 
-  const handleGoBack = () => {
-    // Force a full page reload to reset state
-    window.location.href = '/login';
-  };
+  // handleGoBack removed - not used
 
   const roles = [
     {
@@ -136,56 +133,16 @@ export default function LoginPage() {
     },
   ];
 
-  if (selectedRole === 'student') {
-    return (
-      <>
-        {/* Go back button */}
-        <button
-          onClick={handleGoBack}
-          className="fixed top-4 left-4 z-50 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-xl border border-white/60 dark:border-gray-700/50 text-sm font-semibold text-[#5A7A95] dark:text-[#6B9BB8] hover:bg-white dark:hover:bg-[#2F4156] hover:shadow-lg transition-all duration-200"
-          aria-label="Go back to role selection"
-        >
-          <ArrowLeft size={18} />
-          <span>Go back</span>
-        </button>
-        <StudentLoginForm />
-      </>
-    );
-  }
-
-  if (selectedRole === 'principal') {
-    return (
-      <>
-        {/* Go back button */}
-        <button
-          onClick={handleGoBack}
-          className="fixed top-4 left-4 z-50 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-xl border border-white/60 dark:border-gray-700/50 text-sm font-semibold text-[#5A7A95] dark:text-[#6B9BB8] hover:bg-white dark:hover:bg-[#2F4156] hover:shadow-lg transition-all duration-200"
-          aria-label="Go back to role selection"
-        >
-          <ArrowLeft size={18} />
-          <span>Go back</span>
-        </button>
-        <PrincipalLoginForm />
-      </>
-    );
-  }
-
-  if (selectedRole === 'teacher') {
-    return (
-      <>
-        {/* Go back button */}
-        <button
-          onClick={handleGoBack}
-          className="fixed top-4 left-4 z-50 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/90 dark:bg-[#1e293b]/90 backdrop-blur-xl border border-white/60 dark:border-gray-700/50 text-sm font-semibold text-[#5A7A95] dark:text-[#6B9BB8] hover:bg-white dark:hover:bg-[#2F4156] hover:shadow-lg transition-all duration-200"
-          aria-label="Go back to role selection"
-        >
-          <ArrowLeft size={18} />
-          <span>Go back</span>
-        </button>
-        <TeacherLoginForm />
-      </>
-    );
-  }
+  // Redirect to dedicated login pages
+  useEffect(() => {
+    if (selectedRole === 'student') {
+      router.push('/student/login');
+    } else if (selectedRole === 'principal') {
+      router.push('/admin/login');
+    } else if (selectedRole === 'teacher') {
+      router.push('/staff/login');
+    }
+  }, [selectedRole, router]);
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-[#F5EFEB] via-[#F0F5F9] to-[#EBF2F7] dark:bg-[#0f172a] flex flex-col items-center justify-center p-4 md:p-8">

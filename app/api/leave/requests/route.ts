@@ -169,13 +169,74 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error creating leave request:', error);
-      return NextResponse.json({ error: 'Failed to create leave request' }, { status: 500 });
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      console.error('Request body:', JSON.stringify({ school_code, staff_id, leave_type_id, leave_start_date, leave_end_date, totalDays }, null, 2));
+      
+      // Handle specific database errors
+      if (error.code === '42P01') {
+        return NextResponse.json({ 
+          error: 'Database table not found',
+          details: 'The staff_leave_requests table does not exist. Please run the staff_leave_requests_schema.sql migration script to create it.',
+          code: 'TABLE_NOT_FOUND',
+          hint: 'Run the SQL migration: staff_leave_requests_schema.sql'
+        }, { status: 500 });
+      }
+      
+      if (error.code === '23503') {
+        return NextResponse.json({ 
+          error: 'Invalid reference',
+          details: 'One or more referenced records (staff_id, leave_type_id) do not exist.',
+          code: 'FOREIGN_KEY_VIOLATION'
+        }, { status: 400 });
+      }
+      
+      if (error.code === '23502') {
+        return NextResponse.json({ 
+          error: 'Missing required field',
+          details: error.message || 'One or more required fields are missing.',
+          code: 'NOT_NULL_VIOLATION'
+        }, { status: 400 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to create leave request',
+        details: error.message || 'An unexpected error occurred',
+        code: error.code || 'UNKNOWN_ERROR'
+      }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (error) {
     console.error('Error in POST /api/leave/requests:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    
+    // Handle different error types
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      
+      // Check if it's a JSON parsing error
+      if (error.message.includes('JSON') || error.message.includes('parse')) {
+        return NextResponse.json({ 
+          error: 'Invalid request body',
+          details: 'The request body is not valid JSON.',
+          code: 'INVALID_JSON'
+        }, { status: 400 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'Internal server error',
+        details: error.message,
+        code: 'INTERNAL_ERROR'
+      }, { status: 500 });
+    }
+    
+    // Handle unknown error types
+    console.error('Unknown error type:', typeof error, error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: 'An unexpected error occurred while processing the request.',
+      code: 'UNKNOWN_ERROR'
+    }, { status: 500 });
   }
 }
 

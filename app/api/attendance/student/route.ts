@@ -16,17 +16,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build query
+    // Build query (select * only – avoid FK join in case relation name differs or is missing)
     let query = supabase
       .from('student_attendance')
-      .select(`
-        *,
-        marked_by_staff:staff!student_attendance_marked_by_fkey(
-          id,
-          full_name,
-          staff_id
-        )
-      `)
+      .select('*')
       .eq('school_code', schoolCode)
       .eq('student_id', studentId)
       .order('attendance_date', { ascending: false });

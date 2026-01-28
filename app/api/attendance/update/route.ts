@@ -48,28 +48,12 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Update each attendance record
+    // Update each attendance record – only set status (table has no updated_at or notes)
     const updates = [];
     for (const record of attendance_records) {
-      interface UpdateData {
-        status: string;
-        updated_at: string;
-        remarks?: string;
-        [key: string]: unknown;
-      }
-      const updateData: UpdateData = {
-        status: record.status,
-        updated_at: new Date().toISOString(),
-      };
-      
-      // Only include notes if it exists in the record
-      if (record.notes !== undefined && record.notes !== null) {
-        updateData.notes = record.notes;
-      }
-      
       const { error: updateError } = await supabase
         .from('student_attendance')
-        .update(updateData)
+        .update({ status: record.status })
         .eq('student_id', record.student_id)
         .eq('attendance_date', attendance_date)
         .eq('class_id', class_id);

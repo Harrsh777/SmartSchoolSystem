@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -23,6 +23,7 @@ interface GradeScale {
   max_marks: number;
   grade_point: number;
   description?: string;
+  display_order?: number;
 }
 
 export default function GradeScalePage({
@@ -34,6 +35,8 @@ export default function GradeScalePage({
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [gradeScales, setGradeScales] = useState<GradeScale[]>([]);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     grade: '',
     min_marks: '',
@@ -41,6 +44,38 @@ export default function GradeScalePage({
     grade_point: '',
     description: '',
   });
+
+  useEffect(() => {
+    fetchGradeScales();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolCode]);
+
+  const fetchGradeScales = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/grade-scales?school_code=${schoolCode}`);
+      const result = await response.json();
+
+      if (response.ok && result.data) {
+        // Sort by display_order (descending) or grade_point (descending) as fallback
+        const sorted = result.data.sort((a: GradeScale, b: GradeScale) => {
+          if (a.display_order !== undefined && b.display_order !== undefined) {
+            return b.display_order - a.display_order;
+          }
+          return b.grade_point - a.grade_point;
+        });
+        setGradeScales(sorted);
+      } else {
+        console.error('Error fetching grade scales:', result.error);
+        setGradeScales([]);
+      }
+    } catch (err) {
+      console.error('Error fetching grade scales:', err);
+      setGradeScales([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleOpenModal = (scale?: GradeScale) => {
     if (scale) {
@@ -78,28 +113,60 @@ export default function GradeScalePage({
   };
 
   const handleSave = async () => {
-    // TODO: Implement API call
-    console.log('Saving grade scale:', formData);
-    handleCloseModal();
-  };
+    try {
+      const url = editingId 
+        ? `/api/grade-scales/${editingId}`
+        : '/api/grade-scales';
+      
+      const method = editingId ? 'PATCH' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          grade: formData.grade,
+          min_marks: parseInt(formData.min_marks),
+          max_marks: parseInt(formData.max_marks),
+          grade_point: parseFloat(formData.grade_point),
+          description: formData.description || null,
+        }),
+      });
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this grade scale?')) {
-      // TODO: Implement API call
-      console.log('Deleting grade scale:', id);
+      const result = await response.json();
+
+      if (response.ok) {
+        handleCloseModal();
+        fetchGradeScales(); // Refresh the list
+      } else {
+        alert(result.details || result.error || 'Failed to save grade scale');
+      }
+    } catch (err) {
+      console.error('Error saving grade scale:', err);
+      alert('Failed to save grade scale. Please try again.');
     }
   };
 
-  // Mock data for demonstration
-  const mockGradeScales: GradeScale[] = [
-    { id: '1', grade: 'A+', min_marks: 90, max_marks: 100, grade_point: 10, description: 'Outstanding' },
-    { id: '2', grade: 'A', min_marks: 80, max_marks: 89, grade_point: 9, description: 'Excellent' },
-    { id: '3', grade: 'B+', min_marks: 70, max_marks: 79, grade_point: 8, description: 'Very Good' },
-    { id: '4', grade: 'B', min_marks: 60, max_marks: 69, grade_point: 7, description: 'Good' },
-    { id: '5', grade: 'C', min_marks: 50, max_marks: 59, grade_point: 6, description: 'Average' },
-    { id: '6', grade: 'D', min_marks: 40, max_marks: 49, grade_point: 5, description: 'Below Average' },
-    { id: '7', grade: 'F', min_marks: 0, max_marks: 39, grade_point: 0, description: 'Fail' },
-  ];
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this grade scale?')) return;
+
+    try {
+      const response = await fetch(`/api/grade-scales/${id}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        fetchGradeScales(); // Refresh the list
+      } else {
+        alert(result.details || result.error || 'Failed to delete grade scale');
+      }
+    } catch (err) {
+      console.error('Error deleting grade scale:', err);
+      alert('Failed to delete grade scale. Please try again.');
+    }
+  };
 
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
@@ -152,41 +219,55 @@ export default function GradeScalePage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {mockGradeScales.map((scale, index) => (
-                <motion.tr
-                  key={scale.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="hover:bg-gray-50 transition-colors"
-                >
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
-                      {scale.grade}
-                    </span>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    Loading grade scales...
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 font-medium">{scale.min_marks}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900 font-medium">{scale.max_marks}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900 font-medium">{scale.grade_point}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{scale.description}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleOpenModal(scale)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      >
-                        <Edit size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(scale.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                </tr>
+              ) : gradeScales.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    No grade scales found. Click &quot;Add Grade Scale&quot; to create one.
                   </td>
-                </motion.tr>
-              ))}
+                </tr>
+              ) : (
+                gradeScales.map((scale, index) => (
+                  <motion.tr
+                    key={scale.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
+                        {scale.grade}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">{scale.min_marks}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">{scale.max_marks}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">{scale.grade_point}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{scale.description || '-'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenModal(scale)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(scale.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </motion.tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

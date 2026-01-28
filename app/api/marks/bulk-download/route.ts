@@ -54,7 +54,6 @@ export async function GET(request: NextRequest) {
         student:students!inner (
           id,
           student_name,
-          full_name,
           admission_no,
           roll_number,
           class,
@@ -145,7 +144,7 @@ export async function GET(request: NextRequest) {
         let yPos = height - 180;
         drawText('Student Information', 50, yPos, 14, helveticaBold);
         yPos -= 25;
-        drawText(`Name: ${student.student_name || student.full_name || 'N/A'}`, 50, yPos, 11);
+        drawText(`Name: ${student.student_name || 'N/A'}`, 50, yPos, 11);
         yPos -= 20;
         drawText(`Class: ${student.class || 'N/A'} ${student.section ? `- ${student.section}` : ''}`, 50, yPos, 11);
         yPos -= 20;
@@ -219,7 +218,7 @@ export async function GET(request: NextRequest) {
 
         // Generate PDF bytes
         const pdfBytes = await pdfDoc.save();
-        const fileName = `${student.student_name || student.full_name || student.id}_${student.roll_number || student.admission_no || ''}.pdf`.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const fileName = `${student.student_name || student.id}_${student.roll_number || student.admission_no || ''}.pdf`.replace(/[^a-zA-Z0-9._-]/g, '_');
         
         archive.append(Buffer.from(pdfBytes), fileName);
       } catch (err) {

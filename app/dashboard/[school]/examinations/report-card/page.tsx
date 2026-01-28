@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -19,19 +19,19 @@ import {
 } from 'lucide-react';
 
 interface ReportCard {
-  id: string;
   student_id: string;
   student_name: string;
   admission_no: string;
   class: string;
   section: string;
+  roll_number?: string;
+  exam_id: string;
   exam_name: string;
   academic_year: string;
   total_marks: number;
   obtained_marks: number;
   percentage: number;
   grade: string;
-  status: 'generated' | 'pending';
 }
 
 export default function ReportCardPage({
@@ -47,80 +47,165 @@ export default function ReportCardPage({
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
+  const [exams, setExams] = useState<Array<{ id: string; exam_name: string; academic_year?: string }>>([]);
+  const [classes, setClasses] = useState<Array<{ id: string; class: string; section: string }>>([]);
+  const [previewing, setPreviewing] = useState(false);
+  const [, setPreviewUrl] = useState<string | null>(null);
 
-  // Mock data
-  const classes = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
-  const sections = ['A', 'B', 'C', 'D'];
-  const exams = [
-    { id: '1', name: 'Unit Test 1', academic_year: '2024-2025' },
-    { id: '2', name: 'Mid Term Exam', academic_year: '2024-2025' },
-  ];
+  const sections = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of classes) {
+      if (c.section) set.add(c.section);
+    }
+    return Array.from(set).sort();
+  }, [classes]);
 
   useEffect(() => {
-    // TODO: Fetch report cards based on filters
-    const mockReportCards: ReportCard[] = [
-      {
-        id: '1',
-        student_id: '1',
-        student_name: 'John Doe',
-        admission_no: 'STU001',
-        class: '10',
-        section: 'A',
-        exam_name: 'Mid Term Exam',
-        academic_year: '2024-2025',
-        total_marks: 500,
-        obtained_marks: 425,
-        percentage: 85,
-        grade: 'A',
-        status: 'generated',
-      },
-      {
-        id: '2',
-        student_id: '2',
-        student_name: 'Jane Smith',
-        admission_no: 'STU002',
-        class: '10',
-        section: 'A',
-        exam_name: 'Mid Term Exam',
-        academic_year: '2024-2025',
-        total_marks: 500,
-        obtained_marks: 380,
-        percentage: 76,
-        grade: 'B+',
-        status: 'generated',
-      },
-    ];
-    setReportCards(mockReportCards);
-  }, [selectedClass, selectedSection, selectedExam]);
+    // Load filters data (exams + classes)
+    const run = async () => {
+      try {
+        const [examsRes, classesRes] = await Promise.all([
+          fetch(`/api/examinations/v2/list?school_code=${schoolCode}`),
+          fetch(`/api/classes?school_code=${schoolCode}`),
+        ]);
+        const examsRaw = await examsRes.text();
+        const classesRaw = await classesRes.text();
+        const examsJson = examsRaw ? JSON.parse(examsRaw) : {};
+        const classesJson = classesRaw ? JSON.parse(classesRaw) : {};
+
+        if (examsRes.ok) {
+          const list = Array.isArray(examsJson.data) ? examsJson.data : [];
+          setExams(list.map((e: { id: string; exam_name?: string; name?: string; academic_year?: string }) => ({ id: e.id, exam_name: e.exam_name || e.name || 'Exam', academic_year: e.academic_year })));
+        }
+        if (classesRes.ok) {
+          const list = Array.isArray(classesJson.data) ? classesJson.data : [];
+          setClasses(list.map((c: { id: string; class: string; section: string }) => ({ id: c.id, class: c.class, section: c.section })));
+        }
+      } catch {
+        // ignore filter bootstrap failures; page can still work partially
+      }
+    };
+    run();
+  }, [schoolCode]);
+
+  const fetchReportCards = async () => {
+    if (!selectedExam) {
+      setReportCards([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams({ school_code: schoolCode, exam_id: selectedExam });
+      // NOTE: marks/view filters class & section in-memory; still pass them for client-side filtering later.
+      const response = await fetch(`/api/marks/view?${qs.toString()}`);
+      const raw = await response.text();
+      const result = raw ? JSON.parse(raw) : {};
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to load report cards');
+      }
+
+      const summaries = Array.isArray(result.data) ? result.data : [];
+      const mapped: ReportCard[] = summaries.map((s: { student_id?: string; student?: { student_name?: string; admission_no?: string; roll_number?: string; class?: string; section?: string }; exam_id?: string; exam?: { exam_name?: string; academic_year?: string }; [key: string]: unknown }) => ({
+        student_id: s.student_id,
+        student_name: s.student?.student_name || 'N/A',
+        admission_no: s.student?.admission_no || 'N/A',
+        roll_number: s.student?.roll_number || undefined,
+        class: s.student?.class || '',
+        section: s.student?.section || '',
+        exam_id: s.exam_id,
+        exam_name: s.exam?.exam_name || 'Exam',
+        academic_year: s.exam?.academic_year || '',
+        total_marks: Number(s.total_max_marks ?? s.total_marks ?? 0),
+        obtained_marks: Number(s.total_marks ?? 0),
+        percentage: Number(s.percentage ?? 0),
+        grade: String(s.grade ?? ''),
+      }));
+      setReportCards(mapped);
+    } catch (e) {
+      console.error(e);
+      setReportCards([]);
+      alert(e instanceof Error ? e.message : 'Failed to load report cards');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReportCards();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedExam]);
 
   const handleGenerate = async () => {
-    setLoading(true);
-    // TODO: Implement API call
-    setTimeout(() => {
-      setLoading(false);
-      alert('Report cards generated successfully!');
-    }, 1000);
+    // For single-exam report cards, PDF is generated on-demand per student.
+    // This button just refreshes the list (to feel “production-ready”).
+    await fetchReportCards();
   };
 
-  const handlePreview = (id: string) => {
-    // TODO: Implement preview
-    console.log('Preview report card:', id);
+  const getPdfUrl = (card: ReportCard) =>
+    `/api/marks/report-card?school_code=${encodeURIComponent(schoolCode)}&student_id=${encodeURIComponent(card.student_id)}&exam_id=${encodeURIComponent(card.exam_id)}`;
+
+  const handlePreview = async (card: ReportCard) => {
+    try {
+      setPreviewing(true);
+      setPreviewUrl(null);
+      const res = await fetch(getPdfUrl(card));
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || 'Failed to generate PDF');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to preview');
+    } finally {
+      setPreviewing(false);
+    }
   };
 
-  const handleDownload = (id: string) => {
-    // TODO: Implement download
-    console.log('Download report card:', id);
+  const handleDownload = (card: ReportCard) => {
+    // Let browser handle attachment filename from API headers
+    window.location.href = getPdfUrl(card);
   };
 
-  const handlePrint = (id: string) => {
-    // TODO: Implement print
-    console.log('Print report card:', id);
+  const handlePrint = async (card: ReportCard) => {
+    try {
+      setPreviewing(true);
+      const res = await fetch(getPdfUrl(card));
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || 'Failed to generate PDF');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!w) throw new Error('Popup blocked');
+      // Give the PDF viewer time to load before printing
+      setTimeout(() => {
+        try {
+          w.focus();
+          w.print();
+        } catch {
+          // ignore
+        }
+      }, 700);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to print');
+    } finally {
+      setPreviewing(false);
+    }
   };
 
   const filteredReportCards = reportCards.filter(card =>
-    card.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    card.admission_no.toLowerCase().includes(searchQuery.toLowerCase())
+    (card.student_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (card.admission_no || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const filteredByClassSection = filteredReportCards.filter((c) => {
+    if (selectedClass && c.class !== selectedClass) return false;
+    if (selectedSection && c.section !== selectedSection) return false;
+    return true;
+  });
 
   const getGradeColor = (grade: string) => {
     if (grade.startsWith('A')) return 'bg-green-100 text-green-800 border-green-200';
@@ -150,7 +235,7 @@ export default function ReportCardPage({
         <div className="flex items-center gap-3">
           <Button
             onClick={handleGenerate}
-            disabled={loading || !selectedClass || !selectedSection || !selectedExam}
+            disabled={loading || !selectedExam}
             className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white"
           >
             {loading ? (
@@ -161,7 +246,7 @@ export default function ReportCardPage({
             ) : (
               <>
                 <FileText size={18} className="mr-2" />
-                Generate Report Cards
+                Refresh List
               </>
             )}
           </Button>
@@ -190,7 +275,7 @@ export default function ReportCardPage({
               className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
             >
               <option value="">All Classes</option>
-              {classes.map(cls => (
+              {[...new Set(classes.map((c) => c.class))].map(cls => (
                 <option key={cls} value={cls}>{cls}</option>
               ))}
             </select>
@@ -220,9 +305,9 @@ export default function ReportCardPage({
               onChange={(e) => setSelectedExam(e.target.value)}
               className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
             >
-              <option value="">All Examinations</option>
+              <option value="">Select Examination</option>
               {exams.map(exam => (
-                <option key={exam.id} value={exam.id}>{exam.name}</option>
+                <option key={exam.id} value={exam.id}>{exam.exam_name} {exam.academic_year ? `(${exam.academic_year})` : ''}</option>
               ))}
             </select>
           </div>
@@ -258,9 +343,9 @@ export default function ReportCardPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredReportCards.map((card, index) => (
+              {filteredByClassSection.map((card, index) => (
                 <motion.tr
-                  key={card.id}
+                  key={`${card.exam_id}_${card.student_id}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
@@ -283,33 +368,34 @@ export default function ReportCardPage({
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                      card.status === 'generated' 
-                        ? 'bg-green-100 text-green-800 border border-green-200' 
-                        : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                      'bg-green-100 text-green-800 border border-green-200'
                     }`}>
-                      {card.status}
+                      generated
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-2">
                       <button
-                        onClick={() => handlePreview(card.id)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        onClick={() => handlePreview(card)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
                         title="Preview"
+                        disabled={previewing}
                       >
                         <Eye size={16} />
                       </button>
                       <button
-                        onClick={() => handleDownload(card.id)}
-                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                        onClick={() => handleDownload(card)}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
                         title="Download"
+                        disabled={previewing}
                       >
                         <Download size={16} />
                       </button>
                       <button
-                        onClick={() => handlePrint(card.id)}
-                        className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                        onClick={() => handlePrint(card)}
+                        className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
                         title="Print"
+                        disabled={previewing}
                       >
                         <Printer size={16} />
                       </button>
@@ -323,15 +409,15 @@ export default function ReportCardPage({
       </Card>
 
       {/* Empty State */}
-      {filteredReportCards.length === 0 && (
+      {filteredByClassSection.length === 0 && (
         <Card>
           <div className="text-center py-12">
             <FileText size={48} className="mx-auto mb-4 text-gray-300" />
             <p className="text-gray-500 font-medium">No report cards found</p>
             <p className="text-sm text-gray-400 mt-1">
-              {selectedClass && selectedSection && selectedExam 
-                ? 'Generate report cards for the selected criteria'
-                : 'Select class, section, and examination to view report cards'}
+              {selectedExam
+                ? 'No results for current filters'
+                : 'Select an examination to view report cards'}
             </p>
           </div>
         </Card>

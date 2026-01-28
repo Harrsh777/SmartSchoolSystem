@@ -176,26 +176,101 @@ export default function MarksEntryPage({
 
       const classId = classItem.id;
       setSelectedClassId(classId);
+      setError(''); // Clear previous errors
 
-      // Then fetch exams for this class
-      const response = await fetch(`/api/examinations?school_code=${schoolCode}&class_id=${classId}`);
+      // Then fetch exams for this class using the new v2 API
+      const response = await fetch(`/api/examinations/v2/list?school_code=${schoolCode}`);
       const result = await response.json();
-      if (response.ok) {
-        if (result.data && Array.isArray(result.data)) {
-          setExams(result.data);
-          if (result.data.length === 0) {
-            setError(`No examinations found for ${selectedClass}-${selectedSection}. Please create an examination first.`);
-          } else {
-            setError(''); // Clear any previous errors
-          }
-        } else {
-          setExams([]);
-          setError('No examinations found for this class. Please create an examination first.');
-        }
-      } else {
+      
+      if (!response.ok) {
         setError(result.error || 'Failed to load examinations. Please try again.');
-        console.error('Failed to fetch exams:', result);
         setExams([]);
+        console.error('API error:', result);
+        return;
+      }
+      
+      if (!result.data || !Array.isArray(result.data)) {
+        setError('Invalid response from server');
+        setExams([]);
+        return;
+      }
+      
+      console.log('Fetched exams:', result.data.length, 'exams');
+      console.log('Looking for classId:', classId, 'type:', typeof classId);
+      if (result.data.length > 0) {
+        console.log('Sample exam class_mappings:', JSON.stringify(result.data[0]?.class_mappings, null, 2));
+      }
+      
+      // Filter exams that have this class mapped
+      const examsForClass = (result.data as Record<string, unknown>[]).filter((exam: Record<string, unknown>) => {
+        const classMappings = exam.class_mappings as Record<string, unknown>[] | undefined;
+        if (!classMappings || !Array.isArray(classMappings)) {
+          console.log('Exam', exam.id, 'has no class_mappings or not an array');
+          return false;
+        }
+        const hasClass = classMappings.some((cm: Record<string, unknown>) => {
+          // Compare as strings to handle UUID comparison
+          const matches = String(cm.class_id) === String(classId);
+          if (!matches && result.data.length <= 5) {
+            console.log('Exam', exam.id, 'class_mapping class_id:', cm.class_id, 'type:', typeof cm.class_id, 'does not match', classId, 'type:', typeof classId);
+          }
+          return matches;
+        });
+        if (hasClass) {
+          console.log('Exam', exam.id, 'matches class', classId);
+        }
+        return hasClass;
+      });
+      
+      console.log('Filtered exams for class:', examsForClass.length);
+      
+      // Transform to match expected format
+      const transformedExams: Exam[] = examsForClass.map((exam: Record<string, unknown>): Exam => {
+        // Get subject mappings for this specific class
+        const subjectMappings = exam.subject_mappings as Record<string, unknown>[] | undefined;
+        const classSubjectMappings = subjectMappings?.filter((sm: Record<string, unknown>) => {
+          // Check if this subject mapping is for the selected class
+          // Subject mappings are linked to class via exam_subject_mappings.class_id
+          return String(sm.class_id) === String(classId);
+        }) || [];
+        
+        return {
+          id: exam.id as string,
+          name: (exam.exam_name as string) || (exam.name as string),
+          class_id: classId,
+          exam_subjects: classSubjectMappings.map((sm: Record<string, unknown>) => {
+            const subjectId = String(sm.subject_id || '');
+            const subject = sm.subject as Record<string, unknown> | undefined;
+            return {
+              id: subjectId,
+              subject_id: subjectId,
+              max_marks: typeof sm.max_marks === 'number' ? sm.max_marks : 100,
+              subject: subject
+                ? {
+                    id: String(subject.id || subjectId),
+                    name: String(subject.name || 'Unknown'),
+                    color: String(subject.color || '#000000'),
+                  }
+                : {
+                    id: subjectId,
+                    name: 'Unknown',
+                    color: '#000000',
+                  },
+            };
+          }),
+        };
+      });
+      
+      console.log('Transformed exams:', transformedExams.length);
+      if (transformedExams.length > 0) {
+        console.log('First transformed exam:', JSON.stringify(transformedExams[0], null, 2));
+      }
+      
+      setExams(transformedExams);
+      if (transformedExams.length === 0) {
+        setError(`No examinations found for ${selectedClass}-${selectedSection}. Please create an examination first.`);
+      } else {
+        setError(''); // Clear any previous errors
       }
     } catch (err) {
       console.error('Error fetching class ID and exams:', err);
@@ -211,25 +286,42 @@ export default function MarksEntryPage({
       setLoadingStudents(true);
       setError('');
 
-      // Fetch exam details to get subjects
-      const examRes = await fetch(`/api/examinations/${selectedExam}?school_code=${schoolCode}`);
+      // Fetch exam details to get subjects using v2 API
+      const examRes = await fetch(`/api/examinations/v2/list?school_code=${schoolCode}`);
       const examData = await examRes.json();
       if (!examRes.ok || !examData.data) {
         setError('Failed to fetch exam details');
         return;
       }
 
-      const exam: Exam = examData.data;
-      if (!exam.exam_subjects || exam.exam_subjects.length === 0) {
-        setError('No subjects found for this exam');
+      // Find the specific exam
+      const exam = (examData.data as Record<string, unknown>[]).find((e: Record<string, unknown>) => e.id === selectedExam);
+      if (!exam) {
+        setError('Examination not found');
+        return;
+      }
+
+      // Get subjects for this exam and class
+      const subjectMappings = exam.subject_mappings as Record<string, unknown>[] | undefined;
+      const examSubjectsForClass = subjectMappings?.filter((sm: Record<string, unknown>) => {
+        // Check if this subject mapping is for the selected class
+        return String(sm.class_id) === String(selectedClassId);
+      }) || [];
+
+      if (examSubjectsForClass.length === 0) {
+        setError('No subjects found for this exam and class');
         return;
       }
 
       // Set subjects from exam
-      const examSubjects: Subject[] = exam.exam_subjects.map((es) => ({
-        id: es.subject_id,
-        name: es.subject.name,
-        max_marks: es.max_marks,
+      const examSubjects: Subject[] = examSubjectsForClass.map((sm: Record<string, unknown>) => ({
+        id: String(sm.subject_id ?? ''), // Ensure id is a string
+        name: typeof sm.subject === 'object' && sm.subject && 'name' in sm.subject
+          ? (sm.subject as Record<string, unknown>).name as string
+          : 'Unknown',
+        max_marks: typeof sm.max_marks === 'number'
+          ? sm.max_marks
+          : 100,
       }));
       setSubjects(examSubjects);
 
@@ -325,22 +417,80 @@ export default function MarksEntryPage({
       }
     }
 
-    // Get staff ID from session storage
-    const storedStaff = sessionStorage.getItem('staff');
+    // Get user ID from session storage (supports staff, principal, admin)
     let enteredBy: string | null = null;
+    const role = sessionStorage.getItem('role');
+    const storedSchool = sessionStorage.getItem('school');
+    
+    console.log('Checking session storage for user:', { role, hasSchool: !!storedSchool });
+    
+    // Try staff first
+    const storedStaff = sessionStorage.getItem('staff');
     if (storedStaff) {
       try {
         const staffData = JSON.parse(storedStaff);
         enteredBy = staffData.id || null;
+        console.log('Found staff ID:', enteredBy);
+      } catch {
+        // Ignore parse errors
+      }
+    }
+    
+    // If no staff, try teacher
+    if (!enteredBy) {
+      const storedTeacher = sessionStorage.getItem('teacher');
+      if (storedTeacher) {
+        try {
+          const teacherData = JSON.parse(storedTeacher);
+          enteredBy = teacherData.id || null;
+          console.log('Found teacher ID:', enteredBy);
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+    
+    // If no staff/teacher, check if principal/admin
+    // Principals can be identified by:
+    // 1. role === 'principal' or 'admin' in sessionStorage
+    // 2. Having 'school' in sessionStorage (principal login stores school data)
+    // 3. Being on the /dashboard/[school]/ path (principal dashboard)
+    if (!enteredBy && storedSchool) {
+      try {
+        const schoolData = JSON.parse(storedSchool);
+        // Try to get principal_id if available
+        enteredBy = schoolData.principal_id || null;
+        console.log('Principal/Admin - enteredBy from school data:', enteredBy);
+        // If still null, that's okay - principals can save marks without staff ID
+        // The API should handle null entered_by for principals
       } catch {
         // Ignore parse errors
       }
     }
 
-    if (!enteredBy) {
+    // Determine if user is principal/admin:
+    // 1. Check role in sessionStorage
+    // 2. Check if school data exists (principal login stores this)
+    // 3. User is on principal dashboard path (/dashboard/[school]/)
+    const isPrincipalOrAdmin = 
+      role === 'principal' || 
+      role === 'admin' || 
+      !!storedSchool; // If school data exists, user is likely a principal
+    
+    console.log('Final check:', { 
+      enteredBy, 
+      role, 
+      hasSchool: !!storedSchool,
+      isPrincipalOrAdmin 
+    });
+    
+    if (!enteredBy && !isPrincipalOrAdmin) {
+      console.error('Access denied - no enteredBy and not principal/admin. Role:', role, 'Has school:', !!storedSchool);
       setError('Please log in to save marks');
       return false;
     }
+    
+    console.log('Access granted - proceeding with save. enteredBy:', enteredBy || 'null (principal/admin)');
 
     const action = submitForReview ? setSubmitting : setSaving;
     action(true);
@@ -363,6 +513,14 @@ export default function MarksEntryPage({
       });
 
       // Use bulk API for efficiency
+      console.log('Saving marks with:', {
+        school_code: schoolCode,
+        exam_id: selectedExam,
+        class_id: selectedClassId,
+        entered_by: enteredBy,
+        marks_count: bulkMarks.length,
+      });
+      
       const endpoint = submitForReview ? '/api/examinations/marks/submit' : '/api/examinations/marks/bulk';
       const response = await fetch(endpoint, {
         method: 'POST',

@@ -10,6 +10,7 @@ import {
   GraduationCap, 
   Calendar, 
   CalendarDays,
+  Library,
   FileText, 
   DollarSign, 
   Bell, 
@@ -59,8 +60,9 @@ const menuItems: MenuItem[] = [
   { icon: FileText, label: 'Examinations', path: '/student/dashboard/examinations', parent: 'Academics' },
   { icon: BarChart3, label: 'Marks', path: '/student/dashboard/marks', parent: 'Academics' },
   { icon: ClipboardCheck, label: 'Copy Checking', path: '/student/dashboard/copy-checking', parent: 'Academics' },
-  { icon: CalendarDays, label: 'Academic Calendar', path: '/student/dashboard/calendar', parent: 'Academics' },
+  { icon: CalendarDays, label: 'Academic Calendar', path: '/student/dashboard/calendar/academic', parent: 'Academics' },
   { icon: BookOpen, label: 'Digital Diary', path: '/student/dashboard/diary', parent: 'Academics' },
+  { icon: Library, label: 'Library', path: '/student/dashboard/library', parent: 'Academics' },
   
   // Fees & Transport Module
   { icon: DollarSign, label: 'Fees & Transport', path: '#', isModule: true },
@@ -136,10 +138,35 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
   }, []);
 
   useEffect(() => {
-    // Check if student is logged in
+    // Skip authentication check for login page
+    if (pathname === '/student/login') {
+      setLoading(false);
+      return;
+    }
+
     const storedStudent = sessionStorage.getItem('student');
     const role = sessionStorage.getItem('role');
 
+    // Academic calendar: allow any logged-in user (student or staff) without permission check
+    if (pathname === '/student/dashboard/calendar/academic') {
+      if (!role) {
+        router.push('/login');
+        return;
+      }
+      if (storedStudent && role === 'student') {
+        try {
+          const studentData = JSON.parse(storedStudent);
+          setStudent(studentData);
+          fetchSchoolName(studentData.school_code);
+        } catch (err) {
+          console.error('Error parsing student data:', err);
+        }
+      }
+      setLoading(false);
+      return;
+    }
+
+    // All other student dashboard pages require student login
     if (!storedStudent || role !== 'student') {
       router.push('/login');
       return;
@@ -155,7 +182,7 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, pathname]);
 
   const fetchSchoolName = async (schoolCode: string) => {
     try {
@@ -203,6 +230,25 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
     const subItems = getSubItems(moduleName);
     return subItems.some(item => isActive(item.path));
   };
+
+  // Don't render layout for login page
+  if (pathname === '/student/login') {
+    return <>{children}</>;
+  }
+
+  // Academic calendar: staff (or anyone without student) see only the page content, no sidebar
+  if (pathname === '/student/dashboard/calendar/academic' && !loading) {
+    if (!student) {
+      return (
+        <div className="min-h-screen bg-[#ECEDED] p-4 md:p-6">
+          <div className="max-w-5xl mx-auto">
+            {children}
+          </div>
+        </div>
+      );
+    }
+    // Student: fall through to full layout below
+  }
 
   if (loading || !student) {
     return (
@@ -295,7 +341,8 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
+                onClick={async () => {
+                  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
                   sessionStorage.removeItem('student');
                   sessionStorage.removeItem('role');
                   router.push('/login');

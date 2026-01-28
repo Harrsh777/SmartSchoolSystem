@@ -451,17 +451,18 @@ export default function TimetablePage({
       if (DAYS.includes(day) && PERIODS.includes(period)) {
         const subject = subjects.find(s => s.id === subjectId);
         
-        // Fetch teachers for this subject
+        // Fetch teachers for this subject using staff-subjects endpoint
         if (subject) {
           try {
-            const response = await fetch(`/api/staff/by-subject?school_code=${schoolCode}&subject=${encodeURIComponent(subject.name)}`);
+            const response = await fetch(`/api/staff-subjects/by-subject?school_code=${schoolCode}&subject_id=${subject.id}`);
             const result = await response.json();
             if (response.ok && result.data && result.data.length > 0) {
               setAvailableTeachers(result.data);
               setSelectedSlot({ day, period, subjectId });
               setSelectedTeachers([]);
             } else {
-              // No teachers found, save without teacher assignment
+              // No teachers found for this subject, show message but still allow saving
+              alert(`No teachers assigned to ${subject.name}. Please assign teachers to this subject first in Subject Teachers section.`);
               await saveSlot(day, period, subjectId, []);
             }
           } catch (error) {

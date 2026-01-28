@@ -1,6 +1,8 @@
 'use client';
 
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useState, useEffect, useMemo } from 'react';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import MenuSkeletonLoader from '@/components/MenuSkeletonLoader';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
@@ -43,7 +45,8 @@ import {
   BarChart3,
   Tag,
   Receipt,
-  CreditCard
+  CreditCard,
+  Clock
 } from 'lucide-react';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { languages } from '@/lib/translations';
@@ -78,6 +81,8 @@ import HelpModal from '@/components/help/HelpModal';
 interface DashboardLayoutProps {
   children: ReactNode;
   schoolName: string;
+  /** Session timer remaining seconds (e.g. from useSessionTimeout). When set, shows mm:ss next to header. */
+  timeRemaining?: number;
 }
 
 const menuItems = [
@@ -128,6 +133,9 @@ interface SortableMenuItemProps {
   setLeaveModalOpen: (open: boolean) => void;
   t: (key: string) => string;
 }
+
+// Default icon for sub-items that don't have one
+const DefaultSubItemIcon = ChevronRight;
 
 function SortableMenuItem({
   item,
@@ -187,10 +195,20 @@ function SortableMenuItem({
             <div
               {...attributes}
               {...listeners}
-              className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156] transition-colors opacity-0 group-hover:opacity-100"
+              className="cursor-grab active:cursor-grabbing p-1.5 rounded hover:bg-white/10 transition-colors opacity-70 group-hover:opacity-100 flex-shrink-0 touch-none"
               title="Drag to reorder"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+              }}
             >
-              <GripVertical size={14} className="text-[#C8D9E6] hover:text-white" />
+              <GripVertical size={16} className="text-slate-300 hover:text-white pointer-events-none" />
             </div>
           )}
           <button
@@ -220,7 +238,7 @@ function SortableMenuItem({
             }}
             className={`group flex-1 flex ${sidebarCollapsed ? 'flex-col items-center px-2' : 'items-center gap-3 px-2'} py-3 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active
-                ? 'bg-gradient-to-r from-[#6B9BB8] to-[#7DB5D3] text-white shadow-xl shadow-[#6B9BB8]/30 scale-[1.02]'
+                ? 'bg-gradient-to-r from-slate-600 to-slate-500 text-white shadow-lg scale-[1.02]'
                 : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
             }`}
           >
@@ -236,9 +254,9 @@ function SortableMenuItem({
             <div className={`${sidebarCollapsed ? 'w-10 h-10' : 'w-10 h-10'} rounded-xl flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active 
                 ? 'bg-white/20 shadow-lg' 
-                : 'bg-transparent group-hover:bg-[#567C8D]/50 dark:group-hover:bg-[#2F4156] group-hover:scale-110 group-hover:shadow-md'
+                : 'bg-transparent group-hover:bg-white/10 group-hover:scale-110 group-hover:shadow-md'
             }`}>
-              <Icon size={20} className={active ? 'text-white' : 'text-[#C8D9E6] group-hover:text-white'} />
+              <Icon size={20} className={active ? 'text-white' : 'text-slate-300 group-hover:text-white'} />
             </div>
             <AnimatePresence mode="wait">
               {sidebarCollapsed ? (
@@ -248,7 +266,7 @@ function SortableMenuItem({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -5 }}
                   transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1], delay: 0.1 }}
-                  className="text-[10px] font-medium text-center mt-1 leading-tight text-[#C8D9E6] group-hover:text-white"
+                  className="text-[10px] font-medium text-center mt-1 leading-tight text-slate-300 group-hover:text-white"
                 >
                   {item.path === '' ? t('nav.home') : 
                    item.path === '/institute-info' ? t('nav.institute_info') :
@@ -301,7 +319,7 @@ function SortableMenuItem({
               <ChevronDown 
                 size={16} 
                 className={`transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${isExpanded ? 'rotate-180' : ''} ${
-                  active ? 'text-white' : 'text-[#C8D9E6]'
+                  active ? 'text-white' : 'text-slate-300'
                 }`} 
               />
             )}
@@ -318,7 +336,7 @@ function SortableMenuItem({
             transition={{ duration: 0.2 }}
             className="mt-1 ml-4 overflow-hidden"
           >
-            <div className="bg-[#567C8D]/50 dark:bg-[#2F4156] rounded-lg shadow-lg border border-[#6B9BB8]/30 dark:border-gray-700/50 py-2">
+            <div className="bg-white/10 rounded-lg shadow-lg border border-slate-600/40 py-2">
               {subItems.map((subItem) => {
                 const SubIcon = subItem.icon;
                 const subActive = isActive(subItem.path);
@@ -331,7 +349,7 @@ function SortableMenuItem({
                     }}
                     className={`group flex items-center gap-3 px-4 py-2.5 transition-all duration-300 ${
                       subActive
-                        ? 'bg-[#4A707A] dark:bg-[#5A879A] text-white'
+                        ? 'bg-slate-500 text-white'
                         : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
                     }`}
                   >
@@ -341,7 +359,7 @@ function SortableMenuItem({
                     </span>
                     <ExternalLink size={14} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
                     {subActive && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#4A707A] dark:bg-[#5A879A] animate-pulse" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse" />
                     )}
                   </Link>
                 );
@@ -365,10 +383,20 @@ function SortableMenuItem({
           <div
             {...attributes}
             {...listeners}
-            className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156] transition-colors opacity-0 group-hover:opacity-100"
+            className="cursor-grab active:cursor-grabbing p-1.5 rounded hover:bg-white/10 transition-colors opacity-70 group-hover:opacity-100 flex-shrink-0 touch-none"
             title="Drag to reorder"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+            }}
           >
-            <GripVertical size={14} className="text-[#C8D9E6] hover:text-white" />
+            <GripVertical size={16} className="text-slate-300 hover:text-white pointer-events-none" />
           </div>
         )}
         
@@ -377,7 +405,7 @@ function SortableMenuItem({
             onClick={() => toggleSection(item.label)}
             className={`group flex-1 flex ${sidebarCollapsed ? 'flex-col items-center px-2' : 'items-center gap-3 px-2'} py-3 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active
-                ? 'bg-gradient-to-r from-[#6B9BB8] to-[#7DB5D3] text-white shadow-xl shadow-[#6B9BB8]/30 scale-[1.02]'
+                ? 'bg-gradient-to-r from-slate-600 to-slate-500 text-white shadow-lg scale-[1.02]'
                 : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
             }`}
           >
@@ -393,9 +421,9 @@ function SortableMenuItem({
             <div className={`${sidebarCollapsed ? 'w-10 h-10' : 'w-10 h-10'} rounded-xl flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active 
                 ? 'bg-white/20 shadow-lg' 
-                : 'bg-transparent group-hover:bg-[#567C8D]/50 dark:group-hover:bg-[#2F4156] group-hover:scale-110 group-hover:shadow-md'
+                : 'bg-transparent group-hover:bg-white/10 group-hover:scale-110 group-hover:shadow-md'
             }`}>
-              <Icon size={20} className={active ? 'text-white' : 'text-[#C8D9E6] group-hover:text-white'} />
+              <Icon size={20} className={active ? 'text-white' : 'text-slate-300 group-hover:text-white'} />
             </div>
             <AnimatePresence mode="wait">
               {sidebarCollapsed ? (
@@ -405,7 +433,7 @@ function SortableMenuItem({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -5 }}
                   transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1], delay: 0.1 }}
-                  className="text-[10px] font-medium text-center mt-1 leading-tight text-[#C8D9E6] group-hover:text-white"
+                  className="text-[10px] font-medium text-center mt-1 leading-tight text-slate-300 group-hover:text-white"
                 >
                   {item.path === '' ? t('nav.home') : 
                    item.path === '/institute-info' ? t('nav.institute_info') :
@@ -458,7 +486,7 @@ function SortableMenuItem({
               <ChevronDown 
                 size={16} 
                 className={`transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${isExpanded ? 'rotate-180' : ''} ${
-                  active ? 'text-white' : 'text-[#C8D9E6]'
+                  active ? 'text-white' : 'text-slate-300'
                 }`} 
               />
             )}
@@ -474,7 +502,7 @@ function SortableMenuItem({
             }}
             className={`group flex-1 flex ${sidebarCollapsed ? 'flex-col items-center px-2' : 'items-center gap-3 px-2'} py-3 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active
-                ? 'bg-gradient-to-r from-[#6B9BB8] to-[#7DB5D3] text-white shadow-xl shadow-[#6B9BB8]/30 scale-[1.02]'
+                ? 'bg-gradient-to-r from-slate-600 to-slate-500 text-white shadow-lg scale-[1.02]'
                 : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
             }`}
           >
@@ -490,9 +518,9 @@ function SortableMenuItem({
             <div className={`${sidebarCollapsed ? 'w-10 h-10' : 'w-10 h-10'} rounded-xl flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active 
                 ? 'bg-white/20 shadow-lg' 
-                : 'bg-transparent group-hover:bg-[#567C8D]/50 dark:group-hover:bg-[#2F4156] group-hover:scale-110 group-hover:shadow-md'
+                : 'bg-transparent group-hover:bg-white/10 group-hover:scale-110 group-hover:shadow-md'
             }`}>
-              <Icon size={20} className={active ? 'text-white' : 'text-[#C8D9E6] group-hover:text-white'} />
+              <Icon size={20} className={active ? 'text-white' : 'text-slate-300 group-hover:text-white'} />
             </div>
             {sidebarCollapsed ? (
               <motion.span 
@@ -500,7 +528,7 @@ function SortableMenuItem({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 }}
-                  className="text-[10px] font-medium text-center mt-1 leading-tight text-[#C8D9E6] group-hover:text-white"
+                  className="text-[10px] font-medium text-center mt-1 leading-tight text-slate-300 group-hover:text-white"
               >
                 {item.path === '' ? t('nav.home') : 
                  item.path === '/institute-info' ? t('nav.institute_info') :
@@ -555,7 +583,7 @@ function SortableMenuItem({
           transition={{ duration: 0.2 }}
           className="mt-1 ml-4 overflow-hidden"
         >
-          <div className="bg-[#567C8D]/50 dark:bg-[#2F4156] rounded-lg shadow-lg border border-[#6B9BB8]/30 dark:border-gray-700/50 py-2">
+          <div className="bg-white/10 rounded-lg shadow-lg border border-slate-600/40 py-2">
             {subItems.map((subItem) => {
               const SubIcon = subItem.icon;
               const subActive = isActive(subItem.path);
@@ -568,7 +596,7 @@ function SortableMenuItem({
                   }}
                   className={`group flex items-center gap-3 px-4 py-2.5 transition-all duration-300 ${
                     subActive
-                      ? 'bg-[#6B9BB8]/30 dark:bg-[#2F4156] text-[#6B9BB8] dark:text-[#7DB5D3]'
+                      ? 'bg-white/10 text-slate-200'
                       : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
                   }`}
                 >
@@ -578,7 +606,7 @@ function SortableMenuItem({
                   </span>
                   <ExternalLink size={14} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
                   {subActive && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#4A707A] dark:bg-[#5A879A] animate-pulse" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse" />
                   )}
                 </Link>
               );
@@ -590,7 +618,7 @@ function SortableMenuItem({
   );
 }
 
-export default function DashboardLayout({ children, schoolName }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, schoolName, timeRemaining }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { language, setLanguage, t } = useTranslation();
@@ -622,12 +650,25 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
   const [userInfo, setUserInfo] = useState<{ name?: string; role?: string; id?: string; isAdmin?: boolean }>({});
   const [permissions, setPermissions] = useState<string[]>([]);
   const [userInfoLoaded, setUserInfoLoaded] = useState(false);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [dynamicMenuItems, setDynamicMenuItems] = useState<Array<{
+    module_name: string;
+    module_key: string;
+    display_order: number;
+    sub_modules: Array<{
+      name: string;
+      key: string;
+      route: string;
+      has_view_access: boolean;
+      has_edit_access: boolean;
+    }>;
+  }>>([]);
 
-  // DnD Sensors
+  // DnD Sensors - Improved for better drag handling
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 5, // Reduced from 8 for more responsive dragging
       },
     }),
     useSensor(KeyboardSensor, {
@@ -689,6 +730,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     const storedSchool = sessionStorage.getItem('school');
     const storedStudent = sessionStorage.getItem('student');
     const storedTeacher = sessionStorage.getItem('teacher');
+    const storedStaff = sessionStorage.getItem('staff');
     
     if (storedSchool) {
       try {
@@ -715,6 +757,29 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
         // Ignore parse errors
         setUserInfoLoaded(true);
       }
+    } else if (storedStaff) {
+      try {
+        const staff = JSON.parse(storedStaff);
+        const isAdmin = staff.role?.toLowerCase().includes('principal') || 
+                       staff.role?.toLowerCase().includes('admin');
+        setUserInfo({
+          name: staff.full_name || 'Staff',
+          role: staff.role || 'Staff',
+          id: staff.id,
+          isAdmin,
+        });
+        setUserInfoLoaded(true);
+        // Fetch dynamic menu and permissions for staff member
+        if (staff.id && !isAdmin) {
+          // Set loading state immediately before fetching to prevent showing incomplete menu
+          setMenuLoading(true);
+          fetchStaffMenu(staff.id);
+          fetchStaffPermissions(staff.id);
+        }
+      } catch {
+        // Ignore parse errors
+        setUserInfoLoaded(true);
+      }
     } else if (storedTeacher) {
       try {
         const teacher = JSON.parse(storedTeacher);
@@ -724,8 +789,11 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
           id: teacher.id,
         });
         setUserInfoLoaded(true);
-        // Fetch permissions for staff member
+        // Fetch dynamic menu and permissions for staff member
         if (teacher.id) {
+          // Set loading state immediately before fetching to prevent showing incomplete menu
+          setMenuLoading(true);
+          fetchStaffMenu(teacher.id);
           fetchStaffPermissions(teacher.id);
         }
       } catch {
@@ -733,10 +801,40 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
         setUserInfoLoaded(true);
       }
     } else {
-      // No user info found, but mark as loaded to prevent infinite waiting
+      // No user info found in this tab (e.g. opened dashboard in a new tab).
+      // Since this layout is only used for /dashboard/[school] and middleware
+      // already ensures only school admins/principals can reach it, treat this
+      // as a school admin session so that the full menu is visible.
+      setUserInfo({
+        name: schoolName || 'School Admin',
+        role: 'School Admin',
+        isAdmin: true,
+      });
       setUserInfoLoaded(true);
     }
-  }, []);
+  }, [schoolName]);
+
+  const fetchStaffMenu = async (staffId: string) => {
+    try {
+      setMenuLoading(true);
+      const response = await fetch(`/api/staff/${staffId}/menu`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        console.log('Fetched staff menu items:', result.data.length, 'modules');
+        setDynamicMenuItems(result.data || []);
+      } else {
+        console.error('Failed to fetch staff menu:', result.error || 'Unknown error');
+        // Set empty array to ensure only default items show, not all menuItems
+        setDynamicMenuItems([]);
+      }
+    } catch (error) {
+      console.error('Error fetching dynamic menu:', error);
+      // Set empty array to ensure only default items show, not all menuItems
+      setDynamicMenuItems([]);
+    } finally {
+      setMenuLoading(false);
+    }
+  };
 
   const fetchStaffPermissions = async (staffId: string) => {
     try {
@@ -750,48 +848,168 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     }
   };
 
-  // Load menu order from localStorage on mount
+  // Map dynamic menu items to menuItems format
+  // Memoize this to avoid recalculating on every render
+  const getDynamicMenuItems = useMemo(() => {
+    if (!userInfo.id || userInfo.isAdmin || dynamicMenuItems.length === 0) {
+      return [];
+    }
+
+    // Icon mapping for modules
+    const iconMap: Record<string, typeof Home> = {
+      'student_management': Users,
+      'fee_management': DollarSign,
+      'staff_management': UserCheck,
+      'examination': FileText,
+      'marks': GraduationCap,
+      'library': Library,
+      'transport': Bus,
+      'timetable': CalendarDays,
+      'leave_management': CalendarDays,
+      'communication': MessageSquare,
+      'reports': FileBarChart,
+      'gallery': Image,
+      'certificate_management': Award,
+      'digital_diary': BookMarked,
+      'expense_income': TrendingUp,
+      'front_office': DoorOpen,
+      'copy_checking': FileText,
+    };
+
+    const dynamicItems: Array<typeof menuItems[0]> = [];
+    
+    dynamicMenuItems.forEach((module) => {
+      // Only add modules that have sub-modules with view access
+      const accessibleSubModules = module.sub_modules.filter(sm => sm.has_view_access);
+      if (accessibleSubModules.length === 0) return;
+
+      // Use the first sub-module's route as the main path, or create a base path
+      const mainSubModule = accessibleSubModules[0];
+      const basePath = mainSubModule.route.replace('/dashboard/[school]', '') || `/${module.module_key}`;
+      
+      dynamicItems.push({
+        icon: iconMap[module.module_key] || FileText,
+        label: module.module_name,
+        path: basePath,
+        permission: null,
+        viewPermission: null,
+        // isModal is optional, don't include it for dynamic items
+      });
+    });
+
+    return dynamicItems;
+  }, [userInfo.id, userInfo.isAdmin, dynamicMenuItems]);
+
+  // Merge hardcoded menu with dynamic menu
+  // For admin/principal, show all hardcoded items
+  // For staff, show dynamic menu items merged with always-visible items
+  const getMergedMenuItems = useMemo(() => {
+    if (userInfo.isAdmin) {
+      // Admin/Principal sees all hardcoded menu items
+      return menuItems;
+    }
+
+    // For staff, always show only default items + dynamic menu items
+    // Default items that should always be visible to all staff
+    const alwaysVisible = menuItems.filter(item => 
+      item.path === '' || // Home
+      item.path === '/institute-info' || // Institute Info
+      item.path === '/gallery' || // Gallery (visible to all)
+      item.path === '/settings' // Settings (visible to all staff)
+    );
+    
+    // If we have userInfo.id but menu is still loading, return only alwaysVisible
+    // This prevents showing incomplete menu on first load
+    if (userInfo.id && menuLoading) {
+      return alwaysVisible;
+    }
+    
+    if (userInfo.id) {
+      // Staff sees dynamic menu + always-visible items
+      // Use the memoized dynamic items (it's now a value, not a function)
+      const dynamicItems = getDynamicMenuItems;
+      
+      // Merge and deduplicate by path
+      const merged = [...alwaysVisible];
+      dynamicItems.forEach((dynamicItem: typeof menuItems[0]) => {
+        if (!merged.some(item => item.path === dynamicItem.path)) {
+          merged.push(dynamicItem);
+        }
+      });
+      
+      return merged;
+    }
+
+    // If no user info, return only always visible items (not all menuItems)
+    return alwaysVisible;
+  }, [userInfo, menuLoading, getDynamicMenuItems]);
+
+  // Filter menu items based on permissions
+  const filteredMenuItems = getMergedMenuItems;
+
+  // Sort menu items based on saved order
+  const sortedMenuItems = useMemo(() => {
+    if (menuOrder.length === 0 || filteredMenuItems.length === 0) {
+      return filteredMenuItems;
+    }
+    
+    // Create a map for quick lookup
+    const orderMap = new Map(menuOrder.map((path, index) => [path, index]));
+    
+    // Sort items based on saved order
+    return [...filteredMenuItems].sort((a, b) => {
+      const indexA = orderMap.get(a.path) ?? Infinity;
+      const indexB = orderMap.get(b.path) ?? Infinity;
+      
+      // Items in saved order come first, sorted by their order
+      if (indexA !== Infinity && indexB !== Infinity) {
+        return indexA - indexB;
+      }
+      // Items in saved order come before items not in saved order
+      if (indexA !== Infinity) return -1;
+      if (indexB !== Infinity) return 1;
+      // Items not in saved order maintain their original relative order
+      const originalIndexA = filteredMenuItems.indexOf(a);
+      const originalIndexB = filteredMenuItems.indexOf(b);
+      return originalIndexA - originalIndexB;
+    });
+  }, [filteredMenuItems, menuOrder]);
+
+  // Initialize and sync menu order with filtered items
   useEffect(() => {
+    if (filteredMenuItems.length === 0) return;
+    
     const savedOrder = localStorage.getItem(`menu-order-${schoolCode}`);
+    const currentPaths = filteredMenuItems.map(item => item.path);
+    
     if (savedOrder) {
       try {
         const parsedOrder = JSON.parse(savedOrder);
-        setMenuOrder(parsedOrder);
+        // Validate and merge: keep saved order for existing items, add new items at the end
+        const validOrder = parsedOrder.filter((path: string) => currentPaths.includes(path));
+        const newItems = currentPaths.filter(path => !validOrder.includes(path));
+        const mergedOrder = [...validOrder, ...newItems];
+        
+        // Only update if order changed or if menuOrder is empty
+        if (menuOrder.length === 0 || JSON.stringify(mergedOrder) !== JSON.stringify(menuOrder)) {
+          setMenuOrder(mergedOrder);
+          localStorage.setItem(`menu-order-${schoolCode}`, JSON.stringify(mergedOrder));
+        }
       } catch (error) {
         console.error('Error parsing saved menu order:', error);
+        // Fallback to default order
+        setMenuOrder(currentPaths);
+        localStorage.setItem(`menu-order-${schoolCode}`, JSON.stringify(currentPaths));
+      }
+    } else {
+      // No saved order, use default
+      if (menuOrder.length === 0 || JSON.stringify(currentPaths) !== JSON.stringify(menuOrder)) {
+        setMenuOrder(currentPaths);
+        localStorage.setItem(`menu-order-${schoolCode}`, JSON.stringify(currentPaths));
       }
     }
-  }, [schoolCode]);
-
-  // Filter menu items based on permissions
-  // Show ALL menu items regardless of permissions
-  const filteredMenuItems = menuItems;
-
-  // Sort menu items based on saved order
-  const sortedMenuItems = menuOrder.length > 0
-    ? [...filteredMenuItems].sort((a, b) => {
-        const indexA = menuOrder.indexOf(a.path);
-        const indexB = menuOrder.indexOf(b.path);
-        // If both items are in the saved order, sort by their order
-        if (indexA !== -1 && indexB !== -1) {
-          return indexA - indexB;
-        }
-        // If only one is in the saved order, prioritize it
-        if (indexA !== -1) return -1;
-        if (indexB !== -1) return 1;
-        // If neither is in the saved order, maintain original order
-        return filteredMenuItems.indexOf(a) - filteredMenuItems.indexOf(b);
-      })
-    : filteredMenuItems;
-
-  // Initialize menu order if not set
-  useEffect(() => {
-    if (menuOrder.length === 0 && filteredMenuItems.length > 0) {
-      const initialOrder = filteredMenuItems.map(item => item.path);
-      setMenuOrder(initialOrder);
-      localStorage.setItem(`menu-order-${schoolCode}`, JSON.stringify(initialOrder));
-    }
-  }, [filteredMenuItems, menuOrder.length, schoolCode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredMenuItems.length, schoolCode]); // Only depend on length to avoid infinite loops
 
   // Handle drag start
   const handleDragStart = (event: DragStartEvent) => {
@@ -807,20 +1025,25 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
       return;
     }
 
-    const oldIndex = menuOrder.indexOf(active.id as string);
-    const newIndex = menuOrder.indexOf(over.id as string);
+    // Use sortedMenuItems to get the actual current order
+    const currentPaths = sortedMenuItems.map(item => item.path);
+    const oldIndex = currentPaths.indexOf(active.id as string);
+    const newIndex = currentPaths.indexOf(over.id as string);
 
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const newOrder = [...menuOrder];
+    if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+      // Create new order array
+      const newOrder = [...currentPaths];
       const [removed] = newOrder.splice(oldIndex, 1);
       newOrder.splice(newIndex, 0, removed);
+      
+      // Update state and localStorage
       setMenuOrder(newOrder);
       localStorage.setItem(`menu-order-${schoolCode}`, JSON.stringify(newOrder));
     }
   };
 
-  const handleLogout = () => {
-    // Clear all session data
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     sessionStorage.clear();
     localStorage.removeItem('dashboard_language'); // Optional: keep language preference
     router.push('/login');
@@ -871,10 +1094,9 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Home', path: '', category: 'Management', icon: Home },
     { label: 'Institute Info', path: '/institute-info', category: 'Management', icon: Building2 },
     { label: 'Basic Institute Info', path: '/institute-info', category: 'Management', icon: Building2, parent: 'Institute Info' },
-    { label: 'Setup Your School faster', path: '/institute-info/setup', category: 'Management', icon: Building2, parent: 'Institute Info' },
+    
     { label: 'Role Management', path: '/settings/roles', category: 'Management', icon: Shield },
     { label: 'Password Manager', path: '/password', category: 'Management', icon: Key },
-    { label: 'Settings', path: '/settings', category: 'Management', icon: Settings },
     
     // Staff Management
     { label: 'Staff Management', path: '/staff-management', category: 'Staff Management', icon: UserCheck },
@@ -883,8 +1105,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Bulk Staff Import', path: '/staff-management/bulk-import', category: 'Staff Management', icon: UserCheck, parent: 'Staff Management' },
     { label: 'Bulk Photo Upload', path: '/staff-management/bulk-photo', category: 'Staff Management', icon: UserCheck, parent: 'Staff Management' },
     { label: 'Staff Attendance', path: '/staff-management/attendance', category: 'Staff Management', icon: UserCheck, parent: 'Staff Management' },
-    { label: 'Staff Mark Bulk Attendance', path: '/staff-management/bulk-attendance', category: 'Staff Management', icon: UserCheck, parent: 'Staff Management' },
-    { label: 'Student Attendance Marking Report', path: '/staff-management/student-attendance-report', category: 'Staff Management', icon: UserCheck, parent: 'Staff Management' },
+    { label: 'Staff Attendance Marking Report', path: '/staff-management/student-attendance-report', category: 'Staff Management', icon: UserCheck, parent: 'Staff Management' },
     
     // Classes
     { label: 'Classes', path: '/classes', category: 'Classes', icon: BookOpen },
@@ -915,12 +1136,10 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     
     // Examinations
     { label: 'Examinations', path: '/examinations', category: 'Examinations', icon: FileText },
+    { label: 'Examination Dashboard', path: '/examinations/dashboard', category: 'Examinations', icon: BarChart3, parent: 'Examinations' },
     { label: 'Create Examination', path: '/examinations/create', category: 'Examinations', icon: FileText, parent: 'Examinations' },
     { label: 'Grade Scale', path: '/examinations/grade-scale', category: 'Examinations', icon: GraduationCap, parent: 'Examinations' },
-    { label: 'Marks Entry', path: '/examinations/marks-entry', category: 'Examinations', icon: ClipboardList, parent: 'Examinations' },
-    { label: 'Offline Tests', path: '/examinations/offline-tests', category: 'Examinations', icon: FileText, parent: 'Examinations' },
     { label: 'Report Card', path: '/examinations/report-card', category: 'Examinations', icon: Award, parent: 'Examinations' },
-    { label: 'Report Card Template', path: '/examinations/report-card-template', category: 'Examinations', icon: FileBarChart, parent: 'Examinations' },
     { label: 'Examination Reports', path: '/examinations/reports', category: 'Examinations', icon: BarChart3, parent: 'Examinations' },
     // Note: Exam Schedule and View Marks are dynamic routes and cannot be included in sidebar navigation
     // They are accessible from individual exam pages
@@ -936,12 +1155,10 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Fee Heads', path: '/fees/v2/fee-heads', category: 'Fees', icon: Tag, parent: 'Fees' },
     { label: 'Fee Structures', path: '/fees/v2/fee-structures', category: 'Fees', icon: FileText, parent: 'Fees' },
     { label: 'Collect Payment', path: '/fees/v2/collection', category: 'Fees', icon: CreditCard, parent: 'Fees' },
-    { label: 'Fee Setup (Legacy)', path: '/fees/setup', category: 'Fees', icon: Settings, parent: 'Fees' },
-    { label: 'Fee Collection (Legacy)', path: '/fees/collection', category: 'Fees', icon: CreditCard, parent: 'Fees' },
+
     { label: 'Student Fee Statements', path: '/fees/statements', category: 'Fees', icon: Receipt, parent: 'Fees' },
     { label: 'Discounts & Fines', path: '/fees/discounts-fines', category: 'Fees', icon: Tag, parent: 'Fees' },
     { label: 'Fee Reports', path: '/fees/reports', category: 'Fees', icon: BarChart3, parent: 'Fees' },
-    { label: 'Fee Configuration', path: '/fees/configuration', category: 'Fees', icon: Settings, parent: 'Fees' },
     
     // Library
     { label: 'Library', path: '/library', category: 'Library', icon: Library },
@@ -1136,79 +1353,147 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
       return [];
     }
     
+    // Check if this menu item corresponds to a dynamic module
+    if (userInfo.id && !userInfo.isAdmin && dynamicMenuItems.length > 0) {
+      // Find matching dynamic module
+      const matchingModule = dynamicMenuItems.find(module => {
+        const moduleBasePath = module.sub_modules[0]?.route.replace('/dashboard/[school]', '') || `/${module.module_key}`;
+        return moduleBasePath === mainMenuItem.path || module.module_name === mainMenuItem.label;
+      });
+      
+      if (matchingModule) {
+        // Return sub-modules from dynamic menu
+        return matchingModule.sub_modules
+          .filter(sm => sm.has_view_access)
+          .map(sm => ({
+            label: sm.name,
+            path: sm.route.replace('/dashboard/[school]', ''),
+            icon: mainMenuItem.icon || DefaultSubItemIcon,
+          }));
+      }
+    }
+    
     // Front Office management should have sub-items
     if (mainMenuItem.path === '/front-office') {
-      return searchableItems.filter(item => item.parent === 'Front Office management');
+      return searchableItems
+        .filter(item => item.parent === 'Front Office management')
+        .map(item => ({
+          label: item.label,
+          path: item.path,
+          icon: item.icon || mainMenuItem.icon || DefaultSubItemIcon,
+        }));
     }
     
     // Institute Info should have sub-items
     if (mainMenuItem.path === '/institute-info') {
-      return searchableItems.filter(item => item.parent === 'Institute Info');
+      return searchableItems
+        .filter(item => item.parent === 'Institute Info')
+        .map(item => ({
+          label: item.label,
+          path: item.path,
+          icon: item.icon || mainMenuItem.icon || DefaultSubItemIcon,
+        }));
     }
     
     // Classes should have sub-items
     if (mainMenuItem.path === '/classes') {
-      return searchableItems.filter(item => item.parent === 'Classes');
+      return searchableItems
+        .filter(item => item.parent === 'Classes')
+        .map(item => ({
+          label: item.label,
+          path: item.path,
+          icon: item.icon || mainMenuItem.icon || DefaultSubItemIcon,
+        }));
     }
     
     // Examinations should have sub-items (filter out dynamic routes)
     if (mainMenuItem.path === '/examinations') {
-      return searchableItems.filter(item => 
-        item.parent === 'Examinations' && 
-        !item.path.includes('[') && 
-        !item.path.includes(']')
-      );
+      return searchableItems
+        .filter(item => 
+          item.parent === 'Examinations' && 
+          !item.path.includes('[') && 
+          !item.path.includes(']')
+        )
+        .map(item => ({
+          label: item.label,
+          path: item.path,
+          icon: item.icon || mainMenuItem.icon || DefaultSubItemIcon,
+        }));
     }
     
     // Marks should have sub-items
     if (mainMenuItem.path === '/marks') {
-      return searchableItems.filter(item => item.parent === 'Marks');
+      return searchableItems
+        .filter(item => item.parent === 'Marks')
+        .map(item => ({
+          label: item.label,
+          path: item.path,
+          icon: item.icon || mainMenuItem.icon || DefaultSubItemIcon,
+        }));
     }
     
     // Leave Management should have sub-items
     if (mainMenuItem.path === '/leave') {
-      return searchableItems.filter(item => item.parent === 'Leave Management');
+      return searchableItems
+        .filter(item => item.parent === 'Leave Management')
+        .map(item => ({
+          label: item.label,
+          path: item.path,
+          icon: item.icon || mainMenuItem.icon || DefaultSubItemIcon,
+        }));
     }
     
     // Fees should have sub-items
     if (mainMenuItem.path === '/fees') {
-      return searchableItems.filter(item => item.parent === 'Fees');
+      return searchableItems
+        .filter(item => item.parent === 'Fees')
+        .map(item => ({
+          label: item.label,
+          path: item.path,
+          icon: item.icon || mainMenuItem.icon || DefaultSubItemIcon,
+        }));
     }
     
-    return searchableItems.filter((item) => {
-      // Don't include the main item itself
-      if (item.path === mainMenuItem.path) return false;
-      
-      // Don't include items that are already main menu items
-      const isMainMenuItem = menuItems.some(mi => mi.path === item.path);
-      if (isMainMenuItem) return false;
-      
-      // Filter out dynamic route paths (e.g., [examId]) as they can't be used in Link href
-      if (item.path.includes('[') && item.path.includes(']')) {
-        return false;
-      }
-      
-      // If item has a parent property, check if it matches the main menu label
-      if (item.parent && item.parent === mainMenuItem.label) {
-        return true;
-      }
-      
-      // For items without explicit parent, check if path starts with main menu path
-      // and is a sub-path (has additional segments)
-      if (mainMenuItem.path && mainMenuItem.path !== '') {
-        // Check if the item path is a sub-path of the main menu path
-        if (item.path.startsWith(mainMenuItem.path + '/') && item.path !== mainMenuItem.path) {
+    return searchableItems
+      .filter((item) => {
+        // Don't include the main item itself
+        if (item.path === mainMenuItem.path) return false;
+        
+        // Don't include items that are already main menu items
+        const isMainMenuItem = menuItems.some(mi => mi.path === item.path);
+        if (isMainMenuItem) return false;
+        
+        // Filter out dynamic route paths (e.g., [examId]) as they can't be used in Link href
+        if (item.path.includes('[') && item.path.includes(']')) {
+          return false;
+        }
+        
+        // If item has a parent property, check if it matches the main menu label
+        if (item.parent && item.parent === mainMenuItem.label) {
           return true;
         }
-      }
-      
-      // Special case for Home (empty path) - don't show sub-items
-      if (mainMenuItem.path === '') {
+        
+        // For items without explicit parent, check if path starts with main menu path
+        // and is a sub-path (has additional segments)
+        if (mainMenuItem.path && mainMenuItem.path !== '') {
+          // Check if the item path is a sub-path of the main menu path
+          if (item.path.startsWith(mainMenuItem.path + '/') && item.path !== mainMenuItem.path) {
+            return true;
+          }
+        }
+        
+        // Special case for Home (empty path) - don't show sub-items
+        if (mainMenuItem.path === '') {
+          return false;
+        }
+        
         return false;
-      }
-      
-      return false;
-    });
+      })
+      .map(item => ({
+        label: item.label,
+        path: item.path,
+        icon: item.icon || mainMenuItem.icon || DefaultSubItemIcon,
+      }));
   };
 
   const toggleSection = (sectionLabel: string) => {
@@ -1245,7 +1530,16 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
   }, [pathname, userInfo, userInfoLoaded]);
 
   return (
-    <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        // Log to error reporting service in production
+        if (process.env.NODE_ENV === 'production') {
+          // Example: Sentry.captureException(error, { contexts: { react: errorInfo } });
+          console.error('DashboardLayout Error:', error, errorInfo);
+        }
+      }}
+    >
+      <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
       {/* Top Navigation - Modern and Vibrant */}
       <nav className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl border-b border-white/60 dark:border-gray-700/50 sticky top-0 z-40 shadow-sm">
         <div className="px-4 sm:px-6 lg:px-8">
@@ -1261,6 +1555,17 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                 EduCore
               </Link>
               <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
+              {timeRemaining != null && (
+                <>
+                  <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/10 rounded-lg border border-[#5A7A95]/20 dark:border-[#6B9BB8]/20">
+                    <Clock size={16} className="text-[#5A7A95] dark:text-[#6B9BB8]" />
+                    <span className="text-sm font-medium text-[#5A7A95] dark:text-[#6B9BB8] font-mono">
+                      {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+                    </span>
+                  </div>
+                  <div className="hidden md:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
+                </>
+              )}
               <span className="hidden sm:block text-[#2C3E50] dark:text-[#F8FAFC] font-semibold">{schoolName}</span>
               <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
               <span className="hidden sm:block text-sm text-gray-600 dark:text-gray-400 font-medium">ID: {schoolCode}</span>
@@ -1365,7 +1670,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                       <h3 className="font-semibold text-foreground">Notifications</h3>
                     </div>
                     <div className="p-8 text-center">
-                      <Bell className="mx-auto mb-3 text-[#C8D9E6] dark:text-[#6B9BB8]" size={32} />
+                      <Bell className="mx-auto mb-3 text-slate-300 dark:text-[#6B9BB8]" size={32} />
                       <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-medium">No new notifications are there</p>
                     </div>
                   </motion.div>
@@ -1549,7 +1854,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                     ease: [0.4, 0, 0.2, 1]
                   }
                 }}
-                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] bg-[#2C3E50] dark:bg-[#15202B] border-r border-[rgba(255,255,255,0.1)] z-50 lg:z-auto overflow-y-auto overflow-x-hidden shadow-lg"
+                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] bg-[#1e293b] dark:bg-[#0f172a] border-r border-slate-600/30 z-50 lg:z-auto overflow-y-auto overflow-x-hidden shadow-xl"
                 style={{ 
                   willChange: 'width',
                   marginLeft: 0
@@ -1570,14 +1875,14 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                             className="relative search-container flex-1"
                           >
                             <div className="relative">
-                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#C8D9E6] size-4" />
+                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 size-4" />
                               <input
                                 type="text"
                                 placeholder="Search menu..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onFocus={() => setSearchDropdownOpen(true)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-[rgba(255,255,255,0.08)] dark:bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.1)] rounded-lg text-white placeholder-[#94A3B8] text-sm focus:outline-none focus:ring-2 focus:ring-[#4A707A]/30 focus:border-[#4A707A]/40 transition-all"
+                                className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-slate-500/30 rounded-lg text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/50 focus:border-slate-400/50 transition-all"
                               />
                           </div>
                           
@@ -1586,7 +1891,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                             <motion.div
                               initial={{ opacity: 0, y: -10 }}
                               animate={{ opacity: 1, y: 0 }}
-                              className="absolute top-full left-0 right-0 mt-2 bg-[#1A2332]/95 dark:bg-[#0F172A]/95 backdrop-blur-xl border border-[rgba(255,255,255,0.1)] rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
+                              className="absolute top-full left-0 right-0 mt-2 bg-slate-700/98 dark:bg-slate-800/98 backdrop-blur-xl border border-slate-600/40 rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
                             >
                               <div className="p-2">
                                 {filteredSearchResults.map((item, idx) => {
@@ -1600,22 +1905,22 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                                         setSearchDropdownOpen(false);
                                         setSidebarOpen(false);
                                       }}
-                                      className="flex items-center gap-3 px-2 py-2.5 hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156] rounded-lg transition-colors group"
+                                      className="flex items-center gap-3 px-2 py-2.5 hover:bg-white/10 rounded-lg transition-colors group"
                                     >
-                                      <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/50 dark:bg-[#2F4156] flex items-center justify-center flex-shrink-0 group-hover:bg-[#6B9BB8] transition-colors">
-                                        <ItemIcon size={16} className="text-[#C8D9E6] group-hover:text-white" />
+                                      <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0 group-hover:bg-white/15 transition-colors">
+                                        <ItemIcon size={16} className="text-slate-300 group-hover:text-white" />
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <div className="text-sm font-medium text-white truncate">
                                           {item.label}
                                         </div>
                                         {item.parent && (
-                                          <div className="text-xs text-[#C8D9E6] truncate">
+                                          <div className="text-xs text-slate-400 truncate">
                                             {item.parent} • {item.category}
                                           </div>
                                         )}
                                       </div>
-                                      <ChevronRight size={14} className="text-[#C8D9E6] group-hover:text-[#6B9BB8] flex-shrink-0" />
+                                      <ChevronRight size={14} className="text-slate-400 group-hover:text-white flex-shrink-0" />
                                     </Link>
                                   );
                                 })}
@@ -1627,9 +1932,9 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                             <motion.div
                               initial={{ opacity: 0, y: -10 }}
                               animate={{ opacity: 1, y: 0 }}
-                              className="absolute top-full left-0 right-0 mt-2 bg-[#567C8D]/90 dark:bg-[#2F4156]/90 backdrop-blur-xl border border-[#6B9BB8]/30 dark:border-gray-700/50 rounded-lg shadow-xl p-4 z-50"
+                              className="absolute top-full left-0 right-0 mt-2 bg-slate-700/95 dark:bg-slate-800/95 backdrop-blur-xl border border-slate-600/40 rounded-lg shadow-xl p-4 z-50"
                             >
-                              <p className="text-sm text-[#C8D9E6] text-center">No results found</p>
+                              <p className="text-sm text-slate-400 text-center">No results found</p>
                             </motion.div>
                           )}
                           </motion.div>
@@ -1641,7 +1946,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                             exit={{ opacity: 0, scale: 0.8 }}
                             transition={{ duration: 0.3 }}
                             onClick={() => setSidebarCollapsed(false)}
-                            className="flex-1 p-2 rounded-lg bg-[#567C8D]/50 dark:bg-[#2F4156] hover:bg-[#6B9BB8]/30 dark:hover:bg-[#2F4156] text-white transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] flex items-center justify-center"
+                            className="flex-1 p-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] flex items-center justify-center"
                             title="Expand Sidebar"
                           >
                             <Search size={18} />
@@ -1652,7 +1957,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                       {/* Collapse/Expand Button */}
                       <button
                         onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-1.5 rounded-lg bg-[#567C8D]/50 dark:bg-[#2F4156] hover:bg-[#6B9BB8]/30 dark:hover:bg-[#2F4156] text-white transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] flex items-center justify-center flex-shrink-0"
+                        className="p-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] flex items-center justify-center flex-shrink-0"
                         title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
                       >
                         {sidebarCollapsed ? (
@@ -1676,7 +1981,10 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                       strategy={verticalListSortingStrategy}
                       key={`menu-${userInfoLoaded}-${Object.keys(userInfo).length}`}
                     >
-                      {sortedMenuItems.map((item, index) => {
+                      {(!userInfoLoaded || (menuLoading && !userInfo.isAdmin)) ? (
+                        <MenuSkeletonLoader count={6} collapsed={sidebarCollapsed} />
+                      ) : (
+                        sortedMenuItems.map((item, index) => {
                     const active = isActive(item.path);
                     // Only calculate subItems if userInfo is loaded
                     const subItems = userInfoLoaded ? getSubItems(item) : [];
@@ -1707,15 +2015,16 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                         t={t}
                       />
                                 );
-                              })}
+                              })
+                      )}
                     </SortableContext>
                     <DragOverlay>
                       {activeDragId ? (
                         <div className="opacity-50">
-                          <div className="p-3 bg-[#567C8D]/90 dark:bg-[#2F4156]/90 backdrop-blur-xl rounded-xl border border-[#6B9BB8]/30 dark:border-gray-700/50">
+                          <div className="p-3 bg-slate-700/95 dark:bg-slate-800/95 backdrop-blur-xl rounded-xl border border-slate-600/40">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-[#6B9BB8]/30 dark:bg-[#2F4156] flex items-center justify-center">
-                                <GripVertical size={16} className="text-[#C8D9E6]" />
+                              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                                <GripVertical size={16} className="text-slate-400" />
                             </div>
                               <span className="text-sm font-semibold text-white">
                                 {sortedMenuItems.find(item => item.path === activeDragId)?.label}
@@ -1798,5 +2107,6 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
         userRole={userInfo.role}
       />
     </div>
+    </ErrorBoundary>
   );
 }

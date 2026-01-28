@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseFetchOptions } from '@/lib/supabase-fetch';
 
 const getServiceRoleClient = () => {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    getSupabaseFetchOptions()
   );
 };
 
@@ -41,48 +43,65 @@ export async function GET(
     // Get category (default to "Default" if not provided)
     let category;
     if (categoryId) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('permission_categories')
         .select('*')
         .eq('id', categoryId)
         .single();
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Error fetching category by ID:', error);
+      }
       category = data;
     } else {
-      const { data } = await supabase
+      // Try to find "Default" category by category_name (migrated column)
+      const { data: defaultCategory, error: defaultError } = await supabase
         .from('permission_categories')
         .select('*')
-        .eq('name', 'Default')
+        .eq('category_name', 'Default')
+        .eq('is_active', true)
         .single();
-      category = data;
+      
+      if (defaultError && defaultError.code !== 'PGRST116') {
+        console.error('Error fetching Default category:', defaultError);
+      }
+      
+      // If Default doesn't exist, try to get the first active category
+      if (!defaultCategory) {
+        const { data: firstCategory, error: firstError } = await supabase
+          .from('permission_categories')
+          .select('*')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true })
+          .limit(1)
+          .single();
+        
+        if (firstError && firstError.code !== 'PGRST116') {
+          console.error('Error fetching first category:', firstError);
+        }
+        category = firstCategory;
+      } else {
+        category = defaultCategory;
+      }
     }
 
     if (!category) {
-      return NextResponse.json(
-        { error: 'Category not found' },
-        { status: 404 }
-      );
+      // Return empty permissions structure if no category found
+      return NextResponse.json({
+        data: {
+          staff: null,
+          category: null,
+          categories: [],
+          modules: [],
+        },
+      }, { status: 200 });
     }
 
     // Get all categories for dropdown
     const { data: allCategories } = await supabase
       .from('permission_categories')
       .select('*')
-      .order('name');
-
-    // Get permissions using the helper function - use staff UUID
-    const { data: permissionsData, error: permError } = await supabase
-      .rpc('get_staff_permissions_by_category', {
-        p_staff_id: staffData.id,
-        p_category_id: category.id,
-      });
-
-    if (permError) {
-      console.error('Error fetching permissions:', permError);
-      return NextResponse.json(
-        { error: 'Failed to fetch permissions', details: permError.message },
-        { status: 500 }
-      );
-    }
+      .eq('is_active', true)
+      .order('category_name');
 
     interface PermissionData {
       module_id: string;
@@ -93,6 +112,77 @@ export async function GET(
       edit_access: boolean;
       supports_view_access: boolean;
       supports_edit_access: boolean;
+    }
+
+    // Try RPC function first, fallback to direct query if it fails
+    let permissionsData: PermissionData[] | null = null;
+
+    // Try RPC function first
+    const { data: rpcData, error: rpcError } = await supabase
+      .rpc('get_staff_permissions_by_category', {
+        p_staff_id: staffData.id,
+        p_category_id: category.id,
+      });
+
+    if (rpcError || !rpcData) {
+      console.warn('RPC function failed or returned no data, using direct query:', rpcError?.message);
+      
+      // Fallback: Query directly from staff_permissions table
+      const { data: directData, error: directError } = await supabase
+        .from('staff_permissions')
+        .select(`
+          view_access,
+          edit_access,
+          sub_module:sub_modules (
+            id,
+            sub_module_name,
+            sub_module_key,
+            route_path,
+            supports_view_access,
+            supports_edit_access,
+            module:modules (
+              id,
+              module_name,
+              module_key
+            )
+          )
+        `)
+        .eq('staff_id', staffData.id)
+        .eq('category_id', category.id);
+
+      if (directError) {
+        console.error('Error fetching permissions directly:', directError);
+        // Return empty structure instead of error to allow UI to continue
+        return NextResponse.json({
+          data: {
+            staff: staffData,
+            category: category,
+            categories: allCategories || [],
+            modules: [],
+          },
+        }, { status: 200 });
+      }
+
+      // Transform direct query data to match RPC format
+      permissionsData = (directData || []).map((perm: Record<string, unknown>): PermissionData => {
+        const subModuleRaw = perm.sub_module;
+        const subModule = Array.isArray(subModuleRaw) ? subModuleRaw[0] : (subModuleRaw as Record<string, unknown>);
+        const moduleRaw = subModule?.module;
+        const moduleData = moduleRaw ? (Array.isArray(moduleRaw) ? moduleRaw[0] : (moduleRaw as Record<string, unknown>)) : null;
+        
+        return {
+          module_id: (moduleData?.id as string) || '',
+          module_name: (moduleData?.module_name as string) || '',
+          sub_module_id: (subModule?.id as string) || '',
+          sub_module_name: (subModule?.sub_module_name as string) || '',
+          view_access: (perm.view_access as boolean) || false,
+          edit_access: (perm.edit_access as boolean) || false,
+          supports_view_access: (subModule?.supports_view_access as boolean) ?? true,
+          supports_edit_access: (subModule?.supports_edit_access as boolean) ?? true,
+        };
+      }).filter((p: PermissionData) => p.module_id && p.sub_module_id) as PermissionData[]; // Filter out invalid entries
+    } else {
+      permissionsData = rpcData as PermissionData[] | null;
     }
 
     // Group by module
@@ -108,7 +198,10 @@ export async function GET(
         supports_edit_access: boolean;
       }>;
     }>();
+    
     permissionsData?.forEach((perm: PermissionData) => {
+      if (!perm.module_id || !perm.sub_module_id) return; // Skip invalid entries
+      
       if (!modulesMap.has(perm.module_id)) {
         modulesMap.set(perm.module_id, {
           id: perm.module_id,
@@ -130,6 +223,18 @@ export async function GET(
     });
 
     const modules = Array.from(modulesMap.values());
+
+    // Log for debugging
+    console.log('Fetched permissions for staff:', {
+      staffId: staffData.id,
+      categoryId: category.id,
+      categoryName: category.name,
+      modulesCount: modules.length,
+      totalSubModules: modules.reduce((sum, m) => sum + m.sub_modules.length, 0),
+      permissionsWithAccess: modules.reduce((sum, m) => 
+        sum + m.sub_modules.filter(sm => sm.view_access || sm.edit_access).length, 0
+      ),
+    });
 
     return NextResponse.json({
       data: {

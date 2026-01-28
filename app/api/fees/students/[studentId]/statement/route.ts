@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 export async function GET(
   request: NextRequest,
@@ -18,12 +18,15 @@ export async function GET(
       );
     }
 
+    const supabase = getServiceRoleClient();
+    const normalizedSchoolCode = schoolCode.toUpperCase().trim();
+
     // Fetch student details
     const { data: student, error: studentError } = await supabase
       .from('students')
-      .select('id, student_name, admission_no, class, section, class_id')
+      .select('id, student_name, admission_no, class, section')
       .eq('id', studentId)
-      .eq('school_code', schoolCode)
+      .eq('school_code', normalizedSchoolCode)
       .single();
 
     if (studentError || !student) {
@@ -33,134 +36,178 @@ export async function GET(
       );
     }
 
-    // Build query for installments
-    // First, get fee_assignment_ids for the academic year if provided
-    let assignmentIds: string[] | null = null;
-    if (academicYear) {
-      const { data: assignments } = await supabase
-        .from('fee_assignments')
-        .select('id')
-        .eq('school_code', schoolCode)
-        .eq('academic_year', academicYear);
-      
-      if (assignments && assignments.length > 0) {
-        assignmentIds = assignments.map(a => a.id);
-      } else {
-        // No assignments for this academic year, return empty
-        return NextResponse.json({
-          data: {
-            student: {
-              id: student.id,
-              student_name: student.student_name,
-              admission_no: student.admission_no,
-              class: student.class,
-              section: student.section,
-            },
-            summary: {
-              total_due: 0,
-              total_paid: 0,
-              total_pending: 0,
-              overdue_amount: 0,
-            },
-            installments: [],
-            payment_history: [],
-          },
-        }, { status: 200 });
-      }
-    }
-
-    let installmentsQuery = supabase
-      .from('fee_installments')
+    // Fetch student fees with fee structure details
+    let feesQuery = supabase
+      .from('student_fees')
       .select(`
         *,
-        fee_component:fee_component_id (
+        fee_structure:fee_structure_id (
           id,
-          component_name,
-          fee_type
+          name,
+          class_name,
+          section,
+          late_fee_type,
+          late_fee_value,
+          grace_period_days
         )
       `)
       .eq('student_id', studentId)
-      .eq('school_code', schoolCode);
+      .eq('school_code', normalizedSchoolCode)
+      .order('due_month', { ascending: true });
 
-    // Filter by assignment IDs if academic year is provided
-    if (assignmentIds && assignmentIds.length > 0) {
-      installmentsQuery = installmentsQuery.in('fee_assignment_id', assignmentIds);
+    // Filter by academic year if provided (based on due_month)
+    if (academicYear) {
+      const [startYear, endYear] = academicYear.split('-');
+      const startDate = `${startYear}-04-01`; // April 1st
+      const endDate = `${endYear}-03-31`; // March 31st
+      feesQuery = feesQuery.gte('due_month', startDate).lte('due_month', endDate);
     }
 
-    const { data: installments, error: installmentsError } = await installmentsQuery.order('due_date', { ascending: true });
+    const { data: studentFees, error: feesError } = await feesQuery;
 
-    if (installmentsError) {
-      console.error('Error fetching installments:', installmentsError);
+    if (feesError) {
+      console.error('Error fetching student fees:', feesError);
       return NextResponse.json(
-        { error: 'Failed to fetch fee installments', details: installmentsError.message },
+        { error: 'Failed to fetch student fees', details: feesError.message },
         { status: 500 }
       );
     }
 
-    // Calculate summary
+    // Calculate late fee and process fees
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     let totalDue = 0;
     let totalPaid = 0;
     let totalPending = 0;
     let overdueAmount = 0;
-    const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
 
-    // Note: Fine calculation for overdue installments is handled by the database function
-    // Fines can be calculated on-demand when viewing statements or during collection
-    // For performance, we'll use the fine_amount already stored in installments
-
-    interface Installment {
-      amount?: string | number;
-      discount_amount?: string | number;
-      fine_amount?: string | number;
-      paid_amount?: string | number;
-      due_date: string;
-      [key: string]: unknown;
-    }
-
-    const processedInstallments = (installments || []).map((inst: Installment) => {
-      const amount = parseFloat(inst.amount?.toString() || '0');
-      const discount = parseFloat(inst.discount_amount?.toString() || '0');
-      const fine = parseFloat(inst.fine_amount?.toString() || '0');
-      const paid = parseFloat(inst.paid_amount?.toString() || '0');
+    const processedFees = ((studentFees || []) as Record<string, unknown>[]).map((fee: Record<string, unknown>) => {
+      const baseAmount = Number(fee.base_amount || 0);
+      const paidAmount = Number(fee.paid_amount || 0);
+      const adjustmentAmount = Number(fee.adjustment_amount || 0);
       
-      const installmentDue = amount - discount + fine;
-      const pending = installmentDue - paid;
-      const dueDate = new Date(inst.due_date);
-      dueDate.setHours(0, 0, 0, 0);
-      
-      const daysOverdue = todayDate > dueDate ? Math.floor((todayDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-      const isOverdue = daysOverdue > 0 && pending > 0;
+      // Calculate late fee
+      let lateFee = 0;
+      const structure = fee.fee_structure as Record<string, unknown> | null | undefined;
+      if (structure && structure.late_fee_type) {
+        const dueDateStr = String(fee.due_date || '');
+        const dueDate = new Date(dueDateStr);
+        dueDate.setHours(0, 0, 0, 0);
+        const gracePeriod = Number(structure.grace_period_days || 0);
+        const effectiveDueDate = new Date(dueDate);
+        effectiveDueDate.setDate(effectiveDueDate.getDate() + gracePeriod);
 
-      totalDue += installmentDue;
-      totalPaid += paid;
-      totalPending += pending;
+        if (today > effectiveDueDate) {
+          const daysLate = Math.floor((today.getTime() - effectiveDueDate.getTime()) / (1000 * 60 * 60 * 24));
+          const lateFeeType = String(structure.late_fee_type || '');
+          const lateFeeValue = Number(structure.late_fee_value || 0);
+
+          if (lateFeeType === 'flat') {
+            lateFee = lateFeeValue;
+          } else if (lateFeeType === 'per_day') {
+            lateFee = lateFeeValue * daysLate;
+          } else if (lateFeeType === 'percentage') {
+            lateFee = (baseAmount * lateFeeValue / 100) * daysLate;
+          }
+        }
+      }
+
+      const totalDueAmount = baseAmount + adjustmentAmount + lateFee;
+      const balanceDue = totalDueAmount - paidAmount;
+      const dueDateStr = String(fee.due_date || '');
+      const isOverdue = balanceDue > 0 && today > new Date(dueDateStr);
+      const daysOverdue = isOverdue 
+        ? Math.floor((today.getTime() - new Date(dueDateStr).getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+
+      totalDue += totalDueAmount;
+      totalPaid += paidAmount;
+      totalPending += balanceDue;
       if (isOverdue) {
-        overdueAmount += pending;
+        overdueAmount += balanceDue;
       }
 
       return {
-        ...inst,
-        total_due: installmentDue,
-        pending_amount: pending,
+        id: fee.id,
+        due_month: fee.due_month,
+        due_date: fee.due_date,
+        base_amount: baseAmount,
+        paid_amount: paidAmount,
+        adjustment_amount: adjustmentAmount,
+        late_fee: lateFee,
+        total_due: totalDueAmount,
+        balance_due: balanceDue,
+        status: fee.status,
         days_overdue: daysOverdue,
         is_overdue: isOverdue,
+        fee_structure: {
+          id: structure?.id as string | number | undefined,
+          name: (structure?.name as string | undefined) || 'Unknown',
+          class_name: structure?.class_name as string | undefined,
+          section: structure?.section as string | undefined,
+        },
       };
     });
 
-    // Fetch payment history
-    const { data: collections, error: collectionsError } = await supabase
-      .from('fee_collections')
-      .select('id, receipt_no, payment_date, total_amount, payment_mode, cancelled')
+    // Fetch payment history with allocations
+    const { data: payments, error: paymentsError } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        receipt:receipts (
+          id,
+          receipt_no,
+          issued_at
+        ),
+        allocations:payment_allocations (
+          *,
+          student_fee:student_fee_id (
+            id,
+            due_month,
+            due_date,
+            fee_structure:fee_structure_id (name)
+          )
+        )
+      `)
       .eq('student_id', studentId)
-      .eq('school_code', schoolCode)
-      .eq('cancelled', false)
-      .order('payment_date', { ascending: false })
-      .limit(10);
+      .eq('school_code', normalizedSchoolCode)
+      .eq('is_reversed', false)
+      .order('payment_date', { ascending: false });
 
-    if (collectionsError) {
-      console.error('Error fetching payment history:', collectionsError);
+    if (paymentsError) {
+      console.error('Error fetching payments:', paymentsError);
     }
+
+    // Format payment history
+    const paymentHistory = ((payments || []) as Record<string, unknown>[]).map((payment: Record<string, unknown>) => {
+      const paymentId = String(payment.id || '');
+      const receipt = payment.receipt as Record<string, unknown> | null | undefined;
+      const receiptNo = receipt?.receipt_no as string | undefined;
+      
+      return {
+        id: payment.id,
+        receipt_no: receiptNo || `REC-${paymentId.slice(0, 8)}`,
+        payment_date: payment.payment_date,
+        amount: Number(payment.amount || 0),
+        payment_mode: payment.payment_mode || 'cash',
+        reference_no: payment.reference_no,
+        remarks: payment.remarks,
+        allocations: ((payment.allocations as Record<string, unknown>[]) || []).map((alloc: Record<string, unknown>) => {
+          const studentFee = alloc.student_fee as Record<string, unknown> | null | undefined;
+          const feeStructure = studentFee?.fee_structure as Record<string, unknown> | null | undefined;
+          const feeName = feeStructure?.name as string | undefined;
+          
+          return {
+            student_fee_id: alloc.student_fee_id,
+            allocated_amount: Number(alloc.allocated_amount || 0),
+            fee_name: feeName || 'Unknown',
+            due_month: studentFee?.due_month,
+            due_date: studentFee?.due_date,
+          };
+        }),
+      };
+    });
 
     return NextResponse.json({
       data: {
@@ -177,8 +224,8 @@ export async function GET(
           total_pending: totalPending,
           overdue_amount: overdueAmount,
         },
-        installments: processedInstallments,
-        payment_history: collections || [],
+        fees: processedFees,
+        payment_history: paymentHistory,
       },
     }, { status: 200 });
   } catch (error) {

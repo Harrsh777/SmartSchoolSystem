@@ -17,31 +17,34 @@ export async function GET(
       );
     }
 
-    // Fetch examination with related data
+    // Fetch examination with related data using new structure
     const { data: exam, error: examError } = await supabase
       .from('examinations')
       .select(`
         *,
-        class:class_id (
-          id,
-          class,
-          section,
-          academic_year
-        ),
         created_by_staff:created_by (
           id,
           full_name,
           staff_id
         ),
-        exam_subjects:exam_subjects (
-          id,
+        class_mappings:exam_class_mappings (
+          class_id,
+          class:classes (
+            id,
+            class,
+            section,
+            academic_year
+          )
+        ),
+        subject_mappings:exam_subject_mappings (
           subject_id,
-          max_marks,
           subject:subjects (
             id,
             name,
             color
-          )
+          ),
+          max_marks,
+          pass_marks
         )
       `)
       .eq('id', examId)
@@ -55,7 +58,19 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ data: exam }, { status: 200 });
+    // Transform to match expected format (for backward compatibility)
+    const transformedExam = {
+      ...exam,
+      exam_subjects: exam.subject_mappings?.map((sm: Record<string, unknown>) => ({
+        id: sm.subject_id as string,
+        subject_id: sm.subject_id as string,
+        max_marks: (sm.max_marks as number) || 100,
+        subject: (sm.subject as Record<string, unknown>) || { id: sm.subject_id, name: 'Unknown', color: '#000000' },
+      })) || [],
+      class: exam.class_mappings?.[0]?.class || null,
+    };
+
+    return NextResponse.json({ data: transformedExam }, { status: 200 });
   } catch (error) {
     console.error('Error fetching examination:', error);
     return NextResponse.json(

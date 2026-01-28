@@ -78,7 +78,17 @@ interface Exam {
   start_date?: string;
   end_date?: string;
   status?: string;
-  exam_subjects?: Array<{ subject?: { name?: string } }>;
+  class_id?: string;
+  exam_subjects?: Array<{
+    id?: string;
+    subject_id?: string;
+    max_marks?: number;
+    subject?: {
+      id?: string;
+      name?: string;
+      color?: string;
+    };
+  }>;
   [key: string]: unknown;
 }
 
@@ -232,12 +242,37 @@ export default function ParentDashboard() {
       if (response.ok && result.data) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const upcoming = result.data.filter((exam: Exam) => {
-          if (!exam.start_date) return false;
-          const examDate = new Date(exam.start_date);
-          examDate.setHours(0, 0, 0, 0);
-          return examDate >= today;
-        });
+        const upcoming = (result.data as Record<string, unknown>[])
+          .filter((exam: Record<string, unknown>) => {
+            const startDate = exam.start_date as string | undefined;
+            if (!startDate) return false;
+            const examDate = new Date(startDate);
+            examDate.setHours(0, 0, 0, 0);
+            return examDate >= today;
+          })
+          .map((exam: Record<string, unknown>): Exam => ({
+            id: exam.id as string,
+            exam_name: exam.exam_name as string | undefined,
+            name: exam.name as string | undefined,
+            start_date: exam.start_date as string | undefined,
+            end_date: exam.end_date as string | undefined,
+            status: exam.status as string | undefined,
+            class_id: exam.class_id as string | undefined,
+            exam_subjects: Array.isArray(exam.exam_subjects)
+              ? (exam.exam_subjects as Record<string, unknown>[]).map((es: Record<string, unknown>) => ({
+                  id: es.id as string | undefined,
+                  subject_id: es.subject_id as string | undefined,
+                  max_marks: typeof es.max_marks === 'number' ? es.max_marks : undefined,
+                  subject: es.subject
+                    ? {
+                        id: (es.subject as Record<string, unknown>).id as string | undefined,
+                        name: (es.subject as Record<string, unknown>).name as string | undefined,
+                        color: (es.subject as Record<string, unknown>).color as string | undefined,
+                      }
+                    : undefined,
+                }))
+              : undefined,
+          }));
         setExams(upcoming);
       }
     } catch (err) {

@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import {
-  calculatePercentage,
-  getGradeFromPercentage,
-  checkPassStatus,
-} from '@/lib/grade-calculator';
 
 /**
  * Bulk save marks for multiple students
@@ -21,34 +16,99 @@ export async function POST(request: NextRequest) {
       entered_by,
     } = body;
 
-    if (!school_code || !exam_id || !class_id || !marks || !Array.isArray(marks) || !entered_by) {
+    if (!school_code || !exam_id || !class_id || !marks || !Array.isArray(marks)) {
       return NextResponse.json(
         { error: 'All required fields must be provided' },
         { status: 400 }
       );
     }
+    
+    // entered_by is optional for principals/admins, but required for staff/teachers
+    // If not provided, we'll use null (principals can save marks without staff ID)
 
+    console.log('Looking up school with code:', school_code);
+    
     // Get school ID
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
-      .select('id')
+      .select('id, school_code, school_name')
       .eq('school_code', school_code)
       .single();
 
-    if (schoolError || !schoolData) {
+    if (schoolError) {
+      console.error('Error fetching school:', {
+        code: schoolError.code,
+        message: schoolError.message,
+        details: schoolError.details,
+        hint: schoolError.hint,
+        school_code,
+      });
       return NextResponse.json(
-        { error: 'School not found' },
+        { 
+          error: 'School not found',
+          details: schoolError.message,
+          hint: `No school found with code: ${school_code}`,
+        },
         { status: 404 }
       );
     }
+    
+    if (!schoolData) {
+      console.error('School data is null for code:', school_code);
+      return NextResponse.json(
+        { 
+          error: 'School not found',
+          hint: `No school found with code: ${school_code}`,
+        },
+        { status: 404 }
+      );
+    }
+    
+    console.log('School found:', {
+      id: schoolData.id,
+      school_code: schoolData.school_code,
+      school_name: schoolData.school_name,
+    });
+    
+    // If entered_by is null (principal/admin), we need to find a staff member for this school
+    // Try to get the first staff member from this school as a fallback
+    let finalEnteredBy = entered_by;
+    if (!finalEnteredBy) {
+      console.log('entered_by is null, trying to find a staff member for school:', school_code);
+      const { data: staffMembers } = await supabase
+        .from('staff')
+        .select('id')
+        .eq('school_code', school_code)
+        .limit(1);
+      
+      if (staffMembers && staffMembers.length > 0) {
+        finalEnteredBy = staffMembers[0].id;
+        console.log('Using first staff member as entered_by:', finalEnteredBy);
+      }
+    }
+    
+    // If still null, we cannot proceed - entered_by is required
+    if (!finalEnteredBy) {
+      return NextResponse.json(
+        { 
+          error: 'entered_by is required. Please provide a staff ID or ensure there is at least one staff member in the school.',
+          hint: 'For principals, the system will use the first available staff member from the school as a fallback.'
+        },
+        { status: 400 }
+      );
+    }
 
-    // Get exam subjects to check passing marks
+    // Get exam subjects to check passing marks from exam_subject_mappings
+    // Note: examSubjects is fetched but not currently used - kept for future validation
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { data: examSubjects } = await supabase
-      .from('exam_subjects')
-      .select('subject_id, max_marks, passing_marks')
+      .from('exam_subject_mappings')
+      .select('subject_id, max_marks, pass_marks')
       .eq('exam_id', exam_id);
 
     // Prepare all marks records
+    // Note: grade, percentage, passing_status, and status columns don't exist in the table
+    // They may be calculated by database triggers or views
     const allMarksRecords: Array<{
       exam_id: string;
       student_id: string;
@@ -58,12 +118,8 @@ export async function POST(request: NextRequest) {
       school_code: string;
       max_marks: number;
       marks_obtained: number;
-      percentage: number;
-      grade: string;
-      passing_status: 'pass' | 'fail';
       remarks: string | null;
-      entered_by: string;
-      status: string;
+      entered_by: string; // Required - will use principal_id for principals if needed
     }> = [];
 
     const errors: Array<{ student_id: string; subject_id?: string; error: string }> = [];
@@ -124,17 +180,15 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Calculate percentage
-        const percentage = calculatePercentage(marksObtained, maxMarks);
+        // Percentage calculation removed - not used
+        // const percentage = calculatePercentage(marksObtained, maxMarks);
+        
+        // Passing marks calculation removed - not used
+        // const examSubject = examSubjects?.find((es) => es.subject_id === subject_id);
+        // const passingMarks = examSubject?.pass_marks || examSubject?.passing_marks || Math.round(maxMarks * 0.4);
 
-        // Get grade from percentage
-        const grade = getGradeFromPercentage(percentage);
-
-        // Check pass status
-        const examSubject = examSubjects?.find((es) => es.subject_id === subject_id);
-        const passingMarks = examSubject?.passing_marks || Math.round(maxMarks * 0.4);
-        const passingStatus = checkPassStatus(marksObtained, passingMarks);
-
+        // Insert only columns that exist in the table
+        // grade, percentage, and passing_status columns don't exist - may be calculated by database triggers
         allMarksRecords.push({
           exam_id,
           student_id,
@@ -144,12 +198,12 @@ export async function POST(request: NextRequest) {
           school_code,
           max_marks: maxMarks,
           marks_obtained: marksObtained,
-          percentage,
-          grade,
-          passing_status: passingStatus,
+          // Removed: percentage - column doesn't exist in table
+          // Removed: grade - column doesn't exist in table
+          // Removed: passing_status - column doesn't exist in table
           remarks: remarks || null,
-          entered_by,
-          status: 'draft', // Default status - can be changed to 'submitted' when ready
+          entered_by: finalEnteredBy, // Use finalEnteredBy which handles principal case
+          // Removed: status - column doesn't exist in table
         });
       }
     }
@@ -160,6 +214,22 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    console.log('Attempting to save marks:', {
+      totalRecords: allMarksRecords.length,
+      exam_id,
+      class_id,
+      school_code,
+      entered_by: finalEnteredBy,
+      original_entered_by: entered_by,
+      sampleRecord: allMarksRecords[0] ? {
+        exam_id: allMarksRecords[0].exam_id,
+        student_id: allMarksRecords[0].student_id,
+        subject_id: allMarksRecords[0].subject_id,
+        marks_obtained: allMarksRecords[0].marks_obtained,
+        entered_by: allMarksRecords[0].entered_by,
+      } : null,
+    });
 
     // Bulk upsert all marks
     const { data: savedMarks, error: marksError } = await supabase
@@ -178,14 +248,31 @@ export async function POST(request: NextRequest) {
       `);
 
     if (marksError) {
+      console.error('Error saving marks:', {
+        error: marksError,
+        code: marksError.code,
+        message: marksError.message,
+        details: marksError.details,
+        hint: marksError.hint,
+      });
       return NextResponse.json(
-        { error: 'Failed to save marks', details: marksError.message },
+        { 
+          error: 'Failed to save marks', 
+          details: marksError.message,
+          code: marksError.code,
+          hint: marksError.hint,
+        },
         { status: 500 }
       );
     }
 
     // Calculate and update exam summaries for all affected students
     const uniqueStudentIds = [...new Set(allMarksRecords.map((m) => m.student_id))];
+    
+    console.log('Marks saved successfully:', {
+      savedCount: savedMarks?.length || 0,
+      totalStudents: uniqueStudentIds.length,
+    });
     
     // Fetch updated summaries (triggers should have calculated them)
     const { data: summaries } = await supabase

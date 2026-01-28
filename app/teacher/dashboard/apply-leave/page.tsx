@@ -11,9 +11,9 @@ import {
   CalendarX, 
   ArrowLeft, 
   CheckCircle2, 
-  X,
   Calendar,
-  Send
+  Send,
+  XCircle
 } from 'lucide-react';
 
 interface LeaveType {
@@ -31,6 +31,8 @@ export default function ApplyLeavePage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showError, setShowError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [formData, setFormData] = useState({
     leave_type_id: '',
     leave_start_date: '',
@@ -70,17 +72,45 @@ export default function ApplyLeavePage() {
     e.preventDefault();
 
     if (!formData.leave_type_id || !formData.leave_start_date || !formData.leave_end_date) {
-      alert('Please fill in all required fields');
+      setErrorMessage('Please fill in all required fields');
+      setShowError(true);
+      return;
+    }
+
+    if (!formData.reason || formData.reason.trim() === '') {
+      setErrorMessage('Please provide a reason for your leave request');
+      setShowError(true);
       return;
     }
 
     if (!teacher) {
-      alert('Teacher information not found');
+      setErrorMessage('Teacher information not found. Please log in again.');
+      setShowError(true);
       return;
+    }
+
+    // Validate date range
+    const startDate = new Date(formData.leave_start_date);
+    const endDate = new Date(formData.leave_end_date);
+    if (endDate < startDate) {
+      setErrorMessage('End date must be after start date');
+      setShowError(true);
+      return;
+    }
+
+    // Validate max days if leave type has a limit
+    if (selectedLeaveType?.max_days) {
+      const totalDays = calculateDays();
+      if (totalDays > selectedLeaveType.max_days) {
+        setErrorMessage(`Leave duration (${totalDays} days) exceeds maximum allowed (${selectedLeaveType.max_days} days) for this leave type`);
+        setShowError(true);
+        return;
+      }
     }
 
     try {
       setSubmitting(true);
+      setShowError(false);
       const response = await fetch('/api/leave/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -107,16 +137,14 @@ export default function ApplyLeavePage() {
           reason: '',
           comment: '',
         });
-        // Hide success message after 3 seconds
-        setTimeout(() => {
-          setShowSuccess(false);
-        }, 3000);
       } else {
-        alert(result.error || 'Failed to submit leave request');
+        setErrorMessage(result.details || result.error || 'Failed to submit leave request. Please try again.');
+        setShowError(true);
       }
     } catch (err) {
       console.error('Error submitting leave request:', err);
-      alert('Failed to submit leave request. Please try again.');
+      setErrorMessage('Network error. Please check your connection and try again.');
+      setShowError(true);
     } finally {
       setSubmitting(false);
     }
@@ -162,26 +190,108 @@ export default function ApplyLeavePage() {
         </Button>
       </motion.div>
 
-      {/* Success Message */}
+      {/* Success Modal Overlay */}
       <AnimatePresence>
         {showSuccess && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="bg-[#DBEAFE] border border-[#60A5FA] rounded-lg p-4 flex items-center gap-3 text-[#1e3a8a]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowSuccess(false)}
           >
-            <CheckCircle2 size={24} className="text-[#2F6FED]" />
-            <div className="flex-1">
-              <p className="font-semibold">Your request has been sent to the office</p>
-              <p className="text-sm">You will be notified once your request is reviewed.</p>
-            </div>
-            <button
-              onClick={() => setShowSuccess(false)}
-              className="text-[#64748B] hover:text-[#1e3a8a]"
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 relative"
             >
-              <X size={20} />
-            </button>
+              <div className="text-center">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+                  className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"
+                >
+                  <CheckCircle2 size={48} className="text-green-600" />
+                </motion.div>
+                
+                <h2 className="text-2xl font-bold text-gray-800 mb-3">
+                  Leave Request Submitted!
+                </h2>
+                
+                <p className="text-gray-600 mb-6">
+                  Your leave request has been successfully sent to the office. You will be notified once your request is reviewed.
+                </p>
+                
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowSuccess(false)}
+                    className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setShowSuccess(false);
+                      router.push('/teacher/dashboard/my-leaves');
+                    }}
+                    className="flex-1 bg-[#2F6FED] hover:bg-[#1e3a8a] text-white"
+                  >
+                    View My Leaves
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Error Modal Overlay */}
+      <AnimatePresence>
+        {showError && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowError(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 relative"
+            >
+              <div className="text-center">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+                  className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6"
+                >
+                  <XCircle size={48} className="text-red-600" />
+                </motion.div>
+                
+                <h2 className="text-2xl font-bold text-gray-800 mb-3">
+                  Error
+                </h2>
+                
+                <p className="text-gray-600 mb-6">
+                  {errorMessage}
+                </p>
+                
+                <Button
+                  onClick={() => setShowError(false)}
+                  className="w-full bg-[#2F6FED] hover:bg-[#1e3a8a] text-white"
+                >
+                  Try Again
+                </Button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

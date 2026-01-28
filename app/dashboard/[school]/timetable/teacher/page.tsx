@@ -124,62 +124,113 @@ export default function TeacherTimetablePage({
 
     try {
       setLoading(true);
-      // Fetch teacher timetable slots (where class_id is null)
-      const teacherResponse = await fetch(
-        `/api/timetable/slots?school_code=${schoolCode}&teacher_id=${selectedTeacher.id}`
-      );
-      const teacherResult = await teacherResponse.json();
-
-      // Also fetch all class timetable slots to find which classes this teacher teaches
+      
+      // Fetch all class timetable slots to find which classes this teacher teaches
+      // This is the primary source - teachers are assigned in class timetables
       const classResponse = await fetch(
         `/api/timetable/slots?school_code=${schoolCode}`
       );
       const classResult = await classResponse.json();
 
+      // Also fetch teacher-specific slots (where class_id is null) as backup
+      const teacherResponse = await fetch(
+        `/api/timetable/slots?school_code=${schoolCode}&teacher_id=${selectedTeacher.id}`
+      );
+      const teacherResult = await teacherResponse.json();
+
+      interface TimetableSlotData {
+        teacher_id?: string;
+        class_id?: string | null;
+        day?: string;
+        period_order?: number;
+        period?: number;
+        subject_id?: string | null;
+        subject?: { id: string; name: string; color: string };
+        teacher_ids?: string[] | null;
+        class?: { id: string; class: string; section: string };
+        class_reference?: { class_id: string; class: string; section: string; academic_year?: string };
+        [key: string]: unknown;
+      }
+
+      const allSlots: TimetableSlotData[] = [];
+
+      // Primary: Get slots from class timetables where this teacher is assigned
+      if (classResponse.ok && classResult.data) {
+        const classSlots = classResult.data.filter((slot: TimetableSlotData) => {
+          // Check if teacher is in teacher_ids array or matches teacher_id
+          const hasTeacher = slot.teacher_ids?.includes(selectedTeacher.id) || 
+                           slot.teacher_id === selectedTeacher.id;
+          return hasTeacher && slot.class_id && slot.subject_id;
+        });
+
+        // Map class slots to teacher timetable format
+        classSlots.forEach((slot: TimetableSlotData) => {
+          const periodOrder = slot.period_order || (slot.period ? parseInt(String(slot.period), 10) : undefined);
+          if (periodOrder !== undefined) {
+            allSlots.push({
+              ...slot,
+              period_order: periodOrder,
+              class: slot.class || (slot.class_reference ? {
+                id: slot.class_reference.class_id,
+                class: slot.class_reference.class,
+                section: slot.class_reference.section,
+              } : undefined),
+            });
+          }
+        });
+      }
+
+      // Secondary: Get teacher-specific slots (where class_id is null)
       if (teacherResponse.ok && teacherResult.data) {
-        interface TimetableSlotData {
-          teacher_id?: string;
-          class_id?: string | null;
-          day?: string;
-          period_order?: number;
-          subject_id?: string | null;
-          teacher_ids?: string[] | null;
-          [key: string]: unknown;
-        }
-        // Get teacher slots
         const teacherSlots = teacherResult.data.filter((slot: TimetableSlotData) => 
           slot.teacher_id === selectedTeacher.id && !slot.class_id
         );
 
-        // Enrich teacher slots with class information from class timetable
-        if (classResponse.ok && classResult.data) {
-          const enrichedSlots = teacherSlots.map((slot: TimetableSlotData) => {
-            // Find matching class timetable slot
-            const classSlot = classResult.data.find((cs: TimetableSlotData) =>
-              cs.class_id &&
-              cs.day === slot.day &&
-              cs.period_order === slot.period_order &&
-              cs.subject_id === slot.subject_id &&
-              (cs.teacher_ids?.includes(selectedTeacher.id) || cs.teacher_id === selectedTeacher.id)
-            );
-
-            if (classSlot && classSlot.class) {
-              return {
-                ...slot,
-                class: classSlot.class,
-                class_id: classSlot.class_id,
-              };
-            }
-            return slot;
-          });
-
-          setTimetableSlots(enrichedSlots);
-        } else {
-          setTimetableSlots(teacherSlots);
-        }
+        teacherSlots.forEach((slot: TimetableSlotData) => {
+          const periodOrder = slot.period_order || (slot.period ? parseInt(String(slot.period), 10) : undefined);
+          if (periodOrder !== undefined) {
+            // Use class_reference if available
+            const classInfo = slot.class || (slot.class_reference ? {
+              id: slot.class_reference.class_id,
+              class: slot.class_reference.class,
+              section: slot.class_reference.section,
+            } : undefined);
+            
+            allSlots.push({
+              ...slot,
+              period_order: periodOrder,
+              class: classInfo,
+            });
+          }
+        });
       }
+
+      // Remove duplicates (same day + period_order)
+      const uniqueSlots = allSlots.reduce((acc: TimetableSlotData[], slot: TimetableSlotData) => {
+        const exists = acc.find(s => 
+          s.day === slot.day && 
+          s.period_order === slot.period_order
+        );
+        if (!exists) {
+          acc.push(slot);
+        }
+        return acc;
+      }, []);
+
+      const slotsAsTimetable: TimetableSlot[] = uniqueSlots.map((slot, index) => ({
+        id: (slot as { id?: string }).id ?? `slot-${slot.day ?? ''}-${slot.period_order ?? ''}-${index}`,
+        day: slot.day ?? '',
+        period_order: slot.period_order ?? 0,
+        subject_id: slot.subject_id ?? null,
+        subject: slot.subject,
+        class_id: slot.class_id ?? null,
+        class: slot.class,
+      }));
+
+      setTimetableSlots(slotsAsTimetable);
     } catch (error) {
       console.error('Error fetching teacher timetable:', error);
+      setTimetableSlots([]);
     } finally {
       setLoading(false);
     }

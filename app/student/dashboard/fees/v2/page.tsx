@@ -27,6 +27,7 @@ interface ReceiptRecord {
   receipt_no: string;
   issued_at: string;
   payment: {
+    id?: string;
     amount: number;
     payment_mode: string;
     payment_date: string;
@@ -39,6 +40,7 @@ export default function StudentFeesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'fees' | 'receipts'>('fees');
+  const [schoolCode, setSchoolCode] = useState<string>('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -61,17 +63,17 @@ export default function StudentFeesPage() {
           setLoading(false);
           return;
         }
-        studentSchoolCode(studentSchoolCode);
+        setSchoolCode(String(studentSchoolCode));
 
         // Fetch fees
-        const feesRes = await fetch(`/api/v2/fees/students/${studentId}/fees?school_code=${studentSchoolCode}`);
+        const feesRes = await fetch(`/api/student/fees?school_code=${encodeURIComponent(String(studentSchoolCode))}&student_id=${encodeURIComponent(String(studentId))}`);
         const feesData = await feesRes.json();
         if (feesRes.ok) {
           setFees(feesData.data || []);
         }
 
         // Fetch receipts
-        const receiptsRes = await fetch(`/api/v2/fees/receipts?school_code=${studentSchoolCode}&student_id=${studentId}`);
+        const receiptsRes = await fetch(`/api/student/fees/receipts?school_code=${encodeURIComponent(String(studentSchoolCode))}&student_id=${encodeURIComponent(String(studentId))}`);
         const receiptsData = await receiptsRes.json();
         if (receiptsRes.ok) {
           setReceipts(receiptsData.data || []);
@@ -319,7 +321,12 @@ export default function StudentFeesPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => window.open(`/api/v2/fees/receipts/${receipt.id}/pdf`, '_blank')}
+                      onClick={() => {
+                        const paymentId = receipt.payment?.id ?? receipt.id;
+                        if (!paymentId) return;
+                        // Use existing HTML receipt endpoint (print/save as PDF from browser)
+                        window.open(`/api/fees/receipts/${paymentId}/download?school_code=${encodeURIComponent(schoolCode)}`, '_blank', 'noopener,noreferrer');
+                      }}
                       className="ml-4"
                     >
                       <Download size={16} className="mr-1" />

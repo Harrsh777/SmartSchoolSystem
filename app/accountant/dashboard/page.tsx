@@ -137,7 +137,8 @@ export default function AccountantDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classFilter, sectionFilter, searchQuery, accountant]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     sessionStorage.removeItem('accountant');
     sessionStorage.removeItem('school');
     sessionStorage.removeItem('role');

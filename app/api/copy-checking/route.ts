@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseFetchOptions } from '@/lib/supabase-fetch';
 
 const getServiceRoleClient = () => {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    getSupabaseFetchOptions()
   );
 };
 
@@ -138,12 +140,14 @@ export async function GET(request: NextRequest) {
       yellow: 0,
       red: 0,
       not_marked: 0,
+      absent: 0,
     };
 
     studentsWithRecords.forEach((student) => {
       if (student.status === 'green') stats.green++;
       else if (student.status === 'yellow') stats.yellow++;
       else if (student.status === 'red') stats.red++;
+      else if (student.status === 'absent') stats.absent++;
       else stats.not_marked++;
     });
 

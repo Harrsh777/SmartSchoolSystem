@@ -172,6 +172,15 @@ export default function StudentAttendancePage({
     );
   }
 
+  // Helper function to chunk dates into groups of 15
+  const chunkDates = (dates: string[], chunkSize: number = 15): string[][] => {
+    const chunks: string[][] = [];
+    for (let i = 0; i < dates.length; i += chunkSize) {
+      chunks.push(dates.slice(i, i + chunkSize));
+    }
+    return chunks;
+  };
+
   const renderAttendanceTable = (classData: ClassAttendanceData | null, dates: string[]) => {
     if (!classData && !attendanceData) return null;
 
@@ -186,56 +195,94 @@ export default function StudentAttendancePage({
       );
     }
 
+    // Split dates into chunks of 15
+    const dateChunks = chunkDates(dates, 15);
+
     return (
-      <div className="overflow-x-auto w-full">
-        <table className="min-w-full border-collapse">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase border-r border-gray-200">
-                Roll No.
-              </th>
-              <th className="sticky left-[80px] z-10 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase border-r border-gray-200 min-w-[200px]">
-                Student Name
-              </th>
-              {dates.map((date) => {
-                const day = parseInt(date.split('-')[2]);
-                return (
-                  <th
-                    key={date}
-                    className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase border-r border-gray-200 min-w-[40px]"
-                  >
-                    {day}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {students.map((student) => (
-              <tr key={student.student_id} className="hover:bg-gray-50">
-                <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">
-                  {student.roll_number || '-'}
-                </td>
-                <td className="sticky left-[80px] z-10 bg-white px-4 py-3 text-sm text-gray-900 border-r border-gray-200">
-                  {student.student_name || student.admission_no || '-'}
-                </td>
-                {dates.map((date) => {
-                  const status = student.attendance[date] || 'not_marked';
-                  return (
-                    <td
-                      key={date}
-                      className="px-2 py-3 text-center border-r border-gray-200"
-                    >
-                      <div className="flex items-center justify-center">
-                        {getStatusIcon(status)}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="w-full space-y-6">
+        {dateChunks.map((dateChunk, chunkIndex) => (
+          <div key={chunkIndex} className="overflow-x-auto w-full">
+            <div className="mb-2 text-sm font-semibold text-gray-700">
+              Days {chunkIndex * 15 + 1} - {Math.min((chunkIndex + 1) * 15, dates.length)}
+            </div>
+            <table className="min-w-full border-collapse border border-gray-200">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  {chunkIndex === 0 && (
+                    <>
+                      <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase border-r border-gray-200">
+                        Roll No.
+                      </th>
+                      <th className="sticky left-[80px] z-10 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase border-r border-gray-200 min-w-[200px]">
+                        Student Name
+                      </th>
+                    </>
+                  )}
+                  {chunkIndex > 0 && (
+                    <>
+                      <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase border-r border-gray-200">
+                        Roll No.
+                      </th>
+                      <th className="sticky left-[80px] z-10 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase border-r border-gray-200 min-w-[200px]">
+                        Student Name
+                      </th>
+                    </>
+                  )}
+                  {dateChunk.map((date) => {
+                    const day = parseInt(date.split('-')[2]);
+                    return (
+                      <th
+                        key={date}
+                        className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase border-r border-gray-200 min-w-[40px]"
+                      >
+                        {day}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {students.map((student) => (
+                  <tr key={`${student.student_id}-${chunkIndex}`} className="hover:bg-gray-50">
+                    {chunkIndex === 0 && (
+                      <>
+                        <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">
+                          {student.roll_number || '-'}
+                        </td>
+                        <td className="sticky left-[80px] z-10 bg-white px-4 py-3 text-sm text-gray-900 border-r border-gray-200">
+                          {student.student_name || student.admission_no || '-'}
+                        </td>
+                      </>
+                    )}
+                    {chunkIndex > 0 && (
+                      <>
+                        <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">
+                          {student.roll_number || '-'}
+                        </td>
+                        <td className="sticky left-[80px] z-10 bg-white px-4 py-3 text-sm text-gray-900 border-r border-gray-200">
+                          {student.student_name || student.admission_no || '-'}
+                        </td>
+                      </>
+                    )}
+                    {dateChunk.map((date) => {
+                      const status = student.attendance[date] || 'not_marked';
+                      return (
+                        <td
+                          key={date}
+                          className="px-2 py-3 text-center border-r border-gray-200"
+                        >
+                          <div className="flex items-center justify-center">
+                            {getStatusIcon(status)}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
       </div>
     );
   };

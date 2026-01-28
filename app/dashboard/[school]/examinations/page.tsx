@@ -13,9 +13,6 @@ import {
   Users, 
   FileText, 
   GraduationCap,
-  ClipboardList,
-  FileBarChart,
-  Award,
   BarChart3
 } from 'lucide-react';
 
@@ -117,12 +114,20 @@ export default function ExaminationsPage({
 
   const examinationSections = [
     {
+      id: 'dashboard',
+      title: 'Examination Dashboard',
+      description: 'View all examinations - previous, ongoing, and upcoming',
+      icon: BarChart3,
+      path: `/dashboard/${schoolCode}/examinations/dashboard`,
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
+    },
+    {
       id: 'create',
       title: 'Create Examination',
-      description: 'Create new examinations for classes and subjects',
+      description: 'Create new examinations with class mapping, subjects, and schedules',
       icon: Plus,
       path: `/dashboard/${schoolCode}/examinations/create`,
-      color: 'from-[#5A7A95] to-[#6B9BB8]',
+      color: 'from-[#6B9BB8] to-[#7DB5D3]',
     },
     {
       id: 'grade-scale',
@@ -130,55 +135,7 @@ export default function ExaminationsPage({
       description: 'Configure grade scales and grading systems',
       icon: GraduationCap,
       path: `/dashboard/${schoolCode}/examinations/grade-scale`,
-      color: 'from-[#6B9BB8] to-[#7DB5D3]',
-    },
-    {
-      id: 'marks-entry',
-      title: 'Marks Entry',
-      description: 'Enter and manage examination marks for students',
-      icon: ClipboardList,
-      path: `/dashboard/${schoolCode}/examinations/marks-entry`,
       color: 'from-[#567C8D] to-[#5A7A95]',
-    },
-    {
-      id: 'marks-approval',
-      title: 'Marks Approval',
-      description: 'Review and approve submitted marks',
-      icon: Award,
-      path: `/dashboard/${schoolCode}/examinations/marks-approval`,
-      color: 'from-[#5A7A95] to-[#6B9BB8]',
-    },
-    {
-      id: 'offline-tests',
-      title: 'Offline Tests',
-      description: 'Manage offline test records and results',
-      icon: FileText,
-      path: `/dashboard/${schoolCode}/examinations/offline-tests`,
-      color: 'from-[#5A7A95] to-[#6B9BB8]',
-    },
-    {
-      id: 'report-card',
-      title: 'Report Card',
-      description: 'Generate and view student report cards',
-      icon: Award,
-      path: `/dashboard/${schoolCode}/examinations/report-card`,
-      color: 'from-[#6B9BB8] to-[#7DB5D3]',
-    },
-    {
-      id: 'report-card-template',
-      title: 'Report Card Template',
-      description: 'Create and customize report card templates',
-      icon: FileBarChart,
-      path: `/dashboard/${schoolCode}/examinations/report-card-template`,
-      color: 'from-[#567C8D] to-[#5A7A95]',
-    },
-    {
-      id: 'reports',
-      title: 'Examination Reports',
-      description: 'View detailed examination reports and analytics',
-      icon: BarChart3,
-      path: `/dashboard/${schoolCode}/examinations/reports`,
-      color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
   ];
 

@@ -225,12 +225,12 @@ export default function StudentDashboard() {
   };
 
   const fetchExams = async (studentData: Student) => {
-    if (!studentData.school_code) return;
+    if (!studentData.school_code || !studentData.id) return;
     
     try {
       setExamsLoading(true);
       const response = await fetch(
-        `/api/examinations?school_code=${studentData.school_code}${classId ? `&class_id=${classId}` : ''}`
+        `/api/examinations/v2/student?school_code=${studentData.school_code}&student_id=${studentData.id}`
       );
       const result = await response.json();
       
@@ -241,7 +241,11 @@ export default function StudentDashboard() {
           if (!exam.start_date) return false;
           const examDate = new Date(exam.start_date);
           examDate.setHours(0, 0, 0, 0);
-          return examDate >= today;
+          const endDate = new Date(exam.end_date || exam.start_date);
+          endDate.setHours(0, 0, 0, 0);
+          // Show upcoming and ongoing exams
+          return (exam.status === 'upcoming' || exam.status === 'ongoing' || !exam.status) && 
+                 (today >= examDate && today <= endDate || today < examDate);
         });
         setExams(upcoming);
       }

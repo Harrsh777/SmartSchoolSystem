@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
       .eq('school_code', schoolCode)
       .single();
 
-    // Generate PDF
+    // Generate PDF (A4 portrait)
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([595, 842]); // A4 size
     const { width, height } = page.getSize();
@@ -109,17 +109,51 @@ export async function GET(request: NextRequest) {
       });
     };
 
-    // Header
-    drawText('REPORT CARD', width / 2 - 60, height - 50, 24, helveticaBold);
-    drawText(school?.school_name || 'School Name', width / 2 - 80, height - 80, 14, helveticaBold);
-    drawText(exam.exam_name || exam.name || 'Examination', width / 2 - 60, height - 100, 12);
-    drawText(`Academic Year: ${exam.academic_year || 'N/A'}`, width / 2 - 60, height - 115, 10);
+    // ===== Header (colorful, production-ready) =====
+    const brandBlue = rgb(0.12, 0.23, 0.54); // #1E3A8A-ish
+    const brandLight = rgb(0.23, 0.51, 0.96); // #3B82F6-ish
+
+    // Top band
+    page.drawRectangle({
+      x: 0,
+      y: height - 110,
+      width,
+      height: 110,
+      color: brandBlue,
+    });
+    // Accent band
+    page.drawRectangle({
+      x: 0,
+      y: height - 118,
+      width,
+      height: 8,
+      color: brandLight,
+    });
+
+    const schoolName = String(school?.school_name || 'School');
+    const examName = String(exam.exam_name || exam.name || 'Examination');
+    const ay = String(exam.academic_year || 'N/A');
+
+    drawText(schoolName.toUpperCase(), 40, height - 55, 16, helveticaBold, rgb(1, 1, 1));
+    drawText('REPORT CARD', 40, height - 80, 22, helveticaBold, rgb(1, 1, 1));
+    drawText(`${examName}  •  Academic Year: ${ay}`, 40, height - 100, 11, helveticaFont, rgb(1, 1, 1));
+
+    // Card border
+    page.drawRectangle({
+      x: 30,
+      y: 40,
+      width: width - 60,
+      height: height - 160,
+      borderColor: rgb(0.85, 0.88, 0.92),
+      borderWidth: 1,
+      color: rgb(1, 1, 1),
+    });
 
     // Student Information
-    let yPos = height - 180;
-    drawText('Student Information', 50, yPos, 14, helveticaBold);
+    let yPos = height - 170;
+    drawText('Student Information', 50, yPos, 13, helveticaBold, rgb(0.1, 0.1, 0.1));
     yPos -= 25;
-    drawText(`Name: ${student.student_name || student.full_name || 'N/A'}`, 50, yPos, 11);
+    drawText(`Name: ${student.student_name || 'N/A'}`, 50, yPos, 11, helveticaBold);
     yPos -= 20;
     drawText(`Class: ${student.class || 'N/A'} ${student.section ? `- ${student.section}` : ''}`, 50, yPos, 11);
     yPos -= 20;
@@ -129,7 +163,7 @@ export async function GET(request: NextRequest) {
 
     // Marks Table
     yPos -= 40;
-    drawText('Subject-wise Marks', 50, yPos, 14, helveticaBold);
+    drawText('Subject-wise Marks', 50, yPos, 13, helveticaBold);
     yPos -= 25;
 
     // Table Header
@@ -143,7 +177,14 @@ export async function GET(request: NextRequest) {
       y: yPos - 15,
       width: width - 100,
       height: rowHeight,
-      color: rgb(0.9, 0.9, 0.9),
+      color: rgb(0.94, 0.96, 0.99),
+    });
+    // Header line
+    page.drawLine({
+      start: { x: 50, y: yPos - 15 },
+      end: { x: width - 50, y: yPos - 15 },
+      color: rgb(0.85, 0.88, 0.92),
+      thickness: 1,
     });
 
     drawText('Subject', currentX + 5, yPos, 10, helveticaBold);
@@ -159,24 +200,49 @@ export async function GET(request: NextRequest) {
     yPos -= rowHeight;
 
     // Draw marks rows
-    (marks || []).forEach((mark) => {
+    let totalObtained = 0;
+    let totalMax = 0;
+
+    (marks || []).forEach((mark, idx) => {
       if (yPos < 100) {
         // Add new page if needed
         const newPage = pdfDoc.addPage([595, 842]);
         yPos = newPage.getSize().height - 50;
       }
 
-      const percentage = mark.max_marks > 0 ? (mark.marks_obtained / mark.max_marks) * 100 : 0;
+      const max = Number(mark.max_marks ?? 0) || 0;
+      const obtained = mark.marks_obtained === null || mark.marks_obtained === undefined ? null : Number(mark.marks_obtained);
+      const isAbsent = String(mark.remarks || '').toLowerCase() === 'absent' || obtained === null;
+      const percentage = !isAbsent && max > 0 ? ((obtained || 0) / max) * 100 : 0;
       const isPass = percentage >= 40;
+
+      if (!isAbsent) {
+        totalMax += max;
+        totalObtained += (obtained || 0);
+      } else {
+        // still count max marks for total? keep consistent with summary if available
+        totalMax += max;
+      }
+
+      // Zebra rows
+      if (idx % 2 === 0) {
+        page.drawRectangle({
+          x: 50,
+          y: yPos - 5,
+          width: width - 100,
+          height: rowHeight,
+          color: rgb(0.99, 0.99, 1),
+        });
+      }
 
       currentX = 50;
       drawText(mark.subject?.name || 'N/A', currentX + 5, yPos, 10);
       currentX += colWidths[0];
-      drawText(String(mark.max_marks), currentX + 5, yPos, 10);
+      drawText(String(max), currentX + 5, yPos, 10);
       currentX += colWidths[1];
-      drawText(String(mark.marks_obtained), currentX + 5, yPos, 10);
+      drawText(isAbsent ? 'AB' : String(obtained ?? 0), currentX + 5, yPos, 10, helveticaFont, isAbsent ? rgb(0.6, 0, 0) : rgb(0, 0, 0));
       currentX += colWidths[2];
-      drawText(`${percentage.toFixed(2)}%`, currentX + 5, yPos, 10, helveticaFont, isPass ? rgb(0, 0.5, 0) : rgb(0.8, 0, 0));
+      drawText(isAbsent ? '-' : `${percentage.toFixed(2)}%`, currentX + 5, yPos, 10, helveticaFont, isPass ? rgb(0, 0.5, 0) : rgb(0.8, 0, 0));
       currentX += colWidths[3];
       drawText(mark.grade || 'N/A', currentX + 5, yPos, 10, helveticaFont, isPass ? rgb(0, 0.5, 0) : rgb(0.8, 0, 0));
 
@@ -184,17 +250,23 @@ export async function GET(request: NextRequest) {
     });
 
     // Summary
-    if (summary) {
+    const computedPercentage = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
+    const finalTotal = summary?.total_marks ?? totalObtained;
+    const finalMax = summary?.total_max_marks ?? totalMax;
+    const finalPercentage = summary?.percentage ?? computedPercentage;
+    const finalGrade = summary?.grade ?? null;
+
+    if (marks && marks.length > 0) {
       yPos -= 30;
       drawText('Summary', 50, yPos, 14, helveticaBold);
       yPos -= 25;
-      drawText(`Total Marks: ${summary.total_marks || 0} / ${summary.total_max_marks || 0}`, 50, yPos, 11);
+      drawText(`Total Marks: ${Number(finalTotal || 0)} / ${Number(finalMax || 0)}`, 50, yPos, 11);
       yPos -= 20;
-      drawText(`Percentage: ${summary.percentage?.toFixed(2) || 0}%`, 50, yPos, 11);
+      drawText(`Percentage: ${Number(finalPercentage || 0).toFixed(2)}%`, 50, yPos, 11);
       yPos -= 20;
-      drawText(`Grade: ${summary.grade || 'N/A'}`, 50, yPos, 11);
+      drawText(`Grade: ${finalGrade || 'N/A'}`, 50, yPos, 11);
       yPos -= 20;
-      const isPass = (summary.percentage || 0) >= 40;
+      const isPass = Number(finalPercentage || 0) >= 40;
       drawText(`Result: ${isPass ? 'PASS' : 'FAIL'}`, 50, yPos, 11, helveticaBold, isPass ? rgb(0, 0.5, 0) : rgb(0.8, 0, 0));
     }
 
@@ -224,7 +296,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="report_card_${student.student_name || studentId}_${exam.exam_name || examId}.pdf"`,
+        'Content-Disposition': `attachment; filename="report_card_${(student.student_name || '').replace(/\s+/g, '_') || studentId}_${(exam.exam_name || examId || 'exam').replace(/\s+/g, '_')}.pdf"`,
       },
     });
   } catch (error) {

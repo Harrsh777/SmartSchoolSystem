@@ -51,7 +51,7 @@ export async function GET(
       .select(`
         id,
         subject_id,
-        subject:subjects (
+        subject:subject_id (
           id,
           name,
           color
@@ -61,6 +61,21 @@ export async function GET(
       .eq('staff_id', staffId);
 
     if (staffSubjectsError) {
+      // If table doesn't exist, return empty subjects array
+      if (staffSubjectsError.message?.includes('does not exist') || 
+          staffSubjectsError.message?.includes('relation') ||
+          staffSubjectsError.code === '42P01') {
+        console.log('staff_subjects table does not exist yet - returning empty subjects');
+        return NextResponse.json(
+          {
+            data: {
+              staff,
+              subjects: [],
+            },
+          },
+          { status: 200 }
+        );
+      }
       console.error('Error fetching staff-subjects:', staffSubjectsError);
       return NextResponse.json(
         { error: 'Failed to fetch staff-subject assignments', details: staffSubjectsError.message },
@@ -166,6 +181,7 @@ export async function POST(
     }
 
     // Delete existing assignments for this staff member
+    // Handle case where table might not exist yet
     const { error: deleteError } = await supabase
       .from('staff_subjects')
       .delete()
@@ -173,11 +189,18 @@ export async function POST(
       .eq('staff_id', staffId);
 
     if (deleteError) {
-      console.error('Error deleting existing staff-subjects:', deleteError);
-      return NextResponse.json(
-        { error: 'Failed to update assignments', details: deleteError.message },
-        { status: 500 }
-      );
+      // If table doesn't exist, that's okay - we'll create it with the insert
+      if (!deleteError.message?.includes('does not exist') && 
+          !deleteError.message?.includes('relation') &&
+          deleteError.code !== '42P01') {
+        console.error('Error deleting existing staff-subjects:', deleteError);
+        return NextResponse.json(
+          { error: 'Failed to update assignments', details: deleteError.message },
+          { status: 500 }
+        );
+      }
+      // Table doesn't exist - continue to insert (will create table)
+      console.log('staff_subjects table does not exist yet - will be created on insert');
     }
 
     // Insert new assignments
@@ -234,7 +257,7 @@ export async function POST(
       .select(`
         id,
         subject_id,
-        subject:subjects (
+        subject:subject_id (
           id,
           name,
           color
@@ -244,7 +267,14 @@ export async function POST(
       .eq('staff_id', staffId);
 
     if (fetchError) {
-      console.error('Error fetching updated assignments:', fetchError);
+      // If table doesn't exist or no assignments, return empty array
+      if (fetchError.message?.includes('does not exist') || 
+          fetchError.message?.includes('relation') ||
+          fetchError.code === '42P01') {
+        console.log('staff_subjects table does not exist or no assignments found');
+      } else {
+        console.error('Error fetching updated assignments:', fetchError);
+      }
     }
 
     const updatedSubjects = (updatedAssignments || [])

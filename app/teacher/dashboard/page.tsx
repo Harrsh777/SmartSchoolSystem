@@ -47,6 +47,7 @@ export default function TeacherDashboard() {
   const [loadingTodos, setLoadingTodos] = useState(false);
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [showAddTodo, setShowAddTodo] = useState(false);
+  const [assignedSubjects, setAssignedSubjects] = useState<Array<{ id: string; name: string; color: string }>>([]);
   interface EventNotification {
     id: string;
     event: {
@@ -165,6 +166,7 @@ export default function TeacherDashboard() {
         fetchDailyAgenda(schoolCode, teacherId);
         fetchGradeDistribution(schoolCode, teacherId);
         fetchTodos(schoolCode, teacherId);
+        fetchAssignedSubjects(schoolCode, teacherId);
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -348,12 +350,23 @@ export default function TeacherDashboard() {
 
   const fetchUpcomingExamsCount = async (schoolCode: string) => {
     try {
-      const response = await fetch(`/api/examinations?school_code=${schoolCode}`);
+      if (!teacher) return;
+      const teacherId = getString(teacher.id);
+      if (!teacherId) return;
+
+      const response = await fetch(`/api/examinations/v2/teacher?school_code=${schoolCode}&teacher_id=${teacherId}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
         const upcoming = result.data.filter((exam: Exam) => {
-          return (exam.status === 'upcoming' || exam.status === 'ongoing') && exam.end_date && exam.end_date >= today;
+          if (!exam.start_date) return false;
+          const startDate = new Date(exam.start_date);
+          startDate.setHours(0, 0, 0, 0);
+          const endDate = new Date(exam.end_date || exam.start_date);
+          endDate.setHours(0, 0, 0, 0);
+          return (exam.status === 'upcoming' || exam.status === 'ongoing') && 
+                 (today >= startDate && today <= endDate || today < startDate);
         });
         setUpcomingExamsCount(upcoming.length);
       }
@@ -403,6 +416,18 @@ export default function TeacherDashboard() {
       }
     } catch (err) {
       console.error('Error fetching event notifications:', err);
+    }
+  };
+
+  const fetchAssignedSubjects = async (schoolCode: string, teacherId: string) => {
+    try {
+      const response = await fetch(`/api/staff-subjects/${teacherId}?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (response.ok && result.data && result.data.subjects) {
+        setAssignedSubjects(result.data.subjects);
+      }
+    } catch (err) {
+      console.error('Error fetching assigned subjects:', err);
     }
   };
 
@@ -491,6 +516,20 @@ export default function TeacherDashboard() {
               <p className="text-muted-foreground">
                 Class Teacher of {getString(assignedClass.class)}-{getString(assignedClass.section)} ({getString(assignedClass.academic_year) || 'N/A'})
               </p>
+              {assignedSubjects.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span className="text-xs text-muted-foreground">Teaching:</span>
+                  {assignedSubjects.map((subject) => (
+                    <span
+                      key={subject.id}
+                      className="text-xs px-2 py-1 rounded-full text-white font-medium"
+                      style={{ backgroundColor: subject.color || '#6B7280' }}
+                    >
+                      {subject.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </motion.div>

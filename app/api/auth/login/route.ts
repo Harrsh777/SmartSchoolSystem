@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
+import { setAuthCookie } from '@/lib/auth-cookie';
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...schoolData } = school;
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         success: true,
         message: 'Login successful',
@@ -65,6 +66,8 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     );
+    setAuthCookie(response, 'school', school.school_code);
+    return response;
   } catch (error) {
     console.error('Error during login:', error);
     return NextResponse.json(

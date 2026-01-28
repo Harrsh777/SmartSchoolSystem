@@ -147,10 +147,16 @@ export default function MarksDashboardPage({
 
   const fetchExaminations = async () => {
     try {
-      const response = await fetch(`/api/examinations?school_code=${schoolCode}`);
+      const response = await fetch(`/api/examinations/v2/list?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setExaminations(result.data);
+        // Transform the v2 API response to match expected format
+        const exams = (result.data as Array<{ id?: string; exam_name?: string; name?: string }>).map((exam) => ({
+          id: String(exam.id ?? ''),
+          exam_name: String(exam.exam_name || exam.name || ''),
+          name: String(exam.exam_name || exam.name || ''),
+        }));
+        setExaminations(exams);
       }
     } catch (err) {
       console.error('Error fetching examinations:', err);
@@ -390,7 +396,7 @@ export default function MarksDashboardPage({
                 >
                   <option value="">All Classes</option>
                   {classes.map((cls) => (
-                    <option key={cls.id} value={cls.id}>
+                    <option key={cls.id} value={cls.class}>
                       {cls.class} {cls.section ? `- ${cls.section}` : ''}
                     </option>
                   ))}

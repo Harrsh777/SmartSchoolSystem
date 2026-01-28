@@ -75,10 +75,11 @@ export default function StudentTransportPage() {
 
       const result = await response.json();
 
+      // Always set transport info - API now returns 200 with empty data on errors
       if (response.ok && result.data) {
         setTransportInfo(result.data);
       } else {
-        console.error('Error fetching transport info:', result.error);
+        // Fallback: set empty transport info if response structure is unexpected
         setTransportInfo({
           has_transport: false,
           transport_type: null,
@@ -88,19 +89,24 @@ export default function StudentTransportPage() {
           pickup_stop: null,
           dropoff_stop: null,
         });
+        
+        // Only log if it's a real error (not just missing transport)
+        if (response.status >= 500) {
+          console.error('Error fetching transport info:', result.error || result.details);
+        }
       }
     } catch (error) {
       console.error('Error fetching transport info:', error);
+      // Set empty transport info on error - UI will show appropriate message
       setTransportInfo({
-          has_transport: false,
-          transport_type: null,
-          route: null,
-          vehicle: null,
-          stops: [],
-          pickup_stop: null,
-          dropoff_stop: null,
+        has_transport: false,
+        transport_type: null,
+        route: null,
+        vehicle: null,
+        stops: [],
+        pickup_stop: null,
+        dropoff_stop: null,
       });
-       
     } finally {
       setLoading(false);
     }

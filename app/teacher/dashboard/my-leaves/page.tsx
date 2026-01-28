@@ -11,7 +11,9 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Search
+  Search,
+  X,
+  Loader2
 } from 'lucide-react';
 
 interface LeaveRequest {
@@ -32,6 +34,9 @@ export default function MyLeavesPage() {
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const storedTeacher = sessionStorage.getItem('teacher');
@@ -72,6 +77,44 @@ export default function MyLeavesPage() {
       case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
       case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const handleWithdraw = async (leaveId: string) => {
+    if (!confirm('Are you sure you want to withdraw this leave request? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setWithdrawing(leaveId);
+      setError('');
+      setSuccess('');
+
+      const response = await fetch(`/api/leave/requests/${leaveId}/withdraw`, {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setSuccess('Leave request withdrawn successfully');
+        // Refresh the leaves list
+        const storedTeacher = sessionStorage.getItem('teacher');
+        if (storedTeacher) {
+          const teacherData: { id: string; school_code: string } = JSON.parse(storedTeacher);
+          fetchLeaves(teacherData);
+        }
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(result.error || 'Failed to withdraw leave request');
+        setTimeout(() => setError(''), 5000);
+      }
+    } catch (err) {
+      console.error('Error withdrawing leave request:', err);
+      setError('Failed to withdraw leave request. Please try again.');
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setWithdrawing(null);
     }
   };
 
@@ -119,6 +162,32 @@ export default function MyLeavesPage() {
         </div>
       </motion.div>
 
+      {/* Success/Error Messages */}
+      {success && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg"
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={20} className="text-green-600" />
+            <span className="text-sm font-medium">{success}</span>
+          </div>
+        </motion.div>
+      )}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg"
+        >
+          <div className="flex items-center gap-2">
+            <XCircle size={20} className="text-red-600" />
+            <span className="text-sm font-medium">{error}</span>
+          </div>
+        </motion.div>
+      )}
+
       <Card className="p-6">
         {/* Search */}
         <div className="mb-6">
@@ -155,7 +224,7 @@ export default function MyLeavesPage() {
                 transition={{ delay: index * 0.05 }}
                 className="p-4 bg-[#FFFFFF] border border-[#E1E1DB] rounded-lg hover:shadow-md transition-all"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#EAF1FF] text-[#2F6FED] border border-[#DBEAFE]">
@@ -200,6 +269,29 @@ export default function MyLeavesPage() {
                       </div>
                     )}
                   </div>
+                  {/* Withdraw Button - Only show for pending requests */}
+                  {leave.status === 'pending' && (
+                    <div className="ml-4">
+                      <Button
+                        onClick={() => handleWithdraw(leave.id)}
+                        disabled={withdrawing === leave.id}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        size="sm"
+                      >
+                        {withdrawing === leave.id ? (
+                          <>
+                            <Loader2 size={16} className="mr-2 animate-spin" />
+                            Withdrawing...
+                          </>
+                        ) : (
+                          <>
+                            <X size={16} className="mr-2" />
+                            Withdraw
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ))}

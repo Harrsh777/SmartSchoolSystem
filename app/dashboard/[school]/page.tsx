@@ -45,7 +45,6 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { AcceptedSchool } from '@/lib/supabase';
-
 interface DashboardStats {
   totalStudents: number;
   totalStaff: number;
@@ -223,6 +222,8 @@ export default function DashboardPage({
   const [showTeacherBirthdays, setShowTeacherBirthdays] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [calendarEntries, setCalendarEntries] = useState<Array<{ id?: string; event_date?: string; title?: string; event_type?: string; description?: string }>>([]);
+  const [loadingCalendar, setLoadingCalendar] = useState(false);
   const [classesCount, setClassesCount] = useState(0);
   const [sectionsCount, setSectionsCount] = useState(0);
   const [loadingClasses, setLoadingClasses] = useState(false);
@@ -238,6 +239,38 @@ export default function DashboardPage({
     fetchClassesAndSections();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
+
+  // Academic Calendar (events) for dashboard widget
+  useEffect(() => {
+    const fetchCalendar = async () => {
+      try {
+        if (!schoolCode) return;
+        setLoadingCalendar(true);
+        const res = await fetch(`/api/calendar/academic?school_code=${encodeURIComponent(schoolCode)}&academic_year=${encodeURIComponent(String(selectedYear))}`);
+        const raw = await res.text();
+        const json = raw ? JSON.parse(raw) : {};
+        if (res.ok && Array.isArray(json.data)) {
+          setCalendarEntries(json.data);
+        } else {
+          setCalendarEntries([]);
+        }
+      } catch (e) {
+        console.error('Error fetching dashboard calendar:', e);
+        setCalendarEntries([]);
+      } finally {
+        setLoadingCalendar(false);
+      }
+    };
+    fetchCalendar();
+  }, [schoolCode, selectedYear]);
+
+  const getEventsForDay = (year: number, month: number, day: number) => {
+    const dateStr = new Date(year, month, day).toISOString().split('T')[0];
+    return calendarEntries.filter((e) => {
+      const d = e.event_date ? String(e.event_date).split('T')[0] : '';
+      return d === dateStr;
+    });
+  };
 
   // Handle navbar quick actions button click
   useEffect(() => {
@@ -912,7 +945,7 @@ export default function DashboardPage({
       </motion.div>
 
       {/* KPI Cards - Colorful Design */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Total Students Card - Blue */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -955,7 +988,7 @@ export default function DashboardPage({
           </div>
         </motion.div>
 
-        {/* Annual Revenue Card - Purple */}
+        {/* Total Fees Collected This Month Card - Blue */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -966,36 +999,46 @@ export default function DashboardPage({
           <div className="relative">
             {/* Icon at top left */}
             <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                <DollarSign className="text-purple-600" size={24} />
+              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                <DollarSign className="text-blue-600" size={24} />
               </div>
             </div>
             
             {/* Title */}
             <p className="text-sm font-medium text-gray-600 mb-2">
-              Annual Revenue
+              Fees Collected This Month
             </p>
             
             {/* Main Value */}
             <div className="mb-4">
               <div className="text-3xl font-bold text-gray-900 mb-1">
-                ${loading ? '...' : ((stats.feeCollection.total ?? 0) / 1000000).toFixed(1)}M
+                {loading ? '...' : (() => {
+                  const amount = stats.feeCollection.monthlyCollection ?? 0;
+                  if (amount >= 1000) {
+                    return `₹${(amount / 1000).toFixed(1)}K`;
+                  } else {
+                    return `₹${amount.toLocaleString('en-IN')}`;
+                  }
+                })()}
               </div>
             </div>
             
             {/* Progress Bar at bottom - based on actual data */}
             <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <motion.div 
-                className="bg-purple-500 h-full rounded-full"
+                className="bg-red-400 h-full rounded-full"
                 initial={{ width: 0 }}
                 animate={{ 
-                  width: loading ? '0%' : stats.feeCollection.total > 0 ? '100%' : '0%'
+                  width: loading ? '0%' : (stats.feeCollection.monthlyCollection ?? 0) > 0 ? '100%' : '0%'
                 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
             </div>
           </div>
         </motion.div>
+
+        {/* Annual Revenue Card - Purple */}
+        
 
         {/* Staff Attendance Card - Green */}
         <motion.div
@@ -1043,7 +1086,7 @@ export default function DashboardPage({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.25 }}
           whileHover={{ y: -2 }}
           className="group relative bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
         >
@@ -2134,19 +2177,61 @@ export default function DashboardPage({
                     
                     // Days of the month
                     for (let day = 1; day <= daysInMonth; day++) {
+                      const dayEvents = getEventsForDay(selectedYear, selectedMonth, day);
+                      const top = dayEvents.slice(0, 2);
                       days.push(
                         <div
                           key={day}
-                          className="p-2 min-h-[32px] text-center text-xs text-[#0F172A] border-r border-b border-[#E5E7EB] last:border-r-0 hover:bg-[#F1F5F9] cursor-pointer"
+                          className="p-2 min-h-[68px] text-left text-xs text-[#0F172A] border-r border-b border-[#E5E7EB] last:border-r-0 hover:bg-[#F1F5F9] cursor-pointer"
+                          onClick={() => router.push(`/dashboard/${schoolCode}/calendar/academic`)}
                         >
-                          {day}
-          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold">{day}</span>
+                            {dayEvents.length > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#E0E7FF] text-[#1E3A8A]">
+                                {dayEvents.length}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 space-y-1">
+                            {top.map((ev, idx) => (
+                              <div
+                                key={`${day}-ev-${idx}`}
+                                className={`truncate text-[10px] px-1.5 py-0.5 rounded border ${
+                                  String(ev.event_type || '').toLowerCase() === 'holiday'
+                                    ? 'bg-red-50 text-red-700 border-red-100'
+                                    : String(ev.event_type || '').toLowerCase() === 'exam'
+                                      ? 'bg-orange-50 text-orange-700 border-orange-100'
+                                      : 'bg-blue-50 text-blue-700 border-blue-100'
+                                }`}
+                                title={ev.title || 'Event'}
+                              >
+                                {ev.title || 'Event'}
+                              </div>
+                            ))}
+                            {dayEvents.length > 2 && (
+                              <div className="text-[10px] text-gray-500">+{dayEvents.length - 2} more</div>
+                            )}
+                          </div>
+                        </div>
                       );
                     }
                     
                     return days;
                   })()}
                 </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between">
+                <div className="text-xs text-gray-600">
+                  {loadingCalendar ? 'Loading events…' : `${calendarEntries.length} event(s) in ${selectedYear}`}
+                </div>
+                <button
+                  onClick={() => router.push(`/dashboard/${schoolCode}/calendar/academic`)}
+                  className="text-xs font-semibold text-[#1E3A8A] hover:underline"
+                >
+                  Open full calendar
+                </button>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
+import { setAuthCookie } from '@/lib/auth-cookie';
 
 export async function POST(request: NextRequest) {
   try {
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Return success with staff and school data
-    return NextResponse.json({
+    const response = NextResponse.json({
       message: 'Login successful',
       data: {
         staff: {
@@ -118,6 +119,8 @@ export async function POST(request: NextRequest) {
         },
       },
     }, { status: 200 });
+    setAuthCookie(response, 'accountant');
+    return response;
   } catch (error) {
     console.error('Error in accountant login:', error);
     return NextResponse.json(

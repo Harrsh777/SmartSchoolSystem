@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import { GraduationCap, User, Mail, Phone, BookOpen } from 'lucide-react';
+import Image from 'next/image';
+import { GraduationCap, User, Mail, Phone, BookOpen, Users, Search } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
 interface ClassTeacher {
@@ -23,10 +24,23 @@ interface ClassInfo {
   class_teacher: ClassTeacher | null;
 }
 
+interface Classmate {
+  id: string;
+  student_name: string;
+  admission_no: string | null;
+  class: string | null;
+  section: string | null;
+  academic_year: string | null;
+  photo_url: string | null;
+}
+
 export default function MyClassPage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [classmatesLoading, setClassmatesLoading] = useState(false);
+  const [classmates, setClassmates] = useState<Classmate[]>([]);
+  const [classmateSearch, setClassmateSearch] = useState('');
 
   useEffect(() => {
     const storedStudent = sessionStorage.getItem('student');
@@ -34,6 +48,7 @@ export default function MyClassPage() {
       const studentData = JSON.parse(storedStudent);
       setStudent(studentData);
       fetchClassInfo(studentData);
+      fetchClassmates(studentData);
     }
   }, []);
 
@@ -57,6 +72,36 @@ export default function MyClassPage() {
       setLoading(false);
     }
   };
+
+  const fetchClassmates = async (studentData: Student) => {
+    try {
+      setClassmatesLoading(true);
+      const response = await fetch(
+        `/api/student/classmates?school_code=${studentData.school_code}&class=${studentData.class}&section=${studentData.section}&academic_year=${studentData.academic_year}`
+      );
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setClassmates(result.data);
+      } else {
+        setClassmates([]);
+      }
+    } catch (err) {
+      console.error('Error fetching classmates:', err);
+      setClassmates([]);
+    } finally {
+      setClassmatesLoading(false);
+    }
+  };
+
+  const filteredClassmates = useMemo(() => {
+    const q = classmateSearch.trim().toLowerCase();
+    if (!q) return classmates;
+    return classmates.filter((c) => {
+      const name = (c.student_name || '').toLowerCase();
+      const adm = (c.admission_no || '').toLowerCase();
+      return name.includes(q) || adm.includes(q);
+    });
+  }, [classmates, classmateSearch]);
 
   if (loading || !student) {
     return (
@@ -159,6 +204,75 @@ export default function MyClassPage() {
           )}
         </Card>
       </div>
+
+      {/* Classmates */}
+      <Card>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+          <h2 className="text-xl font-bold text-black flex items-center gap-2">
+            <Users size={20} />
+            Classmates
+            <span className="text-sm font-medium text-gray-600">({classmates.length})</span>
+          </h2>
+
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input
+              value={classmateSearch}
+              onChange={(e) => setClassmateSearch(e.target.value)}
+              placeholder="Search by name or admission no..."
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black text-sm"
+            />
+          </div>
+        </div>
+
+        {classmatesLoading ? (
+          <div className="text-center py-10">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-black mx-auto mb-3"></div>
+            <p className="text-gray-600">Loading classmates...</p>
+          </div>
+        ) : filteredClassmates.length === 0 ? (
+          <div className="text-center py-10">
+            <Users className="mx-auto mb-3 text-gray-400" size={44} />
+            <p className="text-gray-700 font-medium">No classmates found</p>
+            <p className="text-gray-600 text-sm mt-1">
+              {classmates.length === 0 ? 'No students are mapped to your class yet.' : 'Try a different search.'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredClassmates.map((cm) => (
+              <div
+                key={cm.id}
+                className="border border-gray-200 rounded-xl p-4 bg-white hover:shadow-sm transition-shadow"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="relative h-10 w-10 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+                    {cm.photo_url ? (
+                      <Image
+                        src={cm.photo_url}
+                        alt={cm.student_name || 'Student'}
+                        fill
+                        sizes="40px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-gray-700">
+                        {(cm.student_name || 'S').trim().substring(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-black truncate">{cm.student_name || 'Student'}</p>
+                    <p className="text-xs text-gray-600">
+                      {cm.admission_no ? `Adm: ${cm.admission_no}` : 'Admission: N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

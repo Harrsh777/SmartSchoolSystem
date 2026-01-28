@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Plus, Edit2, Power, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, Clock, Users, DollarSign, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, Clock, Users, DollarSign, TrendingUp } from 'lucide-react';
 
 const MONTHS = [
   { value: 1, label: 'January' },
@@ -115,6 +115,35 @@ export default function FeeStructuresPage({
       }
     } catch (err) {
       setError('Failed to activate fee structure');
+      console.error(err);
+    }
+  };
+
+  const handleDeactivate = async (structureId: string) => {
+    if (!confirm('Deactivate this fee structure? This will prevent it from being used for fee generation. Existing fees will not be affected.')) {
+      return;
+    }
+
+    try {
+      setError('');
+      const response = await fetch(`/api/v2/fees/fee-structures/${structureId}/deactivate`, {
+        method: 'POST',
+        headers: {
+          'x-staff-id': sessionStorage.getItem('staff_id') || '',
+        },
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setSuccess('Fee structure deactivated successfully');
+        fetchStructures();
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(result.error || 'Failed to deactivate fee structure');
+      }
+    } catch (err) {
+      setError('Failed to deactivate fee structure');
       console.error(err);
     }
   };
@@ -409,24 +438,34 @@ export default function FeeStructuresPage({
                         Activate Structure
                       </Button>
                     ) : (
-                      <Button
-                        onClick={() => handleGenerateFees(structure.id)}
-                        disabled={generating === structure.id}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
-                        size="sm"
-                      >
-                        {generating === structure.id ? (
-                          <>
-                            <Loader2 size={16} className="mr-2 animate-spin" />
-                            Generating Fees...
-                          </>
-                        ) : (
-                          <>
-                            <Calendar size={16} className="mr-2" />
-                            Generate Student Fees
-                          </>
-                        )}
-                      </Button>
+                      <>
+                        <Button
+                          onClick={() => handleGenerateFees(structure.id)}
+                          disabled={generating === structure.id}
+                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+                          size="sm"
+                        >
+                          {generating === structure.id ? (
+                            <>
+                              <Loader2 size={16} className="mr-2 animate-spin" />
+                              Generating Fees...
+                            </>
+                          ) : (
+                            <>
+                              <Calendar size={16} className="mr-2" />
+                              Generate Student Fees
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          onClick={() => handleDeactivate(structure.id)}
+                          className="w-full bg-red-600 hover:bg-red-700 text-white"
+                          size="sm"
+                        >
+                          <PowerOff size={16} className="mr-2" />
+                          Deactivate Structure
+                        </Button>
+                      </>
                     )}
                     <Button
                       variant="outline"

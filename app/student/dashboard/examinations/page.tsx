@@ -26,11 +26,23 @@ export default function ExaminationsPage() {
   const fetchExams = async (studentData: Student) => {
     try {
       const response = await fetch(
-        `/api/examinations?school_code=${studentData.school_code}`
+        `/api/examinations/v2/student?school_code=${studentData.school_code}&student_id=${studentData.id}`
       );
       const result = await response.json();
       if (response.ok && result.data) {
-        setExams(result.data);
+        // Filter to show upcoming and ongoing exams
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const activeExams = result.data.filter((exam: Examination) => {
+          if (!exam.start_date) return false;
+          const startDate = new Date(exam.start_date);
+          startDate.setHours(0, 0, 0, 0);
+          const endDate = new Date(exam.end_date || exam.start_date);
+          endDate.setHours(0, 0, 0, 0);
+          return (exam.status === 'upcoming' || exam.status === 'ongoing' || !exam.status) && 
+                 (today >= startDate && today <= endDate || today < startDate);
+        });
+        setExams(activeExams);
         // Fetch marks for this student
         fetchMarks(studentData);
       }
@@ -135,6 +147,54 @@ export default function ExaminationsPage() {
                         <p className="font-medium text-black">{exam.academic_year}</p>
                       </div>
                     </div>
+
+                    {/* Subjects, teachers, total / passing marks */}
+                    {Array.isArray(exam.subject_mappings) && exam.subject_mappings.length > 0 && (
+                      <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h4 className="font-semibold text-gray-900 mb-3">Subjects &amp; passing marks</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-gray-200 text-left text-gray-600">
+                                <th className="pb-2 pr-4">Subject</th>
+                                <th className="pb-2 pr-4">Teacher</th>
+                                <th className="pb-2 pr-4">Max marks</th>
+                                <th className="pb-2">Pass marks</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {exam.subject_mappings.map((sm: { subject_id?: string; subject_name?: string; teacher_name?: string; max_marks?: number; pass_marks?: number }, idx: number) => (
+                                <tr key={sm.subject_id ?? idx} className="border-b border-gray-100">
+                                  <td className="py-2 pr-4 font-medium text-black">
+                                    {typeof sm.subject_name === "string" && sm.subject_name.length > 0 ? sm.subject_name : '—'}
+                                  </td>
+                                  <td className="py-2 pr-4 text-gray-700">
+                                    {typeof sm.teacher_name === "string" && sm.teacher_name.length > 0 ? sm.teacher_name : '—'}
+                                  </td>
+                                  <td className="py-2 pr-4 text-gray-700">
+                                    {sm.max_marks != null ? String(sm.max_marks) : '—'}
+                                  </td>
+                                  <td className="py-2 text-gray-700">
+                                    {sm.pass_marks != null ? String(sm.pass_marks) : '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                             
+                            </tbody>
+                          </table>
+                        </div>
+                        {(exam.total_max_marks != null || exam.total_pass_marks != null) && (
+                          <div className="mt-3 pt-3 border-t border-gray-200 flex gap-6 text-sm">
+                            {exam.total_max_marks != null && (
+                              <span className="text-gray-700"><strong>Total max marks:</strong> {String(exam.total_max_marks)}</span>
+                            )}
+                            {exam.total_pass_marks != null && (
+                              <span className="text-gray-700"><strong>Total pass marks:</strong> {String(exam.total_pass_marks)}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Marks Display */}
                     {typeof mark === "object" && mark !== null && (

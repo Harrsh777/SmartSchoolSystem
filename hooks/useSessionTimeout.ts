@@ -7,46 +7,48 @@ interface UseSessionTimeoutOptions {
   warningMinutes?: number;
   onLogout?: () => void;
   loginPath?: string;
+  /** e.g. 'teacher' or 'admin' – uses lastActivity_<prefix> so timers don't cross-reset */
+  storageKeyPrefix?: string;
 }
 
-const LAST_ACTIVITY_KEY = 'lastActivity';
-const SESSION_LIMIT_MS = 20 * 60 * 1000; // 20 minutes
-const WARNING_LIMIT_MS = 19 * 60 * 1000; // 19 minutes (1 minute before timeout)
+const LAST_ACTIVITY_KEY_BASE = 'lastActivity';
 const MIN_ACTIVITY_INTERVAL_MS = 5 * 1000; // Only update activity if 5+ seconds have passed
 
+function getStorageKey(prefix?: string): string {
+  return prefix ? `${LAST_ACTIVITY_KEY_BASE}_${prefix}` : LAST_ACTIVITY_KEY_BASE;
+}
+
 /**
- * Updates the last activity timestamp in localStorage
- * This is called on user activity (click, keydown, successful API calls)
- * Throttled to prevent rapid resets from background API calls
+ * Updates the last activity timestamp in localStorage.
+ * Use the same prefix as the hook so teacher/admin timers don't cross-reset.
+ * Throttled to prevent rapid resets from background API calls.
  */
-export function updateActivity(): void {
+export function updateActivity(storageKeyPrefix?: string): void {
   if (typeof window === 'undefined') return;
-  
-  const lastActivity = getLastActivity();
+  const key = getStorageKey(storageKeyPrefix);
+
+  const lastActivity = getLastActivity(key);
   const now = Date.now();
-  
-  // If no last activity recorded, set it now
+
   if (lastActivity === null) {
-    localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+    localStorage.setItem(key, now.toString());
     return;
   }
-  
+
   const timeSinceLastActivity = now - lastActivity;
-  
-  // Only update if enough time has passed (throttle rapid updates)
-  // This prevents background API calls from constantly resetting the timer
   if (timeSinceLastActivity >= MIN_ACTIVITY_INTERVAL_MS) {
-    localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+    localStorage.setItem(key, now.toString());
   }
 }
 
 /**
- * Gets the last activity timestamp from localStorage
- * Returns null if no activity has been recorded
+ * Gets the last activity timestamp from localStorage.
+ * Returns null if no activity has been recorded.
  */
-function getLastActivity(): number | null {
+export function getLastActivity(storageKey?: string): number | null {
   if (typeof window === 'undefined') return null;
-  const stored = localStorage.getItem(LAST_ACTIVITY_KEY);
+  const key = storageKey ?? LAST_ACTIVITY_KEY_BASE;
+  const stored = localStorage.getItem(key);
   return stored ? Number(stored) : null;
 }
 
@@ -60,8 +62,10 @@ export function useSessionTimeout({
   warningMinutes = 19,
   onLogout,
   loginPath = '/login',
+  storageKeyPrefix,
 }: UseSessionTimeoutOptions = {}) {
   const router = useRouter();
+  const key = getStorageKey(storageKeyPrefix);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const checkSessionRef = useRef<(() => void) | null>(null);
   const resetTimerRef = useRef<(() => void) | null>(null);
@@ -69,82 +73,62 @@ export function useSessionTimeout({
   const [timeRemaining, setTimeRemaining] = useState(timeoutMinutes * 60);
   
   const sessionLimitMs = timeoutMinutes * 60 * 1000;
-  const warningLimitMs = warningMinutes * 60 * 1000;
+  const warningThresholdSeconds = Math.max(
+    1,
+    (timeoutMinutes - warningMinutes) * 60 || 60 // Fallback to 60s if values are equal or misconfigured
+  );
 
-  const handleLogout = useCallback(() => {
-    // Clear interval
+  const handleLogout = useCallback(async () => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    
     setShowWarning(false);
-    
-    // Clear storage
     if (typeof window !== 'undefined') {
-      localStorage.removeItem(LAST_ACTIVITY_KEY);
+      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+      localStorage.removeItem(key);
       sessionStorage.clear();
     }
-    
-    // Call custom logout handler if provided
-    if (onLogout) {
-      onLogout();
-    }
-    
-    // Redirect to login
+    if (onLogout) onLogout();
     router.push(loginPath);
-  }, [onLogout, loginPath, router]);
+  }, [onLogout, loginPath, router, key]);
 
   const resetTimer = useCallback(() => {
-    // Update last activity timestamp (with throttling)
-    updateActivity();
+    updateActivity(storageKeyPrefix);
     setShowWarning(false);
-  }, []);
+  }, [storageKeyPrefix]);
 
-  // Check session status based on timestamp
   const checkSession = useCallback(() => {
-    const lastActivity = getLastActivity();
-    
-    // If no activity recorded, initialize it now
+    const lastActivity = getLastActivity(key);
     if (!lastActivity) {
-      updateActivity();
+      updateActivity(storageKeyPrefix);
       setTimeRemaining(timeoutMinutes * 60);
       setShowWarning(false);
       return;
     }
-    
     const elapsed = Date.now() - lastActivity;
     const remaining = sessionLimitMs - elapsed;
     const secondsRemaining = Math.max(0, Math.floor(remaining / 1000));
-    
     setTimeRemaining(secondsRemaining);
-
-    // Show warning when 1 minute or less remaining
-    if (secondsRemaining <= 60 && secondsRemaining > 0) {
+    if (secondsRemaining <= warningThresholdSeconds && secondsRemaining > 0) {
       setShowWarning(true);
-    } else if (secondsRemaining > 60) {
+    } else if (secondsRemaining > warningThresholdSeconds) {
       setShowWarning(false);
     }
-
-    // Logout when time expires
     if (elapsed >= sessionLimitMs) {
       handleLogout();
     }
-  }, [sessionLimitMs, handleLogout, timeoutMinutes]);
+  }, [sessionLimitMs, handleLogout, timeoutMinutes, key, storageKeyPrefix]);
 
-  // Store latest callbacks in refs
   checkSessionRef.current = checkSession;
   resetTimerRef.current = resetTimer;
 
   useEffect(() => {
-    // Initialize: set last activity if not exists or expired
+    // Only set last activity when none exists – never overwrite on refresh so the timer continues correctly
     if (typeof window !== 'undefined') {
-      const lastActivity = getLastActivity();
-      const now = Date.now();
-      
-      // If no activity recorded or session expired, initialize fresh
-      if (!lastActivity || (lastActivity && (now - lastActivity) > sessionLimitMs)) {
-        updateActivity();
+      const lastActivity = getLastActivity(key);
+      if (!lastActivity) {
+        updateActivity(storageKeyPrefix);
       }
     }
 

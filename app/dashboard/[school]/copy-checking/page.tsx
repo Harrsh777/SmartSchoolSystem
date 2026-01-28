@@ -26,7 +26,7 @@ interface Student {
   roll_number?: string | null;
   class: string;
   section?: string;
-  status: 'green' | 'yellow' | 'red' | 'not_marked';
+  status: 'green' | 'yellow' | 'red' | 'not_marked' | 'absent';
   remarks: string;
   copy_checking?: {
     id?: string;
@@ -72,8 +72,8 @@ export default function CopyCheckingPage({
   const [students, setStudents] = useState<Student[]>([]);
   const [availableSections, setAvailableSections] = useState<string[]>([]);
   const [stats, setStats] = useState({
-    class_work: { green: 0, yellow: 0, red: 0, not_marked: 0 },
-    homework: { green: 0, yellow: 0, red: 0, not_marked: 0 },
+    class_work: { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
+    homework: { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
   });
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -171,8 +171,8 @@ export default function CopyCheckingPage({
       setStudents([]);
       setStudentRecords({});
       setStats({
-        class_work: { green: 0, yellow: 0, red: 0, not_marked: 0 },
-        homework: { green: 0, yellow: 0, red: 0, not_marked: 0 },
+        class_work: { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
+        homework: { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -307,12 +307,12 @@ export default function CopyCheckingPage({
         if (workType === 'class_work') {
           setStats(prev => ({
             ...prev,
-            class_work: result.statistics || { green: 0, yellow: 0, red: 0, not_marked: 0 },
+            class_work: result.statistics || { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
           }));
         } else {
           setStats(prev => ({
             ...prev,
-            homework: result.statistics || { green: 0, yellow: 0, red: 0, not_marked: 0 },
+            homework: result.statistics || { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
           }));
         }
         
@@ -340,12 +340,14 @@ export default function CopyCheckingPage({
     }
   };
 
-  const handleStatusChange = (studentId: string, status: 'green' | 'yellow' | 'red' | 'not_marked') => {
+  const handleStatusChange = (studentId: string, status: 'green' | 'yellow' | 'red' | 'not_marked' | 'absent') => {
     setStudentRecords(prev => ({
       ...prev,
       [studentId]: {
         ...prev[studentId],
         status,
+        // Clear remarks if marking as absent
+        remarks: status === 'absent' ? '' : (prev[studentId]?.remarks || ''),
       },
     }));
   };
@@ -474,6 +476,8 @@ export default function CopyCheckingPage({
         return 'bg-yellow-500 text-white ring-2 ring-yellow-300 shadow-lg';
       case 'red':
         return 'bg-red-500 text-white ring-2 ring-red-300 shadow-lg';
+      case 'absent':
+        return 'bg-orange-500 text-white ring-2 ring-orange-300 shadow-lg';
       default:
         return 'bg-gray-200 text-gray-500 hover:bg-gray-300';
     }
@@ -677,18 +681,22 @@ export default function CopyCheckingPage({
             </h3>
             <TrendingUp className="text-[#3B82F6]" size={20} />
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="bg-green-100 rounded-lg p-3 text-center border border-green-200">
               <div className="text-2xl font-bold text-green-700">{stats.class_work.green}</div>
-              <div className="text-xs text-green-600 font-medium mt-1">GREEN</div>
+              <div className="text-xs text-green-600 font-medium mt-1">COPY CHECKED</div>
             </div>
             <div className="bg-yellow-100 rounded-lg p-3 text-center border border-yellow-200">
               <div className="text-2xl font-bold text-yellow-700">{stats.class_work.yellow}</div>
-              <div className="text-xs text-yellow-600 font-medium mt-1">YELLOW</div>
+              <div className="text-xs text-yellow-600 font-medium mt-1">HALF DONE</div>
             </div>
             <div className="bg-red-100 rounded-lg p-3 text-center border border-red-200">
               <div className="text-2xl font-bold text-red-700">{stats.class_work.red}</div>
-              <div className="text-xs text-red-600 font-medium mt-1">RED</div>
+              <div className="text-xs text-red-600 font-medium mt-1">INCOMPLETE</div>
+            </div>
+            <div className="bg-orange-100 rounded-lg p-3 text-center border border-orange-200">
+              <div className="text-2xl font-bold text-orange-700">{stats.class_work.absent || 0}</div>
+              <div className="text-xs text-orange-600 font-medium mt-1">ABSENT</div>
             </div>
             <div className="bg-gray-100 rounded-lg p-3 text-center border border-gray-200">
               <div className="text-2xl font-bold text-gray-700">{stats.class_work.not_marked}</div>
@@ -705,18 +713,22 @@ export default function CopyCheckingPage({
             </h3>
             <TrendingUp className="text-purple-600" size={20} />
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="bg-green-100 rounded-lg p-3 text-center border border-green-200">
               <div className="text-2xl font-bold text-green-700">{stats.homework.green}</div>
-              <div className="text-xs text-green-600 font-medium mt-1">GREEN</div>
+              <div className="text-xs text-green-600 font-medium mt-1">COPY CHECKED</div>
             </div>
             <div className="bg-yellow-100 rounded-lg p-3 text-center border border-yellow-200">
               <div className="text-2xl font-bold text-yellow-700">{stats.homework.yellow}</div>
-              <div className="text-xs text-yellow-600 font-medium mt-1">YELLOW</div>
+              <div className="text-xs text-yellow-600 font-medium mt-1">HALF DONE</div>
             </div>
             <div className="bg-red-100 rounded-lg p-3 text-center border border-red-200">
               <div className="text-2xl font-bold text-red-700">{stats.homework.red}</div>
-              <div className="text-xs text-red-600 font-medium mt-1">RED</div>
+              <div className="text-xs text-red-600 font-medium mt-1">INCOMPLETE</div>
+            </div>
+            <div className="bg-orange-100 rounded-lg p-3 text-center border border-orange-200">
+              <div className="text-2xl font-bold text-orange-700">{stats.homework.absent || 0}</div>
+              <div className="text-xs text-orange-600 font-medium mt-1">ABSENT</div>
             </div>
             <div className="bg-gray-100 rounded-lg p-3 text-center border border-gray-200">
               <div className="text-2xl font-bold text-gray-700">{stats.homework.not_marked}</div>
@@ -845,10 +857,11 @@ export default function CopyCheckingPage({
                   <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">
                     Status
                     <div className="flex items-center justify-center gap-1 mt-1 text-[10px]">
-                      <span className="w-4 h-4 rounded-full bg-green-500"></span>
-                      <span className="w-4 h-4 rounded-full bg-yellow-500"></span>
-                      <span className="w-4 h-4 rounded-full bg-red-500"></span>
-                      <span className="w-4 h-4 rounded-full bg-gray-400"></span>
+                      <span className="w-4 h-4 rounded-full bg-green-500" title="Green"></span>
+                      <span className="w-4 h-4 rounded-full bg-yellow-500" title="Yellow"></span>
+                      <span className="w-4 h-4 rounded-full bg-red-500" title="Red"></span>
+                      <span className="w-4 h-4 rounded-full bg-orange-500" title="Absent"></span>
+                      <span className="w-4 h-4 rounded-full bg-gray-400" title="Not Marked"></span>
                     </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Remarks</th>
@@ -886,23 +899,30 @@ export default function CopyCheckingPage({
                           <button
                             onClick={() => handleStatusChange(student.id, 'green')}
                             className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'green' ? 'green' : 'not_marked')}`}
-                            title="Complete (Green)"
+                            title="Copy Checked (Green)"
                           >
                             {record.status === 'green' ? 'G' : ''}
                           </button>
                           <button
                             onClick={() => handleStatusChange(student.id, 'yellow')}
                             className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'yellow' ? 'yellow' : 'not_marked')}`}
-                            title="Incomplete (Yellow)"
+                            title="Half Done (Yellow)"
                           >
                             {record.status === 'yellow' ? 'Y' : ''}
                           </button>
                           <button
                             onClick={() => handleStatusChange(student.id, 'red')}
                             className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'red' ? 'red' : 'not_marked')}`}
-                            title="Not Done (Red)"
+                            title="Incomplete (Red)"
                           >
                             {record.status === 'red' ? 'R' : ''}
+                          </button>
+                          <button
+                            onClick={() => handleStatusChange(student.id, 'absent')}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'absent' ? 'absent' : 'not_marked')}`}
+                            title="Absent"
+                          >
+                            {record.status === 'absent' ? 'A' : ''}
                           </button>
                           <button
                             onClick={() => handleStatusChange(student.id, 'not_marked')}
@@ -918,8 +938,9 @@ export default function CopyCheckingPage({
                           type="text"
                           value={record.remarks}
                           onChange={(e) => handleRemarksChange(student.id, e.target.value)}
-                          placeholder="Add remarks..."
-                          className="w-full text-sm border-gray-300 focus:border-[#1e3a8a] focus:ring-[#1e3a8a]"
+                          placeholder={record.status === 'absent' ? 'Absent' : 'Add remarks...'}
+                          disabled={record.status === 'absent'}
+                          className={`w-full text-sm border-gray-300 focus:border-[#1e3a8a] focus:ring-[#1e3a8a] ${record.status === 'absent' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                         />
                       </td>
                     </motion.tr>

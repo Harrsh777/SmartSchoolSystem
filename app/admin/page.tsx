@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
@@ -41,18 +41,35 @@ import {
   Send,
   Database,
   ChevronRight,
+  Settings,
+  LineChart,
+  UserCheck,
+  ChevronDown,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { AnimatePresence } from 'framer-motion';
 import SchoolSupervisionView from '@/components/admin/SchoolSupervisionView';
 import AdminPasswordModal from '@/components/admin/AdminPasswordModal';
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
+import { useSessionTimeout } from '@/hooks/useSessionTimeout';
+import { setActivityPrefix } from '@/lib/api-interceptor';
 import {
   calculatePercentage,
   getGradeFromPercentage,
   getGradeColor,
   getPassStatusColor,
 } from '@/lib/grade-calculator';
+
+/** Parse response body as JSON without throwing on non-JSON (e.g. "Internal Server Error"). */
+async function safeParseJson(response: Response): Promise<Record<string, unknown> & { data?: unknown }> {
+  const text = await response.text();
+  if (!text?.trim()) return {};
+  try {
+    return (JSON.parse(text) as Record<string, unknown> & { data?: unknown }) ?? {};
+  } catch {
+    return { error: text };
+  }
+}
 
 interface AcceptedSchool {
   id: string;
@@ -127,15 +144,18 @@ interface RejectedSchool {
 type ViewMode =
   | 'overview'
   | 'schools'
+  | 'system-settings'
+  | 'analytics'
+  | 'users'
   | 'students'
   | 'staff'
   | 'classes'
-  | 'help-queries'
   | 'attendance'
   | 'exams'
   | 'marks'
   | 'fees'
   | 'communications'
+  | 'help-queries'
   | 'employees'
   | 'signups'
   | 'school-supervision';
@@ -741,146 +761,27 @@ function AdminMarksEntryView({ acceptedSchools }: { acceptedSchools: AcceptedSch
 }
 
 export default function AdminDashboard() {
-  // Password authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  
-  // Session timeout (20 minutes)
-  const [sessionWarningShown, setSessionWarningShown] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(20 * 60); // 20 minutes in seconds
-  const lastActivityRef = useRef<number>(Date.now());
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const warningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const handleSessionLogout = useCallback(() => {
-    // Clear all timeouts
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    if (warningTimeoutRef.current) {
-      clearTimeout(warningTimeoutRef.current);
-      warningTimeoutRef.current = null;
-    }
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
-    
-    setSessionWarningShown(false);
-    setIsAuthenticated(false);
-  }, []);
 
-  const resetSessionTimer = useCallback(() => {
-    // Clear existing timeouts
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    if (warningTimeoutRef.current) {
-      clearTimeout(warningTimeoutRef.current);
-      warningTimeoutRef.current = null;
-    }
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
-    
-    lastActivityRef.current = Date.now();
-    setSessionWarningShown(false);
-    setTimeRemaining(20 * 60);
-    
-    // Update countdown every second
-    countdownIntervalRef.current = setInterval(() => {
-      const elapsed = Date.now() - lastActivityRef.current;
-      const remaining = 20 * 60 * 1000 - elapsed;
-      const secondsRemaining = Math.max(0, Math.floor(remaining / 1000));
-      setTimeRemaining(secondsRemaining);
-      
-      // Show warning when 1 minute remaining
-      if (secondsRemaining <= 60 && secondsRemaining > 0 && !sessionWarningShown) {
-        setSessionWarningShown(true);
-      }
-      
-      if (secondsRemaining === 0) {
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
-        handleSessionLogout();
-      }
-    }, 1000);
-    
-    // Set logout timer (20 minutes)
-    timeoutRef.current = setTimeout(() => {
-      handleSessionLogout();
-    }, 20 * 60 * 1000);
-    
-    // Set warning timer (19 minutes - show warning 1 minute before logout)
-    warningTimeoutRef.current = setTimeout(() => {
-      setSessionWarningShown(true);
-    }, 19 * 60 * 1000);
-  }, [handleSessionLogout, sessionWarningShown]);
-  
-  const handleStayLoggedIn = () => {
-    resetSessionTimer();
-  };
-  
-  // Track user activity
+  // Session timeout (20 min) – same hook as teacher; persists across refresh
+  const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
+    timeoutMinutes: 20,
+    warningMinutes: 19,
+    loginPath: '/admin',
+    storageKeyPrefix: 'admin',
+    onLogout: () => setIsAuthenticated(false),
+  });
+
   useEffect(() => {
-    if (!isAuthenticated) return;
-    
-    // Initialize timer when authenticated
-    resetSessionTimer();
-    
-    // Track various user activities
-    const events = [
-      'mousedown',
-      'mousemove',
-      'keypress',
-      'scroll',
-      'touchstart',
-      'click',
-      'keydown',
-    ];
-    
-    const handleActivity = () => {
-      if (isAuthenticated) {
-        resetSessionTimer();
-      }
-    };
-    
-    // Add event listeners
-    events.forEach((event) => {
-      document.addEventListener(event, handleActivity, { passive: true });
-    });
-    
-    // Track window focus
-    const handleFocus = () => {
-      if (isAuthenticated) {
-        resetSessionTimer();
-      }
-    };
-    window.addEventListener('focus', handleFocus);
-    
-    // Cleanup
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      if (warningTimeoutRef.current) {
-        clearTimeout(warningTimeoutRef.current);
-      }
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
-      events.forEach((event) => {
-        document.removeEventListener(event, handleActivity);
-      });
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [isAuthenticated, resetSessionTimer]);
-  
+    if (isAuthenticated) {
+      setActivityPrefix('admin');
+      resetTimer();
+    } else {
+      setActivityPrefix(undefined);
+    }
+    return () => setActivityPrefix(undefined);
+  }, [isAuthenticated, resetTimer]);
+
   const [pendingSchools, setPendingSchools] = useState<SchoolSignup[]>([]);
   const [acceptedSchools, setAcceptedSchools] = useState<AcceptedSchool[]>([]);
   const [rejectedSchools, setRejectedSchools] = useState<RejectedSchool[]>([]);
@@ -1003,6 +904,25 @@ export default function AdminDashboard() {
   const [helpQueryStatusFilter, setHelpQueryStatusFilter] = useState('all');
   const [helpQuerySchoolFilter, setHelpQuerySchoolFilter] = useState('all');
   
+  // New modules state
+  const [systemSettings, setSystemSettings] = useState<Record<string, unknown> | null>(null);
+  const [loadingSystemSettings, setLoadingSystemSettings] = useState(false);
+  const [savingSystemSettings, setSavingSystemSettings] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState<Record<string, unknown> | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState('30d');
+  const [analyticsSchoolFilter, setAnalyticsSchoolFilter] = useState('all');
+  const [usersData, setUsersData] = useState<Record<string, unknown>[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersRoleFilter, setUsersRoleFilter] = useState('all');
+  const [usersStatusFilter, setUsersStatusFilter] = useState('all');
+  const [usersSearch, setUsersSearch] = useState('');
+  const [usersSchoolFilter, setUsersSchoolFilter] = useState('all');
+  
+  // Sidebar dropdown state
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['core', 'management']));
+  
   // School supervision state - removed unused variables
 
   useEffect(() => {
@@ -1067,6 +987,32 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [helpQueryStatusFilter, helpQuerySchoolFilter, viewMode]);
 
+  // New modules useEffect hooks
+  useEffect(() => {
+    if (viewMode === 'system-settings') {
+      fetchSystemSettings();
+    } else if (viewMode === 'analytics') {
+      fetchAnalytics();
+    } else if (viewMode === 'users') {
+      fetchUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (viewMode === 'analytics') {
+      fetchAnalytics();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analyticsPeriod, analyticsSchoolFilter, viewMode]);
+
+  useEffect(() => {
+    if (viewMode === 'users') {
+      fetchUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usersPage, usersRoleFilter, usersStatusFilter, usersSearch, usersSchoolFilter, viewMode]);
+
   const fetchAllSchools = async () => {
     try {
       // Fetch pending schools
@@ -1100,45 +1046,46 @@ export default function AdminDashboard() {
 
       // Fetch pending schools
       const pendingResponse = await fetch('/api/schools?status=pending');
-      const pendingResult = await pendingResponse.json();
+      const pendingResult = await safeParseJson(pendingResponse);
       if (pendingResponse.ok) {
-        setPendingSchools(pendingResult.data || []);
+        setPendingSchools((pendingResult.data as SchoolSignup[]) || []);
       }
 
       // Fetch accepted schools
       const acceptedResponse = await fetch('/api/schools/accepted');
-      const acceptedResult = await acceptedResponse.json();
+      const acceptedResult = await safeParseJson(acceptedResponse);
       if (acceptedResponse.ok) {
-        setAcceptedSchools(acceptedResult.data || []);
+        setAcceptedSchools((acceptedResult.data as AcceptedSchool[]) || []);
       }
 
       // Fetch rejected schools
       const rejectedResponse = await fetch('/api/schools/rejected');
-      const rejectedResult = await rejectedResponse.json();
+      const rejectedResult = await safeParseJson(rejectedResponse);
       if (rejectedResponse.ok) {
-        setRejectedSchools(rejectedResult.data || []);
+        setRejectedSchools((rejectedResult.data as RejectedSchool[]) || []);
       }
 
       // Fetch overview
       const overviewResponse = await fetch('/api/admin/overview');
-      const overviewResult = await overviewResponse.json();
+      const overviewResult = await safeParseJson(overviewResponse);
       if (overviewResponse.ok && overviewResult.data) {
-        setOverview(overviewResult.data);
+        setOverview(overviewResult.data as AdminOverview);
       }
 
       // Fetch employees
       const employeesResponse = await fetch('/api/admin/employees');
-      const employeesResult = await employeesResponse.json();
+      const employeesResult = await safeParseJson(employeesResponse);
       if (employeesResponse.ok && employeesResult.data) {
         // Transform employee data to include schools count
         interface EmployeeData {
           employee_schools?: Array<{ accepted_schools: unknown }>;
           [key: string]: unknown;
         }
-        const transformedEmployees = employeesResult.data.map((emp: EmployeeData) => ({
+        const dataArr = Array.isArray(employeesResult.data) ? employeesResult.data : [];
+        const transformedEmployees = dataArr.map((emp: EmployeeData) => ({
           ...emp,
           schools: emp.employee_schools?.map((es: { accepted_schools: unknown }) => es.accepted_schools) || [],
-        }));
+        })) as AdminEmployee[];
         setEmployees(transformedEmployees);
       }
 
@@ -1157,7 +1104,7 @@ export default function AdminDashboard() {
     try {
       setLoadingStats(true);
       const response = await fetch('/api/admin/stats');
-      const result = await response.json();
+      const result = await safeParseJson(response);
       if (response.ok && result.data) {
         setDashboardStats(result.data);
       }
@@ -1172,9 +1119,9 @@ export default function AdminDashboard() {
     try {
       setLoadingFinancial(true);
       const response = await fetch('/api/admin/financial');
-      const result = await response.json();
+      const result = await safeParseJson(response);
       if (response.ok && result.data) {
-        setFinancialData(result.data);
+        setFinancialData(result.data as FinancialData);
       }
     } catch (error) {
       console.error('Error fetching financial data:', error);
@@ -1187,9 +1134,9 @@ export default function AdminDashboard() {
     try {
       setLoadingEvents(true);
       const response = await fetch('/api/admin/events');
-      const result = await response.json();
+      const result = await safeParseJson(response);
       if (response.ok && result.data) {
-        setEventsData(result.data);
+        setEventsData(result.data as EventsData);
       }
     } catch (error) {
       console.error('Error fetching events data:', error);
@@ -1336,6 +1283,120 @@ export default function AdminDashboard() {
       console.error('Error fetching exams:', error);
     } finally {
       setLoadingExams(false);
+    }
+  };
+
+  // New module fetch functions
+  const fetchSystemSettings = async () => {
+    try {
+      setLoadingSystemSettings(true);
+      const response = await fetch('/api/admin/system-settings');
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setSystemSettings(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching system settings:', error);
+    } finally {
+      setLoadingSystemSettings(false);
+    }
+  };
+
+  const saveSystemSettings = async (settings: Record<string, unknown>) => {
+    try {
+      setSavingSystemSettings(true);
+      const response = await fetch('/api/admin/system-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setSystemSettings(result.data);
+        alert('System settings saved successfully!');
+      } else {
+        alert(result.error || 'Failed to save system settings');
+      }
+    } catch (error) {
+      console.error('Error saving system settings:', error);
+      alert('Failed to save system settings');
+    } finally {
+      setSavingSystemSettings(false);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      setLoadingAnalytics(true);
+      const params = new URLSearchParams();
+      params.append('period', analyticsPeriod);
+      if (analyticsSchoolFilter !== 'all') {
+        params.append('school_code', analyticsSchoolFilter);
+      }
+      const response = await fetch(`/api/admin/analytics?${params.toString()}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setAnalyticsData(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const params = new URLSearchParams();
+      params.append('page', usersPage.toString());
+      params.append('limit', '50');
+      if (usersRoleFilter !== 'all') {
+        params.append('role', usersRoleFilter);
+      }
+      if (usersStatusFilter !== 'all') {
+        params.append('status', usersStatusFilter);
+      }
+      if (usersSearch) {
+        params.append('search', usersSearch);
+      }
+      if (usersSchoolFilter !== 'all') {
+        params.append('school_code', usersSchoolFilter);
+      }
+      const response = await fetch(`/api/admin/users?${params.toString()}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setUsersData(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const updateUserStatus = async (userType: string, identifier: string, schoolCode: string, isActive: boolean) => {
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_type: userType,
+          identifier,
+          school_code: schoolCode,
+          is_active: isActive,
+        }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        fetchUsers();
+        alert(`User ${isActive ? 'activated' : 'deactivated'} successfully!`);
+      } else {
+        alert(result.error || 'Failed to update user status');
+      }
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      alert('Failed to update user status');
     }
   };
 
@@ -1921,10 +1982,10 @@ export default function AdminDashboard() {
       {/* Session Timeout Warning Modal */}
       {isAuthenticated && (
         <SessionTimeoutModal
-          isOpen={sessionWarningShown}
+          isOpen={showWarning}
           timeRemaining={timeRemaining}
-          onStayLoggedIn={handleStayLoggedIn}
-          onLogout={handleSessionLogout}
+          onStayLoggedIn={resetTimer}
+          onLogout={handleLogout}
         />
       )}
 
@@ -1939,6 +2000,14 @@ export default function AdminDashboard() {
               EduCore Admin
             </Link>
             <div className="flex items-center space-x-4">
+              {isAuthenticated && (
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/10 rounded-lg border border-[#5A7A95]/20 dark:border-[#6B9BB8]/20">
+                  <Clock size={16} className="text-[#5A7A95] dark:text-[#6B9BB8]" />
+                  <span className="text-sm font-medium text-[#5A7A95] dark:text-[#6B9BB8] font-mono">
+                    {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+              )}
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="lg:hidden p-2 rounded-lg hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] transition-colors"
@@ -1981,46 +2050,429 @@ export default function AdminDashboard() {
                 initial={{ x: -280 }}
                 animate={{ x: 0 }}
                 exit={{ x: -280 }}
-                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-gradient-to-b from-[#5A7A95] to-[#567C8D] dark:from-[#0f172a] dark:to-[#1e293b] border-r border-[#6B9BB8]/30 dark:border-gray-700/50 z-50 lg:z-auto overflow-y-auto shadow-xl"
+                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 border-r border-slate-700/50 dark:border-slate-800/50 z-50 lg:z-auto overflow-y-auto shadow-2xl backdrop-blur-xl"
                 style={{ width: '280px' }}
               >
-                <nav className="p-4 space-y-1">
-                  {[
-                    { id: 'overview', label: 'Overview', icon: BarChart2 },
-                    { id: 'schools', label: 'Schools', icon: Building2 },
-                    { id: 'students', label: 'Students', icon: GraduationCap },
-                    { id: 'staff', label: 'Staff', icon: Users },
-                    { id: 'classes', label: 'Classes', icon: Layers },
-                    { id: 'attendance', label: 'Attendance', icon: Activity },
-                    { id: 'exams', label: 'Exams', icon: FileText },
-                    { id: 'marks', label: 'Marks', icon: GraduationCap },
-                    { id: 'fees', label: 'Fees', icon: DollarSign },
-                    { id: 'communications', label: 'Communications', icon: Bell },
-                    { id: 'help-queries', label: 'Help Queries', icon: HelpCircle },
-                    { id: 'employees', label: 'Employees', icon: User },
-                    { id: 'signups', label: 'Signups', icon: Clock },
-                    { id: 'school-supervision', label: 'School Supervision', icon: Shield },
-                  ].map((item) => {
-                    const Icon = item.icon;
-                    const active = viewMode === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          setViewMode(item.id as ViewMode);
-                          setSidebarOpen(false);
-                        }}
-                        className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                          active
-                            ? 'bg-gradient-to-r from-[#6B9BB8] to-[#7DB5D3] text-white shadow-lg shadow-[#6B9BB8]/30'
-                            : 'text-[#C8D9E6] hover:text-white hover:bg-[#567C8D]/50 dark:hover:bg-[#2F4156]'
-                        }`}
+                {/* Decorative gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-pink-500/10 pointer-events-none" />
+                
+                <nav className="relative p-5 space-y-3">
+                  {/* Core Section */}
+                  <div className="group">
+                    <button
+                      onClick={() => {
+                        const newExpanded = new Set(expandedSections);
+                        if (newExpanded.has('core')) {
+                          newExpanded.delete('core');
+                        } else {
+                          newExpanded.add('core');
+                        }
+                        setExpandedSections(newExpanded);
+                      }}
+                      className="flex items-center justify-between w-full px-4 py-3 text-xs font-bold text-slate-300 uppercase tracking-widest hover:text-white transition-all duration-200 rounded-lg hover:bg-slate-800/50"
+                    >
+                      <span className="flex items-center gap-2">
+                        <div className="w-1 h-4 bg-gradient-to-b from-indigo-400 to-purple-400 rounded-full" />
+                        Core
+                      </span>
+                      <motion.div
+                        animate={{ rotate: expandedSections.has('core') ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
                       >
-                        <Icon size={20} className={active ? 'text-white' : 'text-[#C8D9E6]'} />
-                        <span className="font-medium">{item.label}</span>
-                      </button>
-                    );
-                  })}
+                        <ChevronDown size={16} className="text-slate-400" />
+                      </motion.div>
+                    </button>
+                    {expandedSections.has('core') && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="mt-2 space-y-1.5 pl-2"
+                      >
+                        {[
+                          { id: 'overview', label: 'Overview', icon: BarChart2, color: 'from-blue-500 to-cyan-500' },
+                          { id: 'schools', label: 'Schools', icon: Building2, color: 'from-emerald-500 to-teal-500' },
+                          { id: 'system-settings', label: 'System Settings', icon: Settings, color: 'from-slate-500 to-gray-500' },
+                          { id: 'analytics', label: 'Analytics & Reports', icon: LineChart, color: 'from-purple-500 to-pink-500' },
+                          { id: 'users', label: 'Users', icon: UserCheck, color: 'from-indigo-500 to-blue-500' },
+                        ].map((item) => {
+                          const Icon = item.icon;
+                          const active = viewMode === item.id;
+                          return (
+                            <motion.button
+                              key={item.id}
+                              onClick={() => {
+                                setViewMode(item.id as ViewMode);
+                                setSidebarOpen(false);
+                              }}
+                              whileHover={{ x: 4 }}
+                              whileTap={{ scale: 0.98 }}
+                              className={`group/item flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 w-full relative overflow-hidden ${
+                                active
+                                  ? `bg-gradient-to-r ${item.color} text-white shadow-lg shadow-black/20`
+                                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                              }`}
+                            >
+                              {active && (
+                                <motion.div
+                                  layoutId="activeIndicator"
+                                  className="absolute left-0 top-0 bottom-0 w-1 bg-white rounded-r-full"
+                                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                />
+                              )}
+                              <Icon 
+                                size={18} 
+                                className={`relative z-10 ${active ? 'text-white' : 'text-slate-400 group-hover/item:text-white'} transition-colors`} 
+                              />
+                              <span className={`font-medium text-sm relative z-10 ${active ? 'text-white' : 'text-slate-300'}`}>
+                                {item.label}
+                              </span>
+                              {active && (
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="w-2 h-2 rounded-full bg-white/80 ml-auto"
+                                />
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </div>
+
+                  {/* Management Section */}
+                  <div className="group">
+                    <button
+                      onClick={() => {
+                        const newExpanded = new Set(expandedSections);
+                        if (newExpanded.has('management')) {
+                          newExpanded.delete('management');
+                        } else {
+                          newExpanded.add('management');
+                        }
+                        setExpandedSections(newExpanded);
+                      }}
+                      className="flex items-center justify-between w-full px-4 py-3 text-xs font-bold text-slate-300 uppercase tracking-widest hover:text-white transition-all duration-200 rounded-lg hover:bg-slate-800/50"
+                    >
+                      <span className="flex items-center gap-2">
+                        <div className="w-1 h-4 bg-gradient-to-b from-emerald-400 to-teal-400 rounded-full" />
+                        Management
+                      </span>
+                      <motion.div
+                        animate={{ rotate: expandedSections.has('management') ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <ChevronDown size={16} className="text-slate-400" />
+                      </motion.div>
+                    </button>
+                    {expandedSections.has('management') && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="mt-2 space-y-1.5 pl-2"
+                      >
+                        {[
+                          { id: 'students', label: 'Students', icon: GraduationCap, color: 'from-violet-500 to-purple-500' },
+                          { id: 'staff', label: 'Staff', icon: Users, color: 'from-rose-500 to-pink-500' },
+                          { id: 'classes', label: 'Classes', icon: Layers, color: 'from-amber-500 to-orange-500' },
+                          { id: 'employees', label: 'Employees', icon: User, color: 'from-teal-500 to-cyan-500' },
+                        ].map((item) => {
+                          const Icon = item.icon;
+                          const active = viewMode === item.id;
+                          return (
+                            <motion.button
+                              key={item.id}
+                              onClick={() => {
+                                setViewMode(item.id as ViewMode);
+                                setSidebarOpen(false);
+                              }}
+                              whileHover={{ x: 4 }}
+                              whileTap={{ scale: 0.98 }}
+                              className={`group/item flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 w-full relative overflow-hidden ${
+                                active
+                                  ? `bg-gradient-to-r ${item.color} text-white shadow-lg shadow-black/20`
+                                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                              }`}
+                            >
+                              {active && (
+                                <motion.div
+                                  layoutId="activeIndicator"
+                                  className="absolute left-0 top-0 bottom-0 w-1 bg-white rounded-r-full"
+                                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                />
+                              )}
+                              <Icon 
+                                size={18} 
+                                className={`relative z-10 ${active ? 'text-white' : 'text-slate-400 group-hover/item:text-white'} transition-colors`} 
+                              />
+                              <span className={`font-medium text-sm relative z-10 ${active ? 'text-white' : 'text-slate-300'}`}>
+                                {item.label}
+                              </span>
+                              {active && (
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="w-2 h-2 rounded-full bg-white/80 ml-auto"
+                                />
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </div>
+
+                  {/* Academic Section */}
+                  <div className="group">
+                    <button
+                      onClick={() => {
+                        const newExpanded = new Set(expandedSections);
+                        if (newExpanded.has('academic')) {
+                          newExpanded.delete('academic');
+                        } else {
+                          newExpanded.add('academic');
+                        }
+                        setExpandedSections(newExpanded);
+                      }}
+                      className="flex items-center justify-between w-full px-4 py-3 text-xs font-bold text-slate-300 uppercase tracking-widest hover:text-white transition-all duration-200 rounded-lg hover:bg-slate-800/50"
+                    >
+                      <span className="flex items-center gap-2">
+                        <div className="w-1 h-4 bg-gradient-to-b from-blue-400 to-indigo-400 rounded-full" />
+                        Academic
+                      </span>
+                      <motion.div
+                        animate={{ rotate: expandedSections.has('academic') ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <ChevronDown size={16} className="text-slate-400" />
+                      </motion.div>
+                    </button>
+                    {expandedSections.has('academic') && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="mt-2 space-y-1.5 pl-2"
+                      >
+                        {[
+                          { id: 'attendance', label: 'Attendance', icon: Activity, color: 'from-green-500 to-emerald-500' },
+                          { id: 'exams', label: 'Exams', icon: FileText, color: 'from-indigo-500 to-blue-500' },
+                          { id: 'marks', label: 'Marks', icon: GraduationCap, color: 'from-yellow-500 to-amber-500' },
+                        ].map((item) => {
+                          const Icon = item.icon;
+                          const active = viewMode === item.id;
+                          return (
+                            <motion.button
+                              key={item.id}
+                              onClick={() => {
+                                setViewMode(item.id as ViewMode);
+                                setSidebarOpen(false);
+                              }}
+                              whileHover={{ x: 4 }}
+                              whileTap={{ scale: 0.98 }}
+                              className={`group/item flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 w-full relative overflow-hidden ${
+                                active
+                                  ? `bg-gradient-to-r ${item.color} text-white shadow-lg shadow-black/20`
+                                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                              }`}
+                            >
+                              {active && (
+                                <motion.div
+                                  layoutId="activeIndicator"
+                                  className="absolute left-0 top-0 bottom-0 w-1 bg-white rounded-r-full"
+                                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                />
+                              )}
+                              <Icon 
+                                size={18} 
+                                className={`relative z-10 ${active ? 'text-white' : 'text-slate-400 group-hover/item:text-white'} transition-colors`} 
+                              />
+                              <span className={`font-medium text-sm relative z-10 ${active ? 'text-white' : 'text-slate-300'}`}>
+                                {item.label}
+                              </span>
+                              {active && (
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="w-2 h-2 rounded-full bg-white/80 ml-auto"
+                                />
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </div>
+
+                  {/* Finance & Communication Section */}
+                  <div className="group">
+                    <button
+                      onClick={() => {
+                        const newExpanded = new Set(expandedSections);
+                        if (newExpanded.has('finance')) {
+                          newExpanded.delete('finance');
+                        } else {
+                          newExpanded.add('finance');
+                        }
+                        setExpandedSections(newExpanded);
+                      }}
+                      className="flex items-center justify-between w-full px-4 py-3 text-xs font-bold text-slate-300 uppercase tracking-widest hover:text-white transition-all duration-200 rounded-lg hover:bg-slate-800/50"
+                    >
+                      <span className="flex items-center gap-2">
+                        <div className="w-1 h-4 bg-gradient-to-b from-amber-400 to-yellow-400 rounded-full" />
+                        Finance
+                      </span>
+                      <motion.div
+                        animate={{ rotate: expandedSections.has('finance') ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <ChevronDown size={16} className="text-slate-400" />
+                      </motion.div>
+                    </button>
+                    {expandedSections.has('finance') && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="mt-2 space-y-1.5 pl-2"
+                      >
+                        {[
+                          { id: 'fees', label: 'Fees', icon: DollarSign, color: 'from-emerald-500 to-green-500' },
+                          { id: 'communications', label: 'Communications', icon: Bell, color: 'from-pink-500 to-rose-500' },
+                        ].map((item) => {
+                          const Icon = item.icon;
+                          const active = viewMode === item.id;
+                          return (
+                            <motion.button
+                              key={item.id}
+                              onClick={() => {
+                                setViewMode(item.id as ViewMode);
+                                setSidebarOpen(false);
+                              }}
+                              whileHover={{ x: 4 }}
+                              whileTap={{ scale: 0.98 }}
+                              className={`group/item flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 w-full relative overflow-hidden ${
+                                active
+                                  ? `bg-gradient-to-r ${item.color} text-white shadow-lg shadow-black/20`
+                                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                              }`}
+                            >
+                              {active && (
+                                <motion.div
+                                  layoutId="activeIndicator"
+                                  className="absolute left-0 top-0 bottom-0 w-1 bg-white rounded-r-full"
+                                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                />
+                              )}
+                              <Icon 
+                                size={18} 
+                                className={`relative z-10 ${active ? 'text-white' : 'text-slate-400 group-hover/item:text-white'} transition-colors`} 
+                              />
+                              <span className={`font-medium text-sm relative z-10 ${active ? 'text-white' : 'text-slate-300'}`}>
+                                {item.label}
+                              </span>
+                              {active && (
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="w-2 h-2 rounded-full bg-white/80 ml-auto"
+                                />
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </div>
+
+                  {/* Support & Administration Section */}
+                  <div className="group">
+                    <button
+                      onClick={() => {
+                        const newExpanded = new Set(expandedSections);
+                        if (newExpanded.has('support')) {
+                          newExpanded.delete('support');
+                        } else {
+                          newExpanded.add('support');
+                        }
+                        setExpandedSections(newExpanded);
+                      }}
+                      className="flex items-center justify-between w-full px-4 py-3 text-xs font-bold text-slate-300 uppercase tracking-widest hover:text-white transition-all duration-200 rounded-lg hover:bg-slate-800/50"
+                    >
+                      <span className="flex items-center gap-2">
+                        <div className="w-1 h-4 bg-gradient-to-b from-red-400 to-rose-400 rounded-full" />
+                        Support & Admin
+                      </span>
+                      <motion.div
+                        animate={{ rotate: expandedSections.has('support') ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <ChevronDown size={16} className="text-slate-400" />
+                      </motion.div>
+                    </button>
+                    {expandedSections.has('support') && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="mt-2 space-y-1.5 pl-2"
+                      >
+                        {[
+                          { id: 'help-queries', label: 'Help Queries', icon: HelpCircle, color: 'from-orange-500 to-red-500' },
+                          { id: 'signups', label: 'Signups', icon: Clock, color: 'from-cyan-500 to-blue-500' },
+                          { id: 'school-supervision', label: 'School Supervision', icon: Shield, color: 'from-violet-500 to-purple-500' },
+                        ].map((item) => {
+                          const Icon = item.icon;
+                          const active = viewMode === item.id;
+                          return (
+                            <motion.button
+                              key={item.id}
+                              onClick={() => {
+                                setViewMode(item.id as ViewMode);
+                                setSidebarOpen(false);
+                              }}
+                              whileHover={{ x: 4 }}
+                              whileTap={{ scale: 0.98 }}
+                              className={`group/item flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 w-full relative overflow-hidden ${
+                                active
+                                  ? `bg-gradient-to-r ${item.color} text-white shadow-lg shadow-black/20`
+                                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                              }`}
+                            >
+                              {active && (
+                                <motion.div
+                                  layoutId="activeIndicator"
+                                  className="absolute left-0 top-0 bottom-0 w-1 bg-white rounded-r-full"
+                                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                />
+                              )}
+                              <Icon 
+                                size={18} 
+                                className={`relative z-10 ${active ? 'text-white' : 'text-slate-400 group-hover/item:text-white'} transition-colors`} 
+                              />
+                              <span className={`font-medium text-sm relative z-10 ${active ? 'text-white' : 'text-slate-300'}`}>
+                                {item.label}
+                              </span>
+                              {active && (
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="w-2 h-2 rounded-full bg-white/80 ml-auto"
+                                />
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </div>
                 </nav>
               </motion.aside>
             </>
@@ -3407,6 +3859,630 @@ export default function AdminDashboard() {
               animate={{ opacity: 1, y: 0 }}
             >
               <SchoolSupervisionView acceptedSchools={acceptedSchools} />
+            </motion.div>
+          )}
+
+          {/* System Settings View */}
+          {viewMode === 'system-settings' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-black">System Settings</h2>
+                  <p className="text-gray-600 mt-1">Manage system-wide features, defaults, and integrations</p>
+                </div>
+              </div>
+
+              {loadingSystemSettings ? (
+                <Card>
+                  <div className="text-center py-12">
+                    <RefreshCw className="animate-spin mx-auto mb-4 text-gray-400" size={32} />
+                    <p className="text-gray-600">Loading settings...</p>
+                  </div>
+                </Card>
+              ) : (
+                <div className="space-y-6">
+                  {/* Features Section */}
+                  <Card>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Feature Flags</h3>
+                    <div className="space-y-4">
+                      {[
+                        { key: 'student_portal', label: 'Student Portal', desc: 'Enable student login and portal access' },
+                        { key: 'staff_portal', label: 'Staff Portal', desc: 'Enable staff login and portal access' },
+                        { key: 'parent_portal', label: 'Parent Portal', desc: 'Enable parent login and portal access' },
+                        { key: 'fees_management', label: 'Fees Management', desc: 'Enable fees collection and management' },
+                        { key: 'library_management', label: 'Library Management', desc: 'Enable library operations' },
+                        { key: 'transport_management', label: 'Transport Management', desc: 'Enable transport tracking' },
+                        { key: 'certificate_management', label: 'Certificate Management', desc: 'Enable certificate generation' },
+                        { key: 'communication', label: 'Communication', desc: 'Enable messaging and notifications' },
+                        { key: 'reports', label: 'Reports', desc: 'Enable report generation' },
+                      ].map((feature) => (
+                        <div key={feature.key} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                          <div>
+                            <p className="font-medium text-gray-900">{feature.label}</p>
+                            <p className="text-sm text-gray-600">{feature.desc}</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={((systemSettings?.features as Record<string, boolean>) || {})[feature.key] ?? true}
+                              onChange={(e) => {
+                                const newSettings = {
+                                  ...systemSettings,
+                                  features: {
+                                    ...((systemSettings?.features as Record<string, boolean>) || {}),
+                                    [feature.key]: e.target.checked,
+                                  },
+                                };
+                                setSystemSettings(newSettings);
+                              }}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  {/* Defaults Section */}
+                  <Card>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">System Defaults</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Academic Year</label>
+                        <Input
+                          type="text"
+                          value={((systemSettings?.defaults as Record<string, string>) || {}).academic_year || new Date().getFullYear().toString()}
+                          onChange={(e) => {
+                            setSystemSettings({
+                              ...systemSettings,
+                              defaults: {
+                                ...((systemSettings?.defaults as Record<string, string>) || {}),
+                                academic_year: e.target.value,
+                              },
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
+                        <select
+                          value={((systemSettings?.defaults as Record<string, string>) || {}).date_format || 'DD/MM/YYYY'}
+                          onChange={(e) => {
+                            setSystemSettings({
+                              ...systemSettings,
+                              defaults: {
+                                ...((systemSettings?.defaults as Record<string, string>) || {}),
+                                date_format: e.target.value,
+                              },
+                            });
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                        >
+                          <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                          <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                          <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
+                        <Input
+                          type="text"
+                          value={((systemSettings?.defaults as Record<string, string>) || {}).timezone || 'Asia/Kolkata'}
+                          onChange={(e) => {
+                            setSystemSettings({
+                              ...systemSettings,
+                              defaults: {
+                                ...((systemSettings?.defaults as Record<string, string>) || {}),
+                                timezone: e.target.value,
+                              },
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                        <Input
+                          type="text"
+                          value={((systemSettings?.defaults as Record<string, string>) || {}).currency || 'INR'}
+                          onChange={(e) => {
+                            setSystemSettings({
+                              ...systemSettings,
+                              defaults: {
+                                ...((systemSettings?.defaults as Record<string, string>) || {}),
+                                currency: e.target.value,
+                              },
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Language</label>
+                        <select
+                          value={((systemSettings?.defaults as Record<string, string>) || {}).language || 'en'}
+                          onChange={(e) => {
+                            setSystemSettings({
+                              ...systemSettings,
+                              defaults: {
+                                ...((systemSettings?.defaults as Record<string, string>) || {}),
+                                language: e.target.value,
+                              },
+                            });
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                        >
+                          <option value="en">English</option>
+                          <option value="hi">Hindi</option>
+                          <option value="es">Spanish</option>
+                        </select>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Integrations Section */}
+                  <Card>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Integrations</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">SMS Provider</label>
+                        <Input
+                          type="text"
+                          placeholder="e.g., Twilio, AWS SNS"
+                          value={((systemSettings?.integrations as Record<string, string>) || {}).sms_provider || ''}
+                          onChange={(e) => {
+                            setSystemSettings({
+                              ...systemSettings,
+                              integrations: {
+                                ...((systemSettings?.integrations as Record<string, string>) || {}),
+                                sms_provider: e.target.value,
+                              },
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Email Provider</label>
+                        <Input
+                          type="text"
+                          placeholder="e.g., SendGrid, AWS SES"
+                          value={((systemSettings?.integrations as Record<string, string>) || {}).email_provider || ''}
+                          onChange={(e) => {
+                            setSystemSettings({
+                              ...systemSettings,
+                              integrations: {
+                                ...((systemSettings?.integrations as Record<string, string>) || {}),
+                                email_provider: e.target.value,
+                              },
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Payment Gateway</label>
+                        <Input
+                          type="text"
+                          placeholder="e.g., Razorpay, Stripe"
+                          value={((systemSettings?.integrations as Record<string, string>) || {}).payment_gateway || ''}
+                          onChange={(e) => {
+                            setSystemSettings({
+                              ...systemSettings,
+                              integrations: {
+                                ...((systemSettings?.integrations as Record<string, string>) || {}),
+                                payment_gateway: e.target.value,
+                              },
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Notifications Section */}
+                  <Card>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Notifications</h3>
+                    <div className="space-y-4">
+                      {[
+                        { key: 'email_enabled', label: 'Email Notifications', desc: 'Enable email notifications' },
+                        { key: 'sms_enabled', label: 'SMS Notifications', desc: 'Enable SMS notifications' },
+                        { key: 'push_enabled', label: 'Push Notifications', desc: 'Enable push notifications' },
+                      ].map((notif) => (
+                        <div key={notif.key} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                          <div>
+                            <p className="font-medium text-gray-900">{notif.label}</p>
+                            <p className="text-sm text-gray-600">{notif.desc}</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={((systemSettings?.notifications as Record<string, boolean>) || {})[notif.key] ?? false}
+                              onChange={(e) => {
+                                setSystemSettings({
+                                  ...systemSettings,
+                                  notifications: {
+                                    ...((systemSettings?.notifications as Record<string, boolean>) || {}),
+                                    [notif.key]: e.target.checked,
+                                  },
+                                });
+                              }}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end">
+                    <Button
+                      variant="primary"
+                      onClick={() => systemSettings && saveSystemSettings(systemSettings)}
+                      disabled={savingSystemSettings || !systemSettings}
+                    >
+                      {savingSystemSettings ? (
+                        <>
+                          <Loader2 className="mr-2 animate-spin" size={18} />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2" size={18} />
+                          Save Settings
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* Analytics & Reports View */}
+          {viewMode === 'analytics' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-black">Analytics & Reports</h2>
+                  <p className="text-gray-600 mt-1">System-wide analytics and insights</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <select
+                    value={analyticsPeriod}
+                    onChange={(e) => setAnalyticsPeriod(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="7d">Last 7 days</option>
+                    <option value="30d">Last 30 days</option>
+                    <option value="90d">Last 90 days</option>
+                    <option value="1y">Last year</option>
+                    <option value="all">All time</option>
+                  </select>
+                  <select
+                    value={analyticsSchoolFilter}
+                    onChange={(e) => setAnalyticsSchoolFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="all">All Schools</option>
+                    {acceptedSchools.map((school) => (
+                      <option key={school.id} value={school.school_code}>
+                        {school.school_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {loadingAnalytics ? (
+                <Card>
+                  <div className="text-center py-12">
+                    <RefreshCw className="animate-spin mx-auto mb-4 text-gray-400" size={32} />
+                    <p className="text-gray-600">Loading analytics...</p>
+                  </div>
+                </Card>
+              ) : analyticsData !== null ? (() => {
+                const overview = analyticsData.overview as Record<string, unknown> | undefined;
+                const growth = analyticsData.growth as Record<string, unknown> | undefined;
+                const signups = analyticsData.signups as Record<string, unknown> | undefined;
+                const topSchools = analyticsData.topSchools as Record<string, unknown>[] | undefined;
+                
+                return (
+                <div className="space-y-6">
+                  {/* Overview Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <Card>
+                      <div className="p-6">
+                        <p className="text-sm text-gray-600 mb-2">Total Schools</p>
+                        <p className="text-3xl font-bold text-gray-900">{Number(overview?.totalSchools) || 0}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {Number(overview?.activeSchools) || 0} active, {Number(overview?.onHoldSchools) || 0} on hold
+                        </p>
+                      </div>
+                    </Card>
+                    <Card>
+                      <div className="p-6">
+                        <p className="text-sm text-gray-600 mb-2">Total Students</p>
+                        <p className="text-3xl font-bold text-gray-900">{Number(overview?.totalStudents) || 0}</p>
+                        <p className="text-xs text-green-600 mt-1">
+                          +{Number(growth?.newStudents) || 0} new ({analyticsPeriod})
+                        </p>
+                      </div>
+                    </Card>
+                    <Card>
+                      <div className="p-6">
+                        <p className="text-sm text-gray-600 mb-2">Total Staff</p>
+                        <p className="text-3xl font-bold text-gray-900">{Number(overview?.totalStaff) || 0}</p>
+                        <p className="text-xs text-green-600 mt-1">
+                          +{Number(growth?.newStaff) || 0} new ({analyticsPeriod})
+                        </p>
+                      </div>
+                    </Card>
+                    <Card>
+                      <div className="p-6">
+                        <p className="text-sm text-gray-600 mb-2">Total Revenue</p>
+                        <p className="text-3xl font-bold text-gray-900">
+                          ₹{Number(overview?.totalRevenue) || 0}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">All time</p>
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Growth Chart */}
+                  {(() => {
+                    const monthly = growth?.monthly;
+                    return Boolean(monthly && Array.isArray(monthly) && monthly.length > 0);
+                  })() && (
+                    <Card>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Growth</h3>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={(growth?.monthly as Record<string, unknown>[]) || []}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="month" />
+                            <YAxis />
+                            <Tooltip />
+                            <Bar dataKey="schools" fill="#3b82f6" />
+                            <Bar dataKey="students" fill="#10b981" />
+                            <Bar dataKey="staff" fill="#f59e0b" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Signups Breakdown */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <Card>
+                      <div className="p-6">
+                        <p className="text-sm text-gray-600 mb-2">Pending Signups</p>
+                        <p className="text-3xl font-bold text-yellow-600">{Number(signups?.pending) || 0}</p>
+                      </div>
+                    </Card>
+                    <Card>
+                      <div className="p-6">
+                        <p className="text-sm text-gray-600 mb-2">Accepted Signups</p>
+                        <p className="text-3xl font-bold text-green-600">{Number(signups?.accepted) || 0}</p>
+                      </div>
+                    </Card>
+                    <Card>
+                      <div className="p-6">
+                        <p className="text-sm text-gray-600 mb-2">Rejected Signups</p>
+                        <p className="text-3xl font-bold text-red-600">{Number(signups?.rejected) || 0}</p>
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Top Schools */}
+                  {topSchools && Array.isArray(topSchools) && topSchools.length > 0 && (
+                    <Card>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Schools by Activity</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">School</th>
+                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Students</th>
+                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Staff</th>
+                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Exams</th>
+                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Revenue</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {topSchools.slice(0, 10).map((school: Record<string, unknown>, idx: number) => (
+                              <tr key={idx} className="border-b border-gray-200">
+                                <td className="px-4 py-3 text-sm text-gray-900">{school.school_code as string}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700">{Number(school.students) || 0}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700">{Number(school.staff) || 0}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700">{Number(school.exams) || 0}</td>
+                                <td className="px-4 py-3 text-sm text-gray-700">₹{(Number(school.revenue) || 0).toLocaleString('en-IN')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  )}
+                </div>
+                );
+              })() : (
+                <Card>
+                  <div className="text-center py-12">
+                    <BarChart2 className="mx-auto mb-4 text-gray-400" size={48} />
+                    <p className="text-gray-600 text-lg">No analytics data available</p>
+                  </div>
+                </Card>
+              )}
+            </motion.div>
+          )}
+
+          {/* Users View */}
+          {viewMode === 'users' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-black">User Management</h2>
+                  <p className="text-gray-600 mt-1">Manage users across all schools</p>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <Card>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                    <Input
+                      type="text"
+                      placeholder="Search users..."
+                      value={usersSearch}
+                      onChange={(e) => setUsersSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <select
+                    value={usersRoleFilter}
+                    onChange={(e) => setUsersRoleFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="all">All Roles</option>
+                    <option value="student">Students</option>
+                    <option value="staff">Staff</option>
+                  </select>
+                  <select
+                    value={usersStatusFilter}
+                    onChange={(e) => setUsersStatusFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                  <select
+                    value={usersSchoolFilter}
+                    onChange={(e) => setUsersSchoolFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="all">All Schools</option>
+                    {acceptedSchools.map((school) => (
+                      <option key={school.id} value={school.school_code}>
+                        {school.school_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </Card>
+
+              {/* Users Table */}
+              {loadingUsers ? (
+                <Card>
+                  <div className="text-center py-12">
+                    <RefreshCw className="animate-spin mx-auto mb-4 text-gray-400" size={32} />
+                    <p className="text-gray-600">Loading users...</p>
+                  </div>
+                </Card>
+              ) : usersData.length === 0 ? (
+                <Card>
+                  <div className="text-center py-12">
+                    <Users className="mx-auto mb-4 text-gray-400" size={48} />
+                    <p className="text-gray-600 text-lg">No users found</p>
+                  </div>
+                </Card>
+              ) : (
+                <>
+                  <Card>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Name</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">ID</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Type</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">School</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {usersData.map((user: Record<string, unknown>, idx: number) => (
+                            <tr key={idx} className="border-b border-gray-200 hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm text-gray-900">{(user.name as string | undefined) ?? 'N/A'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700">{(user.identifier as string | undefined) ?? 'N/A'}</td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 text-xs rounded-full ${
+                                  (user.user_type as string) === 'student' 
+                                    ? 'bg-blue-100 text-blue-700' 
+                                    : 'bg-purple-100 text-purple-700'
+                                }`}>
+                                  {(user.user_type as string | undefined) ?? 'N/A'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                {(() => {
+                                  const acceptedSchools = user.accepted_schools as Record<string, unknown>[] | undefined;
+                                  return (acceptedSchools?.[0] as Record<string, unknown>)?.school_name as string || user.school_code as string || 'N/A';
+                                })()}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 text-xs rounded-full ${
+                                  (user.status as string) === 'active' 
+                                    ? 'bg-green-100 text-green-700' 
+                                    : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {(user.status as string) || 'inactive'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <Button
+                                  size="sm"
+                                  variant={(user.status as string) === 'active' ? 'outline' : 'primary'}
+                                  onClick={() => updateUserStatus(
+                                    user.user_type as string,
+                                    user.identifier as string,
+                                    user.school_code as string,
+                                    (user.status as string) !== 'active'
+                                  )}
+                                >
+                                  {user.status === 'active' ? 'Deactivate' : 'Activate'}
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                  {/* Pagination */}
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      onClick={() => setUsersPage(Math.max(1, usersPage - 1))}
+                      disabled={usersPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-gray-600">Page {usersPage}</span>
+                    <Button
+                      variant="outline"
+                      onClick={() => setUsersPage(usersPage + 1)}
+                      disabled={usersData.length < 50}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </>
+              )}
             </motion.div>
           )}
 

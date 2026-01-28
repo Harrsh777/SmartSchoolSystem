@@ -39,10 +39,9 @@ export async function GET(request: NextRequest) {
     const today = new Date();
     const todayDayName = DAYS[today.getDay()];
 
-    // Get slots where teacher_id matches OR teacher_id is in teacher_ids array
-    // First get slots with direct teacher_id match
-    // Note: class_reference is a JSON column, not a relationship, so we select it directly
-    const { data: directSlots, error: directError } = await supabase
+    // Fetch all slots for today, then filter in JavaScript to avoid JSONB query issues
+    // This approach is more reliable than using .contains() on JSONB arrays
+    const { data: allSlotsData, error: slotsError } = await supabase
       .from('timetable_slots')
       .select(`
         *,
@@ -53,50 +52,26 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('school_code', schoolCode)
-      .eq('day', todayDayName)
-      .eq('teacher_id', teacherId);
+      .eq('day', todayDayName);
 
-    // Then get slots where teacher is in teacher_ids array
-    const { data: arraySlots, error: arrayError } = await supabase
-      .from('timetable_slots')
-      .select(`
-        *,
-        subject:subject_id (
-          id,
-          name,
-          color
-        )
-      `)
-      .eq('school_code', schoolCode)
-      .eq('day', todayDayName)
-      .contains('teacher_ids', [teacherId]);
-
-    // Handle errors - log but try to continue if possible
-    if (directError) {
-      console.error('Error fetching direct slots:', directError);
-      // Don't fail completely - continue with array slots if available
-    }
-    if (arrayError) {
-      console.error('Error fetching array slots:', arrayError);
-      // Don't fail completely - continue with direct slots if available
-    }
-    
-    // If both queries failed, return error
-    if (directError && arrayError) {
+    if (slotsError) {
+      console.error('Error fetching timetable slots:', slotsError);
       return NextResponse.json(
         { 
           error: 'Failed to fetch daily agenda', 
-          details: directError.message || arrayError.message,
-          code: directError.code || arrayError.code,
-          hint: directError.hint || arrayError.hint
+          details: slotsError.message,
+          code: slotsError.code,
+          hint: slotsError.hint
         },
         { status: 500 }
       );
     }
 
-    // Combine and deduplicate slots
+    // Filter slots where teacher_id matches OR teacher_id is in teacher_ids array
     interface TimetableSlot {
       id: string;
+      teacher_id?: string | null;
+      teacher_ids?: string[] | null;
       period_order?: number | null;
       period?: number | null;
       subject_id?: string | null;
@@ -113,9 +88,16 @@ export async function GET(request: NextRequest) {
         academic_year?: string | null;
       } | null;
     }
-    const allSlots = [...(directSlots || []), ...(arraySlots || [])];
+    
+    const filteredSlots = (allSlotsData || []).filter((slot: TimetableSlot) => {
+      // Include if teacher_id matches OR teacher_ids array contains teacherId
+      return slot.teacher_id === teacherId || 
+             (Array.isArray(slot.teacher_ids) && slot.teacher_ids.includes(teacherId));
+    });
+
+    // Deduplicate slots by id
     const uniqueSlots = Array.from(
-      new Map(allSlots.map((slot: TimetableSlot) => [slot.id, slot])).values()
+      new Map(filteredSlots.map((slot: TimetableSlot) => [slot.id, slot])).values()
     ) as TimetableSlot[];
 
     const slots = uniqueSlots;

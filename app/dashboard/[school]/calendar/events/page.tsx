@@ -130,10 +130,17 @@ export default function EventsPage({
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/dashboard/${schoolCode}/calendar/academic`)}
+            onClick={() => {
+              router.push(`/dashboard/${schoolCode}/calendar/academic`);
+              // Small delay to ensure navigation completes before potential refresh
+              setTimeout(() => {
+                // Trigger a page refresh by dispatching a custom event
+                window.dispatchEvent(new Event('calendar-refresh'));
+              }, 100);
+            }}
           >
             <ArrowLeft size={18} className="mr-2" />
-            Back
+            Back to Calendar
           </Button>
         </div>
       </div>
@@ -277,6 +284,8 @@ function EventModal({
       if (response.ok) {
         onSuccess();
         onClose();
+        // Show success message
+        alert(`Event ${event ? 'updated' : 'created'} successfully! It will now be visible in the Academic Calendar.`);
       } else {
         alert(result.error || `Failed to ${event ? 'update' : 'create'} event`);
       }

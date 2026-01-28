@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,18 +13,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch marks/examination data from marks table
+    const supabase = getServiceRoleClient();
+
+    // Fetch marks from new student_subject_marks table
     const { data: marksData, error } = await supabase
-      .from('marks')
+      .from('student_subject_marks')
       .select(`
         *,
-        students:student_id (
+        student:students!student_subject_marks_student_id_fkey(
           student_name,
           admission_no,
           class,
           section
         ),
-        examinations:exam_id (
+        exam:examinations!student_subject_marks_exam_id_fkey(
           exam_name,
           academic_year,
           start_date,
@@ -63,50 +65,63 @@ export async function GET(request: NextRequest) {
       'Subject',
       'Marks Obtained',
       'Maximum Marks',
+      'Pass Marks',
       'Percentage',
       'Grade',
       'Remarks',
+      'Entered By',
       'Date',
     ].join(',') + '\n';
 
+    const escapeCsvValue = (val: unknown): string => {
+      if (val === null || val === undefined) return '';
+      const stringVal = String(val);
+      if (stringVal.includes(',') || stringVal.includes('"') || stringVal.includes('\n')) {
+        return `"${stringVal.replace(/"/g, '""')}"`;
+      }
+      return stringVal;
+    };
+
     interface MarkWithRelations {
-      students?: { admission_no?: string; student_name?: string; [key: string]: unknown };
-      examinations?: { name?: string; [key: string]: unknown };
+      student?: { admission_no?: string; student_name?: string; class?: string; section?: string };
+      exam?: { exam_name?: string; academic_year?: string; start_date?: string; end_date?: string };
       marks_obtained?: number;
       max_marks?: number;
+      pass_marks?: number;
+      subject?: string;
+      grade?: string;
+      remarks?: string;
+      entered_by?: string;
+      created_at?: string;
       [key: string]: unknown;
     }
+
     const csvRows = marksData.map((mark: MarkWithRelations) => {
-      const student = mark.students as { admission_no?: string; student_name?: string; [key: string]: unknown };
-      const exam = mark.examinations as { name?: string; [key: string]: unknown };
+      const student = mark.student as { admission_no?: string; student_name?: string; class?: string; section?: string } | undefined;
+      const exam = mark.exam as { exam_name?: string; academic_year?: string; start_date?: string; end_date?: string } | undefined;
       
       const marksObtained = mark.marks_obtained || 0;
       const maxMarks = mark.max_marks || 100;
-      const percentage = mark.percentage && typeof mark.percentage === 'number' 
-        ? mark.percentage.toFixed(2) 
-        : (maxMarks > 0 ? ((Number(marksObtained) / Number(maxMarks)) * 100).toFixed(2) : '0.00');
+      const passMarks = mark.pass_marks || 0;
+      const percentage = maxMarks > 0 ? ((Number(marksObtained) / Number(maxMarks)) * 100).toFixed(2) : '0.00';
       
       return [
         student?.student_name || '',
-        student?.admission_no || mark.admission_no || '',
+        student?.admission_no || '',
         student?.class || '',
         student?.section || '',
         exam?.exam_name || '',
         exam?.academic_year || '',
-        '', // Subject - not in marks table, would need to be added if available
+        mark.subject || '',
         marksObtained,
         maxMarks,
+        passMarks,
         percentage,
         mark.grade || '',
         mark.remarks || '',
+        mark.entered_by || '',
         exam?.start_date || mark.created_at || '',
-      ].map(val => {
-        const stringVal = String(val);
-        if (stringVal.includes(',') || stringVal.includes('"') || stringVal.includes('\n')) {
-          return `"${stringVal.replace(/"/g, '""')}"`;
-        }
-        return stringVal;
-      }).join(',');
+      ].map(escapeCsvValue).join(',');
     }).join('\n');
 
     const csvContent = csvHeader + csvRows;

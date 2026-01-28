@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
 
     const teacherId = searchParams.get('teacher_id');
 
+    // Note: We can't use nested select for class:class_id if there's no FK constraint
+    // So we'll fetch class data separately if needed
     let query = supabase
       .from('timetable_slots')
       .select(`
@@ -34,48 +36,86 @@ export async function GET(request: NextRequest) {
           full_name,
           staff_id
         ),
-        class:class_id (
-          id,
-          class,
-          section
-        )
+        class_reference
       `)
       .eq('school_code', schoolCode);
 
     if (classId) {
       query = query.eq('class_id', classId);
     } else if (teacherId) {
-      // For teacher timetable, get slots where teacher_id matches and class_id is null
-      query = query.eq('teacher_id', teacherId).is('class_id', null);
+      // For teacher timetable, fetch all slots (we'll filter in post-processing)
+      // This ensures we get both teacher-specific slots and class timetable slots
+      // where the teacher is assigned
     } else {
       query = query.is('class_id', null);
     }
 
-    // Order by period_order if available, otherwise by period
-    const { data: slots, error } = await query
+    // Order by day, then period_order, then period
+    // Use nullsFirst: false to put nulls at the end (equivalent to nullsLast)
+    const { data: slotsData, error } = await query
       .order('day', { ascending: true })
       .order('period_order', { ascending: true, nullsFirst: false })
       .order('period', { ascending: true, nullsFirst: false });
 
     if (error) {
-      console.error('Error fetching timetable slots:', error);
+      console.error('Error fetching timetable slots:', {
+        error: JSON.stringify(error, null, 2),
+        errorObject: error,
+        schoolCode,
+        classId,
+        teacherId,
+        message: error?.message,
+        code: error?.code,
+        hint: error?.hint,
+        details: error?.details,
+      });
       return NextResponse.json(
-        { error: 'Failed to fetch timetable slots', details: error.message, code: error.code, hint: error.hint },
+        { 
+          error: 'Failed to fetch timetable slots', 
+          details: error?.message || 'Unknown error occurred',
+          code: error?.code,
+          hint: error?.hint 
+        },
         { status: 500 }
       );
     }
 
+    // Log successful fetch for debugging
+    console.log('Successfully fetched timetable slots:', {
+      schoolCode,
+      classId,
+      teacherId,
+      slotsCount: slotsData?.length || 0,
+    });
+
     // Fetch teachers for slots with teacher_ids arrays
     // Also fetch class info for teacher timetables from class_reference
     interface SlotWithTeachers {
+      teacher_id?: string;
       teacher_ids?: string[];
       teachers?: Array<{ id: string; full_name: string; staff_id: string }>;
       class_reference?: { class_id: string; class: string; section: string; academic_year?: string } | null;
       class?: { id: string; class: string; section: string; academic_year?: string } | null;
+      class_id?: string | null;
       [key: string]: unknown;
     }
+
+    // Ensure slots is an array (default to empty array if null/undefined)
+    const slots: SlotWithTeachers[] = (slotsData || []) as SlotWithTeachers[];
+    
+    // For teacher timetables, filter to only show slots where this teacher is assigned
+    let filteredSlots = slots;
+    if (teacherId) {
+      // Filter to only show slots where this teacher is assigned
+      filteredSlots = filteredSlots.filter((slot) => {
+        // Include if teacher_id matches OR teacher_ids array contains teacherId
+        return slot.teacher_id === teacherId || 
+               (Array.isArray(slot.teacher_ids) && slot.teacher_ids.includes(teacherId));
+      });
+    }
+    
     const slotsWithTeachers = await Promise.all(
-      (slots || []).map(async (slot: SlotWithTeachers) => {
+      filteredSlots.map(async (slot) => {
         // Fetch teachers if teacher_ids exist
         if (slot.teacher_ids && Array.isArray(slot.teacher_ids) && slot.teacher_ids.length > 0) {
           const { data: teachers } = await supabase
@@ -85,21 +125,61 @@ export async function GET(request: NextRequest) {
             .eq('school_code', schoolCode);
           
           slot.teachers = teachers || [];
+        } else if (slot.teacher_id) {
+          // If only teacher_id exists, fetch that teacher
+          const { data: teacher } = await supabase
+            .from('staff')
+            .select('id, full_name, staff_id')
+            .eq('id', slot.teacher_id)
+            .eq('school_code', schoolCode)
+            .single();
+          
+          if (teacher) {
+            slot.teachers = [teacher];
+          }
         }
         
-        // For teacher timetables, use class_reference if available, otherwise fetch from class_id
-        if (!slot.class && slot.class_reference) {
+        // Fetch class information if class_id exists (since we can't use nested select due to missing FK)
+        // First try class_reference if available (stored as JSONB)
+        if (slot.class_reference && typeof slot.class_reference === 'object') {
+          const classRef = slot.class_reference as { class_id?: string; class?: string; section?: string; academic_year?: string };
           slot.class = {
-            id: slot.class_reference.class_id,
-            class: slot.class_reference.class,
-            section: slot.class_reference.section,
-            academic_year: slot.class_reference.academic_year,
+            id: classRef.class_id || slot.class_id || '',
+            class: classRef.class || '',
+            section: classRef.section || '',
+            academic_year: classRef.academic_year || '',
           };
+        } else if (slot.class_id && !slot.class) {
+          // Fetch class info from class_id if class_reference is not available
+          const { data: classData } = await supabase
+            .from('classes')
+            .select('id, class, section, academic_year')
+            .eq('id', slot.class_id)
+            .eq('school_code', schoolCode)
+            .single();
+          
+          if (classData) {
+            slot.class = {
+              id: classData.id,
+              class: classData.class,
+              section: classData.section,
+              academic_year: classData.academic_year,
+            };
+          }
         }
         
         return slot;
       })
     );
+
+    // Log for debugging
+    console.log('Fetched timetable slots:', {
+      schoolCode,
+      classId,
+      teacherId,
+      totalSlots: slotsWithTeachers.length,
+      filteredSlots: filteredSlots.length,
+    });
 
     return NextResponse.json({ data: slotsWithTeachers || [] }, { status: 200 });
   } catch (error) {
@@ -229,7 +309,7 @@ export async function POST(request: NextRequest) {
       school_id: schoolData.id,
       school_code: school_code,
       day: day,
-      subject_id: subject_id || null,
+      subject_id: subject_id || null, // Explicitly set to null if not provided to clear old subject
     };
     
     // Add period_group_id if provided (optional)
@@ -270,6 +350,104 @@ export async function POST(request: NextRequest) {
       upsertData.class_id = null;
       upsertData.teacher_id = class_teacher_id;
       upsertData.teacher_ids = [class_teacher_id];
+    }
+
+    // Check for teacher conflicts BEFORE assigning teachers
+    const teachersToAssign: string[] = [];
+    if (teacher_ids && Array.isArray(teacher_ids) && teacher_ids.length > 0) {
+      teachersToAssign.push(...teacher_ids);
+    } else if (teacher_id) {
+      teachersToAssign.push(teacher_id);
+    }
+
+    // If teachers are being assigned, check for conflicts
+    if (teachersToAssign.length > 0 && class_id && day && (period_order !== undefined || period !== undefined)) {
+      // periodValue removed - not used
+      // const periodValue = period_order !== undefined && period_order !== null ? period_order : period;
+      
+      // Check if any of these teachers are already assigned to other classes at this time
+      let conflictQuery = supabase
+        .from('timetable_slots')
+        .select(`
+          id,
+          class_id,
+          teacher_ids,
+          teacher_id,
+          classes(class, section)
+        `)
+        .eq('school_code', school_code)
+        .eq('day', day)
+        .not('class_id', 'is', null) // Only check class timetables (not teacher timetables)
+        .neq('class_id', class_id); // Exclude the current class
+      
+      if (period_order !== undefined && period_order !== null) {
+        conflictQuery = conflictQuery.eq('period_order', period_order);
+      } else if (period !== undefined && period !== null) {
+        conflictQuery = conflictQuery.eq('period', period);
+      }
+
+      const { data: conflictingSlots, error: conflictError } = await conflictQuery;
+
+      if (conflictError && conflictError.code !== 'PGRST116') {
+        console.error('Error checking for teacher conflicts:', conflictError);
+        // Don't fail the request, just log the error and continue
+      } else if (conflictingSlots && conflictingSlots.length > 0) {
+        // Check each teacher for conflicts
+        const conflicts: Array<{ teacherId: string; teacherName?: string; className: string }> = [];
+        
+        for (const slot of conflictingSlots) {
+          const slotTeacherIds: string[] = [];
+          if (slot.teacher_id) {
+            slotTeacherIds.push(slot.teacher_id);
+          }
+          if (slot.teacher_ids && Array.isArray(slot.teacher_ids)) {
+            slotTeacherIds.push(...slot.teacher_ids);
+          }
+
+          for (const teacherId of teachersToAssign) {
+            if (slotTeacherIds.includes(teacherId)) {
+              // Get class name
+              let className = 'Unknown Class';
+              if (slot.classes && Array.isArray(slot.classes) && slot.classes.length > 0) {
+                const classData = slot.classes[0];
+                className = `${classData.class || ''}-${classData.section || ''}`.trim() || 'Unknown Class';
+              }
+              
+              // Get teacher name if possible
+              const { data: teacherData } = await supabase
+                .from('staff')
+                .select('full_name')
+                .eq('id', teacherId)
+                .single();
+              
+              conflicts.push({
+                teacherId,
+                teacherName: teacherData?.full_name || 'Unknown Teacher',
+                className,
+              });
+            }
+          }
+        }
+
+        // If there are conflicts, return them but don't block the save
+        // The frontend can decide whether to proceed or not
+        if (conflicts.length > 0) {
+          // Remove duplicates
+          const uniqueConflicts = conflicts.filter((conflict, index, self) =>
+            index === self.findIndex(c => c.teacherId === conflict.teacherId && c.className === conflict.className)
+          );
+
+          return NextResponse.json(
+            {
+              error: 'Teacher conflict detected',
+              details: 'One or more teachers are already assigned to other classes at this time slot',
+              code: 'TEACHER_CONFLICT',
+              conflicts: uniqueConflicts,
+            },
+            { status: 409 }
+          );
+        }
+      }
     }
 
     // Handle teacher assignments (override defaults if teachers are provided)
@@ -329,10 +507,16 @@ export async function POST(request: NextRequest) {
     const existingSlot = existing || null;
     
     if (existingSlot) {
-      // Update existing slot
+      // Update existing slot - ensure subject_id is properly set (null if not provided)
+      // This ensures that when updating, if subject_id is null, it clears the old subject
+      const updateData = { ...upsertData };
+      if (!subject_id) {
+        updateData.subject_id = null;
+      }
+      
       const { data: updated, error: updateError } = await supabase
         .from('timetable_slots')
-        .update(upsertData)
+        .update(updateData)
         .eq('id', existingSlot.id)
         .select(`
           *,
@@ -437,6 +621,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // CONFLICT DETECTION: Check if teachers are already assigned to other classes at this time
+    // Declare conflicts outside the if block so it's accessible later
+    const conflicts: Array<{ teacher_id: string; class_id: string; class_name: string; teacher_name?: string }> = [];
+
     // If teacher_ids are provided and class_id exists, create/update teacher timetable entries
     if (teacher_ids && Array.isArray(teacher_ids) && teacher_ids.length > 0 && class_id) {
       // Get existing teacher_ids for this slot to find removed teachers
@@ -471,20 +659,31 @@ export async function POST(request: NextRequest) {
       }
 
       // CONFLICT DETECTION: Check if teachers are already assigned to other classes at this time
-      const conflicts: Array<{ teacher_id: string; class_id: string; class_name: string }> = [];
       
       for (const teacherId of teacher_ids) {
+        // Get teacher name for better error messages
+        const { data: teacherData } = await supabase
+          .from('staff')
+          .select('id, full_name')
+          .eq('id', teacherId)
+          .eq('school_code', school_code)
+          .single();
+        
+        const teacherName = teacherData?.full_name || 'Unknown Teacher';
+
         // Check if teacher is already assigned to another class at this time
+        // Check both teacher_id and teacher_ids array
         let conflictQuery = supabase
           .from('timetable_slots')
           .select(`
             id,
             class_id,
+            teacher_id,
+            teacher_ids,
             class:class_id (class, section)
           `)
           .eq('school_code', school_code)
           .eq('day', day)
-          .eq('teacher_id', teacherId)
           .not('class_id', 'is', null)
           .not('class_id', 'eq', class_id); // Exclude current class
 
@@ -498,21 +697,38 @@ export async function POST(request: NextRequest) {
 
         if (conflictsData && conflictsData.length > 0) {
           for (const conflict of conflictsData) {
-            const classData = Array.isArray(conflict.class) ? conflict.class[0] : conflict.class;
-            const classInfo = classData as { class: string; section: string } | null;
-            conflicts.push({
-              teacher_id: teacherId,
-              class_id: conflict.class_id,
-              class_name: classInfo ? `${classInfo.class}-${classInfo.section}` : 'Unknown',
-            });
+            // Check if this teacher is in the conflict slot (via teacher_id or teacher_ids)
+            const hasTeacher = conflict.teacher_id === teacherId || 
+                              (Array.isArray(conflict.teacher_ids) && conflict.teacher_ids.includes(teacherId));
+            
+            if (hasTeacher) {
+              const classData = Array.isArray(conflict.class) ? conflict.class[0] : conflict.class;
+              const classInfo = classData as { class: string; section: string } | null;
+              conflicts.push({
+                teacher_id: teacherId,
+                class_id: conflict.class_id,
+                class_name: classInfo ? `${classInfo.class}-${classInfo.section}` : 'Unknown',
+                teacher_name: teacherName,
+              });
+            }
           }
         }
       }
 
-      // Return conflict error if found (but don't block - allow override in future)
-      // For now, we'll continue but log conflicts
+      // Block saving if conflicts are detected
       if (conflicts.length > 0) {
         console.warn('Teacher conflicts detected:', conflicts);
+        const conflictMessages = conflicts.map(c => 
+          `${c.teacher_name} is already assigned to ${c.class_name} at this time slot`
+        );
+        return NextResponse.json(
+          { 
+            error: 'Teacher conflict detected',
+            message: `Cannot assign teacher(s) - they are already assigned to other classes at this time:\n${conflictMessages.join('\n')}`,
+            conflicts: conflicts
+          },
+          { status: 409 } // 409 Conflict status code
+        );
       }
 
       // Get class details for teacher timetable reference
@@ -648,7 +864,13 @@ export async function POST(request: NextRequest) {
       slot.teachers = teachers || [];
     }
 
-    return NextResponse.json({ data: slot }, { status: existingSlot ? 200 : 201 });
+    // Include conflicts in response if any
+    const responseData: { data: typeof slot; conflicts?: Array<{ teacher_id: string; class_id: string; class_name: string }> } = { data: slot };
+    if (conflicts.length > 0) {
+      responseData.conflicts = conflicts;
+    }
+
+    return NextResponse.json(responseData, { status: existingSlot ? 200 : 201 });
   } catch (error) {
     console.error('Error saving timetable slot:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -660,7 +882,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Delete/clear a timetable slot
+// Delete/clear a timetable slot (clears subject and teachers, but keeps the slot structure)
 export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
@@ -678,10 +900,10 @@ export async function DELETE(request: NextRequest) {
     const periodValue = usePeriodOrder ? period_order : parseInt(period, 10);
 
     if (class_id) {
-      // First, get the slot to find teacher_ids before deleting
+      // First, get the slot to find teacher_ids and slot id before clearing
       let slotQuery = supabase
         .from('timetable_slots')
-        .select('teacher_ids')
+        .select('id, teacher_ids')
         .eq('school_code', school_code)
         .eq('day', day)
         .eq('class_id', class_id);
@@ -695,39 +917,60 @@ export async function DELETE(request: NextRequest) {
       const { data: slotData, error: slotQueryError } = await slotQuery.maybeSingle();
 
       if (slotQueryError && slotQueryError.code !== 'PGRST116') {
-        console.error('Error fetching slot for deletion:', slotQueryError);
+        console.error('Error fetching slot for clearing:', slotQueryError);
         return NextResponse.json(
           { error: 'Failed to fetch timetable slot', details: slotQueryError.message },
           { status: 500 }
         );
       }
 
-      // Delete the class timetable slot
-      let deleteQuery = supabase
-        .from('timetable_slots')
-        .delete()
-        .eq('school_code', school_code)
-        .eq('day', day)
-        .eq('class_id', class_id);
-
-      if (usePeriodOrder) {
-        deleteQuery = deleteQuery.eq('period_order', periodValue);
-      } else {
-        deleteQuery = deleteQuery.eq('period', String(periodValue));
+      // If slot doesn't exist, return success (nothing to clear)
+      if (!slotData) {
+        console.log('Slot not found, already cleared or does not exist');
+        return NextResponse.json({ success: true, message: 'Slot already cleared' }, { status: 200 });
       }
 
-      const { error: deleteError } = await deleteQuery;
+      console.log('Clearing slot:', {
+        slotId: slotData.id,
+        day,
+        period_order: periodValue,
+        class_id,
+        teacher_ids: slotData.teacher_ids,
+      });
 
-      if (deleteError) {
-        console.error('Error deleting class timetable slot:', deleteError);
+      // Update the slot to clear subject_id and teacher_ids (instead of deleting)
+      const { data: updatedSlot, error: updateError } = await supabase
+        .from('timetable_slots')
+        .update({
+          subject_id: null,
+          teacher_id: null,
+          teacher_ids: null,
+        })
+        .eq('id', slotData.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('Error clearing class timetable slot:', {
+          error: updateError,
+          slotId: slotData.id,
+          day,
+          period_order: periodValue,
+        });
         return NextResponse.json(
-          { error: 'Failed to delete timetable slot', details: deleteError.message },
+          { error: 'Failed to clear timetable slot', details: updateError.message },
           { status: 500 }
         );
       }
 
-      // Also delete corresponding teacher timetable entries
-      if (slotData && slotData.teacher_ids && Array.isArray(slotData.teacher_ids) && slotData.teacher_ids.length > 0) {
+      console.log('Successfully cleared slot:', {
+        slotId: updatedSlot?.id,
+        subject_id: updatedSlot?.subject_id,
+        teacher_ids: updatedSlot?.teacher_ids,
+      });
+
+      // Also delete corresponding teacher timetable entries (these should be deleted, not cleared)
+      if (slotData.teacher_ids && Array.isArray(slotData.teacher_ids) && slotData.teacher_ids.length > 0) {
         let teacherQuery = supabase
           .from('timetable_slots')
           .delete()
@@ -750,7 +993,7 @@ export async function DELETE(request: NextRequest) {
         }
       }
     } else {
-      // Delete teacher-only slots (class_id is NULL)
+      // For teacher-only slots (class_id is NULL), delete them entirely
       let deleteQuery = supabase
         .from('timetable_slots')
         .delete()
@@ -777,7 +1020,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
-    console.error('Error deleting timetable slot:', error);
+    console.error('Error clearing timetable slot:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { error: 'Internal server error', details: errorMessage },

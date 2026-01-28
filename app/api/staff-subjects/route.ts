@@ -43,13 +43,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all staff-subject assignments
+    // Handle case where table might not exist yet
     const { data: staffSubjects, error: staffSubjectsError } = await supabase
       .from('staff_subjects')
       .select(`
         id,
         staff_id,
         subject_id,
-        subject:subjects (
+        subject:subject_id (
           id,
           name,
           color
@@ -58,6 +59,18 @@ export async function GET(request: NextRequest) {
       .eq('school_code', schoolCode);
 
     if (staffSubjectsError) {
+      // If table doesn't exist, return empty assignments (table will be created on first assignment)
+      if (staffSubjectsError.message?.includes('does not exist') || 
+          staffSubjectsError.message?.includes('relation') ||
+          staffSubjectsError.code === '42P01') {
+        console.log('staff_subjects table does not exist yet - returning empty assignments');
+        // Return staff with empty subjects array
+        const staffWithSubjects = (staff || []).map((s) => ({
+          ...s,
+          subjects: [],
+        }));
+        return NextResponse.json({ data: staffWithSubjects }, { status: 200 });
+      }
       console.error('Error fetching staff-subjects:', staffSubjectsError);
       return NextResponse.json(
         { error: 'Failed to fetch staff-subject assignments', details: staffSubjectsError.message },

@@ -9,6 +9,8 @@ import {
   XCircle, 
   AlertCircle,
   Download,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
@@ -33,6 +35,7 @@ interface AttendanceStats {
   absent: number;
   late: number;
   percentage: number;
+  not_marked?: number;
 }
 
 export default function StudentAttendancePage() {
@@ -44,14 +47,23 @@ export default function StudentAttendancePage() {
     absent: 0,
     late: 0,
     percentage: 0,
+    not_marked: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // Window navigation (each step = 30 days). 0 = last 30 days (including today).
+  const [windowOffset, setWindowOffset] = useState(0);
 
   // Helper to safely get string value
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
+  };
+
+  // Format date as YYYY-MM-DD in local time (not UTC) so API range matches teacher-marked dates
+  const toLocalDateString = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   };
 
   const fetchAttendance = useCallback(async (studentData: Student) => {
@@ -66,24 +78,68 @@ export default function StudentAttendancePage() {
       }
       params.append('student_id', studentId);
       params.append('school_code', schoolCode);
-      if (startDate) params.append('start_date', startDate);
-      if (endDate) params.append('end_date', endDate);
+      // Compute 30-day window in local time
+      const end = new Date();
+      end.setHours(0, 0, 0, 0);
+      end.setDate(end.getDate() - windowOffset * 30);
+      const start = new Date(end);
+      start.setDate(start.getDate() - 29);
+
+      params.append('start_date', toLocalDateString(start));
+      params.append('end_date', toLocalDateString(end));
 
       const response = await fetch(`/api/attendance/student?${params.toString()}`);
       const result = await response.json();
 
       if (response.ok && result.data) {
-        setAttendance(result.data);
-        if (result.statistics) {
-          setStats(result.statistics);
+        const records: AttendanceRecord[] = result.data;
+        setAttendance(records);
+
+        // Normalize API date to YYYY-MM-DD for map key (DB returns date string)
+        const byDate = new Map<string, AttendanceRecord>();
+        records.forEach((r) => {
+          const key = String(r.attendance_date).slice(0, 10);
+          byDate.set(key, r);
+        });
+
+        let present = 0;
+        let absent = 0;
+        let late = 0;
+        let marked = 0;
+
+        const cursor = new Date(start);
+        while (cursor <= end) {
+          const key = toLocalDateString(cursor);
+          const rec = byDate.get(key);
+          if (rec) {
+            marked += 1;
+            if (rec.status === 'present') present += 1;
+            else if (rec.status === 'absent') absent += 1;
+            else if (rec.status === 'late') late += 1;
+          }
+          cursor.setDate(cursor.getDate() + 1);
         }
+
+        const total = 30;
+        const not_marked = total - marked;
+        const percentageDen = present + absent + late;
+        const percentage = percentageDen > 0 ? Math.round((present / percentageDen) * 100) : 0;
+
+        setStats({
+          total,
+          present,
+          absent,
+          late,
+          not_marked,
+          percentage,
+        });
       }
     } catch (err) {
       console.error('Error fetching attendance:', err);
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate]);
+  }, [windowOffset]);
 
   useEffect(() => {
     const storedStudent = sessionStorage.getItem('student');
@@ -97,7 +153,7 @@ export default function StudentAttendancePage() {
     if (student) {
       fetchAttendance(student);
     }
-  }, [startDate, endDate, student, fetchAttendance]);
+  }, [student, fetchAttendance]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -117,8 +173,64 @@ export default function StudentAttendancePage() {
       present: 'bg-green-100 text-green-800',
       absent: 'bg-red-100 text-red-800',
       late: 'bg-yellow-100 text-yellow-800',
+      not_marked: 'bg-gray-100 text-gray-700',
     };
     return styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getWindowLabel = () => {
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    end.setDate(end.getDate() - windowOffset * 30);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 29);
+    const fmt = (d: Date) =>
+      d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+    return `${fmt(start)} – ${fmt(end)}`;
+  };
+
+  const getWindowDays = () => {
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    end.setDate(end.getDate() - windowOffset * 30);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 29);
+
+    const byDate = new Map<string, AttendanceRecord>();
+    attendance.forEach((r) => {
+      const key = String(r.attendance_date).slice(0, 10);
+      byDate.set(key, r);
+    });
+
+    const days: Array<{
+      key: string;
+      date: Date;
+      status: 'present' | 'absent' | 'late' | 'not_marked';
+      record?: AttendanceRecord;
+    }> = [];
+
+    const toLocalDateString = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const key = toLocalDateString(cursor);
+      const rec = byDate.get(key);
+      days.push({
+        key,
+        date: new Date(cursor),
+        status: rec?.status ?? 'not_marked',
+        record: rec,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    // show latest first
+    return days.reverse();
   };
 
   if (loading) {
@@ -147,7 +259,7 @@ export default function StudentAttendancePage() {
       </motion.div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -202,6 +314,23 @@ export default function StudentAttendancePage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+        >
+          <Card hover>
+            <div className="flex items-center space-x-4">
+              <div className="bg-gray-700 p-3 rounded-lg">
+                <AlertCircle className="text-white" size={24} />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Not Marked</p>
+                <p className="text-2xl font-bold text-black">{stats.not_marked ?? 0}</p>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
           <Card hover>
@@ -218,49 +347,40 @@ export default function StudentAttendancePage() {
         </motion.div>
       </div>
 
-      {/* Filters */}
+      {/* 30-day Window Navigation */}
       <Card>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Start Date
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-            />
+            <p className="text-sm text-gray-600">Showing</p>
+            <p className="text-lg font-semibold text-black">{getWindowLabel()}</p>
+            <p className="text-xs text-gray-500 mt-1">Use the arrows to jump by 30 days.</p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              End Date
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-            />
-          </div>
-          <div className="flex items-end">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                setStartDate('');
-                setEndDate('');
-              }}
-              className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              onClick={() => setWindowOffset((v) => v + 1)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 transition-colors"
+              title="Previous 30 days"
             >
-              Clear Filters
+              <ChevronLeft size={18} />
+              <span className="text-sm font-medium">Back 30 days</span>
+            </button>
+            <button
+              onClick={() => setWindowOffset((v) => Math.max(0, v - 1))}
+              disabled={windowOffset === 0}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Next 30 days"
+            >
+              <span className="text-sm font-medium">Next 30 days</span>
+              <ChevronRight size={18} />
             </button>
           </div>
         </div>
       </Card>
 
-      {/* Attendance Table */}
+      {/* Attendance (30-day view) */}
       <Card>
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-black">Attendance Records</h2>
+          <h2 className="text-xl font-bold text-black">Attendance (Last 30 Days)</h2>
           {attendance.length > 0 && (
             <button className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors">
               <Download size={18} />
@@ -269,7 +389,7 @@ export default function StudentAttendancePage() {
           )}
         </div>
 
-        {attendance.length === 0 ? (
+        {getWindowDays().length === 0 ? (
           <div className="text-center py-12">
             <Calendar className="mx-auto mb-4 text-gray-400" size={48} />
             <p className="text-gray-600 text-lg">No attendance records found</p>
@@ -278,41 +398,29 @@ export default function StudentAttendancePage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Date</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Marked By</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {attendance.map((record) => (
-                  <tr key={record.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {new Date(record.attendance_date).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                      })}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(record.status)}
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(record.status)}`}>
-                          {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {record.marked_by_staff?.full_name || 'N/A'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="divide-y divide-gray-100">
+            {getWindowDays().map((day) => (
+              <div key={day.key} className="py-3 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-black">
+                    {day.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {day.date.toLocaleDateString('en-US', { year: 'numeric' })}
+                    {day.record?.marked_by_staff?.full_name ? ` • Marked by ${day.record.marked_by_staff.full_name}` : ''}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {day.status !== 'not_marked' ? getStatusIcon(day.status) : <AlertCircle className="text-gray-400" size={20} />}
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(day.status)}`}>
+                    {day.status === 'not_marked'
+                      ? 'Not marked'
+                      : day.status.charAt(0).toUpperCase() + day.status.slice(1)}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Card>

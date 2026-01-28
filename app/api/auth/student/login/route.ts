@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { comparePassword } from '@/lib/password-utils';
+import { setAuthCookie } from '@/lib/auth-cookie';
 
 export async function POST(request: NextRequest) {
   try {
@@ -91,11 +92,13 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...studentProfile } = student as StudentWithPassword;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       student: studentProfile,
       message: 'Login successful',
     }, { status: 200 });
+    setAuthCookie(response, 'student');
+    return response;
   } catch (error) {
     console.error('Student login error:', error);
     return NextResponse.json(

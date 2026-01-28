@@ -50,12 +50,47 @@ export default function ReportsPage({
         method: 'GET',
       });
 
+      // Check if response is JSON (error) or CSV (success)
+      const contentType = response.headers.get('content-type') || '';
+      
       if (!response.ok) {
-        throw new Error('Failed to download report');
+        // Try to parse error message from JSON response
+        let errorMessage = 'Failed to download report';
+        try {
+          if (contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.details || errorMessage;
+          } else {
+            const text = await response.text();
+            errorMessage = text || errorMessage;
+          }
+        } catch {
+          // If parsing fails, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Check if response is CSV
+      if (!contentType.includes('text/csv') && !contentType.includes('application/octet-stream')) {
+        // Might be JSON error even with 200 status
+        try {
+          const data = await response.json();
+          if (data.error) {
+            throw new Error(data.error || 'Invalid response format');
+          }
+        } catch {
+          // Not JSON, continue with blob
+        }
       }
 
       // Get the blob from response
       const blob = await response.blob();
+      
+      // Verify blob is not empty and is actually CSV-like
+      if (blob.size === 0) {
+        throw new Error('Report file is empty');
+      }
       
       // Create download link
       const url = window.URL.createObjectURL(blob);
@@ -66,9 +101,9 @@ export default function ReportsPage({
       const contentDisposition = response.headers.get('Content-Disposition');
       let filename = `${reportType}_report.csv`;
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
-        if (filenameMatch) {
-          filename = filenameMatch[1];
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
         }
       }
       
@@ -83,7 +118,8 @@ export default function ReportsPage({
       setTimeout(() => setSuccessMessage(null), 5000);
     } catch (error) {
       console.error('Error downloading report:', error);
-      setErrorMessage('Failed to download report. Please try again.');
+      const errorMsg = error instanceof Error ? error.message : 'Failed to download report. Please try again.';
+      setErrorMessage(errorMsg);
       setTimeout(() => setErrorMessage(null), 5000);
     } finally {
       setDownloading(null);
@@ -106,8 +142,16 @@ export default function ReportsPage({
           method: 'GET',
         });
 
-        if (response.ok) {
+        const contentType = response.headers.get('content-type') || '';
+        
+        if (response.ok && (contentType.includes('text/csv') || contentType.includes('application/octet-stream'))) {
           const blob = await response.blob();
+          
+          if (blob.size === 0) {
+            failCount++;
+            continue;
+          }
+          
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
@@ -115,9 +159,9 @@ export default function ReportsPage({
           const contentDisposition = response.headers.get('Content-Disposition');
           let filename = `${reportType}_report.csv`;
           if (contentDisposition) {
-            const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
-            if (filenameMatch) {
-              filename = filenameMatch[1];
+            const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (filenameMatch && filenameMatch[1]) {
+              filename = filenameMatch[1].replace(/['"]/g, '');
             }
           }
           
@@ -133,6 +177,15 @@ export default function ReportsPage({
           // Small delay between downloads
           await new Promise(resolve => setTimeout(resolve, 300));
         } else {
+          // Try to get error message
+          try {
+            if (contentType.includes('application/json')) {
+              const errorData = await response.json();
+              console.error(`Error downloading ${reportType}:`, errorData.error || errorData.details);
+            }
+          } catch {
+            // Ignore parse errors
+          }
           failCount++;
         }
       } catch (error) {

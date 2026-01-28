@@ -137,10 +137,14 @@ export default function LibraryTransactionsPage({
 
   const fetchAvailableBooks = useCallback(async () => {
     try {
-      const response = await fetch(`/api/library/books/available?school_code=${schoolCode}`);
+      const response = await fetch(`/api/library/books?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setBooks(result.data);
+        const allBooks = result.data as Array<{ id: string; title: string; author: string | null; available_copies: number; copies?: Array<{ id: string; accession_number: string; status: string }> }>;
+        const withAvailable = allBooks
+          .filter((b) => (b.available_copies ?? 0) > 0)
+          .map((b) => ({ ...b, copies: b.copies ?? [] })) as Book[];
+        setBooks(withAvailable);
       }
     } catch (err) {
       console.error('Error fetching books:', err);

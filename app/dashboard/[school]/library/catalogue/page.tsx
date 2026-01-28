@@ -84,6 +84,9 @@ export default function LibraryCataloguePage({
     edition: '',
     section_id: '',
     material_type_id: '',
+    section_other: '',       // type section name when not in dropdown
+    material_type_other: '', // type material type when not in dropdown
+    image_url: '',           // book cover/image URL
     total_copies: 1,
   });
 
@@ -159,6 +162,9 @@ export default function LibraryCataloguePage({
       edition: '',
       section_id: '',
       material_type_id: '',
+      section_other: '',
+      material_type_other: '',
+      image_url: '',
       total_copies: 1,
     });
     setBookModalOpen(true);
@@ -174,6 +180,9 @@ export default function LibraryCataloguePage({
       edition: book.edition || '',
       section_id: book.section_id || '',
       material_type_id: book.material_type_id || '',
+      section_other: '',
+      material_type_other: '',
+      image_url: (book as { image_url?: string }).image_url || '',
       total_copies: book.total_copies || 1,
     });
     setBookModalOpen(true);
@@ -190,6 +199,52 @@ export default function LibraryCataloguePage({
       setError('');
       setSuccess('');
 
+      let sectionId = bookForm.section_id || null;
+      let materialTypeId = bookForm.material_type_id || null;
+
+      // If user typed a section name (not in dropdown), create section first
+      if (!sectionId && bookForm.section_other?.trim()) {
+        const sectionRes = await fetch('/api/library/sections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            school_code: schoolCode,
+            name: bookForm.section_other.trim(),
+            material_type: bookForm.material_type_other?.trim() || 'General',
+          }),
+        });
+        const sectionResult = await sectionRes.json();
+        if (sectionRes.ok && sectionResult.data?.id) {
+          sectionId = sectionResult.data.id;
+          setSections((prev) => [...prev, { id: sectionResult.data.id, name: bookForm.section_other.trim() }]);
+        } else {
+          setError(sectionResult.error || 'Failed to create section');
+          setSaving(false);
+          return;
+        }
+      }
+
+      // If user typed a material type (not in dropdown), create material type first
+      if (!materialTypeId && bookForm.material_type_other?.trim()) {
+        const typeRes = await fetch('/api/library/material-types', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            school_code: schoolCode,
+            name: bookForm.material_type_other.trim(),
+          }),
+        });
+        const typeResult = await typeRes.json();
+        if (typeRes.ok && typeResult.data?.id) {
+          materialTypeId = typeResult.data.id;
+          setMaterialTypes((prev) => [...prev, { id: typeResult.data.id, name: bookForm.material_type_other.trim() }]);
+        } else {
+          setError(typeResult.error || 'Failed to create material type');
+          setSaving(false);
+          return;
+        }
+      }
+
       const url = editingBook
         ? `/api/library/books/${editingBook.id}`
         : '/api/library/books';
@@ -198,7 +253,14 @@ export default function LibraryCataloguePage({
 
       const body = {
         school_code: schoolCode,
-        ...bookForm,
+        title: bookForm.title,
+        author: bookForm.author || undefined,
+        publisher: bookForm.publisher || undefined,
+        isbn: bookForm.isbn || undefined,
+        edition: bookForm.edition || undefined,
+        section_id: sectionId || undefined,
+        material_type_id: materialTypeId || undefined,
+        image_url: bookForm.image_url?.trim() || undefined,
         total_copies: parseInt(String(bookForm.total_copies)) || 1,
       };
 
@@ -214,6 +276,8 @@ export default function LibraryCataloguePage({
         setSuccess(editingBook ? 'Book updated successfully!' : 'Book added successfully!');
         setBookModalOpen(false);
         fetchBooks();
+        fetchSections();
+        fetchMaterialTypes();
         setTimeout(() => setSuccess(''), 3000);
       } else {
         setError(result.error || 'Failed to save book');
@@ -608,12 +672,20 @@ export default function LibraryCataloguePage({
                   />
                 </div>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Book image URL</label>
+                <Input
+                  value={bookForm.image_url}
+                  onChange={(e) => setBookForm({ ...bookForm, image_url: e.target.value })}
+                  placeholder="https://example.com/cover.jpg"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Section</label>
                   <select
                     value={bookForm.section_id}
-                    onChange={(e) => setBookForm({ ...bookForm, section_id: e.target.value })}
+                    onChange={(e) => setBookForm({ ...bookForm, section_id: e.target.value, section_other: e.target.value ? '' : bookForm.section_other })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="">Select Section</option>
@@ -623,12 +695,18 @@ export default function LibraryCataloguePage({
                       </option>
                     ))}
                   </select>
+                  <Input
+                    value={bookForm.section_other}
+                    onChange={(e) => setBookForm({ ...bookForm, section_other: e.target.value })}
+                    placeholder="Or type section name (e.g. Fiction, Reference)"
+                    className="mt-2"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Material Type</label>
                   <select
                     value={bookForm.material_type_id}
-                    onChange={(e) => setBookForm({ ...bookForm, material_type_id: e.target.value })}
+                    onChange={(e) => setBookForm({ ...bookForm, material_type_id: e.target.value, material_type_other: e.target.value ? '' : bookForm.material_type_other })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="">Select Material Type</option>
@@ -638,6 +716,12 @@ export default function LibraryCataloguePage({
                       </option>
                     ))}
                   </select>
+                  <Input
+                    value={bookForm.material_type_other}
+                    onChange={(e) => setBookForm({ ...bookForm, material_type_other: e.target.value })}
+                    placeholder="Or type material type (e.g. Book, Magazine)"
+                    className="mt-2"
+                  />
                 </div>
               </div>
               <div>

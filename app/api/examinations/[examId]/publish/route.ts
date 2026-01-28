@@ -54,22 +54,47 @@ export async function POST(
       );
     }
 
-    // Update exam to published
-    const { data: updatedExam, error: updateError } = await supabase
-      .from('examinations')
-      .update({
-        is_published: true,
-        published_at: new Date().toISOString(),
-      })
-      .eq('id', examId)
-      .eq('school_code', school_code)
-      .select()
-      .single();
+    // Update exam to ACTIVE (published) — allows marks entry.
+    // If DB restricts status values, fall back to only is_published=true.
+    let updatedExam: { id: string; [key: string]: unknown } | null = null;
+    let updateError: { message?: string; code?: string; hint?: string } | null = null;
+
+    {
+      const attempt = await supabase
+        .from('examinations')
+        .update({
+          status: 'active',
+          is_published: true,
+          published_at: new Date().toISOString(),
+        })
+        .eq('id', examId)
+        .eq('school_code', school_code)
+        .select()
+        .single();
+      updatedExam = attempt.data;
+      updateError = attempt.error as { message?: string; code?: string; hint?: string } | null;
+    }
+
+    if (updateError || !updatedExam) {
+      console.error('Error publishing exam (active attempt):', updateError);
+      const attempt = await supabase
+        .from('examinations')
+        .update({
+          is_published: true,
+          published_at: new Date().toISOString(),
+        })
+        .eq('id', examId)
+        .eq('school_code', school_code)
+        .select()
+        .single();
+      updatedExam = attempt.data;
+      updateError = attempt.error as { message?: string; code?: string; hint?: string } | null;
+    }
 
     if (updateError) {
       console.error('Error publishing exam:', updateError);
       return NextResponse.json(
-        { error: 'Failed to publish exam', details: updateError.message },
+        { error: 'Failed to publish exam', details: updateError.message, code: updateError.code, hint: updateError.hint },
         { status: 500 }
       );
     }

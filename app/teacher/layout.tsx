@@ -34,14 +34,15 @@ import {
   HelpCircle,
   Languages,
   Zap,
-  Clock
+  Clock,
+  ClipboardCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Staff, AcceptedSchool } from '@/lib/supabase';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 import HelpModal from '@/components/help/HelpModal';
-import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
+import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler, setActivityPrefix } from '@/lib/api-interceptor';
 
 interface TeacherLayoutProps {
   children: React.ReactNode;
@@ -58,14 +59,30 @@ type TeacherMenuItem = {
   requiresClassTeacher?: boolean;
 };
 
+// Default teacher menu items (always visible)
 const teacherBaseItems: TeacherMenuItem[] = [
   { id: 'home', label: 'Home', icon: Home, path: '/teacher/dashboard', permission: null, viewPermission: null },
   { id: 'attendance', label: 'Mark Attendance', icon: Calendar, path: '/teacher/dashboard/attendance', permission: null, viewPermission: null },
   { id: 'my-attendance', label: 'My Attendance', icon: Calendar, path: '/teacher/dashboard/attendance-staff', permission: null, viewPermission: null },
   { id: 'marks', label: 'Marks Entry', icon: FileText, path: '/teacher/dashboard/marks', requiresClassTeacher: true, permission: null, viewPermission: null },
+  { id: 'examinations', label: 'Examinations', icon: FileText, path: '/teacher/dashboard/examinations', permission: null, viewPermission: null },
+  { id: 'my-class', label: 'My Class', icon: UserCheck, path: '/teacher/dashboard/my-class', requiresClassTeacher: true, permission: null, viewPermission: null },
   { id: 'classes', label: 'Classes', icon: UserCheck, path: '/teacher/dashboard/classes', permission: null, viewPermission: null },
   { id: 'apply-leave', label: 'Apply for Leave', icon: CalendarX, path: '/teacher/dashboard/apply-leave', permission: null, viewPermission: null },
   { id: 'my-leaves', label: 'My Leaves', icon: Calendar, path: '/teacher/dashboard/my-leaves', permission: null, viewPermission: null },
+  { id: 'student-leave-approvals', label: 'Student Leave Approvals', icon: CalendarX, path: '/teacher/dashboard/student-leave-approvals', requiresClassTeacher: true, permission: null, viewPermission: null },
+  { id: 'institute-info', icon: Building2, label: 'Institute Info', path: '/teacher/dashboard/institute-info', permission: null, viewPermission: null },
+  { id: 'students', icon: GraduationCap, label: 'Student Management', path: '/teacher/dashboard/students', permission: null, viewPermission: null },
+  { id: 'library', icon: Library, label: 'Library', path: '/teacher/dashboard/library', permission: null, viewPermission: null },
+  { id: 'certificates', icon: Award, label: 'Certificate Management', path: '/teacher/dashboard/certificates', permission: null, viewPermission: null },
+  { id: 'gallery', icon: Image, label: 'Gallery', path: '/teacher/dashboard/gallery', permission: null, viewPermission: null },
+  { id: 'calendar', icon: CalendarDays, label: 'Academic Calendar', path: '/teacher/dashboard/calendar', permission: null, viewPermission: null },
+  { id: 'homework', icon: BookMarked, label: 'Digital Diary', path: '/teacher/dashboard/homework', permission: null, viewPermission: null },
+  { id: 'copy-checking', icon: ClipboardCheck, label: 'Copy Checking', path: '/teacher/dashboard/copy-checking', permission: null, viewPermission: null },
+  { id: 'settings', icon: Settings, label: 'Settings', path: '/teacher/dashboard/settings', permission: null, viewPermission: null },
+  { id: 'change-password', icon: Key, label: 'Change Password', path: '/teacher/dashboard/change-password', permission: null, viewPermission: null },
+  { id: 'staff-management', icon: UserCheck, label: 'Staff Information', path: '/teacher/dashboard/staff-management/directory', permission: null, viewPermission: null },
+  { id: 'communication', icon: MessageSquare, label: 'Communication', path: '/teacher/dashboard/communication', permission: null, viewPermission: null },
 ];
 
 // All menu items from main dashboard (mapped to teacher paths)
@@ -103,23 +120,21 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [staffPermissions, setStaffPermissions] = useState<Record<string, unknown> | null>(null);
 
-  // Session timeout (20 minutes)
+  // Session timeout (20 minutes) – uses lastActivity_teacher so refresh doesn't reset the timer
   const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
     timeoutMinutes: 20,
     warningMinutes: 19,
     loginPath: '/login',
+    storageKeyPrefix: 'teacher',
   });
 
   // Setup API interceptor for session management
   useEffect(() => {
-    // Set logout handler for API interceptor
+    setActivityPrefix('teacher');
     setLogoutHandler(handleLogout);
-    
-    // Setup fetch interceptor
     setupApiInterceptor();
-
-    // Cleanup on unmount
     return () => {
+      setActivityPrefix(undefined);
       removeApiInterceptor();
     };
   }, [handleLogout]);
@@ -160,6 +175,12 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   }, []);
 
   useEffect(() => {
+    // Skip authentication check for login pages
+    if (pathname === '/staff/login' || pathname === '/teacher/login') {
+      setLoading(false);
+      return;
+    }
+
     // Check if teacher is logged in
     const storedTeacher = sessionStorage.getItem('teacher');
     const role = sessionStorage.getItem('role');
@@ -182,29 +203,74 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [router, pathname]);
 
   const fetchStaffPermissions = async (staffId: string) => {
     try {
       // Fetch detailed permissions
       const response = await fetch(`/api/rbac/staff-permissions/${staffId}`);
       const result = await response.json();
+      
+      console.log('Staff permissions API response:', {
+        ok: response.ok,
+        hasData: !!result.data,
+        hasModules: !!result.data?.modules,
+        modulesCount: result.data?.modules?.length || 0,
+        error: result.error,
+        fullResult: result,
+      });
+      
       if (response.ok && result.data) {
         setStaffPermissions(result.data);
         
         // Extract enabled sub-modules and map to permission keys
         const enabledPermissions = new Set<string>();
-        result.data.modules?.forEach((module: { sub_modules?: Array<{ name?: string; view_access?: boolean; edit_access?: boolean }> }) => {
-          module.sub_modules?.forEach((subModule: { name?: string; view_access?: boolean; edit_access?: boolean }) => {
+        const moduleAccessMap = new Map<string, boolean>(); // Track module-level access
+        
+        const modules = result.data.modules || [];
+        console.log('Processing modules:', modules.length);
+        
+        modules.forEach((module: { 
+          id?: string;
+          name?: string;
+          sub_modules?: Array<{ name?: string; view_access?: boolean; edit_access?: boolean }> 
+        }) => {
+          let hasModuleAccess = false;
+          
+          const subModules = module.sub_modules || [];
+          console.log(`Module "${module.name}" has ${subModules.length} sub-modules`);
+          
+          subModules.forEach((subModule: { name?: string; view_access?: boolean; edit_access?: boolean }) => {
             const subModuleName = subModule.name;
-            if ((subModule.view_access || subModule.edit_access) && subModuleName) {
+            const hasAccess = subModule.view_access || subModule.edit_access;
+            
+            if (hasAccess && subModuleName) {
+              hasModuleAccess = true;
+              console.log(`  - Sub-module "${subModuleName}" has access (view: ${subModule.view_access}, edit: ${subModule.edit_access})`);
               // Map sub-module names to permission keys
               const permKeys = mapSubModuleToPermissions(subModuleName);
+              console.log(`  - Mapped to permissions:`, permKeys);
               permKeys.forEach(key => enabledPermissions.add(key));
             }
           });
+          
+          // Store module-level access
+          if (module.id && module.name) {
+            moduleAccessMap.set(module.id.toLowerCase(), hasModuleAccess);
+            // Also check by module name for backward compatibility
+            moduleAccessMap.set(module.name.toLowerCase(), hasModuleAccess);
+          }
         });
-        setPermissions(Array.from(enabledPermissions));
+        
+        const permissionsArray = Array.from(enabledPermissions);
+        console.log('Final enabled permissions:', permissionsArray);
+        console.log('Module access map:', Object.fromEntries(moduleAccessMap));
+        
+        setPermissions(permissionsArray);
+        // Store module access map for direct module checking
+        (window as unknown as Record<string, unknown>).__moduleAccessMap = moduleAccessMap;
+      } else {
+        console.error('Failed to fetch staff permissions:', result.error || 'Unknown error');
       }
     } catch (error) {
       console.error('Error fetching staff permissions:', error);
@@ -253,11 +319,17 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       'PTM Attendance': ['view_students'],
       'Quick Student Search': ['view_students'],
       
-      // Examinations
+      // Examinations - Updated to match actual sub-module names
+      'Create Examination': ['view_exams', 'manage_exams'],
+      'Grade Scale': ['view_exams', 'manage_exams'],
+      'Offline Tests': ['view_exams', 'manage_exams'],
+      'Report Card': ['view_exams'],
+      'Report Card Template': ['view_exams', 'manage_exams'],
+      'Examination Reports': ['view_exams'],
+      // Legacy mappings for backward compatibility
       'Exams': ['view_exams', 'manage_exams'],
       'Report Card, Teacher Report Card, Template Selection': ['view_exams', 'manage_exams'],
       'Staff Marks Entry Report': ['view_exams'],
-      'Grade Scale': ['view_exams', 'manage_exams'],
       
       // Fee Management
       'Fee Configuration, Receipt Template': ['view_fees', 'manage_fees'],
@@ -365,9 +437,71 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     // Always visible items (no permission required)
     if (!item.permission && !item.viewPermission) return true;
     
-    // Check if staff has view or edit permission
+    // Check if staff has view or edit permission via permission keys
     if (item.viewPermission && permissions.includes(item.viewPermission)) return true;
     if (item.permission && permissions.includes(item.permission)) return true;
+    
+    // Check module-level access directly from staff permissions
+    // This allows checking if ANY sub-module in a module has access
+    if (staffPermissions?.modules) {
+      // Map menu item paths/IDs to module name patterns
+      const moduleMap: Record<string, string[]> = {
+        '/teacher/dashboard/examinations': ['examination', 'exam'],
+        '/teacher/dashboard/marks': ['mark', 'examination', 'exam'],
+        '/teacher/dashboard/fees': ['fee'],
+        '/teacher/dashboard/library': ['library'],
+        '/teacher/dashboard/transport': ['transport'],
+        '/teacher/dashboard/communication': ['communication', 'notice', 'circular'],
+        '/teacher/dashboard/certificates': ['certificate'],
+        '/teacher/dashboard/homework': ['homework', 'diary', 'digital diary'],
+        '/teacher/dashboard/expense-income': ['expense', 'income', 'finance'],
+        '/teacher/dashboard/gate-pass': ['gate', 'pass', 'front office'],
+        '/teacher/dashboard/staff-management': ['staff'],
+        '/teacher/dashboard/classes': ['class'],
+        '/teacher/dashboard/students': ['student'],
+        '/teacher/dashboard/timetable': ['timetable', 'time table'],
+        '/teacher/dashboard/calendar': ['calendar', 'event'],
+      };
+      
+      // Also check by item ID
+      const itemIdMap: Record<string, string[]> = {
+        'examinations': ['examination', 'exam'],
+        'marks': ['mark', 'examination', 'exam'],
+        'fees': ['fee'],
+        'library': ['library'],
+        'transport': ['transport'],
+        'communication': ['communication', 'notice', 'circular'],
+        'certificates': ['certificate'],
+        'homework': ['homework', 'diary', 'digital diary'],
+        'expense-income': ['expense', 'income', 'finance'],
+        'gate-pass': ['gate', 'pass', 'front office'],
+        'staff-management': ['staff'],
+        'classes-dash': ['class'],
+        'classes': ['class'],
+        'students': ['student'],
+        'timetable': ['timetable', 'time table'],
+        'calendar': ['calendar', 'event'],
+      };
+      
+      const modulePatterns = moduleMap[item.path] || itemIdMap[item.id || ''] || [];
+      
+      for (const pattern of modulePatterns) {
+        const modulesArray = Array.isArray(staffPermissions.modules) ? staffPermissions.modules : [];
+        const modRecord = modulesArray.find((m: { name?: string; id?: string }) => {
+          const moduleName = m.name?.toLowerCase() || '';
+          const moduleId = m.id?.toLowerCase() || '';
+          return moduleName.includes(pattern.toLowerCase()) || moduleId.includes(pattern.toLowerCase());
+        });
+        
+        if (modRecord) {
+          // Check if any sub-module has view or edit access
+          const hasAccess = modRecord.sub_modules?.some((sm: { view_access?: boolean; edit_access?: boolean }) => 
+            sm.view_access || sm.edit_access
+          );
+          if (hasAccess) return true;
+        }
+      }
+    }
     
     // If no permissions loaded yet, show item (will be disabled once permissions load)
     if (permissions.length === 0 && !staffPermissions) return true;
@@ -383,16 +517,31 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     return true;
   });
 
-  // Combine teacher items with dashboard items
+  // Filter dashboard items based on permissions (only show if teacher has access)
+  const filteredDashboardItems = dashboardMenuItems.filter(item => {
+    // Skip items that are already in teacherBaseItems
+    if (teacherBaseItems.some(baseItem => baseItem.id === item.id)) {
+      return false;
+    }
+    // Check if teacher has permission for this item
+    return hasPermission(item);
+  });
+
+  // Combine teacher items with filtered dashboard items
   const allMenuItems: MenuItem[] = [
     ...filteredTeacherItems,
-    ...dashboardMenuItems,
+    ...filteredDashboardItems,
   ];
 
   const isActive = (path: string) => {
     if (path === '/teacher/dashboard' && pathname === '/teacher/dashboard') return true;
     return pathname === path || pathname.startsWith(path + '/');
   };
+
+  // Don't render layout for login pages
+  if (pathname === '/staff/login' || pathname === '/teacher/login') {
+    return <>{children}</>;
+  }
 
   if (loading || !teacher) {
     return (
@@ -571,7 +720,8 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                       Profile Settings
                     </Link>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
+                        await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
                         sessionStorage.removeItem('teacher');
                         sessionStorage.removeItem('role');
                         router.push('/login');
@@ -605,82 +755,112 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                 />
               )}
 
-              {/* Sidebar - Modern, Clean, Professional */}
+              {/* Sidebar - Dark Green, Modular */}
               <motion.aside
                 initial={{ x: -280 }}
                 animate={{ x: 0 }}
                 exit={{ x: -280 }}
-                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-[#1e3a8a] border-r border-[#2c4a6b] z-50 lg:z-auto overflow-y-auto overflow-x-visible shadow-2xl"
-                style={{ width: '280px', background: 'linear-gradient(180deg, #1e3a8a 0%, #0f1b2e 100%)' }}
+                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-70 bg-emerald-950 border-r border-emerald-900 z-50 lg:z-auto overflow-y-auto overflow-x-visible shadow-2xl"
+                style={{ width: '280px', background: 'linear-gradient(180deg, #064e3b 0%, #022c22 100%)' }}
               >
                 <nav className="p-5 space-y-1.5 overflow-visible">
                   {/* Header Section */}
-                  <div className="mb-6 px-4 py-3.5 bg-[#2c4a6b] rounded-2xl border border-[#2c4a6b] backdrop-blur-sm">
-                    <h3 className="text-[#FFFFFF] font-bold text-base uppercase tracking-widest">
+                  <div className="mb-6 px-4 py-3.5 bg-emerald-900/90 rounded-2xl border border-emerald-800 backdrop-blur-sm">
+                    <h3 className="text-white font-bold text-base uppercase tracking-widest">
                       Teacher Portal
                     </h3>
-                    <p className="text-[#B8D4E8] text-xs mt-1">Dashboard Menu</p>
+                    <p className="text-emerald-100 text-xs mt-1">Dashboard Menu</p>
                   </div>
                   
-                  {/* Menu Items */}
-                  {allMenuItems.map((item, index) => {
-                    const Icon = item.icon;
-                    const active = isActive(item.path);
-                    const enabled = hasPermission(item);
-                    const itemId = item.id;
-                    
-                    return (
-                      <div key={itemId} className="relative sidebar-menu-item">
-                        <div className="flex items-center gap-1">
-                          {enabled ? (
-                            <Link
-                              href={item.path}
-                              onClick={() => setSidebarOpen(false)}
-                              className={`group flex-1 flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 ${
-                                active
-                                  ? 'bg-[#60A5FA] text-[#FFFFFF] shadow-xl shadow-[#60A5FA]/20 scale-[1.02]'
-                                  : 'text-[#B8D4E8] hover:text-[#FFFFFF] hover:bg-[#2c4a6b]'
-                              }`}
-                            >
-                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
-                                active 
-                                  ? 'bg-[#3B82F6] text-[#FFFFFF]' 
-                                  : 'bg-[#2c4a6b] text-[#B8D4E8] group-hover:bg-[#3d5a7f] group-hover:text-[#FFFFFF]'
-                              }`}>
-                                {index + 1}
-                              </span>
-                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                                active 
-                                  ? 'bg-[#3B82F6] shadow-lg' 
-                                  : 'bg-transparent group-hover:bg-[#2c4a6b] group-hover:scale-110 group-hover:shadow-md'
-                              }`}>
-                                <Icon size={20} className={active ? 'text-[#FFFFFF]' : 'text-[#9BB8D4] group-hover:text-[#FFFFFF]'} />
+                  {/* Grouped Menu Items */}
+                  {(() => {
+                    const sections = [
+                      { id: 'core', label: 'Core', items: ['home'] },
+                      { id: 'academics', label: 'Academics', items: ['attendance', 'my-attendance', 'marks', 'examinations', 'my-class', 'classes', 'calendar', 'homework', 'copy-checking'] },
+                      { id: 'leave', label: 'Leave & Requests', items: ['apply-leave', 'my-leaves', 'student-leave-approvals'] },
+                      { id: 'info', label: 'Information', items: ['students', 'institute-info', 'library', 'certificates', 'gallery', 'communication'] },
+                      { id: 'account', label: 'Account', items: ['settings', 'change-password', 'staff-management'] },
+                    ];
+                    let globalOrder = 0;
+                    return sections.map((section) => {
+                      const sectionItems = allMenuItems.filter(item => section.items.includes(item.id));
+                      const startIndex = globalOrder;
+                      globalOrder += sectionItems.length;
+                      return (
+                    <div key={section.id} className="mb-3">
+                      <p className="px-3.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-200/80">
+                        {section.label}
+                      </p>
+                      {sectionItems.map((item, index) => {
+                          const Icon = item.icon;
+                          const active = isActive(item.path);
+                          const enabled = hasPermission(item);
+                          const itemId = item.id;
+                          const orderIndex = startIndex + index + 1;
+
+                          return (
+                            <div key={itemId} className="relative sidebar-menu-item">
+                              <div className="flex items-center gap-1">
+                                {enabled ? (
+                                  <Link
+                                    href={item.path}
+                                    onClick={() => setSidebarOpen(false)}
+                                    className={`group flex-1 flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all duration-300 ${
+                                      active
+                                        ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-700/30 scale-[1.02]'
+                                        : 'text-emerald-100 hover:text-white hover:bg-emerald-800/80'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold mr-1.5 ${
+                                        active
+                                          ? 'bg-white text-emerald-700'
+                                          : 'bg-emerald-900 text-emerald-200 group-hover:bg-emerald-600 group-hover:text-white'
+                                      }`}
+                                    >
+                                      {orderIndex}
+                                    </span>
+                                    <div
+                                      className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                                        active
+                                          ? 'bg-emerald-700 shadow-lg'
+                                          : 'bg-transparent group-hover:bg-emerald-900 group-hover:scale-110 group-hover:shadow-md'
+                                      }`}
+                                    >
+                                      <Icon
+                                        size={20}
+                                        className={active ? 'text-white' : 'text-emerald-200 group-hover:text-white'}
+                                      />
+                                    </div>
+                                    <span className="font-semibold text-sm tracking-wide flex-1 text-left">
+                                      {item.label}
+                                    </span>
+                                    {active && (
+                                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                                    )}
+                                  </Link>
+                                ) : (
+                                  <div className="group flex-1 flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all duration-300 text-emerald-300/70 opacity-60 cursor-not-allowed relative">
+                                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold mr-1.5 bg-emerald-900 text-emerald-300">
+                                      {orderIndex}
+                                    </span>
+                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-transparent">
+                                      <Icon size={20} className="text-emerald-300/70" />
+                                    </div>
+                                    <span className="font-semibold text-sm tracking-wide flex-1 text-left">
+                                      {item.label}
+                                    </span>
+                                    <Lock size={16} className="text-emerald-300/70" />
+                                  </div>
+                                )}
                               </div>
-                              <span className="font-semibold text-sm tracking-wide flex-1 text-left">
-                                {item.label}
-                              </span>
-                              {active && (
-                                <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
-                              )}
-                            </Link>
-                          ) : (
-                            <div className="group flex-1 flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-300 text-[#7FA3C4] opacity-60 cursor-not-allowed relative">
-                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 bg-[#2c4a6b] text-[#7FA3C4]`}>
-                                {index + 1}
-                              </span>
-                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-transparent`}>
-                                <Icon size={20} className="text-[#7FA3C4]" />
-                              </div>
-                              <span className="font-semibold text-sm tracking-wide flex-1 text-left">
-                                {item.label}
-                              </span>
-                              <Lock size={16} className="text-[#7FA3C4]" />
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                          );
+                        })}
+                    </div>
+                      );
+                    });
+                  })()}
                 </nav>
               </motion.aside>
             </>

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { X, Search, UserCheck } from 'lucide-react';
+import { X, Search, UserCheck, AlertCircle } from 'lucide-react';
 
 interface Staff {
   id: string;
@@ -13,6 +13,8 @@ interface Staff {
   full_name: string;
   role: string;
   department: string;
+  isBusy?: boolean;
+  busyClass?: string;
 }
 
 interface TeacherSelectionModalProps {
@@ -23,6 +25,9 @@ interface TeacherSelectionModalProps {
   subjectName: string;
   subjectId?: string | null;
   existingTeacherIds?: string[];
+  day?: string;
+  periodOrder?: number;
+  currentClassId?: string | null;
 }
 
 export default function TeacherSelectionModal({
@@ -33,6 +38,9 @@ export default function TeacherSelectionModal({
   subjectName,
   subjectId,
   existingTeacherIds = [],
+  day,
+  periodOrder,
+  currentClassId,
 }: TeacherSelectionModalProps) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [filteredStaff, setFilteredStaff] = useState<Staff[]>([]);
@@ -42,15 +50,21 @@ export default function TeacherSelectionModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setError(null); // Clear previous errors
       fetchStaff();
       setSelectedTeacherIds(new Set(existingTeacherIds || []));
+      // Check teacher availability if day and periodOrder are provided
+      if (day && periodOrder !== undefined) {
+        checkTeacherAvailability();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, existingTeacherIds]);
+  }, [isOpen, existingTeacherIds, day, periodOrder]);
 
   useEffect(() => {
     if (searchQuery.trim()) {
@@ -62,7 +76,11 @@ export default function TeacherSelectionModal({
             s.staff_id?.toLowerCase().includes(query) ||
             s.role?.toLowerCase().includes(query) ||
             s.department?.toLowerCase().includes(query)
-        )
+        ).map(teacher => ({
+          ...teacher,
+          isBusy: staff.find(s => s.id === teacher.id)?.isBusy || false,
+          busyClass: staff.find(s => s.id === teacher.id)?.busyClass,
+        }))
       );
     } else {
       setFilteredStaff(staff);
@@ -177,7 +195,104 @@ export default function TeacherSelectionModal({
     });
   };
 
+  const checkTeacherAvailability = async () => {
+    if (!day || periodOrder === undefined || !currentClassId) return;
+
+    try {
+      setCheckingAvailability(true);
+      // Fetch all timetable slots for the school and filter by day and period_order
+      const response = await fetch(
+        `/api/timetable/slots?school_code=${schoolCode}`
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        const busyTeachers = new Map<string, string>(); // teacherId -> className
+
+        if (result.data && Array.isArray(result.data)) {
+          result.data.forEach((slot: {
+            day: string;
+            period_order?: number;
+            period?: string | number;
+            class_id: string;
+            teacher_ids?: string[];
+            teacher_id?: string;
+            class?: { class: string; section: string } | Array<{ class: string; section: string }>;
+            class_reference?: { class: string; section: string };
+          }) => {
+            // Check if this slot matches the day and period_order
+            const slotPeriodOrder = slot.period_order !== undefined && slot.period_order !== null 
+              ? slot.period_order 
+              : (slot.period ? parseInt(String(slot.period), 10) : null);
+            
+            if (slot.day === day && slotPeriodOrder === periodOrder) {
+              // Only check slots from other classes
+              if (slot.class_id && slot.class_id !== currentClassId) {
+                let className = 'Unknown Class';
+                
+                // Try to get class name from class_reference first (JSON field)
+                if (slot.class_reference) {
+                  className = `${slot.class_reference.class}-${slot.class_reference.section}`;
+                } else if (slot.class) {
+                  // Try nested relation
+                  className = Array.isArray(slot.class) 
+                    ? `${slot.class[0]?.class || ''}-${slot.class[0]?.section || ''}`
+                    : `${slot.class.class}-${slot.class.section}`;
+                }
+              
+                // Check both teacher_id and teacher_ids
+                if (slot.teacher_id) {
+                  busyTeachers.set(slot.teacher_id, className);
+                }
+                if (slot.teacher_ids && Array.isArray(slot.teacher_ids)) {
+                  slot.teacher_ids.forEach((tid: string) => {
+                    busyTeachers.set(tid, className);
+                  });
+                }
+              }
+            }
+          });
+        }
+
+        // Update staff with busy status
+        setStaff(prev => prev.map(teacher => ({
+          ...teacher,
+          isBusy: busyTeachers.has(teacher.id),
+          busyClass: busyTeachers.get(teacher.id) || undefined,
+        })));
+        setFilteredStaff(prev => prev.map(teacher => ({
+          ...teacher,
+          isBusy: busyTeachers.has(teacher.id),
+          busyClass: busyTeachers.get(teacher.id) || undefined,
+        })));
+      }
+    } catch (error) {
+      console.error('Error checking teacher availability:', error);
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
+
   const handleSave = () => {
+    // Check if any selected teachers are busy
+    const busySelectedTeachers = Array.from(selectedTeacherIds).filter(id => {
+      const teacher = staff.find(t => t.id === id);
+      return teacher?.isBusy && !existingTeacherIds.includes(id); // Allow keeping existing busy teachers
+    });
+
+    if (busySelectedTeachers.length > 0) {
+      const busyNames = busySelectedTeachers.map(id => {
+        const teacher = staff.find(t => t.id === id);
+        return teacher ? `${teacher.full_name} (already in ${teacher.busyClass})` : 'Unknown';
+      }).join('\n');
+      
+      const conflictMessage = `⚠️ TEACHER CONFLICT DETECTED!\n\nThe following teachers are already assigned to other classes at this time slot:\n\n${busyNames}\n\n⚠️ WARNING: Proceeding will create a scheduling conflict.\n\nDo you want to proceed anyway?`;
+      
+      if (!confirm(conflictMessage)) {
+        return; // User cancelled, don't save
+      }
+    }
+
     onSave(Array.from(selectedTeacherIds));
     onClose();
   };
@@ -249,6 +364,7 @@ export default function TeacherSelectionModal({
                 <div className="space-y-2">
                   {filteredStaff.map((teacher) => {
                     const isSelected = selectedTeacherIds.has(teacher.id);
+                    const isBusy = teacher.isBusy && !existingTeacherIds.includes(teacher.id);
                     return (
                       <div
                         key={teacher.id}
@@ -256,6 +372,8 @@ export default function TeacherSelectionModal({
                         className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
                           isSelected
                             ? 'border-orange-500 bg-orange-50'
+                            : isBusy
+                            ? 'border-red-300 bg-red-50'
                             : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                         }`}
                       >
@@ -263,6 +381,8 @@ export default function TeacherSelectionModal({
                           className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
                             isSelected
                               ? 'border-orange-500 bg-orange-500'
+                              : isBusy
+                              ? 'border-red-400'
                               : 'border-gray-300'
                           }`}
                         >
@@ -288,6 +408,12 @@ export default function TeacherSelectionModal({
                             {isSelected && (
                               <UserCheck size={16} className="text-orange-600 flex-shrink-0" />
                             )}
+                            {isBusy && (
+                              <div className="flex items-center gap-1 text-red-600 text-xs">
+                                <AlertCircle size={14} />
+                                <span className="font-medium">Busy</span>
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-sm text-gray-600">
                             <span>{teacher.staff_id}</span>
@@ -297,6 +423,14 @@ export default function TeacherSelectionModal({
                               <>
                                 <span>•</span>
                                 <span>{teacher.department}</span>
+                              </>
+                            )}
+                            {isBusy && teacher.busyClass && (
+                              <>
+                                <span>•</span>
+                                <span className="text-red-600 font-medium">
+                                  Already assigned to {teacher.busyClass}
+                                </span>
                               </>
                             )}
                           </div>

@@ -34,6 +34,17 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching student leave requests:', error);
+      
+      // Handle table not found error
+      if (error.code === '42P01') {
+        return NextResponse.json({ 
+          error: 'Database table not found',
+          details: 'The student_leave_requests table does not exist. Please run the student_leave_requests_schema.sql migration script to create it.',
+          code: 'TABLE_NOT_FOUND',
+          hint: 'Run the SQL migration: student_leave_requests_schema.sql'
+        }, { status: 500 });
+      }
+      
       return NextResponse.json({ 
         error: 'Failed to fetch student leave requests', 
         details: error.message,
@@ -213,7 +224,39 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error creating student leave request:', error);
-      return NextResponse.json({ error: 'Failed to create student leave request' }, { status: 500 });
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      // Handle specific database errors
+      if (error.code === '42P01') {
+        return NextResponse.json({ 
+          error: 'Database table not found',
+          details: 'The student_leave_requests table does not exist. Please run the student_leave_requests_schema.sql migration script to create it.',
+          code: 'TABLE_NOT_FOUND',
+          hint: 'Run the SQL migration: student_leave_requests_schema.sql'
+        }, { status: 500 });
+      }
+      
+      if (error.code === '23503') {
+        return NextResponse.json({ 
+          error: 'Invalid reference',
+          details: 'One or more referenced records (student_id, leave_type_id) do not exist.',
+          code: 'FOREIGN_KEY_VIOLATION'
+        }, { status: 400 });
+      }
+      
+      if (error.code === '23502') {
+        return NextResponse.json({ 
+          error: 'Missing required field',
+          details: error.message || 'One or more required fields are missing.',
+          code: 'NOT_NULL_VIOLATION'
+        }, { status: 400 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to create student leave request',
+        details: error.message || 'An unexpected error occurred',
+        code: error.code || 'UNKNOWN_ERROR'
+      }, { status: 500 });
     }
 
     return NextResponse.json({ data });

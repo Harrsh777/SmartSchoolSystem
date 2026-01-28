@@ -4,6 +4,9 @@ import { use, useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { TranslationProvider } from '@/contexts/TranslationContext';
 import type { AcceptedSchool } from '@/lib/supabase';
+import { useSessionTimeout } from '@/hooks/useSessionTimeout';
+import SessionTimeoutModal from '@/components/SessionTimeoutModal';
+import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler, setActivityPrefix } from '@/lib/api-interceptor';
 
 export default function SchoolDashboardLayout({
   children,
@@ -14,7 +17,25 @@ export default function SchoolDashboardLayout({
 }) {
   const { school: schoolCode } = use(params);
   const [schoolName, setSchoolName] = useState('School Dashboard');
-  
+
+  // 20-minute session timeout for school dashboard (persists across refresh)
+  const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
+    timeoutMinutes: 20,
+    warningMinutes: 19,
+    loginPath: '/login',
+    storageKeyPrefix: 'dashboard',
+  });
+
+  useEffect(() => {
+    setActivityPrefix('dashboard');
+    setLogoutHandler(handleLogout);
+    setupApiInterceptor();
+    return () => {
+      setActivityPrefix(undefined);
+      removeApiInterceptor();
+    };
+  }, [handleLogout]);
+
   useEffect(() => {
     // Get school name from sessionStorage
     const storedSchool = sessionStorage.getItem('school');
@@ -43,9 +64,15 @@ export default function SchoolDashboardLayout({
 
   return (
     <TranslationProvider>
-      <DashboardLayout schoolName={schoolName}>
+      <DashboardLayout schoolName={schoolName} timeRemaining={timeRemaining}>
         {children}
       </DashboardLayout>
+      <SessionTimeoutModal
+        isOpen={showWarning}
+        timeRemaining={timeRemaining}
+        onStayLoggedIn={resetTimer}
+        onLogout={handleLogout}
+      />
     </TranslationProvider>
   );
 }

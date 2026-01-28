@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
       edition,
       section_id,
       material_type_id,
+      image_url,
       total_copies,
     } = body;
 
@@ -126,21 +127,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create book
+    // Create book (image_url stored if column exists)
+    const bookRow: Record<string, unknown> = {
+      school_id: schoolData.id,
+      school_code: school_code,
+      title: title,
+      author: author || null,
+      publisher: publisher || null,
+      isbn: isbn || null,
+      edition: edition || null,
+      section_id: section_id || null,
+      material_type_id: material_type_id || null,
+      total_copies: parseInt(total_copies),
+    };
+    if (image_url != null && String(image_url).trim() !== '') {
+      bookRow.image_url = String(image_url).trim();
+    }
     const { data: book, error: bookError } = await supabase
       .from('library_books')
-      .insert([{
-        school_id: schoolData.id,
-        school_code: school_code,
-        title: title,
-        author: author || null,
-        publisher: publisher || null,
-        isbn: isbn || null,
-        edition: edition || null,
-        section_id: section_id || null,
-        material_type_id: material_type_id || null,
-        total_copies: parseInt(total_copies),
-      }])
+      .insert([bookRow])
       .select()
       .single();
 

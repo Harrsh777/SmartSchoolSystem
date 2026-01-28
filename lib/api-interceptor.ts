@@ -18,6 +18,17 @@ let isInterceptorSetup = false;
 // Logout handler (will be set by the layout components)
 let logoutHandler: (() => void) | null = null;
 
+// Activity storage prefix (e.g. 'teacher', 'admin') so timer uses same key as layout
+let activityPrefix: string | undefined;
+
+/**
+ * Set the storage prefix for updateActivity (e.g. 'teacher', 'admin').
+ * Call this in the same layout that uses useSessionTimeout with storageKeyPrefix.
+ */
+export function setActivityPrefix(prefix: string | undefined): void {
+  activityPrefix = prefix;
+}
+
 // Track last user interaction timestamp (for detecting user-initiated API calls)
 let lastUserInteraction: number = 0;
 const USER_INTERACTION_WINDOW_MS = 2000; // 2 seconds window
@@ -72,10 +83,8 @@ export function setupApiInterceptor(): void {
 
       // Check response status
       if (response.status >= 200 && response.status < 300) {
-        // Only reset timer for user-initiated API calls
-        // This prevents background/polling requests from resetting the timer
         if (isUserInitiated) {
-          updateActivity();
+          updateActivity(activityPrefix);
         }
       } else if (response.status === 401) {
         // Unauthorized - session expired on server

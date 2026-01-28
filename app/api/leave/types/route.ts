@@ -32,6 +32,17 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('Error fetching leave types:', error);
       console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      // Check if table doesn't exist
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return NextResponse.json({ 
+          error: 'Leave types table does not exist',
+          details: 'Please run the leave_types_schema.sql file in your database to create the required table.',
+          code: error.code,
+          hint: 'The leave_types table needs to be created. Check leave_types_schema.sql in the project root.'
+        }, { status: 500 });
+      }
+      
       return NextResponse.json({ 
         error: 'Failed to fetch leave types',
         details: error.message,
@@ -97,6 +108,17 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Error creating leave type:', error);
       console.error('Error details:', JSON.stringify(error, null, 2));
+      
+      // Check if table doesn't exist
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return NextResponse.json({ 
+          error: 'Leave types table does not exist',
+          details: 'Please run the leave_types_schema.sql file in your database to create the required table.',
+          code: error.code,
+          hint: 'The leave_types table needs to be created. Check leave_types_schema.sql in the project root.'
+        }, { status: 500 });
+      }
+      
       return NextResponse.json({ 
         error: 'Failed to create leave type', 
         details: error.message,

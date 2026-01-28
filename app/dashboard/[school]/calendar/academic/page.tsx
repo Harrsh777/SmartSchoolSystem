@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -13,7 +13,8 @@ import {
   Clock,
   FileText,
   Sparkles,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 interface CalendarEntry {
@@ -46,39 +47,81 @@ export default function AcademicCalendarPage({
 
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  useEffect(() => {
-    fetchCalendar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode, selectedYear]);
-
-  const fetchCalendar = async () => {
+  const fetchCalendar = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/calendar/academic?school_code=${schoolCode}&academic_year=${selectedYear}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setCalendarEntries(result.data);
+        // Ensure all entries have proper date formatting
+        const formattedEntries = result.data.map((entry: CalendarEntry) => {
+          if (entry.event_date) {
+            // Normalize date to YYYY-MM-DD format
+            const date = new Date(entry.event_date);
+            if (!isNaN(date.getTime())) {
+              return {
+                ...entry,
+                event_date: date.toISOString().split('T')[0],
+              };
+            }
+          }
+          return entry;
+        });
+        setCalendarEntries(formattedEntries);
+      } else {
+        console.error('Failed to fetch calendar:', result.error);
+        setCalendarEntries([]);
       }
     } catch (err) {
       console.error('Error fetching academic calendar:', err);
+      setCalendarEntries([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolCode, selectedYear]);
+
+  useEffect(() => {
+    fetchCalendar();
+  }, [fetchCalendar]);
+
+  // Listen for refresh event when returning from events page
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchCalendar();
+    };
+    window.addEventListener('calendar-refresh', handleRefresh);
+    // Also refresh when page becomes visible (user returns from events page)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchCalendar();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('calendar-refresh', handleRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchCalendar]);
 
   const getEventsForDate = (date: Date): CalendarEntry[] => {
     const dateStr = date.toISOString().split('T')[0];
     return calendarEntries.filter(entry => {
       if (!entry.event_date) return false;
-      const eventDate = new Date(entry.event_date).toISOString().split('T')[0];
-      return eventDate === dateStr;
+      // Handle both string dates and Date objects
+      const eventDateStr = typeof entry.event_date === 'string' 
+        ? entry.event_date.split('T')[0]
+        : new Date(entry.event_date).toISOString().split('T')[0];
+      return eventDateStr === dateStr;
     });
   };
 
   const getEventsForMonth = (month: number, year: number): CalendarEntry[] => {
     return calendarEntries.filter(entry => {
       if (!entry.event_date) return false;
-      const eventDate = new Date(entry.event_date);
+      // Handle both string dates and Date objects
+      const eventDate = typeof entry.event_date === 'string'
+        ? new Date(entry.event_date)
+        : new Date(entry.event_date);
       return eventDate.getMonth() === month && eventDate.getFullYear() === year;
     });
   };
@@ -201,6 +244,15 @@ export default function AcademicCalendarPage({
               <option key={year} value={year}>{year}</option>
             ))}
           </select>
+          <Button
+            variant="outline"
+            onClick={fetchCalendar}
+            className="border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
+            disabled={loading}
+          >
+            <RefreshCw size={18} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Button
             variant="outline"
             onClick={() => router.push(`/dashboard/${schoolCode}/calendar/events`)}
@@ -498,13 +550,24 @@ export default function AcademicCalendarPage({
             <p className="text-gray-600 mb-4">
               No academic calendar entries found for {selectedYear}
             </p>
-            <Button
-              onClick={() => router.push(`/dashboard/${schoolCode}/calendar/events`)}
-              className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white"
-            >
-              <Sparkles size={18} className="mr-2" />
-              Create Calendar Event
-            </Button>
+            <div className="flex items-center gap-3 justify-center">
+              <Button
+                onClick={fetchCalendar}
+                variant="outline"
+                className="border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
+                disabled={loading}
+              >
+                <RefreshCw size={18} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button
+                onClick={() => router.push(`/dashboard/${schoolCode}/calendar/events`)}
+                className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white"
+              >
+                <Sparkles size={18} className="mr-2" />
+                Create Calendar Event
+              </Button>
+            </div>
           </div>
         </Card>
       )}

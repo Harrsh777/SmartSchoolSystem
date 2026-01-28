@@ -28,7 +28,7 @@ export default function StudentCopyCheckingPage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [records, setRecords] = useState<CopyCheckingRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'green' | 'yellow' | 'red' | 'not_marked'>('all');
+  const [filter, setFilter] = useState<'all' | 'green' | 'yellow' | 'red' | 'not_marked' | 'absent'>('all');
   const [workTypeFilter, setWorkTypeFilter] = useState<'all' | 'class_work' | 'homework'>('all');
 
   useEffect(() => {
@@ -79,6 +79,8 @@ export default function StudentCopyCheckingPage() {
         return 'bg-yellow-100 text-yellow-700 border-yellow-200';
       case 'red':
         return 'bg-red-100 text-red-700 border-red-200';
+      case 'absent':
+        return 'bg-orange-100 text-orange-700 border-orange-200';
       default:
         return 'bg-gray-100 text-gray-700 border-gray-200';
     }
@@ -92,6 +94,8 @@ export default function StudentCopyCheckingPage() {
         return <AlertCircle className="text-yellow-600" size={20} />;
       case 'red':
         return <XCircle className="text-red-600" size={20} />;
+      case 'absent':
+        return <XCircle className="text-orange-600" size={20} />;
       default:
         return <Clock className="text-gray-600" size={20} />;
     }
@@ -100,11 +104,13 @@ export default function StudentCopyCheckingPage() {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'green':
-        return 'Excellent';
+        return 'Copy Checked';
       case 'yellow':
-        return 'Needs Improvement';
+        return 'Half Done';
       case 'red':
-        return 'Poor';
+        return 'Incomplete';
+      case 'absent':
+        return 'Absent';
       default:
         return 'Not Marked';
     }
@@ -121,6 +127,7 @@ export default function StudentCopyCheckingPage() {
     green: records.filter(r => r.status === 'green').length,
     yellow: records.filter(r => r.status === 'yellow').length,
     red: records.filter(r => r.status === 'red').length,
+    absent: records.filter(r => r.status === 'absent').length,
     not_marked: records.filter(r => r.status === 'not_marked').length,
   };
 
@@ -153,7 +160,7 @@ export default function StudentCopyCheckingPage() {
       </motion.div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <Card className="glass-card soft-shadow p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total</p>
           <p className="text-2xl font-bold text-foreground">{stats.total}</p>
@@ -169,6 +176,10 @@ export default function StudentCopyCheckingPage() {
         <Card className="glass-card soft-shadow p-4 border-l-4 border-red-500">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Poor</p>
           <p className="text-2xl font-bold text-red-600">{stats.red}</p>
+        </Card>
+        <Card className="glass-card soft-shadow p-4 border-l-4 border-orange-500">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Absent</p>
+          <p className="text-2xl font-bold text-orange-600">{stats.absent}</p>
         </Card>
         <Card className="glass-card soft-shadow p-4 border-l-4 border-gray-500">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Not Marked</p>
@@ -187,9 +198,10 @@ export default function StudentCopyCheckingPage() {
               className="px-3 py-2 bg-muted border border-input rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
             >
               <option value="all">All Status</option>
-              <option value="green">Excellent</option>
-              <option value="yellow">Needs Improvement</option>
-              <option value="red">Poor</option>
+              <option value="green">Copy Checked</option>
+              <option value="yellow">Half Done</option>
+              <option value="red">Incomplete</option>
+              <option value="absent">Absent</option>
               <option value="not_marked">Not Marked</option>
             </select>
           </div>

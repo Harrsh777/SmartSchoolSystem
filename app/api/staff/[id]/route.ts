@@ -91,24 +91,27 @@ export async function PATCH(
       }
     }
 
+    // Build update object with only provided fields
+    const updateFields: Record<string, unknown> = {};
+    
+    if (updateData.staff_id !== undefined) updateFields.staff_id = updateData.staff_id;
+    if (updateData.full_name !== undefined) updateFields.full_name = updateData.full_name;
+    if (updateData.role !== undefined) updateFields.role = updateData.role;
+    if (updateData.department !== undefined) updateFields.department = updateData.department || null;
+    if (updateData.designation !== undefined) updateFields.designation = updateData.designation || null;
+    if (updateData.email !== undefined) updateFields.email = updateData.email || null;
+    if (updateData.phone !== undefined) updateFields.phone = updateData.phone || null;
+    if (updateData.date_of_joining !== undefined) updateFields.date_of_joining = updateData.date_of_joining;
+    if (updateData.employment_type !== undefined) updateFields.employment_type = updateData.employment_type || null;
+    if (updateData.qualification !== undefined) updateFields.qualification = updateData.qualification || null;
+    if (updateData.experience_years !== undefined) updateFields.experience_years = updateData.experience_years !== null && updateData.experience_years !== '' ? Number(updateData.experience_years) : null;
+    if (updateData.gender !== undefined) updateFields.gender = updateData.gender || null;
+    if (updateData.address !== undefined) updateFields.address = updateData.address || null;
+
     // Update staff (don't allow updating school_code)
     const { data: updatedStaff, error: updateError } = await supabase
       .from('staff')
-      .update({
-        staff_id: updateData.staff_id,
-        full_name: updateData.full_name,
-        role: updateData.role,
-        department: updateData.department || null,
-        designation: updateData.designation || null,
-        email: updateData.email || null,
-        phone: updateData.phone,
-        date_of_joining: updateData.date_of_joining,
-        employment_type: updateData.employment_type || null,
-        qualification: updateData.qualification || null,
-        experience_years: updateData.experience_years || null,
-        gender: updateData.gender || null,
-        address: updateData.address || null,
-      })
+      .update(updateFields)
       .eq('id', id)
       .eq('school_code', school_code)
       .select()

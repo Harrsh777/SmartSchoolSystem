@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { getSupabaseFetchOptions } from './supabase-fetch';
 
 /**
  * Supabase client for server-side API routes
@@ -13,7 +14,14 @@ function getSupabaseClient(): SupabaseClient {
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  // Check if we're on the client side (browser)
+  const isClient = typeof window !== 'undefined';
+  
+  // Use anon key for client-side, service role key for server-side
+  const supabaseKey = isClient 
+    ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY 
+    : process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl) {
     const error = new Error('NEXT_PUBLIC_SUPABASE_URL is not set');
@@ -22,13 +30,17 @@ function getSupabaseClient(): SupabaseClient {
   }
 
   if (!supabaseKey) {
-    const error = new Error('SUPABASE_SERVICE_ROLE_KEY is not set');
+    const keyName = isClient ? 'NEXT_PUBLIC_SUPABASE_ANON_KEY' : 'SUPABASE_SERVICE_ROLE_KEY';
+    const error = new Error(`${keyName} is not set`);
     console.error('Supabase initialization error:', error.message);
     throw error;
   }
 
   try {
-    supabaseClient = createClient(supabaseUrl, supabaseKey);
+    // Create client with timeout and retry logic
+    // For client-side, use simpler options (no custom fetch)
+    const options = isClient ? {} : getSupabaseFetchOptions();
+    supabaseClient = createClient(supabaseUrl, supabaseKey, options);
     return supabaseClient;
   } catch (error) {
     console.error('Error creating Supabase client:', error);

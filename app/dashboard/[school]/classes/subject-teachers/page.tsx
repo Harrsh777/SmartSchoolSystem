@@ -76,7 +76,37 @@ export default function SubjectTeachersPage({
       if (staffRes.ok && staffResult.data) {
         setStaff(staffResult.data);
       } else {
-        setError(staffResult.error || 'Failed to load staff');
+        // If table doesn't exist, show helpful message
+        const errorMsg = staffResult.error || 'Failed to load staff';
+        if (errorMsg.includes('does not exist') || errorMsg.includes('relation') || staffResult.details?.includes('does not exist')) {
+          setError('Staff-subject assignments table not found. The table will be created automatically when you assign your first subject to a staff member.');
+          // Still show staff list with empty subjects
+          const staffResponse = await fetch(`/api/staff?school_code=${schoolCode}`);
+          const staffResult2 = await staffResponse.json();
+          if (staffResponse.ok && staffResult2.data) {
+            // Filter to teaching staff
+            const teachingStaff = (staffResult2.data as Record<string, unknown>[]).filter(
+              (s: Record<string, unknown>) =>
+                ((s.role as string) || '').toLowerCase().includes('teacher') ||
+                ((s.role as string) || '').toLowerCase().includes('principal') ||
+                ((s.role as string) || '').toLowerCase().includes('head') ||
+                ((s.role as string) || '').toLowerCase().includes('vice')
+            );
+            setStaff(teachingStaff.map((s: Record<string, unknown>): StaffMember => ({
+              id: String(s.id || ''),
+              staff_id: String(s.staff_id || ''),
+              full_name: String(s.full_name || ''),
+              role: String(s.role || ''),
+              department: s.department ? String(s.department) : undefined,
+              designation: s.designation ? String(s.designation) : undefined,
+              email: s.email ? String(s.email) : undefined,
+              phone: s.phone ? String(s.phone) : undefined,
+              subjects: [],
+            })));
+          }
+        } else {
+          setError(errorMsg);
+        }
       }
 
       if (subjectsRes.ok && subjectsResult.data) {

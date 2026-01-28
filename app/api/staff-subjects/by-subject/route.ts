@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       .from('staff_subjects')
       .select(`
         staff_id,
-        staff:staff (
+        staff:staff_id (
           id,
           staff_id,
           full_name,
@@ -43,6 +43,13 @@ export async function GET(request: NextRequest) {
     const { data: staffSubjects, error } = await query;
 
     if (error) {
+      // If table doesn't exist, return empty array
+      if (error.message?.includes('does not exist') || 
+          error.message?.includes('relation') ||
+          error.code === '42P01') {
+        console.log('staff_subjects table does not exist yet - returning empty staff list');
+        return NextResponse.json({ data: [] }, { status: 200 });
+      }
       console.error('Error fetching staff by subject:', error);
       return NextResponse.json(
         { error: 'Failed to fetch staff', details: error.message },

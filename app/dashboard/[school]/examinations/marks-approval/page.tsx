@@ -57,8 +57,9 @@ export default function MarksApprovalPage({
   const [pendingMarks, setPendingMarks] = useState<StudentMarkGroup[]>([]);
   const [selectedExam, setSelectedExam] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
-  const [exams, setExams] = useState<Array<{ id: string; name: string }>>([]);
+  const [exams, setExams] = useState<Array<{ id: string; name: string; exam_name?: string; class_mappings?: Array<{ class_id: string; class?: { id: string; class: string; section?: string } }> }>>([]);
   const [classes, setClasses] = useState<Array<{ id: string; class: string; section?: string }>>([]);
+  const [allClasses, setAllClasses] = useState<Array<{ id: string; class: string; section?: string }>>([]);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -73,6 +74,23 @@ export default function MarksApprovalPage({
   }, [schoolCode]);
 
   useEffect(() => {
+    if (!selectedExam || !exams.length) {
+      setClasses(allClasses);
+      return;
+    }
+    const exam = exams.find((e) => e.id === selectedExam) as { class_mappings?: Array<{ class_id: string; class?: { id: string; class: string; section?: string } }> } | undefined;
+    const mappings = exam?.class_mappings ?? [];
+    if (mappings.length > 0) {
+      const fromMappings = mappings
+        .map((cm) => (cm.class ? { id: cm.class.id || cm.class_id, class: cm.class.class, section: cm.class.section } : null))
+        .filter(Boolean) as Array<{ id: string; class: string; section?: string }>;
+      setClasses(fromMappings.length ? fromMappings : allClasses);
+    } else {
+      setClasses(allClasses);
+    }
+  }, [selectedExam, exams, allClasses]);
+
+  useEffect(() => {
     if (selectedExam && selectedClass) {
       fetchPendingMarks();
     } else {
@@ -83,10 +101,19 @@ export default function MarksApprovalPage({
 
   const fetchExams = async () => {
     try {
-      const response = await fetch(`/api/examinations?school_code=${schoolCode}`);
+      const response = await fetch(`/api/examinations/v2/list?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setExams(result.data);
+        type ExamItem = { id: string; name: string; exam_name?: string; class_mappings?: Array<{ class_id: string; class?: { id: string; class: string; section?: string } }> };
+        const list = (result.data as Array<{ id: string; exam_name?: string; name?: string; class_mappings?: Array<{ class_id: string; class?: { id: string; class: string; section?: string } }> }>).map(
+          (e): ExamItem => ({
+            id: e.id,
+            name: e.exam_name || e.name || 'Exam',
+            exam_name: e.exam_name,
+            class_mappings: e.class_mappings,
+          })
+        );
+        setExams(list);
       }
     } catch (err) {
       console.error('Error fetching exams:', err);
@@ -98,7 +125,9 @@ export default function MarksApprovalPage({
       const response = await fetch(`/api/classes?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setClasses(result.data);
+        const list = Array.isArray(result.data) ? result.data : [result.data];
+        setAllClasses(list);
+        if (!selectedExam) setClasses(list);
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
@@ -173,7 +202,7 @@ export default function MarksApprovalPage({
       const result = await response.json();
 
       if (response.ok) {
-        setSuccess(`Marks approved successfully for ${result.updated_count || 0} student(s)!`);
+        setSuccess(`Marks verified successfully for ${result.updated_count || 0} student(s).`);
         setRemarks('');
         setTimeout(() => {
           setSuccess('');
@@ -234,7 +263,7 @@ export default function MarksApprovalPage({
       const result = await response.json();
 
       if (response.ok) {
-        setSuccess(`Marks rejected. ${result.updated_count || 0} student(s) marked for correction.`);
+        setSuccess(`Sent back for correction. ${result.updated_count || 0} student(s) — teacher can edit again.`);
         setRemarks('');
         setTimeout(() => {
           setSuccess('');
@@ -385,14 +414,14 @@ export default function MarksApprovalPage({
                 ) : (
                   <>
                     <CheckCircle size={18} className="mr-2" />
-                    Approve All
+                    Verify
                   </>
                 )}
               </Button>
               <Button
                 onClick={handleReject}
                 disabled={processing || !selectedExam || !selectedClass || pendingMarks.length === 0}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
               >
                 {processing ? (
                   <>
@@ -402,7 +431,7 @@ export default function MarksApprovalPage({
                 ) : (
                   <>
                     <XCircle size={18} className="mr-2" />
-                    Reject All
+                    Send back
                   </>
                 )}
               </Button>

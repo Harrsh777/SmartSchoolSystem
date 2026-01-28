@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-// Permission checks can be added here if needed
+import { requirePermission } from '@/lib/permission-middleware';
 
 export async function GET(request: NextRequest) {
   try {
+    // Check permission for viewing students
+    const permission = await requirePermission(request, 'student_directory', 'view', 'view');
+    if (!permission || !permission.allowed) {
+      // Allow if no staff ID (for admin/principal access)
+      const staffId = request.headers.get('x-staff-id') || request.nextUrl.searchParams.get('staff_id');
+      if (staffId) {
+        return NextResponse.json(
+          { error: 'Access denied. You do not have permission to view students.' },
+          { status: 403 }
+        );
+      }
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
 
@@ -31,6 +44,7 @@ export async function GET(request: NextRequest) {
     // Get optional filters
     const classFilter = searchParams.get('class');
     const sectionFilter = searchParams.get('section');
+    const academicYearFilter = searchParams.get('academic_year');
     const statusFilter = searchParams.get('status');
 
     // Build query
@@ -45,6 +59,9 @@ export async function GET(request: NextRequest) {
     }
     if (sectionFilter) {
       query = query.eq('section', sectionFilter);
+    }
+    if (academicYearFilter) {
+      query = query.eq('academic_year', academicYearFilter);
     }
     if (statusFilter && statusFilter !== 'all') {
       // Map status filter to database values

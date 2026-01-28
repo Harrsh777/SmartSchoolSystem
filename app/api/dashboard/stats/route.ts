@@ -84,45 +84,95 @@ export async function GET(request: NextRequest) {
     const presentStaffCount = todayStaffAttendance?.filter(a => a.status === 'present').length || 0;
     const staffAttendancePercentage = totalStaffMarked > 0 ? Math.round((presentStaffCount / totalStaffMarked) * 100) : 0;
 
-    // Calculate fee collection (if fees table exists)
+    // Calculate fee collection
+    // Try payments table first (new system), fallback to fees table (old system)
     let feeCollected = 0;
     let todayCollection = 0;
     let monthlyCollection = 0;
+    let annualRevenue = 0;
+    
     try {
-      const { data: feesData, error: feesError } = await supabase
-        .from('fees')
-        .select('total_amount, amount, payment_date')
-        .eq('school_code', schoolCode);
+      const now = new Date();
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+      const firstDayOfYear = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+      const lastDayOfYear = new Date(now.getFullYear(), 11, 31).toISOString().split('T')[0];
       
-      if (!feesError && feesData) {
-        // Use total_amount if available (includes transport fee), otherwise use amount
-        feeCollected = feesData.reduce((sum, f) => {
-          const feeAmount = f.total_amount || f.amount || 0;
-          return sum + Number(feeAmount);
-        }, 0);
-
+      // Try payments table first (new system)
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('amount, payment_date')
+        .eq('school_code', schoolCode)
+        .eq('is_reversed', false);
+      
+      if (!paymentsError && paymentsData && paymentsData.length > 0) {
+        // Calculate total collected
+        feeCollected = paymentsData.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        
         // Calculate today's collection
-        todayCollection = feesData
-          .filter(f => f.payment_date === today)
-          .reduce((sum, f) => {
+        todayCollection = paymentsData
+          .filter(p => p.payment_date && p.payment_date.split('T')[0] === today)
+          .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        
+        // Calculate monthly collection (this month)
+        monthlyCollection = paymentsData
+          .filter(p => {
+            if (!p.payment_date) return false;
+            const paymentDate = p.payment_date.split('T')[0];
+            return paymentDate >= firstDayOfMonth && paymentDate <= lastDayOfMonth;
+          })
+          .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        
+        // Calculate annual revenue (current year)
+        annualRevenue = paymentsData
+          .filter(p => {
+            if (!p.payment_date) return false;
+            const paymentDate = p.payment_date.split('T')[0];
+            return paymentDate >= firstDayOfYear && paymentDate <= lastDayOfYear;
+          })
+          .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      } else {
+        // Fallback to fees table (old system)
+        const { data: feesData, error: feesError } = await supabase
+          .from('fees')
+          .select('total_amount, amount, payment_date')
+          .eq('school_code', schoolCode);
+        
+        if (!feesError && feesData) {
+          // Use total_amount if available (includes transport fee), otherwise use amount
+          feeCollected = feesData.reduce((sum, f) => {
             const feeAmount = f.total_amount || f.amount || 0;
             return sum + Number(feeAmount);
           }, 0);
 
-        // Calculate monthly collection (this month)
-        const now = new Date();
-        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-        const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-        monthlyCollection = feesData
-          .filter(f => f.payment_date && f.payment_date >= firstDayOfMonth && f.payment_date <= lastDayOfMonth)
-          .reduce((sum, f) => {
-            const feeAmount = f.total_amount || f.amount || 0;
-            return sum + Number(feeAmount);
-          }, 0);
+          // Calculate today's collection
+          todayCollection = feesData
+            .filter(f => f.payment_date === today)
+            .reduce((sum, f) => {
+              const feeAmount = f.total_amount || f.amount || 0;
+              return sum + Number(feeAmount);
+            }, 0);
+
+          // Calculate monthly collection (this month)
+          monthlyCollection = feesData
+            .filter(f => f.payment_date && f.payment_date >= firstDayOfMonth && f.payment_date <= lastDayOfMonth)
+            .reduce((sum, f) => {
+              const feeAmount = f.total_amount || f.amount || 0;
+              return sum + Number(feeAmount);
+            }, 0);
+
+          // Calculate annual revenue (current year)
+          annualRevenue = feesData
+            .filter(f => f.payment_date && f.payment_date >= firstDayOfYear && f.payment_date <= lastDayOfYear)
+            .reduce((sum, f) => {
+              const feeAmount = f.total_amount || f.amount || 0;
+              return sum + Number(feeAmount);
+            }, 0);
+        }
       }
     } catch (err) {
-      // Fees table might not exist, that's okay
-      console.log('Fees table not available:', err);
+      // Both tables might not exist, that's okay
+      console.log('Fee collection tables not available:', err);
     }
 
     const stats = {
@@ -130,7 +180,7 @@ export async function GET(request: NextRequest) {
       totalStaff: staffCount || 0,
       feeCollection: {
         collected: feeCollected,
-        total: feeCollected, // Total is same as collected since all fees are paid when recorded
+        total: annualRevenue, // Annual revenue (current year)
         todayCollection,
         monthlyCollection,
       },

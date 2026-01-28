@@ -36,7 +36,22 @@ export async function PATCH(
 
     if (error) {
       console.error('Error updating leave type:', error);
-      return NextResponse.json({ error: 'Failed to update leave type' }, { status: 500 });
+      
+      // Check if table doesn't exist
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return NextResponse.json({ 
+          error: 'Leave types table does not exist',
+          details: 'Please run the leave_types_schema.sql file in your database to create the required table.',
+          code: error.code,
+          hint: 'The leave_types table needs to be created. Check leave_types_schema.sql in the project root.'
+        }, { status: 500 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to update leave type',
+        details: error.message,
+        code: error.code
+      }, { status: 500 });
     }
 
     return NextResponse.json({ data });
@@ -62,7 +77,22 @@ export async function DELETE(
 
     if (error) {
       console.error('Error deleting leave type:', error);
-      return NextResponse.json({ error: 'Failed to delete leave type' }, { status: 500 });
+      
+      // Check if table doesn't exist
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return NextResponse.json({ 
+          error: 'Leave types table does not exist',
+          details: 'Please run the leave_types_schema.sql file in your database to create the required table.',
+          code: error.code,
+          hint: 'The leave_types table needs to be created. Check leave_types_schema.sql in the project root.'
+        }, { status: 500 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to delete leave type',
+        details: error.message,
+        code: error.code
+      }, { status: 500 });
     }
 
     return NextResponse.json({ message: 'Leave type deleted successfully' });
