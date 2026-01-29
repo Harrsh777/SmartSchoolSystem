@@ -11,6 +11,10 @@ import {
   FileText,
   User,
   CheckCircle,
+  Check,
+  X,
+  Clock,
+  Bell,
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 import TimetableView from '@/components/timetable/TimetableView';
@@ -33,6 +37,13 @@ interface Performance {
   date: string;
   grade: string;
   grade_color: string;
+  percentage?: number;
+  marks_display?: string;
+}
+
+interface AttendanceDay {
+  attendance_date: string;
+  status: string;
 }
 
 interface UpcomingItem {
@@ -50,6 +61,16 @@ interface ClassTeacher {
   phone?: string;
 }
 
+interface RecentNotice {
+  id: string;
+  title: string;
+  content?: string | null;
+  category?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  publish_at?: string | null;
+}
+
 export default function StudentDashboardHome() {
   const router = useRouter();
   const [student, setStudent] = useState<Student | null>(null);
@@ -60,6 +81,8 @@ export default function StudentDashboardHome() {
   const [classTeacher, setClassTeacher] = useState<ClassTeacher | null>(null);
   const [classId, setClassId] = useState<string | null>(null);
   const [, setWeeklyCompletion] = useState({ weekly_completion: 0, assignments_to_complete: 0 });
+  const [attendanceLast7, setAttendanceLast7] = useState<AttendanceDay[]>([]);
+  const [recentCommunication, setRecentCommunication] = useState<RecentNotice[]>([]);
   const [loading, setLoading] = useState(true);
 
   const getString = (value: unknown): string => {
@@ -86,14 +109,22 @@ export default function StudentDashboardHome() {
       return;
     }
 
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 6);
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+
     try {
       // Fetch all data in parallel
-      const [statsRes, performanceRes, upcomingRes, weeklyRes, teacherRes] = await Promise.all([
+      const [statsRes, performanceRes, upcomingRes, weeklyRes, teacherRes, attendanceRes, noticesRes] = await Promise.all([
         fetch(`/api/student/stats?school_code=${schoolCode}&student_id=${studentId}`),
         fetch(`/api/student/recent-performance?school_code=${schoolCode}&student_id=${studentId}&limit=3`),
         fetch(`/api/student/upcoming-items?school_code=${schoolCode}&student_id=${studentId}&limit=3`),
         fetch(`/api/student/weekly-completion?school_code=${schoolCode}&student_id=${studentId}`),
         fetch(`/api/student/class-teacher?school_code=${schoolCode}&class=${getString(studentData.class)}&section=${getString(studentData.section)}&academic_year=${getString(studentData.academic_year)}`),
+        fetch(`/api/student/attendance?school_code=${schoolCode}&student_id=${studentId}&start_date=${startStr}&end_date=${endStr}`),
+        fetch(`/api/communication/notices?school_code=${schoolCode}&limit=5`),
       ]);
 
       if (statsRes.ok) {
@@ -152,6 +183,25 @@ export default function StudentDashboardHome() {
         if (teacherData.data?.class?.id) {
           setClassId(teacherData.data.class.id);
         }
+      }
+
+      if (attendanceRes.ok) {
+        const attendanceData = await attendanceRes.json();
+        const records = (attendanceData.data || []).map((r: { attendance_date: string; status: string }) => ({
+          attendance_date: String(r.attendance_date).split('T')[0],
+          status: r.status || 'absent',
+        }));
+        setAttendanceLast7(records);
+      }
+
+      if (noticesRes.ok) {
+        const noticesData = await noticesRes.json();
+        const now = new Date();
+        const published = (noticesData.data || []).filter((n: RecentNotice) => {
+          if (n.status === 'Active' && n.publish_at) return new Date(n.publish_at) <= now;
+          return true;
+        });
+        setRecentCommunication(published.slice(0, 5));
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -332,11 +382,11 @@ export default function StudentDashboardHome() {
               </span>
             </div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Academic Index</p>
-            <p className="text-2xl font-bold text-gray-900 mb-3">{stats?.gpa || '0.00'}</p>
+            <p className="text-2xl font-bold text-gray-900 mb-3">{stats?.gpa != null && stats.gpa !== '' ? `${Number(stats.gpa).toFixed(1)}%` : '—'}</p>
             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-orange-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min((parseFloat(stats?.gpa || '0') / 4) * 100, 100)}%` }}
+                style={{ width: `${Math.min(parseFloat(stats?.gpa || '0') || 0, 100)}%` }}
               ></div>
             </div>
           </motion.div>
@@ -404,6 +454,7 @@ export default function StudentDashboardHome() {
                       <th className="pb-4 font-bold">Subject</th>
                       <th className="pb-4 font-bold">Type</th>
                       <th className="pb-4 font-bold">Date</th>
+                      <th className="pb-4 font-bold">Marks</th>
                       <th className="pb-4 text-right font-bold">Grade</th>
                     </tr>
                   </thead>
@@ -413,6 +464,9 @@ export default function StudentDashboardHome() {
                         <td className="py-4 font-medium text-sm text-foreground">{perf.subject}</td>
                         <td className="py-4 text-[11px] text-muted-foreground">{perf.type}</td>
                         <td className="py-4 text-[11px] text-muted-foreground">{perf.date}</td>
+                        <td className="py-4 text-[11px] text-muted-foreground">
+                          {perf.marks_display ?? (perf.percentage != null ? `${perf.percentage}%` : '—')}
+                        </td>
                         <td className="py-4 text-right">
                           <span className={`px-2 py-1 ${perf.grade_color} text-xs font-bold rounded`}>
                             {perf.grade}
@@ -421,13 +475,90 @@ export default function StudentDashboardHome() {
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+                        <td colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
                           No recent performance data available
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
+              </div>
+            </motion.div>
+
+            {/* My Attendance - Past 7 days */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+              className="glass-card soft-shadow rounded-2xl p-6 border border-input"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-foreground">My Attendance</h3>
+                <button
+                  onClick={() => router.push('/student/dashboard/attendance')}
+                  className="text-[11px] font-semibold text-primary uppercase tracking-wider hover:underline"
+                >
+                  View All
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">Past 7 days</p>
+              <div className="space-y-2">
+                {(() => {
+                  const dateToStatus: Record<string, string> = {};
+                  attendanceLast7.forEach((r) => {
+                    dateToStatus[r.attendance_date] = r.status;
+                  });
+                  const days: { date: Date; key: string }[] = [];
+                  for (let i = 6; i >= 0; i--) {
+                    const d = new Date();
+                    d.setDate(d.getDate() - i);
+                    days.push({ date: d, key: d.toISOString().split('T')[0] });
+                  }
+                  return days.map(({ date: d, key }) => {
+                    const status = dateToStatus[key];
+                    const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                    const isPresent = status === 'present';
+                    const isHalfDay = status === 'half_day';
+                    const isLate = status === 'late';
+                    const isAbsent = status === 'absent';
+                    const notMarked = !status;
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50 border border-input/50"
+                      >
+                        <span className="text-sm text-foreground">{label}</span>
+                        <span className="flex items-center gap-1.5 text-xs font-medium">
+                          {notMarked && <span className="text-muted-foreground">—</span>}
+                          {isPresent && (
+                            <>
+                              <Check className="w-4 h-4 text-emerald-600" />
+                              <span className="text-emerald-700">Present</span>
+                            </>
+                          )}
+                          {isHalfDay && (
+                            <>
+                              <Clock className="w-4 h-4 text-blue-600" />
+                              <span className="text-blue-700">Half day</span>
+                            </>
+                          )}
+                          {isLate && (
+                            <>
+                              <Clock className="w-4 h-4 text-amber-600" />
+                              <span className="text-amber-700">Late</span>
+                            </>
+                          )}
+                          {isAbsent && (
+                            <>
+                              <X className="w-4 h-4 text-red-600" />
+                              <span className="text-red-700">Absent</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </motion.div>
           </div>
@@ -498,26 +629,57 @@ export default function StudentDashboardHome() {
               </div>
             </motion.div>
 
-            {/* Study Group CTA */}
+            {/* Recent Communication */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="bg-primary p-6 rounded-2xl relative overflow-hidden"
+              className="bg-muted rounded-2xl border border-input overflow-hidden"
             >
-              <div className="relative z-10">
-                <p className="text-[10px] font-bold text-primary-foreground/70 uppercase tracking-widest mb-1">Study Group</p>
-                <p className="text-sm text-primary-foreground font-medium mb-4 leading-relaxed">
-                  Join study sessions and collaborate with peers.
-                </p>
-                <button 
-                  onClick={() => router.push('/student/dashboard/communication')}
-                  className="w-full py-2 bg-primary-foreground text-primary text-xs font-bold rounded-lg hover:opacity-90 transition-colors"
-                >
-                  Launch Group Call
-                </button>
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Bell className="text-primary" size={20} />
+                    </div>
+                    <h3 className="text-sm font-semibold text-foreground">Recent Communication</h3>
+                  </div>
+                  <button
+                    onClick={() => router.push('/student/dashboard/communication')}
+                    className="text-[10px] font-semibold text-primary uppercase tracking-wider hover:underline"
+                  >
+                    View All
+                  </button>
+                </div>
+                <div className="space-y-3 max-h-48 overflow-y-auto">
+                  {recentCommunication.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">No recent notices</p>
+                  ) : (
+                    recentCommunication.map((notice) => (
+                      <div
+                        key={notice.id}
+                        onClick={() => router.push('/student/dashboard/communication')}
+                        className="p-3 rounded-lg bg-card border border-input/50 hover:border-primary/30 hover:bg-primary/5 transition-colors cursor-pointer"
+                      >
+                        <p className="text-xs font-semibold text-foreground truncate">{notice.title || 'Notice'}</p>
+                        {notice.content && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                            {String(notice.content).replace(/<[^>]*>/g, '').slice(0, 80)}
+                            {String(notice.content).length > 80 ? '…' : ''}
+                          </p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {notice.publish_at
+                            ? new Date(notice.publish_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                            : notice.created_at
+                              ? new Date(notice.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                              : ''}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary-foreground/10 rounded-full blur-2xl"></div>
             </motion.div>
           </div>
         </div>

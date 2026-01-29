@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Calendar, Clock, User, Mail, Phone, CheckCircle, ArrowLeft, ArrowRight } from 'lucide-react';
 
 const TIME_SLOTS = Array.from({ length: 18 }, (_, i) => {
@@ -61,6 +61,24 @@ export default function RequestDemoPage() {
     phone: false,
     email: false,
   });
+  const [bookedSlots, setBookedSlots] = useState<Array<{ demo_date: string; demo_time: string }>>([]);
+
+  useEffect(() => {
+    fetch('/api/demo')
+      .then((res) => res.ok ? res.json() : { slots: [] })
+      .then((data) => setBookedSlots(data.slots ?? []))
+      .catch(() => setBookedSlots([]));
+  }, []);
+
+  const bookedSetForDate = useMemo(() => {
+    if (!date) return new Set<string>();
+    const dateStr = date.toISOString().split('T')[0];
+    return new Set(
+      bookedSlots
+        .filter((s) => String(s.demo_date).split('T')[0] === dateStr)
+        .map((s) => s.demo_time.trim())
+    );
+  }, [date, bookedSlots]);
 
   // Validation functions
   const validateStep3 = () => {
@@ -106,21 +124,30 @@ export default function RequestDemoPage() {
   };
 
   const submitDemo = async () => {
-    if (!validateStep3()) return;
+    if (!validateStep3() || !date) return;
 
     setLoading(true);
+    setErrors({ ...errors, submit: undefined });
 
     try {
-      // Simulated API call - replace with actual Supabase call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // const { error } = await supabase.from('demo_requests').insert({
-      //   name: form.name,
-      //   phone: form.phone,
-      //   email: form.email,
-      //   demo_date: date.toISOString().split('T')[0],
-      //   demo_time: time,
-      // });
+      const res = await fetch('/api/demo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          phone: form.phone.trim(),
+          email: form.email.trim(),
+          demo_date: date.toISOString().split('T')[0],
+          demo_time: time,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        setErrors({ submit: result.error || 'Failed to schedule demo. Please try again.' });
+        return;
+      }
 
       setSuccess(true);
     } catch {
@@ -288,19 +315,28 @@ export default function RequestDemoPage() {
               </div>
 
               <div className="grid grid-cols-3 md:grid-cols-4 gap-2 md:gap-3 max-h-96 overflow-y-auto pr-2">
-                {TIME_SLOTS.map((slot) => (
-                  <button
-                    key={slot}
-                    onClick={() => setTime(slot)}
-                    className={`py-3 px-2 rounded-xl border-2 text-sm font-medium transition-all hover:scale-105 ${
-                      time === slot
-                        ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white border-transparent shadow-lg'
-                        : 'border-gray-200 hover:border-violet-300 hover:shadow-md'
-                    }`}
-                  >
-                    {slot}
-                  </button>
-                ))}
+                {TIME_SLOTS.map((slot) => {
+                  const isBooked = bookedSetForDate.has(slot);
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => !isBooked && setTime(slot)}
+                      disabled={isBooked}
+                      title={isBooked ? 'This slot is already booked' : undefined}
+                      className={`py-3 px-2 rounded-xl border-2 text-sm font-medium transition-all ${
+                        isBooked
+                          ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed line-through'
+                          : time === slot
+                            ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white border-transparent shadow-lg hover:scale-105'
+                            : 'border-gray-200 hover:border-violet-300 hover:shadow-md hover:scale-105'
+                      }`}
+                    >
+                      {slot}
+                      {isBooked && <span className="block text-xs font-normal mt-0.5">Booked</span>}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="flex gap-3">

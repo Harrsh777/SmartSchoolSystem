@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 /**
  * GET /api/student/recent-performance
- * Fetch recent exam performance for a student
+ * Fetch recent exam performance for a student (same data source as /api/student/marks, limited and summarized).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -19,160 +19,126 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get recent marks with exam and subject details
+    const supabase = getServiceRoleClient();
+
     const { data: marks, error: marksError } = await supabase
       .from('student_subject_marks')
-      .select(`
-        id,
-        marks_obtained,
-        max_marks,
-        percentage,
-        grade,
-        created_at,
-        subject:subject_id(id, name),
-        examinations!inner(
-          id,
-          exam_name,
-          end_date,
-          exam_type
-        )
-      `)
+      .select('id, marks_obtained, max_marks, percentage, grade, subject_id, exam_id, created_at')
       .eq('school_code', schoolCode)
       .eq('student_id', studentId)
       .not('marks_obtained', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(limit * 3); // Get more to aggregate by exam
+      .limit(limit * 10);
 
-    if (marksError || !marks) {
+    if (marksError || !marks || marks.length === 0) {
       return NextResponse.json({ data: [] }, { status: 200 });
     }
 
-    // Group by exam and calculate average
-    interface ExamData {
-      id: string;
-      exam_name?: string;
-      end_date?: string;
-      exam_type?: string;
-    }
-    interface SubjectMark {
-      id: string;
-      marks_obtained?: number | null;
-      max_marks?: number | null;
-      percentage?: number | null;
-      grade?: string | null;
-      created_at?: string;
-      subject?: {
-        id: string;
-        name?: string;
-      } | null;
-      examinations?: ExamData | null;
-    }
-    interface ExamPerformance {
-      [key: string]: {
-        exam: ExamData;
-        subjects: SubjectMark[];
-        avgPercentage: number;
-        avgGrade: string;
-      };
-    }
+    const subjectIds = [...new Set(marks.map((m) => m.subject_id).filter(Boolean))] as string[];
+    const examIds = [...new Set(marks.map((m) => m.exam_id).filter(Boolean))] as string[];
 
-    const examGroups: ExamPerformance = {};
-    // Type the marks data properly - handle Supabase returning arrays for relations
-    const typedMarks: SubjectMark[] = marks.map((mark) => {
-      const examination = Array.isArray(mark.examinations) ? mark.examinations[0] : mark.examinations;
-      const subject = Array.isArray(mark.subject) ? mark.subject[0] : mark.subject;
-      
-      return {
-        id: mark.id,
-        marks_obtained: mark.marks_obtained ?? null,
-        max_marks: mark.max_marks ?? null,
-        percentage: mark.percentage ?? null,
-        grade: mark.grade ?? null,
-        created_at: mark.created_at,
-        subject: subject ? {
-          id: subject.id,
-          name: subject.name,
-        } : null,
-        examinations: examination ? {
-          id: examination.id,
-          exam_name: examination.exam_name,
-          end_date: examination.end_date,
-          exam_type: examination.exam_type,
-        } : null,
-      };
+    type ExamRow = { id: string; exam_name?: string | null; name?: string | null; title?: string | null; exam_type?: string | null; end_date?: string | null };
+    const [subjectsRes, examsRes] = await Promise.all([
+      subjectIds.length > 0
+        ? supabase.from('subjects').select('id, name').in('id', subjectIds)
+        : Promise.resolve({ data: [] as { id: string; name: string }[], error: null }),
+      examIds.length > 0
+        ? supabase
+            .from('examinations')
+            .select('id, exam_name, name, exam_type, end_date')
+            .in('id', examIds)
+        : Promise.resolve({ data: [] as ExamRow[], error: null }),
+    ]);
+
+    const subjectMap = new Map<string, string>();
+    (subjectsRes.data || []).forEach((s) => subjectMap.set(s.id, s.name || 'Subject'));
+    const examMap = new Map<string, { exam_name: string; exam_type: string | null; end_date: string | null }>();
+    (examsRes.data || []).forEach((e: ExamRow) => {
+      const examName = (e.exam_name ?? e.name ?? e.title ?? 'Examination').toString().trim() || 'Examination';
+      examMap.set(e.id, {
+        exam_name: examName,
+        exam_type: e.exam_type ?? null,
+        end_date: e.end_date ?? null,
+      });
     });
 
-    typedMarks.forEach((mark) => {
-      const examId = mark.examinations?.id;
-      if (!examId) return;
+    const examGroups: Record<
+      string,
+      {
+        exam_id: string;
+        exam_name: string;
+        exam_type: string | null;
+        end_date: string | null;
+        subjects: Array<{ marks_obtained: number; max_marks: number; percentage: number | null }>;
+      }
+    > = {};
 
+    marks.forEach((mark) => {
+      const examId = mark.exam_id || '';
+      if (!examId) return;
+      const exam = examMap.get(examId) ?? { exam_name: 'Unknown Exam', exam_type: null, end_date: null };
       if (!examGroups[examId]) {
         examGroups[examId] = {
-          exam: mark.examinations ? {
-            id: mark.examinations.id,
-            exam_name: mark.examinations.exam_name,
-            end_date: mark.examinations.end_date,
-            exam_type: mark.examinations.exam_type,
-          } : {
-            id: '',
-            exam_name: 'Unknown Exam',
-            end_date: undefined,
-            exam_type: undefined,
-          },
+          exam_id: examId,
+          exam_name: exam.exam_name,
+          exam_type: exam.exam_type,
+          end_date: exam.end_date,
           subjects: [],
-          avgPercentage: 0,
-          avgGrade: '',
         };
       }
-      examGroups[examId].subjects.push(mark);
+      const maxM = Number(mark.max_marks) || 0;
+      const obtained = Number(mark.marks_obtained) ?? 0;
+      const pct = mark.percentage != null ? Number(mark.percentage) : maxM > 0 ? (obtained / maxM) * 100 : 0;
+      examGroups[examId].subjects.push({
+        marks_obtained: obtained,
+        max_marks: maxM,
+        percentage: Math.round(pct),
+      });
     });
 
-    // Calculate averages and format
-    const performances = Object.values(examGroups)
-      .map(group => {
-        const totalPercentage = group.subjects.reduce((sum, s) => sum + (s.percentage || 0), 0);
-        const avgPercentage = Math.round(totalPercentage / group.subjects.length);
-        
-        // Get grade from percentage
-        let grade = 'N/A';
-        let gradeColor = 'bg-gray-100 text-gray-700';
-        if (avgPercentage >= 90) {
-          grade = 'A+';
-          gradeColor = 'bg-emerald-100 text-emerald-700';
-        } else if (avgPercentage >= 80) {
-          grade = 'A';
-          gradeColor = 'bg-emerald-100 text-emerald-700';
-        } else if (avgPercentage >= 70) {
-          grade = 'B';
-          gradeColor = 'bg-blue-100 text-blue-700';
-        } else if (avgPercentage >= 60) {
-          grade = 'C';
-          gradeColor = 'bg-yellow-100 text-yellow-700';
-        } else if (avgPercentage >= 50) {
-          grade = 'D';
-          gradeColor = 'bg-orange-100 text-orange-700';
-        } else {
-          grade = 'E';
-          gradeColor = 'bg-red-100 text-red-700';
-        }
+    function gradeFromPercentage(pct: number): string {
+      if (pct >= 90) return 'A+';
+      if (pct >= 80) return 'A';
+      if (pct >= 70) return 'B';
+      if (pct >= 60) return 'C';
+      if (pct >= 50) return 'D';
+      return 'E';
+    }
 
-        const examType = group.exam.exam_type || 'Exam';
-        const subjectNames = group.subjects.map(s => s.subject?.name || 'Subject').join(', ');
+    function gradeColor(grade: string): string {
+      if (grade === 'A+' || grade === 'A') return 'bg-emerald-100 text-emerald-700';
+      if (grade === 'B') return 'bg-blue-100 text-blue-700';
+      if (grade === 'C') return 'bg-yellow-100 text-yellow-700';
+      if (grade === 'D') return 'bg-orange-100 text-orange-700';
+      return 'bg-red-100 text-red-700';
+    }
+
+    const performances = Object.values(examGroups)
+      .map((group) => {
+        const totalObtained = group.subjects.reduce((s, x) => s + x.marks_obtained, 0);
+        const totalMax = group.subjects.reduce((s, x) => s + x.max_marks, 0);
+        const percentage = totalMax > 0 ? Math.round((totalObtained / totalMax) * 100) : 0;
+        const grade = gradeFromPercentage(percentage);
+        const marksInExam = marks.filter((m) => m.exam_id === group.exam_id);
+        const subjectNames = marksInExam
+          .map((m) => (m.subject_id ? subjectMap.get(m.subject_id) : null))
+          .filter(Boolean) as string[];
+        const subjectNameStr = [...new Set(subjectNames)].slice(0, 5).join(', ') || 'All Subjects';
 
         return {
-          id: group.exam.id,
-          subject: subjectNames || 'All Subjects',
-          type: examType,
-          date: group.exam.end_date ? new Date(group.exam.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A',
-          grade: grade,
-          grade_color: gradeColor,
+          id: group.exam_id,
+          subject: subjectNameStr,
+          type: group.exam_type || 'Exam',
+          date: group.end_date ? new Date(group.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A',
+          end_date: group.end_date || '',
+          grade,
+          grade_color: gradeColor(grade),
+          percentage,
+          marks_display: totalMax > 0 ? `${totalObtained}/${totalMax}` : `${percentage}%`,
         };
       })
-      .slice(0, limit)
-      .sort((a, b) => {
-        // Sort by date descending
-        return new Date(b.date).getTime() - new Date(a.date).getTime();
-      });
+      .sort((a, b) => new Date(b.end_date || 0).getTime() - new Date(a.end_date || 0).getTime())
+      .slice(0, limit);
 
     return NextResponse.json({ data: performances }, { status: 200 });
   } catch (error) {

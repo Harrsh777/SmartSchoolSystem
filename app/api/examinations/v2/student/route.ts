@@ -92,9 +92,11 @@ export async function GET(request: NextRequest) {
           pass_marks
         ),
         schedules:exam_schedules (
+          id,
           exam_date,
           start_time,
-          end_time
+          end_time,
+          subject
         )
       `)
       .in('id', examIds)

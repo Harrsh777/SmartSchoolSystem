@@ -3,8 +3,16 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import { FileText, Calendar, Award } from 'lucide-react';
+import { FileText, Calendar, Award, Download } from 'lucide-react';
 import type { Student, Examination, Mark } from '@/lib/supabase';
+
+interface ExamScheduleItem {
+  id?: string;
+  exam_date?: string;
+  start_time?: string;
+  end_time?: string;
+  subject?: string;
+}
 
 export default function ExaminationsPage() {
   // student kept for potential future use
@@ -51,6 +59,57 @@ export default function ExaminationsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getScheduleForSubject = (exam: Examination, subjectName: string, index: number): ExamScheduleItem | null => {
+    const schedules = (exam as { schedules?: ExamScheduleItem[] }).schedules;
+    if (!schedules || schedules.length === 0) return null;
+    const byName = schedules.find((s) => s.subject && String(s.subject).trim().toLowerCase() === String(subjectName).trim().toLowerCase());
+    if (byName) return byName;
+    return schedules[index] ?? schedules[0] ?? null;
+  };
+
+  const downloadDateSheet = (exam: Examination) => {
+    const schedules = (exam as { schedules?: ExamScheduleItem[] }).schedules ?? [];
+    const subjectMappings = Array.isArray(exam.subject_mappings) ? exam.subject_mappings : [];
+    const rows = subjectMappings.map((sm: { subject_name?: string; teacher_name?: string; max_marks?: number; pass_marks?: number }, idx: number) => {
+      const subjName = typeof sm.subject_name === 'string' ? sm.subject_name : '—';
+      const schedule = getScheduleForSubject(exam, subjName, idx);
+      const dateStr = schedule?.exam_date ? new Date(schedule.exam_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : (exam.start_date ? new Date(exam.start_date).toLocaleDateString('en-US') : '—');
+      const timeStr = schedule?.start_time && schedule?.end_time ? `${schedule.start_time} - ${schedule.end_time}` : '—';
+      return { subject: subjName, date: dateStr, time: timeStr, max_marks: sm.max_marks ?? '—', pass_marks: sm.pass_marks ?? '—' };
+    });
+    const examName = (exam.exam_name || 'Exam').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Date Sheet - ${examName}</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 700px; margin: 24px auto; padding: 0 16px; }
+h1 { font-size: 1.5rem; margin-bottom: 4px; }
+.meta { color: #666; font-size: 0.875rem; margin-bottom: 20px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #ddd; padding: 10px 12px; text-align: left; }
+th { background: #f5f5f5; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>${examName}</h1>
+<div class="meta">Academic Year: ${exam.academic_year || '—'} &nbsp;|&nbsp; Start: ${exam.start_date ? new Date(exam.start_date).toLocaleDateString('en-US') : '—'} &nbsp;|&nbsp; End: ${exam.end_date ? new Date(exam.end_date).toLocaleDateString('en-US') : '—'}</div>
+<table>
+<thead><tr><th>Subject</th><th>Date</th><th>Time</th><th>Max Marks</th><th>Pass Marks</th></tr></thead>
+<tbody>
+${rows.map((r) => `<tr><td>${r.subject}</td><td>${r.date}</td><td>${r.time}</td><td>${r.max_marks}</td><td>${r.pass_marks}</td></tr>`).join('\n')}
+</tbody>
+</table>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Date_Sheet_${(exam.exam_name || 'Exam').replace(/\s+/g, '_')}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const fetchMarks = async (studentData: Student) => {
@@ -109,9 +168,17 @@ export default function ExaminationsPage() {
             
             return (
               <Card key={exam.id} hover>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-3 mb-3">
+                      {exam.start_date && (
+                        <span className="text-sm font-medium text-gray-600 whitespace-nowrap">
+                          {new Date(exam.start_date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+                          {exam.end_date && exam.end_date !== exam.start_date
+                            ? ` – ${new Date(exam.end_date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}`
+                            : ''}
+                        </span>
+                      )}
                       <h3 className="text-xl font-bold text-black">{exam.exam_name}</h3>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                         exam.status === 'ongoing' 
@@ -148,7 +215,7 @@ export default function ExaminationsPage() {
                       </div>
                     </div>
 
-                    {/* Subjects, teachers, total / passing marks */}
+                    {/* Subjects, teachers, date, total / passing marks */}
                     {Array.isArray(exam.subject_mappings) && exam.subject_mappings.length > 0 && (
                       <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <h4 className="font-semibold text-gray-900 mb-3">Subjects &amp; passing marks</h4>
@@ -157,28 +224,43 @@ export default function ExaminationsPage() {
                             <thead>
                               <tr className="border-b border-gray-200 text-left text-gray-600">
                                 <th className="pb-2 pr-4">Subject</th>
+                                <th className="pb-2 pr-4">Date</th>
                                 <th className="pb-2 pr-4">Teacher</th>
                                 <th className="pb-2 pr-4">Max marks</th>
                                 <th className="pb-2">Pass marks</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {exam.subject_mappings.map((sm: { subject_id?: string; subject_name?: string; teacher_name?: string; max_marks?: number; pass_marks?: number }, idx: number) => (
-                                <tr key={sm.subject_id ?? idx} className="border-b border-gray-100">
-                                  <td className="py-2 pr-4 font-medium text-black">
-                                    {typeof sm.subject_name === "string" && sm.subject_name.length > 0 ? sm.subject_name : '—'}
-                                  </td>
-                                  <td className="py-2 pr-4 text-gray-700">
-                                    {typeof sm.teacher_name === "string" && sm.teacher_name.length > 0 ? sm.teacher_name : '—'}
-                                  </td>
-                                  <td className="py-2 pr-4 text-gray-700">
-                                    {sm.max_marks != null ? String(sm.max_marks) : '—'}
-                                  </td>
-                                  <td className="py-2 text-gray-700">
-                                    {sm.pass_marks != null ? String(sm.pass_marks) : '—'}
-                                  </td>
-                                </tr>
-                              ))}
+                              {exam.subject_mappings.map((sm: { subject_id?: string; subject_name?: string; teacher_name?: string; max_marks?: number; pass_marks?: number }, idx: number) => {
+                                const subjName = typeof sm.subject_name === 'string' && sm.subject_name.length > 0 ? sm.subject_name : '—';
+                                const schedule = getScheduleForSubject(exam, subjName, idx);
+                                const dateDisplay = schedule?.exam_date
+                                  ? new Date(schedule.exam_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                                  : exam.start_date
+                                    ? new Date(exam.start_date).toLocaleDateString('en-US')
+                                    : '—';
+                                const timeDisplay = schedule?.start_time && schedule?.end_time ? `${schedule.start_time} - ${schedule.end_time}` : '';
+                                return (
+                                  <tr key={sm.subject_id ?? idx} className="border-b border-gray-100">
+                                    <td className="py-2 pr-4 font-medium text-black">
+                                      {subjName}
+                                    </td>
+                                    <td className="py-2 pr-4 text-gray-700">
+                                      <span className="block">{dateDisplay}</span>
+                                      {timeDisplay && <span className="block text-xs text-gray-500">{timeDisplay}</span>}
+                                    </td>
+                                    <td className="py-2 pr-4 text-gray-700">
+                                      {typeof sm.teacher_name === "string" && sm.teacher_name.length > 0 ? sm.teacher_name : '—'}
+                                    </td>
+                                    <td className="py-2 pr-4 text-gray-700">
+                                      {sm.max_marks != null ? String(sm.max_marks) : '—'}
+                                    </td>
+                                    <td className="py-2 text-gray-700">
+                                      {sm.pass_marks != null ? String(sm.pass_marks) : '—'}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                              
                             </tbody>
                           </table>
@@ -263,6 +345,16 @@ export default function ExaminationsPage() {
                     {typeof exam.description === "string" && exam.description.length > 0 && (
                       <p className="text-sm text-gray-600 mt-4">{exam.description}</p>
                     )}
+                  </div>
+                  <div className="shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => downloadDateSheet(exam)}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <Download size={18} />
+                      Download date sheet
+                    </button>
                   </div>
                 </div>
               </Card>

@@ -4,8 +4,9 @@ import { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Image from 'next/image';
-import { GraduationCap, User, Mail, Phone, BookOpen, Users, Search } from 'lucide-react';
+import { GraduationCap, User, Mail, Phone, BookOpen, Users, Search, Calendar } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
+import TimetableView from '@/components/timetable/TimetableView';
 
 interface ClassTeacher {
   id: string;
@@ -18,6 +19,7 @@ interface ClassTeacher {
 }
 
 interface ClassInfo {
+  class_id: string;
   class: string;
   section: string;
   academic_year: string;
@@ -60,6 +62,7 @@ export default function MyClassPage() {
       const result = await response.json();
       if (response.ok && result.data) {
         setClassInfo({
+          class_id: result.data.class.id,
           class: result.data.class.class,
           section: result.data.class.section,
           academic_year: result.data.class.academic_year,
@@ -204,6 +207,24 @@ export default function MyClassPage() {
           )}
         </Card>
       </div>
+
+      {/* Class Timetable */}
+      {classInfo?.class_id && student?.school_code && (
+        <Card>
+          <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
+            <Calendar size={20} />
+            Class Timetable
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Weekly schedule for {classInfo.class}-{classInfo.section}
+          </p>
+          <TimetableView
+            schoolCode={String(student.school_code)}
+            classId={classInfo.class_id}
+            className="border-0 p-0"
+          />
+        </Card>
+      )}
 
       {/* Classmates */}
       <Card>

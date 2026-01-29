@@ -22,8 +22,9 @@ function getStorageKey(prefix?: string): string {
  * Updates the last activity timestamp in localStorage.
  * Use the same prefix as the hook so teacher/admin timers don't cross-reset.
  * Throttled to prevent rapid resets from background API calls.
+ * @param force - when true (e.g. from click/keydown), always update so session stays alive
  */
-export function updateActivity(storageKeyPrefix?: string): void {
+export function updateActivity(storageKeyPrefix?: string, force?: boolean): void {
   if (typeof window === 'undefined') return;
   const key = getStorageKey(storageKeyPrefix);
 
@@ -31,6 +32,11 @@ export function updateActivity(storageKeyPrefix?: string): void {
   const now = Date.now();
 
   if (lastActivity === null) {
+    localStorage.setItem(key, now.toString());
+    return;
+  }
+
+  if (force) {
     localStorage.setItem(key, now.toString());
     return;
   }
@@ -66,19 +72,32 @@ export function useSessionTimeout({
 }: UseSessionTimeoutOptions = {}) {
   const router = useRouter();
   const key = getStorageKey(storageKeyPrefix);
+  const sessionLimitMs = timeoutMinutes * 60 * 1000;
+
+  // Initialize timeRemaining from actual remaining time in localStorage so the timer
+  // never "resets" to 20:00 on remount (e.g. navigation or Strict Mode).
+  const [timeRemaining, setTimeRemaining] = useState(() => {
+    if (typeof window === 'undefined') return timeoutMinutes * 60;
+    const last = getLastActivity(key);
+    if (!last) return timeoutMinutes * 60;
+    const elapsed = Date.now() - last;
+    const remaining = sessionLimitMs - elapsed;
+    return Math.max(0, Math.floor(remaining / 1000));
+  });
+
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const checkSessionRef = useRef<(() => void) | null>(null);
   const resetTimerRef = useRef<(() => void) | null>(null);
+  const loggingOutRef = useRef(false);
   const [showWarning, setShowWarning] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(timeoutMinutes * 60);
-  
-  const sessionLimitMs = timeoutMinutes * 60 * 1000;
   const warningThresholdSeconds = Math.max(
     1,
     (timeoutMinutes - warningMinutes) * 60 || 60 // Fallback to 60s if values are equal or misconfigured
   );
 
   const handleLogout = useCallback(async () => {
+    if (loggingOutRef.current) return;
+    loggingOutRef.current = true;
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -98,7 +117,14 @@ export function useSessionTimeout({
     setShowWarning(false);
   }, [storageKeyPrefix]);
 
+  // Reset timer on direct user interaction (always update, no throttle) so session stays alive
+  const resetTimerImmediate = useCallback(() => {
+    updateActivity(storageKeyPrefix, true);
+    setShowWarning(false);
+  }, [storageKeyPrefix]);
+
   const checkSession = useCallback(() => {
+    if (loggingOutRef.current) return;
     const lastActivity = getLastActivity(key);
     if (!lastActivity) {
       updateActivity(storageKeyPrefix);
@@ -121,7 +147,7 @@ export function useSessionTimeout({
   }, [sessionLimitMs, handleLogout, timeoutMinutes, key, storageKeyPrefix]);
 
   checkSessionRef.current = checkSession;
-  resetTimerRef.current = resetTimer;
+  resetTimerRef.current = resetTimerImmediate;
 
   useEffect(() => {
     // Only set last activity when none exists – never overwrite on refresh so the timer continues correctly
@@ -133,45 +159,56 @@ export function useSessionTimeout({
     }
 
     // Check session status every second
-    // Use ref to access latest checkSession without re-running effect
     const checkSessionWrapper = () => {
       if (checkSessionRef.current) {
         checkSessionRef.current();
       }
     };
-    
     checkSessionWrapper(); // Initial check
     intervalRef.current = setInterval(checkSessionWrapper, 1000);
 
-    // Track basic user activity: click and keydown only
-    const handleClick = () => {
-      markUserInteraction(); // Mark for API interceptor
-      if (resetTimerRef.current) {
-        resetTimerRef.current();
+    // Direct interaction: always reset timer (no throttle) so session stays alive
+    const onActivity = () => {
+      markUserInteraction();
+      if (resetTimerRef.current) resetTimerRef.current();
+    };
+
+    // Throttled activity (scroll/mousemove): reset via updateActivity (5s throttle) so reading the page keeps session alive
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+    let mouseTimeout: ReturnType<typeof setTimeout> | null = null;
+    const throttleMs = 3000; // Update at most every 3s for scroll/mouse
+    const onScroll = () => {
+      if (!scrollTimeout) {
+        updateActivity(storageKeyPrefix);
+        scrollTimeout = setTimeout(() => { scrollTimeout = null; }, throttleMs);
+      }
+    };
+    const onMouseMove = () => {
+      if (!mouseTimeout) {
+        updateActivity(storageKeyPrefix);
+        mouseTimeout = setTimeout(() => { mouseTimeout = null; }, throttleMs);
       }
     };
 
-    const handleKeydown = () => {
-      markUserInteraction(); // Mark for API interceptor
-      if (resetTimerRef.current) {
-        resetTimerRef.current();
-      }
-    };
+    window.addEventListener('click', onActivity, { passive: true });
+    window.addEventListener('keydown', onActivity, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('mousemove', onMouseMove, { passive: true });
 
-    window.addEventListener('click', handleClick, { passive: true });
-    window.addEventListener('keydown', handleKeydown, { passive: true });
-
-    // Cleanup
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      window.removeEventListener('click', handleClick);
-      window.removeEventListener('keydown', handleKeydown);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      if (mouseTimeout) clearTimeout(mouseTimeout);
+      window.removeEventListener('click', onActivity);
+      window.removeEventListener('keydown', onActivity);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('mousemove', onMouseMove);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - we only want this to run once on mount
+  }, []); // Empty deps - run once on mount
 
   return {
     showWarning,

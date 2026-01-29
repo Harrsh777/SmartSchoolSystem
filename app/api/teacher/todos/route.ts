@@ -36,9 +36,14 @@ export async function GET(request: NextRequest) {
       .eq('school_code', schoolCode)
       .eq('teacher_id', teacherId);
 
-    // Apply filters
+    // Apply filters (status can be comma-separated e.g. "pending,in_progress")
     if (status) {
-      query = query.eq('status', status);
+      const statuses = status.split(',').map((s) => s.trim()).filter(Boolean);
+      if (statuses.length > 1) {
+        query = query.in('status', statuses);
+      } else if (statuses.length === 1) {
+        query = query.eq('status', statuses[0]);
+      }
     }
     if (priority) {
       query = query.eq('priority', priority);
@@ -126,10 +131,10 @@ export async function POST(request: NextRequest) {
       created_by: teacher_id, // Created by the teacher themselves
     };
 
-    // Add optional fields
+    // Add optional fields (default status to pending so GET with status filter finds new tasks)
     if (description) todoRecord.description = description;
     if (priority) todoRecord.priority = priority;
-    if (status) todoRecord.status = status;
+    todoRecord.status = status || 'pending';
     if (due_date) todoRecord.due_date = due_date;
     if (due_time) todoRecord.due_time = due_time;
     if (category) todoRecord.category = category;

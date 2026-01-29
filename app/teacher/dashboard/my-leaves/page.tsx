@@ -13,8 +13,24 @@ import {
   Clock,
   Search,
   X,
-  Loader2
+  Loader2,
+  Layers
 } from 'lucide-react';
+
+interface LeaveType {
+  id: string;
+  abbreviation: string;
+  name: string;
+  max_days: number | null;
+}
+
+interface LeaveBalance {
+  abbreviation: string;
+  name: string;
+  max_days: number | null;
+  used_days: number;
+  remaining_days: number | null; // null = unlimited
+}
 
 interface LeaveRequest {
   id: string;
@@ -29,31 +45,66 @@ interface LeaveRequest {
   rejected_reason?: string;
 }
 
+function computeLeaveBalances(leaveTypes: LeaveType[], leaves: LeaveRequest[]): LeaveBalance[] {
+  const approvedByType = new Map<string, number>();
+  for (const leave of leaves) {
+    if (leave.status !== 'approved') continue;
+    const key = leave.leave_type;
+    approvedByType.set(key, (approvedByType.get(key) ?? 0) + (leave.total_days ?? 0));
+  }
+  // Dedupe leave types by abbreviation (same type may exist for different academic years)
+  const typeByAbbr = new Map<string, LeaveType>();
+  for (const lt of leaveTypes) {
+    if (!typeByAbbr.has(lt.abbreviation)) typeByAbbr.set(lt.abbreviation, lt);
+  }
+  return Array.from(typeByAbbr.entries()).map(([abbr, lt]) => {
+    const used_days = approvedByType.get(abbr) ?? 0;
+    const remaining_days = lt.max_days == null ? null : Math.max(0, lt.max_days - used_days);
+    return {
+      abbreviation: lt.abbreviation,
+      name: lt.name,
+      max_days: lt.max_days,
+      used_days,
+      remaining_days,
+    };
+  });
+}
+
 export default function MyLeavesPage() {
   const router = useRouter();
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
+  const leaveBalances = computeLeaveBalances(leaveTypes, leaves);
+
   useEffect(() => {
     const storedTeacher = sessionStorage.getItem('teacher');
     if (storedTeacher) {
       const teacherData: { id: string; school_code: string } = JSON.parse(storedTeacher);
-      fetchLeaves(teacherData);
+      fetchAll(teacherData);
     }
   }, []);
 
-  const fetchLeaves = async (teacherData: { id: string; school_code: string }) => {
+  const fetchAll = async (teacherData: { id: string; school_code: string }) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/leave/requests?school_code=${teacherData.school_code}&staff_id=${teacherData.id}`);
-      const result = await response.json();
+      const [typesRes, requestsRes] = await Promise.all([
+        fetch(`/api/leave/types?school_code=${teacherData.school_code}`),
+        fetch(`/api/leave/requests?school_code=${teacherData.school_code}&staff_id=${teacherData.id}`),
+      ]);
+      const typesResult = await typesRes.json();
+      const requestsResult = await requestsRes.json();
 
-      if (response.ok && result.data) {
-        setLeaves(result.data);
+      if (typesRes.ok && typesResult.data) {
+        setLeaveTypes(typesResult.data);
+      }
+      if (requestsRes.ok && requestsResult.data) {
+        setLeaves(requestsResult.data);
       }
     } catch (err) {
       console.error('Error fetching leaves:', err);
@@ -98,11 +149,10 @@ export default function MyLeavesPage() {
 
       if (response.ok) {
         setSuccess('Leave request withdrawn successfully');
-        // Refresh the leaves list
         const storedTeacher = sessionStorage.getItem('teacher');
         if (storedTeacher) {
           const teacherData: { id: string; school_code: string } = JSON.parse(storedTeacher);
-          fetchLeaves(teacherData);
+          fetchAll(teacherData);
         }
         setTimeout(() => setSuccess(''), 3000);
       } else {
@@ -185,6 +235,50 @@ export default function MyLeavesPage() {
             <XCircle size={20} className="text-red-600" />
             <span className="text-sm font-medium">{error}</span>
           </div>
+        </motion.div>
+      )}
+
+      {/* Remaining Leaves (Balance) */}
+      {leaveBalances.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6"
+        >
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold text-[#1e3a8a] mb-4 flex items-center gap-2">
+              <Layers size={20} />
+              Remaining Leaves
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {leaveBalances.map((bal) => (
+                <div
+                  key={bal.abbreviation}
+                  className="p-4 bg-[#F8FAFC] border border-[#E1E1DB] rounded-lg"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-[#EAF1FF] text-[#2F6FED] border border-[#DBEAFE]">
+                      {bal.abbreviation}
+                    </span>
+                    <span className="font-semibold text-[#0F172A] text-sm">{bal.name}</span>
+                  </div>
+                  <div className="text-sm text-[#64748B] mt-2">
+                    {bal.max_days != null ? (
+                      <>
+                        <span className="font-medium text-[#2F6FED]">{bal.remaining_days ?? 0}</span>
+                        <span> of {bal.max_days} days remaining</span>
+                        {bal.used_days > 0 && (
+                          <span className="block text-xs mt-1">Used: {bal.used_days} days</span>
+                        )}
+                      </>
+                    ) : (
+                      <span>Unlimited (used: {bal.used_days} days)</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
         </motion.div>
       )}
 

@@ -17,6 +17,8 @@ let isInterceptorSetup = false;
 
 // Logout handler (will be set by the layout components)
 let logoutHandler: (() => void) | null = null;
+// Prevent calling logout multiple times (e.g. multiple 401s from in-flight requests)
+let isLoggingOut = false;
 
 // Activity storage prefix (e.g. 'teacher', 'admin') so timer uses same key as layout
 let activityPrefix: string | undefined;
@@ -73,29 +75,31 @@ export function setupApiInterceptor(): void {
       input: RequestInfo | URL,
       init?: RequestInit
     ): Promise<Response> {
-      // Check if this is a user-initiated request
-      // We detect this by checking if there was recent user interaction
-      // (click/keydown events set a flag that expires after 2 seconds)
       const isUserInitiated = checkIfUserInitiated();
-      
-      // Call original fetch
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const isSameOriginApi = typeof url === 'string' && (url.startsWith('/api/') || url.startsWith(window.location.origin + '/api/'));
+
       const response = await originalFetch!(input, init);
 
-      // Check response status
       if (response.status >= 200 && response.status < 300) {
         if (isUserInitiated) {
           updateActivity(activityPrefix);
         }
-      } else if (response.status === 401) {
-        // Unauthorized - session expired on server
-        if (logoutHandler) {
-          logoutHandler();
+      } else if (response.status === 401 && isSameOriginApi) {
+        // Only logout on 401 from our own API (not third-party) to avoid accidental logouts
+        if (logoutHandler && !isLoggingOut) {
+          isLoggingOut = true;
+          try {
+            logoutHandler();
+          } finally {
+            isLoggingOut = false;
+          }
         }
       }
 
       return response;
     };
-    
+
     isInterceptorSetup = true;
   }
 }

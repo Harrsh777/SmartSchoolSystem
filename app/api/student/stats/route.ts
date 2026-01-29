@@ -33,30 +33,30 @@ export async function GET(request: NextRequest) {
 
     const { data: currentAttendance } = await supabase
       .from('student_attendance')
-      .select('status, date')
+      .select('status, attendance_date')
       .eq('school_code', schoolCode)
       .eq('student_id', studentId)
-      .gte('date', startDate)
-      .lte('date', endDate);
+      .gte('attendance_date', startDate)
+      .lte('attendance_date', endDate);
 
     const { data: prevAttendance } = await supabase
       .from('student_attendance')
-      .select('status, date')
+      .select('status, attendance_date')
       .eq('school_code', schoolCode)
       .eq('student_id', studentId)
-      .gte('date', prevStartDate)
-      .lte('date', prevEndDate);
+      .gte('attendance_date', prevStartDate)
+      .lte('attendance_date', prevEndDate);
 
-    const currentPresent = currentAttendance?.filter(a => a.status === 'present' || a.status === 'half_day').length || 0;
+    const currentPresent = currentAttendance?.filter(a => a.status === 'present' || a.status === 'half_day' || a.status === 'late').length || 0;
     const currentTotal = currentAttendance?.length || 0;
-    const prevPresent = prevAttendance?.filter(a => a.status === 'present' || a.status === 'half_day').length || 0;
+    const prevPresent = prevAttendance?.filter(a => a.status === 'present' || a.status === 'half_day' || a.status === 'late').length || 0;
     const prevTotal = prevAttendance?.length || 0;
     
     const currentPercentage = currentTotal > 0 ? Math.round((currentPresent / currentTotal) * 100) : 0;
     const prevPercentage = prevTotal > 0 ? Math.round((prevPresent / prevTotal) * 100) : 0;
     const attendanceChange = currentPercentage - prevPercentage;
 
-    // Calculate GPA from exam marks
+    // Academic Index: average percentage of marks achieved in examinations
     const { data: marks } = await supabase
       .from('student_subject_marks')
       .select('marks_obtained, max_marks, percentage, grade')
@@ -64,24 +64,25 @@ export async function GET(request: NextRequest) {
       .eq('student_id', studentId)
       .not('marks_obtained', 'is', null);
 
-    let gpa = 0;
+    let examPercentage = 0;
     let gpaRank = 'TOP 5%';
     if (marks && marks.length > 0) {
-      const totalPercentage = marks.reduce((sum, m) => sum + (m.percentage || 0), 0);
-      const avgPercentage = totalPercentage / marks.length;
-      // Convert percentage to GPA (0-4 scale)
-      gpa = parseFloat((avgPercentage / 25).toFixed(2)); // 100% = 4.0 GPA
-      
-      // Calculate rank (simplified - would need class average for real rank)
-      if (avgPercentage >= 90) gpaRank = 'TOP 5%';
-      else if (avgPercentage >= 80) gpaRank = 'TOP 15%';
-      else if (avgPercentage >= 70) gpaRank = 'TOP 25%';
+      const totalPercentage = marks.reduce((sum, m) => {
+        const pct = m.percentage;
+        if (pct != null && !Number.isNaN(Number(pct))) return sum + Number(pct);
+        const obtained = Number(m.marks_obtained) ?? 0;
+        const max = Number(m.max_marks) ?? 0;
+        return sum + (max > 0 ? (obtained / max) * 100 : 0);
+      }, 0);
+      examPercentage = totalPercentage / marks.length;
+
+      if (examPercentage >= 90) gpaRank = 'TOP 5%';
+      else if (examPercentage >= 80) gpaRank = 'TOP 15%';
+      else if (examPercentage >= 70) gpaRank = 'TOP 25%';
       else gpaRank = 'TOP 50%';
     }
 
-    // Merit points (could be calculated from achievements, awards, etc.)
-    // For now, using a simple calculation based on attendance and GPA
-    const meritPoints = Math.round((currentPercentage * 0.3) + (gpa * 10));
+    const meritPoints = Math.round((currentPercentage * 0.3) + (examPercentage * 0.1));
 
     // Progress (completed exams / total exams for current term)
     const currentYear = now.getFullYear();
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
       data: {
         attendance: currentPercentage,
         attendance_change: attendanceChange,
-        gpa: gpa.toFixed(2),
+        gpa: examPercentage.toFixed(2),
         gpa_rank: gpaRank,
         merit_points: meritPoints,
         progress_current: progressCurrent,

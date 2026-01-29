@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     const subjectIds = [...new Set(marks.map((m) => m.subject_id).filter(Boolean))] as string[];
     const examIds = [...new Set(marks.map((m) => m.exam_id).filter(Boolean))] as string[];
 
-    type ExamRow = { id: string; exam_name?: string | null; name?: string | null; exam_type?: string | null; start_date?: string | null; end_date?: string | null; academic_year?: string | null };
+    type ExamRow = { id: string; exam_name?: string | null; name?: string | null; title?: string | null; exam_type?: string | null; start_date?: string | null; end_date?: string | null; academic_year?: string | null };
     const [subjectsRes, examsRes] = await Promise.all([
       subjectIds.length > 0
         ? supabase.from('subjects').select('id, name, color').in('id', subjectIds)
@@ -52,7 +52,6 @@ export async function GET(request: NextRequest) {
             .from('examinations')
             .select('id, exam_name, name, exam_type, start_date, end_date, academic_year')
             .in('id', examIds)
-            .eq('school_code', schoolCode)
         : Promise.resolve({ data: [] as ExamRow[], error: null }),
     ]);
 
@@ -60,7 +59,7 @@ export async function GET(request: NextRequest) {
     (subjectsRes.data || []).forEach((s) => subjectMap.set(s.id, { id: s.id, name: s.name, color: s.color ?? null }));
     const examMap = new Map<string, { id: string; exam_name: string; exam_type: string | null; start_date: string | null; end_date: string | null; academic_year: string | null }>();
     (examsRes.data || []).forEach((e: ExamRow) => {
-      const examName = (e.exam_name ?? e.name ?? 'Examination').toString().trim() || 'Examination';
+      const examName = (e.exam_name ?? e.name ?? e.title ?? 'Examination').toString().trim() || 'Examination';
       examMap.set(e.id, {
         id: e.id,
         exam_name: examName,

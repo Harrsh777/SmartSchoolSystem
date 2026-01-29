@@ -66,15 +66,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // /admin (super admin / school admin page) — require school session
+  // /admin — super admin panel (password modal on page) and /admin/login — school admin login (public)
+  // Allow all /admin/* through: super admin uses client-side password (educorerp@123), school admin uses /admin/login
   if (pathname.startsWith('/admin')) {
-    if (pathname === '/admin/login') {
-      return NextResponse.next();
-    }
-    if (!auth || auth.role !== 'school') {
-      const login = new URL('/admin/login', request.url);
-      return NextResponse.redirect(login);
-    }
     return NextResponse.next();
   }
 

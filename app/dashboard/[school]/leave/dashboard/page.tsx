@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
 import { 
   ArrowLeft, 
   CalendarX,
@@ -16,10 +15,10 @@ import {
   User,
   Users,
   FileText,
-  Paperclip,
   RefreshCw,
-  Download,
-  TrendingUp,
+  CalendarCheck,
+  CalendarMinus,
+  Inbox,
 } from 'lucide-react';
 
 interface StaffLeave {
@@ -79,6 +78,14 @@ export default function LeaveDashboardPage({
     studentApproved: 0,
     studentRejected: 0,
   });
+  const [summary, setSummary] = useState<{
+    staff_leave_taken: number;
+    staff_leave_left: number;
+    staff_pending_requests: number;
+    student_leave_taken: number;
+    student_leave_left: number;
+    student_pending_requests: number;
+  } | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -86,7 +93,17 @@ export default function LeaveDashboardPage({
   }, [activeSection, activeTab, schoolCode]);
 
   const fetchData = async () => {
-    await Promise.all([fetchStaffLeaves(), fetchStudentLeaves()]);
+    await Promise.all([fetchSummary(), fetchStaffLeaves(), fetchStudentLeaves()]);
+  };
+
+  const fetchSummary = async () => {
+    try {
+      const res = await fetch(`/api/leave/dashboard-summary?school_code=${schoolCode}`);
+      const json = await res.json();
+      if (res.ok && json.data) setSummary(json.data);
+    } catch (err) {
+      console.error('Error fetching leave summary:', err);
+    }
   };
 
   const handleRefresh = () => {
@@ -370,223 +387,165 @@ export default function LeaveDashboardPage({
     }
   });
 
-  const currentStats = activeSection === 'staff' 
-    ? { pending: stats.staffPending, approved: stats.staffApproved, rejected: stats.staffRejected }
-    : { pending: stats.studentPending, approved: stats.studentApproved, rejected: stats.studentRejected };
+  const currentPending = activeSection === 'staff'
+    ? (summary?.staff_pending_requests ?? stats.staffPending)
+    : (summary?.student_pending_requests ?? stats.studentPending);
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* Header Section */}
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-6xl mx-auto">
+        {/* Header */}
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
+          initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass-card rounded-xl p-6 soft-shadow-md"
+          className="flex flex-wrap items-center justify-between gap-3"
         >
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-xl bg-[#2C3E50] dark:bg-[#4A707A] flex items-center justify-center soft-shadow">
-                <CalendarX className="text-white" size={28} />
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold text-foreground">Leave Dashboard</h1>
-                <p className="text-sm text-muted-foreground mt-1">Manage and approve all leave requests</p>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-md">
+              <CalendarX className="text-white" size={22} />
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
-              >
-                <RefreshCw size={18} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-              <Button
-                variant="outline"
-                className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
-              >
-                <Download size={18} className="mr-2" />
-                Download
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => router.push(`/dashboard/${schoolCode}/leave`)}
-                className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
-              >
-                <ArrowLeft size={18} className="mr-2" />
-                Back
-              </Button>
+            <div>
+              <h1 className="text-lg font-bold text-[#0F172A]">Leave Dashboard</h1>
+              <p className="text-xs text-[#64748B]">Overview and manage leave requests</p>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="rounded-lg border-[#E2E8F0] text-[#475569] hover:bg-[#F1F5F9]"
+            >
+              <RefreshCw size={16} className={`mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(`/dashboard/${schoolCode}/leave`)}
+              className="rounded-lg border-[#E2E8F0] text-[#475569] hover:bg-[#F1F5F9]"
+            >
+              <ArrowLeft size={16} className="mr-1.5" />
+              Back
+            </Button>
           </div>
         </motion.div>
 
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Staff/Student Pending */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            whileHover={{ scale: 1.02, y: -2 }}
-          >
-            <Card className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-yellow-200/30 to-amber-200/30 rounded-full -mr-16 -mt-16 blur-xl" />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg">
-                    <Clock className="text-white" size={24} />
-                  </div>
-                  <TrendingUp className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
-                </div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  {activeSection === 'staff' ? 'Staff' : 'Student'} Pending
-                </p>
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
-                >
-                  {currentStats.pending}
-                </motion.p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Awaiting approval</p>
-              </div>
-            </Card>
-          </motion.div>
+        {/* Summary: 6 compact cards — Staff row + Student row */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3"
+        >
+          {/* Staff */}
+          <Card className="rounded-xl p-4 border border-[#E2E8F0] bg-white shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <User size={16} className="text-[#64748B]" />
+              <span className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Staff</span>
+            </div>
+            <p className="text-2xl font-bold text-[#1e3a8a]">{summary?.staff_leave_taken ?? '—'}</p>
+            <p className="text-xs text-[#94A3B8] mt-0.5">Taken (days)</p>
+          </Card>
+          <Card className="rounded-xl p-4 border border-[#E2E8F0] bg-white shadow-sm">
+            <p className="text-2xl font-bold text-emerald-600">{summary?.staff_leave_left ?? '—'}</p>
+            <p className="text-xs text-[#94A3B8] mt-0.5">Left (days)</p>
+          </Card>
+          <Card className="rounded-xl p-4 border border-[#E2E8F0] bg-white shadow-sm">
+            <div className="flex items-center gap-1.5">
+              <Inbox size={16} className="text-amber-500" />
+              <p className="text-2xl font-bold text-amber-600">{summary?.staff_pending_requests ?? '—'}</p>
+            </div>
+            <p className="text-xs text-[#94A3B8] mt-0.5">Pending requests</p>
+          </Card>
+          {/* Student */}
+          <Card className="rounded-xl p-4 border border-[#E2E8F0] bg-white shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <Users size={16} className="text-[#64748B]" />
+              <span className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">Student</span>
+            </div>
+            <p className="text-2xl font-bold text-[#1e3a8a]">{summary?.student_leave_taken ?? '—'}</p>
+            <p className="text-xs text-[#94A3B8] mt-0.5">Taken (days)</p>
+          </Card>
+          <Card className="rounded-xl p-4 border border-[#E2E8F0] bg-white shadow-sm">
+            <p className="text-2xl font-bold text-teal-600">{summary?.student_leave_left ?? '—'}</p>
+            <p className="text-xs text-[#94A3B8] mt-0.5">Left (days)</p>
+          </Card>
+          <Card className="rounded-xl p-4 border border-[#E2E8F0] bg-white shadow-sm">
+            <div className="flex items-center gap-1.5">
+              <Inbox size={16} className="text-amber-500" />
+              <p className="text-2xl font-bold text-amber-600">{summary?.student_pending_requests ?? '—'}</p>
+            </div>
+            <p className="text-xs text-[#94A3B8] mt-0.5">Pending requests</p>
+          </Card>
+        </motion.div>
 
-          {/* Staff/Student Approved */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            whileHover={{ scale: 1.02, y: -2 }}
-          >
-            <Card className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-200/30 to-emerald-200/30 rounded-full -mr-16 -mt-16 blur-xl" />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
-                    <CheckCircle2 className="text-white" size={24} />
-                  </div>
-                  <TrendingUp className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
-                </div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  {activeSection === 'staff' ? 'Staff' : 'Student'} Approved
-                </p>
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
-                >
-                  {currentStats.approved}
-                </motion.p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Completed requests</p>
-              </div>
-            </Card>
-          </motion.div>
-
-          {/* Staff/Student Rejected */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            whileHover={{ scale: 1.02, y: -2 }}
-          >
-            <Card className="group relative bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/60 dark:border-gray-700/50 overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-200/30 to-rose-200/30 rounded-full -mr-16 -mt-16 blur-xl" />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg">
-                    <XCircle className="text-white" size={24} />
-                  </div>
-                  <TrendingUp className="text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
-                </div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  {activeSection === 'staff' ? 'Staff' : 'Student'} Rejected
-                </p>
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-4xl font-bold bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] bg-clip-text text-transparent dark:text-white"
-                >
-                  {currentStats.rejected}
-                </motion.p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Declined requests</p>
-              </div>
-            </Card>
-          </motion.div>
-        </div>
-
-        {/* Main Content Card */}
-        <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 overflow-hidden p-0">
-          {/* Section Tabs */}
-          <div className="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+        {/* Main: Requests & History */}
+        <Card className="rounded-2xl border border-[#E2E8F0] bg-white shadow-sm overflow-hidden">
+          {/* Tabs: Staff | Student, then Pending | History */}
+          <div className="flex border-b border-[#E2E8F0]">
             <button
               onClick={() => setActiveSection('staff')}
-              className={`flex-1 px-6 py-4 font-semibold text-sm transition-all flex items-center justify-center gap-3 ${
+              className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
                 activeSection === 'staff'
-                  ? 'bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white shadow-lg'
-                  : 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  ? 'bg-[#1e3a8a] text-white border-b-2 border-[#1e3a8a]'
+                  : 'bg-[#F8FAFC] text-[#64748B] hover:bg-[#F1F5F9]'
               }`}
             >
-              <User size={20} />
-              STAFF LEAVE
+              <User size={16} />
+              Staff
             </button>
             <button
               onClick={() => setActiveSection('student')}
-              className={`flex-1 px-6 py-4 font-semibold text-sm transition-all flex items-center justify-center gap-3 ${
+              className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
                 activeSection === 'student'
-                  ? 'bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white shadow-lg'
-                  : 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  ? 'bg-[#1e3a8a] text-white border-b-2 border-[#1e3a8a]'
+                  : 'bg-[#F8FAFC] text-[#64748B] hover:bg-[#F1F5F9]'
               }`}
             >
-              <Users size={20} />
-              STUDENT LEAVE
+              <Users size={16} />
+              Student
             </button>
           </div>
-
-          {/* Request/History Tabs */}
-          <div className="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b]">
+          <div className="flex border-b border-[#E2E8F0] bg-white">
             <button
               onClick={() => setActiveTab('requests')}
-              className={`flex-1 px-6 py-3.5 font-semibold text-sm transition-all flex items-center justify-center gap-2 ${
+              className={`flex-1 px-4 py-2.5 text-sm font-medium flex items-center justify-center gap-2 ${
                 activeTab === 'requests'
-                  ? 'bg-[#5A7A95] text-white border-b-2 border-[#6B9BB8] shadow-sm'
-                  : 'bg-white dark:bg-[#1e293b] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  ? 'text-[#1e3a8a] border-b-2 border-[#1e3a8a] bg-[#EFF6FF]'
+                  : 'text-[#64748B] hover:bg-[#F8FAFC]'
               }`}
             >
-              <Clock size={18} />
-              LEAVE REQUESTS
-              {activeTab === 'requests' && (
-                <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs font-bold">
-                  {currentStats.pending}
-                </span>
-              )}
+              <Clock size={14} />
+              Pending
+              <span className="ml-1 px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 text-xs font-semibold">
+                {currentPending}
+              </span>
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`flex-1 px-6 py-3.5 font-semibold text-sm transition-all flex items-center justify-center gap-2 ${
+              className={`flex-1 px-4 py-2.5 text-sm font-medium flex items-center justify-center gap-2 ${
                 activeTab === 'history'
-                  ? 'bg-[#5A7A95] text-white border-b-2 border-[#6B9BB8] shadow-sm'
-                  : 'bg-white dark:bg-[#1e293b] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  ? 'text-[#1e3a8a] border-b-2 border-[#1e3a8a] bg-[#EFF6FF]'
+                  : 'text-[#64748B] hover:bg-[#F8FAFC]'
               }`}
             >
-              <FileText size={18} />
-              LEAVE HISTORY
+              <FileText size={14} />
+              History
             </button>
           </div>
 
-          <div className="p-6">
-            {/* Search Bar */}
-            <div className="mb-6">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#5A7A95] dark:text-[#6B9BB8]" size={20} />
-                <Input
+          <div className="p-4 sm:p-5">
+            <div className="mb-4">
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" size={18} />
+                <input
+                  type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={`Search by ${activeSection === 'staff' ? 'staff name, ID, or leave type' : 'student name, admission no, or leave title'}...`}
-                  className="pl-12 pr-4 py-3 border-2 border-[#5A7A95]/20 rounded-xl focus:border-[#5A7A95] focus:ring-[#5A7A95] dark:border-[#6B9BB8]/20 dark:focus:border-[#6B9BB8]"
+                  placeholder={activeSection === 'staff' ? 'Search staff, leave type…' : 'Search student, leave title…'}
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#3B82F6]/30 focus:border-[#3B82F6]"
                 />
               </div>
             </div>
@@ -595,110 +554,99 @@ export default function LeaveDashboardPage({
             {activeSection === 'staff' && (
               <div className="overflow-x-auto">
                 {loading ? (
-                  <div className="text-center py-12">
-                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95]/20 border-t-[#5A7A95] mx-auto mb-4"></div>
-                    <p className="text-gray-600 dark:text-gray-400 font-medium">Loading leave requests...</p>
+                  <div className="text-center py-10">
+                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-[#E2E8F0] border-t-[#1e3a8a] mx-auto mb-3" />
+                    <p className="text-sm text-[#64748B]">Loading…</p>
                   </div>
                 ) : filteredStaffLeaves.length === 0 ? (
-                  <div className="text-center py-16">
-                    <div className="w-20 h-20 rounded-full bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/10 flex items-center justify-center mx-auto mb-4">
-                      <CalendarX className="text-[#5A7A95] dark:text-[#6B9BB8]" size={40} />
-                    </div>
-                    <p className="text-gray-900 dark:text-white font-semibold text-lg">
-                      {activeTab === 'requests' ? 'No pending leave requests' : 'No leave history found'}
-                    </p>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm mt-2">
-                      {activeTab === 'requests' 
-                        ? 'All staff leave requests have been processed' 
-                        : 'No historical leave records available'}
+                  <div className="text-center py-12 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <CalendarX className="mx-auto text-[#94A3B8]" size={36} />
+                    <p className="text-sm font-medium text-[#475569] mt-2">
+                      {activeTab === 'requests' ? 'No pending staff requests' : 'No staff leave history'}
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-                    <table className="w-full">
+                  <div className="overflow-x-auto rounded-xl border border-[#E2E8F0]">
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white">
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Name</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Leave Type</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Applied Date</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Request Dates</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Comment</th>
+                        <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569]">Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569]">Leave</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569] hidden sm:table-cell">Applied</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569]">Dates</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569] max-w-[120px] truncate hidden md:table-cell">Comment</th>
                           {activeTab === 'history' && (
-                            <th className="px-6 py-4 text-center text-xs font-bold uppercase tracking-wider">Status</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-[#475569]">Status</th>
                           )}
                           {activeTab === 'requests' && (
-                            <th className="px-6 py-4 text-center text-xs font-bold uppercase tracking-wider">Action</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-[#475569] w-28">Action</th>
                           )}
                         </tr>
                       </thead>
-                      <tbody className="bg-white dark:bg-[#1e293b] divide-y divide-gray-200 dark:divide-gray-700">
+                      <tbody className="bg-white divide-y divide-[#E2E8F0]">
                         {filteredStaffLeaves.map((leave, index) => (
                           <motion.tr
                             key={leave.id}
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.03 }}
-                            className="hover:bg-[#5A7A95]/5 dark:hover:bg-[#6B9BB8]/10 transition-colors"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: Math.min(index * 0.02, 0.15) }}
+                            className="hover:bg-[#F8FAFC] transition-colors"
                           >
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] flex items-center justify-center text-white font-bold shadow-md">
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-[#E0E7FF] flex items-center justify-center text-[#3730A3] font-semibold text-sm">
                                   {leave.staff_name.charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{leave.staff_name}</p>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{leave.staff_id}</p>
+                                  <p className="font-medium text-[#0F172A]">{leave.staff_name}</p>
+                                  <p className="text-xs text-[#94A3B8] font-mono">{leave.staff_id}</p>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#5A7A95]/10 text-[#5A7A95] dark:bg-[#6B9BB8]/20 dark:text-[#6B9BB8] border border-[#5A7A95]/20 dark:border-[#6B9BB8]/30">
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-[#E0E7FF] text-[#3730A3]">
                                 {leave.leave_type}
                               </span>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                            <td className="px-4 py-3 whitespace-nowrap text-[#64748B] hidden sm:table-cell">
                               {leave.leave_applied_date.includes('T') 
                                 ? formatDateTime(leave.leave_applied_date)
                                 : formatDate(leave.leave_applied_date)
                               }
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900 dark:text-white font-medium">
-                                {formatDate(leave.leave_start_date)} - {formatDate(leave.leave_end_date)}
-                              </div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                ({leave.total_days} {leave.total_days === 1 ? 'Day' : 'Days'})
-                              </div>
+                            <td className="px-4 py-3 whitespace-nowrap text-[#475569]">
+                              {formatDate(leave.leave_start_date)} – {formatDate(leave.leave_end_date)}
+                              <span className="text-[#94A3B8] ml-1">({leave.total_days}d)</span>
                             </td>
-                            <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 max-w-xs truncate">
-                              {leave.comment || leave.reason || '-'}
+                            <td className="px-4 py-3 text-[#64748B] max-w-[120px] truncate hidden md:table-cell">
+                              {leave.comment || leave.reason || '—'}
                             </td>
                             {activeTab === 'history' && (
-                              <td className="px-6 py-4 whitespace-nowrap text-center">
-                                <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold border ${getStatusColor(leave.status)}`}>
-                                  {leave.status === 'approved' && <CheckCircle2 size={14} className="mr-1.5" />}
-                                  {leave.status === 'rejected' && <XCircle size={14} className="mr-1.5" />}
-                                  {leave.status === 'pending' && <Clock size={14} className="mr-1.5" />}
+                              <td className="px-4 py-3 whitespace-nowrap text-center">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(leave.status)}`}>
+                                  {leave.status === 'approved' && <CheckCircle2 size={12} className="mr-1" />}
+                                  {leave.status === 'rejected' && <XCircle size={12} className="mr-1" />}
+                                  {leave.status === 'pending' && <Clock size={12} className="mr-1" />}
                                   {leave.status.charAt(0).toUpperCase() + leave.status.slice(1)}
                                 </span>
                               </td>
                             )}
                             {activeTab === 'requests' && (
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center justify-center gap-2">
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1.5">
                                   <Button
                                     onClick={() => handleRejectStaff(leave.id)}
-                                    className="bg-red-600 hover:bg-red-700 text-white shadow-md text-xs px-4 py-2"
+                                    className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg"
                                   >
-                                    <XCircle size={14} className="mr-1.5" />
-                                    REJECT
+                                    <XCircle size={12} className="mr-1" />
+                                    Reject
                                   </Button>
                                   <Button
                                     onClick={() => handleApproveStaff(leave.id)}
-                                    className="bg-green-600 hover:bg-green-700 text-white shadow-md text-xs px-4 py-2"
+                                    className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg"
                                   >
-                                    <CheckCircle2 size={14} className="mr-1.5" />
-                                    APPROVE
+                                    <CheckCircle2 size={12} className="mr-1" />
+                                    Approve
                                   </Button>
                                 </div>
                               </td>
@@ -716,140 +664,106 @@ export default function LeaveDashboardPage({
             {activeSection === 'student' && (
               <div className="overflow-x-auto">
                 {loading ? (
-                  <div className="text-center py-12">
-                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95]/20 border-t-[#5A7A95] mx-auto mb-4"></div>
-                    <p className="text-gray-600 dark:text-gray-400 font-medium">Loading leave requests...</p>
+                  <div className="text-center py-10">
+                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-[#E2E8F0] border-t-[#1e3a8a] mx-auto mb-3" />
+                    <p className="text-sm text-[#64748B]">Loading…</p>
                   </div>
                 ) : filteredStudentLeaves.length === 0 ? (
-                  <div className="text-center py-16">
-                    <div className="w-20 h-20 rounded-full bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/10 flex items-center justify-center mx-auto mb-4">
-                      <CalendarX className="text-[#5A7A95] dark:text-[#6B9BB8]" size={40} />
-                    </div>
-                    <p className="text-gray-900 dark:text-white font-semibold text-lg">
-                      {activeTab === 'requests' ? 'No pending leave requests' : 'No leave history found'}
-                    </p>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm mt-2">
-                      {activeTab === 'requests' 
-                        ? 'All student leave requests have been processed' 
-                        : 'No historical leave records available'}
+                  <div className="text-center py-12 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <CalendarX className="mx-auto text-[#94A3B8]" size={36} />
+                    <p className="text-sm font-medium text-[#475569] mt-2">
+                      {activeTab === 'requests' ? 'No pending student requests' : 'No student leave history'}
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-                    <table className="w-full">
+                  <div className="overflow-x-auto rounded-xl border border-[#E2E8F0]">
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white">
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Student Name</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Class</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Applied Date</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Leave Title</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Request Dates</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider">Reason</th>
-                          <th className="px-6 py-4 text-center text-xs font-bold uppercase tracking-wider">Absent Form</th>
-                          <th className="px-6 py-4 text-center text-xs font-bold uppercase tracking-wider">Attachment</th>
+                        <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569]">Student</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569]">Class</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569] hidden sm:table-cell">Applied</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569]">Title</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569]">Dates</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[#475569] max-w-[100px] truncate hidden md:table-cell">Reason</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-[#475569] w-16">Form</th>
                           {activeTab === 'history' && (
-                            <th className="px-6 py-4 text-center text-xs font-bold uppercase tracking-wider">Status</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-[#475569]">Status</th>
                           )}
                           {activeTab === 'requests' && (
-                            <th className="px-6 py-4 text-center text-xs font-bold uppercase tracking-wider">Action</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-[#475569] w-28">Action</th>
                           )}
                         </tr>
                       </thead>
-                      <tbody className="bg-white dark:bg-[#1e293b] divide-y divide-gray-200 dark:divide-gray-700">
+                      <tbody className="bg-white divide-y divide-[#E2E8F0]">
                         {filteredStudentLeaves.map((leave, index) => (
                           <motion.tr
                             key={leave.id}
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.03 }}
-                            className="hover:bg-[#5A7A95]/5 dark:hover:bg-[#6B9BB8]/10 transition-colors"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: Math.min(index * 0.02, 0.15) }}
+                            className="hover:bg-[#F8FAFC] transition-colors"
                           >
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] flex items-center justify-center text-white font-bold shadow-md">
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-[#E0E7FF] flex items-center justify-center text-[#3730A3] font-semibold text-sm">
                                   {leave.student_name.charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{leave.student_name}</p>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{leave.admission_no}</p>
+                                  <p className="font-medium text-[#0F172A]">{leave.student_name}</p>
+                                  <p className="text-xs text-[#94A3B8] font-mono">{leave.admission_no}</p>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#5A7A95]/10 text-[#5A7A95] dark:bg-[#6B9BB8]/20 dark:text-[#6B9BB8] border border-[#5A7A95]/20 dark:border-[#6B9BB8]/30">
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-[#E0E7FF] text-[#3730A3]">
                                 {leave.class} {leave.section}
                               </span>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                              {leave.leave_applied_date.includes('T') 
-                                ? formatDateTime(leave.leave_applied_date)
-                                : formatDate(leave.leave_applied_date)
-                              }
+                            <td className="px-4 py-3 whitespace-nowrap text-[#64748B] hidden sm:table-cell">
+                              {leave.leave_applied_date.includes('T') ? formatDateTime(leave.leave_applied_date) : formatDate(leave.leave_applied_date)}
                             </td>
-                            <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{leave.leave_title}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900 dark:text-white font-medium">
-                                {formatDate(leave.leave_start_date)} - {formatDate(leave.leave_end_date)}
-                              </div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                ({leave.total_days} {leave.total_days === 1 ? 'Day' : 'Days'})
-                              </div>
+                            <td className="px-4 py-3 text-[#0F172A] font-medium">{leave.leave_title}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-[#475569]">
+                              {formatDate(leave.leave_start_date)} – {formatDate(leave.leave_end_date)}
+                              <span className="text-[#94A3B8] ml-1">({leave.total_days}d)</span>
                             </td>
-                            <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 max-w-xs truncate">
-                              {leave.reason || '-'}
+                            <td className="px-4 py-3 text-[#64748B] max-w-[100px] truncate hidden md:table-cell">
+                              {leave.reason || '—'}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center mx-auto shadow-sm ${
-                                leave.absent_form_submitted 
-                                  ? 'bg-green-500 border-green-500' 
-                                  : 'bg-white dark:bg-[#1e293b] border-yellow-500'
-                              }`}>
-                                {leave.absent_form_submitted && (
-                                  <CheckCircle2 size={16} className="text-white" />
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                              {leave.attachment ? (
-                                <a
-                                  href={leave.attachment}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center justify-center w-10 h-10 text-[#5A7A95] dark:text-[#6B9BB8] hover:bg-[#5A7A95]/10 dark:hover:bg-[#6B9BB8]/10 rounded-lg transition-colors shadow-sm border border-[#5A7A95]/20 dark:border-[#6B9BB8]/30"
-                                  title="View attachment"
-                                >
-                                  <Paperclip size={18} />
-                                </a>
+                            <td className="px-4 py-3 whitespace-nowrap text-center">
+                              {leave.absent_form_submitted ? (
+                                <CheckCircle2 size={16} className="text-green-500 mx-auto" />
                               ) : (
-                                <span className="text-gray-400">-</span>
+                                <span className="text-[#94A3B8]">—</span>
                               )}
                             </td>
                             {activeTab === 'history' && (
-                              <td className="px-6 py-4 whitespace-nowrap text-center">
-                                <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold border ${getStatusColor(leave.status)}`}>
-                                  {leave.status === 'approved' && <CheckCircle2 size={14} className="mr-1.5" />}
-                                  {leave.status === 'rejected' && <XCircle size={14} className="mr-1.5" />}
-                                  {leave.status === 'pending' && <Clock size={14} className="mr-1.5" />}
+                              <td className="px-4 py-3 whitespace-nowrap text-center">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(leave.status)}`}>
+                                  {leave.status === 'approved' && <CheckCircle2 size={12} className="mr-1" />}
+                                  {leave.status === 'rejected' && <XCircle size={12} className="mr-1" />}
+                                  {leave.status === 'pending' && <Clock size={12} className="mr-1" />}
                                   {leave.status.charAt(0).toUpperCase() + leave.status.slice(1)}
                                 </span>
                               </td>
                             )}
                             {activeTab === 'requests' && (
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex flex-col items-center gap-2">
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1.5">
                                   <Button
                                     onClick={() => handleApproveStudent(leave.id)}
-                                    className="w-full bg-green-600 hover:bg-green-700 text-white shadow-md text-xs px-4 py-2"
+                                    className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg"
                                   >
-                                    <CheckCircle2 size={14} className="mr-1.5" />
-                                    APPROVE
+                                    <CheckCircle2 size={12} className="mr-1" />
+                                    Approve
                                   </Button>
                                   <Button
                                     onClick={() => handleRejectStudent(leave.id)}
-                                    className="w-full bg-red-600 hover:bg-red-700 text-white shadow-md text-xs px-4 py-2"
+                                    className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg"
                                   >
-                                    <XCircle size={14} className="mr-1.5" />
-                                    REJECT
+                                    <XCircle size={12} className="mr-1" />
+                                    Reject
                                   </Button>
                                 </div>
                               </td>

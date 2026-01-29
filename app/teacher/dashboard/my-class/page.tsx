@@ -4,9 +4,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
-import { Users, GraduationCap, CalendarDays, UserCheck, ChevronDown } from 'lucide-react';
+import { Users, GraduationCap, CalendarDays, UserCheck, ChevronDown, Calendar } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
 import { getString } from '@/lib/type-utils';
+import TimetableView from '@/components/timetable/TimetableView';
 
 interface TeacherClass {
   id: string;
@@ -313,6 +314,24 @@ export default function MyClassPage() {
           </div>
         </Card>
       </div>
+
+      {/* Class Timetable */}
+      {classInfo?.id && schoolCode && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+            <Calendar className="text-emerald-600" size={20} />
+            Class Timetable
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Weekly schedule for {classInfo.class}{classInfo.section ? ` - ${classInfo.section}` : ''}
+          </p>
+          <TimetableView
+            schoolCode={schoolCode}
+            classId={classInfo.id}
+            className="border-0 p-0"
+          />
+        </Card>
+      )}
 
       {/* Students Table */}
       <Card className="p-6">

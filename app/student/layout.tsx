@@ -34,7 +34,7 @@ import Button from '@/components/ui/Button';
 import type { Student, AcceptedSchool } from '@/lib/supabase';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
-import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
+import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler, setActivityPrefix } from '@/lib/api-interceptor';
 
 interface StudentLayoutProps {
   children: React.ReactNode;
@@ -100,23 +100,21 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
   const [loading, setLoading] = useState(true);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set(['Academics'])); // Default: Academics expanded
 
-  // Session timeout (20 minutes)
+  // Session timeout (20 minutes) – uses lastActivity_student so refresh/navigation doesn't reset the timer
   const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
     timeoutMinutes: 20,
     warningMinutes: 19,
-    loginPath: '/login',
+    loginPath: '/student/login',
+    storageKeyPrefix: 'student',
   });
 
-  // Setup API interceptor for session management
+  // Setup API interceptor for session management (same prefix as useSessionTimeout)
   useEffect(() => {
-    // Set logout handler for API interceptor
+    setActivityPrefix('student');
     setLogoutHandler(handleLogout);
-    
-    // Setup fetch interceptor
     setupApiInterceptor();
-
-    // Cleanup on unmount
     return () => {
+      setActivityPrefix(undefined);
       removeApiInterceptor();
     };
   }, [handleLogout]);

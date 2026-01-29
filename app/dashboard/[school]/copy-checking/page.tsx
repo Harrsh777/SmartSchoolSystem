@@ -1,7 +1,7 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -57,12 +57,9 @@ interface AcademicYear {
   is_current: boolean;
 }
 
-export default function CopyCheckingPage({
-  params,
-}: {
-  params: Promise<{ school: string }>;
-}) {
-  const { school: schoolCode } = use(params);
+export default function CopyCheckingPage() {
+  const params = useParams();
+  const schoolCode = (params?.school as string) ?? '';
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

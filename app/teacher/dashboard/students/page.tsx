@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import Input from '@/components/ui/Input';
-import { GraduationCap, Search } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import { GraduationCap, Search, Users, X, ChevronRight } from 'lucide-react';
 import type { Staff, Student } from '@/lib/supabase';
 import { getString } from '@/lib/type-utils';
 
@@ -118,92 +118,155 @@ export default function AllStudentsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center"
+        >
+          <div className="w-14 h-14 rounded-2xl bg-[#1e3a8a]/10 flex items-center justify-center mx-auto mb-4">
+            <GraduationCap className="text-[#1e3a8a]" size={28} />
+          </div>
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-[#1e3a8a]/30 border-t-[#1e3a8a] mx-auto mb-3" />
+          <p className="text-sm font-medium text-gray-600">Loading students...</p>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-6 pb-8 min-h-screen bg-[#F8FAFC]">
+      {/* Header */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
       >
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-blue-100 rounded-lg">
-            <GraduationCap className="text-blue-600" size={24} />
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg">
+            <GraduationCap className="text-white" size={28} />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">All Students</h1>
-            <p className="text-gray-600">View all students in the school</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#0F172A]">All Students</h1>
+            <p className="text-[#64748B] text-sm mt-0.5 flex items-center gap-1.5">
+              <Users size={14} />
+              {filteredStudents.length} {filteredStudents.length === 1 ? 'student' : 'students'} in the school
+            </p>
           </div>
         </div>
       </motion.div>
 
-      <Card>
-        <div className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <Input
-              type="text"
-              placeholder="Search by name, admission number, class, or section..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
+      {/* Search + Table Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+      >
+        <Card className="overflow-hidden rounded-2xl border border-[#E2E8F0] shadow-sm bg-white">
+          <div className="p-4 sm:p-6 border-b border-[#E2E8F0] bg-[#F8FAFC]/50">
+            <div className="relative max-w-xl">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#64748B]" size={20} />
+              <input
+                type="text"
+                placeholder="Search by name, admission number, class, or section..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#3B82F6]/30 focus:border-[#3B82F6] transition-all"
+              />
+              {searchQuery && (
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-[#64748B]">
+                  {filteredStudents.length} result{filteredStudents.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
 
-        {filteredStudents.length === 0 ? (
-          <div className="text-center py-12">
-            <GraduationCap className="mx-auto text-gray-400 mb-4" size={48} />
-            <p className="text-gray-600">
-              {searchQuery ? 'No students found matching your search' : 'No students found'}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Admission No</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Name</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Class</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Section</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Parent Name</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredStudents.map((student, index) => {
-                  const studentId = getString(student.id) || `student-${index}`;
-                  const admissionNo = getString(student.admission_no);
-                  const studentName = getString(student.student_name);
-                  const studentClass = getString(student.class);
-                  const section = getString(student.section);
-                  const parentName = getString(student.parent_name);
-                  return (
-                    <tr
-                      key={studentId}
-                      className="hover:bg-gray-50 cursor-pointer"
-                      onClick={() => setSelectedStudent(student)}
-                    >
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{admissionNo || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{studentName || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{studentClass || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{section || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{parentName || 'N/A'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+          {filteredStudents.length === 0 ? (
+            <div className="text-center py-16 px-6">
+              <div className="w-20 h-20 rounded-2xl bg-[#F1F5F9] flex items-center justify-center mx-auto mb-4">
+                <GraduationCap className="text-[#94A3B8]" size={40} />
+              </div>
+              <p className="text-[#475569] font-medium">
+                {searchQuery ? 'No students match your search' : 'No students found'}
+              </p>
+              <p className="text-sm text-[#64748B] mt-1">
+                {searchQuery ? 'Try a different name, admission no, class, or section' : 'Students will appear here once added'}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gradient-to-r from-[#1e3a8a]/5 to-[#3B82F6]/5 border-b border-[#E2E8F0]">
+                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-semibold text-[#475569] uppercase tracking-wider">
+                      Student
+                    </th>
+                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-semibold text-[#475569] uppercase tracking-wider hidden sm:table-cell">
+                      Admission No
+                    </th>
+                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-semibold text-[#475569] uppercase tracking-wider">
+                      Class
+                    </th>
+                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-semibold text-[#475569] uppercase tracking-wider hidden md:table-cell">
+                      Parent
+                    </th>
+                    <th className="w-10 sm:w-12 px-2 sm:px-4 py-4" aria-label="View" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E2E8F0]">
+                  {filteredStudents.map((student, index) => {
+                    const studentId = getString(student.id) || `student-${index}`;
+                    const admissionNo = getString(student.admission_no);
+                    const studentName = getString(student.student_name);
+                    const studentClass = getString(student.class);
+                    const section = getString(student.section);
+                    const parentName = getString(student.parent_name);
+                    const initial = (studentName || '?').charAt(0).toUpperCase();
+                    return (
+                      <motion.tr
+                        key={studentId}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: Math.min(index * 0.02, 0.2) }}
+                        onClick={() => setSelectedStudent(student)}
+                        className="group hover:bg-[#F1F5F9]/80 cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 sm:px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1e3a8a]/15 to-[#3B82F6]/15 flex items-center justify-center text-[#1e3a8a] font-semibold text-sm shrink-0">
+                              {initial}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-[#0F172A]">{studentName || 'N/A'}</p>
+                              <p className="text-xs text-[#64748B] sm:hidden font-mono">{admissionNo || '—'}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 hidden sm:table-cell">
+                          <span className="font-mono text-sm text-[#64748B]">{admissionNo || '—'}</span>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-[#E0E7FF] text-[#3730A3] border border-[#C7D2FE]">
+                            {studentClass || '—'} {section ? `· ${section}` : ''}
+                          </span>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 hidden md:table-cell text-sm text-[#64748B]">
+                          {parentName || '—'}
+                        </td>
+                        <td className="px-2 sm:px-4 py-4">
+                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#E2E8F0] group-hover:bg-[#3B82F6] text-[#64748B] group-hover:text-white transition-colors">
+                            <ChevronRight size={18} />
+                          </span>
+                        </td>
+                      </motion.tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </motion.div>
 
       {/* Student detail drawer */}
       <AnimatePresence>
@@ -212,37 +275,45 @@ export default function AllStudentsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 z-40 flex justify-end"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex justify-end"
             onClick={() => setSelectedStudent(null)}
           >
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 260, damping: 30 }}
-              className="w-full max-w-xl h-full bg-white shadow-2xl border-l border-gray-200 overflow-y-auto"
+              transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+              className="w-full max-w-lg sm:max-w-xl h-full bg-white shadow-2xl border-l border-[#E2E8F0] overflow-y-auto flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">
-                    {getString(selectedStudent.student_name) || 'Student Details'}
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    Adm. No: {getString(selectedStudent.admission_no) || 'N/A'}
-                  </p>
+              <div className="sticky top-0 z-10 p-6 pb-4 border-b border-[#E2E8F0] bg-white/95 backdrop-blur flex items-start justify-between gap-4">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl shrink-0">
+                    {(getString(selectedStudent.student_name) || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-bold text-[#0F172A] truncate">
+                      {getString(selectedStudent.student_name) || 'Student Details'}
+                    </h2>
+                    <p className="text-sm text-[#64748B] font-mono">
+                      {getString(selectedStudent.admission_no) || 'N/A'}
+                    </p>
+                  </div>
                 </div>
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setSelectedStudent(null)}
-                  className="text-gray-500 hover:text-gray-700 text-sm font-medium"
+                  className="shrink-0 rounded-xl border-[#E2E8F0] text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+                  aria-label="Close"
                 >
-                  Close
-                </button>
+                  <X size={20} />
+                </Button>
               </div>
 
-              <div className="p-6 space-y-6">
-                <section>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              <div className="p-6 space-y-6 flex-1">
+                <section className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 p-4">
+                  <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider mb-3">
                     Academic Information
                   </h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -274,8 +345,8 @@ export default function AllStudentsPage() {
                   </div>
                 </section>
 
-                <section>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <section className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 p-4">
+                  <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider mb-3">
                     Personal Details
                   </h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -295,7 +366,7 @@ export default function AllStudentsPage() {
                       <p className="text-gray-500">Date of Birth</p>
                       <p className="font-medium text-gray-900">
                         {getString((selectedStudent as Student & { dob?: string }).dob)
-                          ? new Date(getString((selectedStudent as Student & { dob?: string }).dob) as string).toLocaleDateString()
+                          ? new Date(getString((selectedStudent as Student & { dob?: string }).dob)).toLocaleDateString()
                           : 'N/A'}
                       </p>
                     </div>
@@ -308,8 +379,8 @@ export default function AllStudentsPage() {
                   </div>
                 </section>
 
-                <section>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <section className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 p-4">
+                  <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider mb-3">
                     Contact & Address
                   </h3>
                   <div className="space-y-2 text-sm">
@@ -336,8 +407,8 @@ export default function AllStudentsPage() {
                   </div>
                 </section>
 
-                <section>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <section className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 p-4">
+                  <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider mb-3">
                     Parent / Guardian
                   </h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -362,8 +433,8 @@ export default function AllStudentsPage() {
                   </div>
                 </section>
 
-                <section>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <section className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 p-4">
+                  <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider mb-3">
                     Additional Information
                   </h3>
                   <div className="space-y-1 text-sm text-gray-900">
@@ -379,8 +450,8 @@ export default function AllStudentsPage() {
                 </section>
 
                 {/* Fees overview */}
-                <section>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <section className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 p-4">
+                  <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider mb-3">
                     Fees Overview
                   </h3>
                   {feesLoading ? (
@@ -452,8 +523,8 @@ export default function AllStudentsPage() {
                 </section>
 
                 {/* Transport info */}
-                <section>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <section className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 p-4">
+                  <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider mb-3">
                     Transport
                   </h3>
                   {transportLoading ? (
