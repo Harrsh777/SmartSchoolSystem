@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import FloatingLabelInput from '@/components/auth/FloatingLabelInput';
+import { updateActivity } from '@/hooks/useSessionTimeout';
+
+// Clear stale session timer when student lands on login so after login we get a fresh 20 min
+const STUDENT_ACTIVITY_KEY = 'lastActivity_student';
 import { 
   GraduationCap, 
   User, 
@@ -32,6 +36,13 @@ export default function StudentLoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Clear stale session timer when landing on login so after login we get a fresh 20 min
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STUDENT_ACTIVITY_KEY);
+    }
+  }, []);
 
   const validate = () => {
     const errors: Record<string, string> = {};
@@ -73,6 +84,8 @@ export default function StudentLoginPage() {
       if (response.ok && result.success) {
         sessionStorage.setItem('student', JSON.stringify(result.student));
         sessionStorage.setItem('role', 'student');
+        // Start 20-minute session from login (student dashboard uses lastActivity_student)
+        updateActivity('student', true);
         router.push('/student/dashboard');
       } else {
         setError(result.error || 'Invalid credentials. Please try again.');

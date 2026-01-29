@@ -47,6 +47,23 @@ export function updateActivity(storageKeyPrefix?: string, force?: boolean): void
   }
 }
 
+/** Extension window: only in the last 2 minutes can activity extend the session (by 2 min). */
+const EXTEND_WINDOW_SECONDS = 2 * 60;
+
+/**
+ * Extends the session by 2 minutes. Call only when remaining time is <= 2 min.
+ * Sets lastActivity so that remaining = 2 min (not full 20 min).
+ */
+export function extendSessionBy2Min(storageKeyPrefix?: string, timeoutMinutes: number = 20): void {
+  if (typeof window === 'undefined') return;
+  const key = getStorageKey(storageKeyPrefix);
+  const sessionLimitMs = timeoutMinutes * 60 * 1000;
+  const extendWindowMs = EXTEND_WINDOW_SECONDS * 1000;
+  const now = Date.now();
+  const lastActivity = now - (sessionLimitMs - extendWindowMs);
+  localStorage.setItem(key, lastActivity.toString());
+}
+
 /**
  * Gets the last activity timestamp from localStorage.
  * Returns null if no activity has been recorded.
@@ -76,13 +93,17 @@ export function useSessionTimeout({
 
   // Initialize timeRemaining from actual remaining time in localStorage so the timer
   // never "resets" to 20:00 on remount (e.g. navigation or Strict Mode).
+  // If no activity or expired, show full 20:00; useEffect will set activity or logout.
   const [timeRemaining, setTimeRemaining] = useState(() => {
     if (typeof window === 'undefined') return timeoutMinutes * 60;
     const last = getLastActivity(key);
     if (!last) return timeoutMinutes * 60;
     const elapsed = Date.now() - last;
     const remaining = sessionLimitMs - elapsed;
-    return Math.max(0, Math.floor(remaining / 1000));
+    const seconds = Math.max(0, Math.floor(remaining / 1000));
+    // If already expired, show full time so we don't flash 00:00; useEffect will logout
+    if (seconds <= 0) return timeoutMinutes * 60;
+    return seconds;
   });
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -90,10 +111,8 @@ export function useSessionTimeout({
   const resetTimerRef = useRef<(() => void) | null>(null);
   const loggingOutRef = useRef(false);
   const [showWarning, setShowWarning] = useState(false);
-  const warningThresholdSeconds = Math.max(
-    1,
-    (timeoutMinutes - warningMinutes) * 60 || 60 // Fallback to 60s if values are equal or misconfigured
-  );
+  const warningThresholdSeconds = Math.max(1, EXTEND_WINDOW_SECONDS); // Show warning when <= 2 min left
+  const timeRemainingRef = useRef(timeoutMinutes * 60); // Keep current remaining for activity handlers
 
   const handleLogout = useCallback(async () => {
     if (loggingOutRef.current) return;
@@ -113,15 +132,17 @@ export function useSessionTimeout({
   }, [onLogout, loginPath, router, key]);
 
   const resetTimer = useCallback(() => {
-    updateActivity(storageKeyPrefix);
+    extendSessionBy2Min(storageKeyPrefix, timeoutMinutes);
     setShowWarning(false);
-  }, [storageKeyPrefix]);
+  }, [storageKeyPrefix, timeoutMinutes]);
 
-  // Reset timer on direct user interaction (always update, no throttle) so session stays alive
-  const resetTimerImmediate = useCallback(() => {
-    updateActivity(storageKeyPrefix, true);
-    setShowWarning(false);
-  }, [storageKeyPrefix]);
+  // Only when <= 2 min left: on user interaction, extend session by 2 min (don't reset on every cursor move before that)
+  const tryExtendInLast2Min = useCallback(() => {
+    if (timeRemainingRef.current <= EXTEND_WINDOW_SECONDS && timeRemainingRef.current > 0) {
+      extendSessionBy2Min(storageKeyPrefix, timeoutMinutes);
+      setShowWarning(false);
+    }
+  }, [storageKeyPrefix, timeoutMinutes]);
 
   const checkSession = useCallback(() => {
     if (loggingOutRef.current) return;
@@ -135,6 +156,7 @@ export function useSessionTimeout({
     const elapsed = Date.now() - lastActivity;
     const remaining = sessionLimitMs - elapsed;
     const secondsRemaining = Math.max(0, Math.floor(remaining / 1000));
+    timeRemainingRef.current = secondsRemaining;
     setTimeRemaining(secondsRemaining);
     if (secondsRemaining <= warningThresholdSeconds && secondsRemaining > 0) {
       setShowWarning(true);
@@ -147,15 +169,21 @@ export function useSessionTimeout({
   }, [sessionLimitMs, handleLogout, timeoutMinutes, key, storageKeyPrefix]);
 
   checkSessionRef.current = checkSession;
-  resetTimerRef.current = resetTimerImmediate;
+  resetTimerRef.current = tryExtendInLast2Min;
 
   useEffect(() => {
-    // Only set last activity when none exists – never overwrite on refresh so the timer continues correctly
-    if (typeof window !== 'undefined') {
-      const lastActivity = getLastActivity(key);
-      if (!lastActivity) {
-        updateActivity(storageKeyPrefix);
-      }
+    if (typeof window === 'undefined') return;
+    const lastActivity = getLastActivity(key);
+    const elapsed = lastActivity ? Date.now() - lastActivity : sessionLimitMs + 1;
+    const expired = elapsed >= sessionLimitMs;
+    // Set last activity when none exists so timer starts at 20:00
+    if (!lastActivity) {
+      updateActivity(storageKeyPrefix);
+    }
+    // If already expired on load, run checkSession once (will trigger handleLogout) and skip setting interval
+    if (expired) {
+      if (checkSessionRef.current) checkSessionRef.current();
+      return () => {};
     }
 
     // Check session status every second
@@ -167,25 +195,24 @@ export function useSessionTimeout({
     checkSessionWrapper(); // Initial check
     intervalRef.current = setInterval(checkSessionWrapper, 1000);
 
-    // Direct interaction: always reset timer (no throttle) so session stays alive
+    // Only in the last 2 min: extend session by 2 min on interaction (fixed 20 min otherwise)
     const onActivity = () => {
       markUserInteraction();
       if (resetTimerRef.current) resetTimerRef.current();
     };
 
-    // Throttled activity (scroll/mousemove): reset via updateActivity (5s throttle) so reading the page keeps session alive
     let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
     let mouseTimeout: ReturnType<typeof setTimeout> | null = null;
-    const throttleMs = 3000; // Update at most every 3s for scroll/mouse
+    const throttleMs = 3000;
     const onScroll = () => {
       if (!scrollTimeout) {
-        updateActivity(storageKeyPrefix);
+        if (resetTimerRef.current) resetTimerRef.current();
         scrollTimeout = setTimeout(() => { scrollTimeout = null; }, throttleMs);
       }
     };
     const onMouseMove = () => {
       if (!mouseTimeout) {
-        updateActivity(storageKeyPrefix);
+        if (resetTimerRef.current) resetTimerRef.current();
         mouseTimeout = setTimeout(() => { mouseTimeout = null; }, throttleMs);
       }
     };

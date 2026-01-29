@@ -70,7 +70,6 @@ export default function ExaminationsPage() {
   };
 
   const downloadDateSheet = (exam: Examination) => {
-    const schedules = (exam as { schedules?: ExamScheduleItem[] }).schedules ?? [];
     const subjectMappings = Array.isArray(exam.subject_mappings) ? exam.subject_mappings : [];
     const rows = subjectMappings.map((sm: { subject_name?: string; teacher_name?: string; max_marks?: number; pass_marks?: number }, idx: number) => {
       const subjName = typeof sm.subject_name === 'string' ? sm.subject_name : '—';

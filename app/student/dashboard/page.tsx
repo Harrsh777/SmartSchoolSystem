@@ -30,17 +30,6 @@ interface Stats {
   term: string;
 }
 
-interface Performance {
-  id: string;
-  subject: string;
-  type: string;
-  date: string;
-  grade: string;
-  grade_color: string;
-  percentage?: number;
-  marks_display?: string;
-}
-
 interface AttendanceDay {
   attendance_date: string;
   status: string;
@@ -75,7 +64,6 @@ export default function StudentDashboardHome() {
   const router = useRouter();
   const [student, setStudent] = useState<Student | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [performances, setPerformances] = useState<Performance[]>([]);
   const [upcoming, setUpcoming] = useState<UpcomingItem[]>([]);
   const [upcomingExamsCount, setUpcomingExamsCount] = useState(0);
   const [classTeacher, setClassTeacher] = useState<ClassTeacher | null>(null);
@@ -117,9 +105,8 @@ export default function StudentDashboardHome() {
 
     try {
       // Fetch all data in parallel
-      const [statsRes, performanceRes, upcomingRes, weeklyRes, teacherRes, attendanceRes, noticesRes] = await Promise.all([
+      const [statsRes, upcomingRes, weeklyRes, teacherRes, attendanceRes, noticesRes] = await Promise.all([
         fetch(`/api/student/stats?school_code=${schoolCode}&student_id=${studentId}`),
-        fetch(`/api/student/recent-performance?school_code=${schoolCode}&student_id=${studentId}&limit=3`),
         fetch(`/api/student/upcoming-items?school_code=${schoolCode}&student_id=${studentId}&limit=3`),
         fetch(`/api/student/weekly-completion?school_code=${schoolCode}&student_id=${studentId}`),
         fetch(`/api/student/class-teacher?school_code=${schoolCode}&class=${getString(studentData.class)}&section=${getString(studentData.section)}&academic_year=${getString(studentData.academic_year)}`),
@@ -130,11 +117,6 @@ export default function StudentDashboardHome() {
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         setStats(statsData.data);
-      }
-
-      if (performanceRes.ok) {
-        const performanceData = await performanceRes.json();
-        setPerformances(performanceData.data || []);
       }
 
       if (upcomingRes.ok) {
@@ -394,7 +376,7 @@ export default function StudentDashboardHome() {
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          {/* Left Column - Timetable & Performance */}
+          {/* Left Column - Timetable */}
           <div className="lg:col-span-2 space-y-8">
             {/* My Timetable */}
             {classId && student ? (
@@ -430,60 +412,6 @@ export default function StudentDashboardHome() {
                 </div>
               </motion.div>
             )}
-
-            {/* Recent Performance */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="glass-card soft-shadow rounded-2xl p-8 border border-input"
-            >
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-lg font-semibold text-foreground">Recent Performance</h3>
-                <button 
-                  onClick={() => router.push('/student/dashboard/examinations')}
-                  className="text-[11px] font-semibold text-primary uppercase tracking-wider hover:underline"
-                >
-                  Full Report
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold border-b border-input">
-                      <th className="pb-4 font-bold">Subject</th>
-                      <th className="pb-4 font-bold">Type</th>
-                      <th className="pb-4 font-bold">Date</th>
-                      <th className="pb-4 font-bold">Marks</th>
-                      <th className="pb-4 text-right font-bold">Grade</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-input/50">
-                    {performances.length > 0 ? performances.map((perf) => (
-                      <tr key={perf.id} className="group">
-                        <td className="py-4 font-medium text-sm text-foreground">{perf.subject}</td>
-                        <td className="py-4 text-[11px] text-muted-foreground">{perf.type}</td>
-                        <td className="py-4 text-[11px] text-muted-foreground">{perf.date}</td>
-                        <td className="py-4 text-[11px] text-muted-foreground">
-                          {perf.marks_display ?? (perf.percentage != null ? `${perf.percentage}%` : '—')}
-                        </td>
-                        <td className="py-4 text-right">
-                          <span className={`px-2 py-1 ${perf.grade_color} text-xs font-bold rounded`}>
-                            {perf.grade}
-                          </span>
-                        </td>
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-                          No recent performance data available
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </motion.div>
 
             {/* My Attendance - Past 7 days */}
             <motion.div

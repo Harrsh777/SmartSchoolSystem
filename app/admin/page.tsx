@@ -44,7 +44,6 @@ import {
   Database,
   ChevronRight,
   Settings,
-  LineChart,
   UserCheck,
   ChevronDown,
   ClipboardList,
@@ -928,10 +927,10 @@ export default function AdminDashboard() {
   const [systemSettings, setSystemSettings] = useState<Record<string, unknown> | null>(null);
   const [loadingSystemSettings, setLoadingSystemSettings] = useState(false);
   const [savingSystemSettings, setSavingSystemSettings] = useState(false);
-  const [analyticsData, setAnalyticsData] = useState<Record<string, unknown> | null>(null);
-  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
-  const [analyticsPeriod, setAnalyticsPeriod] = useState('30d');
-  const [analyticsSchoolFilter, setAnalyticsSchoolFilter] = useState('all');
+  const [, setAnalyticsData] = useState<Record<string, unknown> | null>(null);
+  const [, setLoadingAnalytics] = useState(false);
+  const [analyticsPeriod] = useState('30d');
+  const [analyticsSchoolFilter] = useState('all');
   const [usersData, setUsersData] = useState<Record<string, unknown>[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersPage, setUsersPage] = useState(1);

@@ -5,8 +5,11 @@
 
 export const AUTH_COOKIE_NAME = 'auth_session';
 
+/** Cookie name for server-side session token (DB-backed session id) */
+export const SESSION_ID_COOKIE_NAME = 'session_id';
+
 /** Session duration in seconds (20 minutes) */
-const SESSION_MAX_AGE = 20 * 60;
+export const SESSION_MAX_AGE = 20 * 60;
 
 export type AuthRole = 'school' | 'teacher' | 'student' | 'accountant';
 
@@ -51,6 +54,39 @@ export function clearAuthCookie(response: Response): void {
   response.headers.append(
     'Set-Cookie',
     `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly`
+  );
+}
+
+/**
+ * Set session id cookie (server-side session token).
+ * Use after createSession() in login APIs.
+ */
+export function setSessionIdCookie(
+  response: Response,
+  sessionToken: string,
+  maxAge: number = SESSION_MAX_AGE
+): void {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieParts = [
+    `${SESSION_ID_COOKIE_NAME}=${encodeURIComponent(sessionToken)}`,
+    `Path=/`,
+    `Max-Age=${maxAge}`,
+    `SameSite=Lax`,
+    `HttpOnly`,
+  ];
+  if (isProd) {
+    cookieParts.push('Secure');
+  }
+  response.headers.append('Set-Cookie', cookieParts.join('; '));
+}
+
+/**
+ * Clear session id cookie (use in logout API).
+ */
+export function clearSessionIdCookie(response: Response): void {
+  response.headers.append(
+    'Set-Cookie',
+    `${SESSION_ID_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly`
   );
 }
 

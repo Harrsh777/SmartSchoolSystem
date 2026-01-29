@@ -56,11 +56,13 @@ export async function GET(request: NextRequest) {
     ]);
 
     const subjectMap = new Map<string, { id: string; name: string; color: string | null }>();
-    (subjectsRes.data || []).forEach((s) => subjectMap.set(s.id, { id: s.id, name: s.name, color: s.color ?? null }));
+    (subjectsRes.data || []).forEach((s) => subjectMap.set(String(s.id).trim(), { id: s.id, name: s.name, color: s.color ?? null }));
+
     const examMap = new Map<string, { id: string; exam_name: string; exam_type: string | null; start_date: string | null; end_date: string | null; academic_year: string | null }>();
-    (examsRes.data || []).forEach((e: ExamRow) => {
+    function putExamInMap(e: ExamRow) {
+      const id = String(e.id).trim();
       const examName = (e.exam_name ?? e.name ?? e.title ?? 'Examination').toString().trim() || 'Examination';
-      examMap.set(e.id, {
+      examMap.set(id, {
         id: e.id,
         exam_name: examName,
         exam_type: e.exam_type ?? null,
@@ -68,7 +70,19 @@ export async function GET(request: NextRequest) {
         end_date: e.end_date ?? null,
         academic_year: e.academic_year ?? null,
       });
-    });
+    }
+    (examsRes.data || []).forEach((e: ExamRow) => putExamInMap(e));
+
+    // Fallback: fetch any exam we have marks for but didn't get from bulk query (e.g. schema/RLS)
+    const missingExamIds = examIds.filter((id) => !examMap.has(String(id).trim()));
+    for (const examId of missingExamIds) {
+      const { data: singleExam } = await supabase
+        .from('examinations')
+        .select('id, exam_name, name, exam_type, start_date, end_date, academic_year')
+        .eq('id', examId)
+        .maybeSingle();
+      if (singleExam) putExamInMap(singleExam as ExamRow);
+    }
 
     interface MarkData {
       id: string;
@@ -122,8 +136,8 @@ export async function GET(request: NextRequest) {
     }
 
     const typedMarks: MarkData[] = marks.map((mark) => {
-      const subject = mark.subject_id ? subjectMap.get(mark.subject_id) ?? null : null;
-      const exam = mark.exam_id ? examMap.get(mark.exam_id) : null;
+      const subject = mark.subject_id ? subjectMap.get(String(mark.subject_id).trim()) ?? null : null;
+      const exam = mark.exam_id ? examMap.get(String(mark.exam_id).trim()) : null;
       const maxM = Number(mark.max_marks) || 0;
       const obtained = Number(mark.marks_obtained) ?? 0;
       const percentage = maxM > 0 ? Math.round((obtained / maxM) * 100) : 0;
@@ -141,7 +155,7 @@ export async function GET(request: NextRequest) {
         subject,
         exam: exam ?? {
           id: mark.exam_id || '',
-          exam_name: 'Unknown Exam',
+          exam_name: 'Examination',
           exam_type: null,
           start_date: null,
           end_date: null,

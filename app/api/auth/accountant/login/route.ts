@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
-import { setAuthCookie } from '@/lib/auth-cookie';
+import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
+import { createSession } from '@/lib/session-store';
 
 export async function POST(request: NextRequest) {
   try {
@@ -97,29 +98,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Return success with staff and school data
+    const staffPayload = {
+      id: staffData.id,
+      staff_id: staffData.staff_id,
+      full_name: staffData.full_name,
+      role: staffData.role,
+      department: staffData.department,
+      designation: staffData.designation,
+      email: staffData.email,
+      phone: staffData.phone,
+      school_code: staffData.school_code,
+    };
+    const schoolPayload = {
+      id: schoolData.id,
+      school_name: schoolData.school_name,
+      school_code: schoolData.school_code,
+    };
+    const normalizedSchoolCode = school_code.toUpperCase();
+
+    // Create server-side session (stored in public.sessions)
+    const { sessionToken, expiresAt } = await createSession({
+      role: 'accountant',
+      schoolCode: normalizedSchoolCode,
+      userId: staffData.id,
+      userPayload: { staff: staffPayload, school: schoolPayload } as Record<string, unknown>,
+      maxAgeSeconds: SESSION_MAX_AGE,
+    });
+
     const response = NextResponse.json({
       message: 'Login successful',
       data: {
-        staff: {
-          id: staffData.id,
-          staff_id: staffData.staff_id,
-          full_name: staffData.full_name,
-          role: staffData.role,
-          department: staffData.department,
-          designation: staffData.designation,
-          email: staffData.email,
-          phone: staffData.phone,
-          school_code: staffData.school_code,
-        },
-        school: {
-          id: schoolData.id,
-          school_name: schoolData.school_name,
-          school_code: schoolData.school_code,
-        },
+        staff: staffPayload,
+        school: schoolPayload,
       },
     }, { status: 200 });
-    setAuthCookie(response, 'accountant');
+    setAuthCookie(response, 'accountant', undefined, SESSION_MAX_AGE);
+    setSessionIdCookie(response, sessionToken, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
     return response;
   } catch (error) {
     console.error('Error in accountant login:', error);

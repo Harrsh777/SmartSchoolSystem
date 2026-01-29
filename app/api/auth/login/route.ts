@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
-import { setAuthCookie } from '@/lib/auth-cookie';
+import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
+import { createSession } from '@/lib/session-store';
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,6 +58,16 @@ export async function POST(request: NextRequest) {
     // Return school data (excluding password for security)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...schoolData } = school;
+    const normalizedSchoolCode = school.school_code?.toUpperCase() ?? '';
+
+    // Create server-side session (stored in public.sessions)
+    const { sessionToken, expiresAt } = await createSession({
+      role: 'school',
+      schoolCode: normalizedSchoolCode,
+      userId: (school as { id?: string }).id ?? null,
+      userPayload: schoolData as Record<string, unknown>,
+      maxAgeSeconds: SESSION_MAX_AGE,
+    });
 
     const response = NextResponse.json(
       {
@@ -66,7 +77,8 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     );
-    setAuthCookie(response, 'school', school.school_code);
+    setAuthCookie(response, 'school', normalizedSchoolCode, SESSION_MAX_AGE);
+    setSessionIdCookie(response, sessionToken, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
     return response;
   } catch (error) {
     console.error('Error during login:', error);

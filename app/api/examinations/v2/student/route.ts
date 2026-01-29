@@ -95,8 +95,7 @@ export async function GET(request: NextRequest) {
           id,
           exam_date,
           start_time,
-          end_time,
-          subject
+          end_time
         )
       `)
       .in('id', examIds)

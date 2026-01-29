@@ -9,21 +9,31 @@ import { hashPassword } from '@/lib/password-generator';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, id } = body;
+    const { school_code, id, staff_id: staffIdDisplay } = body;
 
-    if (!school_code || !id) {
+    if (!school_code) {
       return NextResponse.json(
-        { error: 'School code and staff ID (UUID) are required' },
+        { error: 'School code is required' },
         { status: 400 }
       );
     }
 
-    // Verify staff exists by UUID
+    // Accept either id (UUID) or staff_id (display code e.g. STF001)
+    const staffIdOrUuid = id ?? staffIdDisplay;
+    if (!staffIdOrUuid) {
+      return NextResponse.json(
+        { error: 'Staff ID or staff UUID is required (id or staff_id)' },
+        { status: 400 }
+      );
+    }
+
+    // Look up staff: by UUID (id) or by display staff_id
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(staffIdOrUuid));
     const { data: staffData, error: staffError } = await supabase
       .from('staff')
       .select('id, staff_id, full_name, school_code')
       .eq('school_code', school_code)
-      .eq('id', id)
+      .eq(isUuid ? 'id' : 'staff_id', staffIdOrUuid)
       .single();
 
     if (staffError || !staffData) {
@@ -37,13 +47,13 @@ export async function POST(request: NextRequest) {
     const password = 'staff123';
     const hash = await hashPassword(password);
 
-    // Update or insert login record
+    // Update or insert login record (staff_login.staff_id is display code e.g. STF001 for teacher login)
     const { error: loginError } = await supabase
       .from('staff_login')
       .upsert(
         {
           school_code: school_code,
-          staff_id: staffData.id, // Use UUID
+          staff_id: staffData.staff_id, // Display code for login (STF001)
           password_hash: hash,
           plain_password: password, // Store plain text password
           is_active: true,

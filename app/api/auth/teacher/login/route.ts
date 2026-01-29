@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { comparePassword } from '@/lib/password-utils';
-import { setAuthCookie } from '@/lib/auth-cookie';
+import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
+import { createSession } from '@/lib/session-store';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +34,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 1: Authenticate from staff_login table (match staff_id case-insensitively)
+    // Step 1: Authenticate from staff_login table
+    // staff_login.staff_id may be either display code (STF002) or staff UUID depending on how it was created
     const { data: loginRows, error: loginError } = await supabase
       .from('staff_login')
       .select('*')
@@ -47,16 +49,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const loginData = (loginRows ?? []).find(
+    const staffIdLower = staff_id.toLowerCase();
+    let loginData = (loginRows ?? []).find(
       (r: { staff_id?: string }) =>
-        (r.staff_id ?? '').toLowerCase() === staff_id.toLowerCase()
+        (r.staff_id ?? '').toLowerCase() === staffIdLower
     );
+
+    // Resolve display staff_id for teacher fetch (same as staff.staff_id)
+    let displayStaffId: string | undefined;
+    if (loginData) {
+      displayStaffId = (loginData as { staff_id: string }).staff_id;
+    }
+
+    // Fallback: if no row by display code, staff_login may store staff UUID — resolve via staff table
+    if (!loginData) {
+      const { data: staffRow } = await supabase
+        .from('staff')
+        .select('id, staff_id')
+        .eq('school_code', normalizedSchoolCode)
+        .ilike('staff_id', staff_id)
+        .maybeSingle();
+
+      if (staffRow) {
+        loginData = (loginRows ?? []).find(
+          (r: { staff_id?: string }) => r.staff_id === staffRow.id
+        ) ?? null;
+        displayStaffId = staffRow.staff_id;
+      }
+    }
 
     if (!loginData) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       );
+    }
+
+    if (displayStaffId === undefined) {
+      displayStaffId = (loginData as { staff_id: string }).staff_id;
     }
 
     // Check if account is active
@@ -84,13 +114,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 3: Fetch staff profile from staff table (use staff_id from DB for exact match)
-    const matchedStaffId = (loginData as { staff_id: string }).staff_id;
+    // Step 3: Fetch staff profile from staff table (use display staff_id for exact match)
     const { data: teacher, error: teacherError } = await supabase
       .from('staff')
       .select('*')
       .eq('school_code', normalizedSchoolCode)
-      .eq('staff_id', matchedStaffId)
+      .eq('staff_id', displayStaffId)
       .single();
 
     if (teacherError || !teacher) {
@@ -107,12 +136,22 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...teacherProfile } = teacher as TeacherWithPassword;
 
+    // Create server-side session (stored in DB; token in HttpOnly cookie)
+    const { sessionToken, expiresAt } = await createSession({
+      role: 'teacher',
+      schoolCode: normalizedSchoolCode,
+      userId: (teacher as { id: string }).id,
+      userPayload: teacherProfile as Record<string, unknown>,
+      maxAgeSeconds: SESSION_MAX_AGE,
+    });
+
     const response = NextResponse.json({
       success: true,
       teacher: teacherProfile,
       message: 'Login successful',
     }, { status: 200 });
-    setAuthCookie(response, 'teacher');
+    setAuthCookie(response, 'teacher', normalizedSchoolCode, SESSION_MAX_AGE);
+    setSessionIdCookie(response, sessionToken, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
     return response;
   } catch (error) {
     console.error('Teacher login error:', error);

@@ -642,7 +642,13 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
   const [quickSearchDropdownOpen, setQuickSearchDropdownOpen] = useState(false);
   const [menuOrder, setMenuOrder] = useState<string[]>([]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  
+  /** Avoid hydration mismatch: timer comes from localStorage on client, so only show real value after mount */
+  const [timerReady, setTimerReady] = useState(false);
+
+  useEffect(() => {
+    setTimerReady(true);
+  }, []);
+
   // Extract school code from pathname
   const schoolCode = pathname.split('/')[2] || '';
 
@@ -1559,8 +1565,10 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
                 <>
                   <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/10 rounded-lg border border-[#5A7A95]/20 dark:border-[#6B9BB8]/20">
                     <Clock size={16} className="text-[#5A7A95] dark:text-[#6B9BB8]" />
-                    <span className="text-sm font-medium text-[#5A7A95] dark:text-[#6B9BB8] font-mono">
-                      {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+                    <span className="text-sm font-medium text-[#5A7A95] dark:text-[#6B9BB8] font-mono" suppressHydrationWarning>
+                      {timerReady
+                        ? `${Math.floor(timeRemaining / 60)}:${(timeRemaining % 60).toString().padStart(2, '0')}`
+                        : '20:00'}
                     </span>
                   </div>
                   <div className="hidden md:block h-6 w-px bg-gray-300 dark:bg-gray-600" />

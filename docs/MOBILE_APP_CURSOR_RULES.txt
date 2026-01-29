@@ -1,0 +1,27 @@
+# Copy this into your mobile app repo as .cursorrules (or merge into existing rules)
+
+# School ERP Mobile App — Cursor Rules
+
+## Identity
+- This is the mobile client for the School ERP. The backend is a Next.js API and Supabase (same as the web app). Do not reimplement business logic or create new backend endpoints unless explicitly requested.
+- All API calls use EXPO_PUBLIC_API_BASE_URL. Same request/response shapes as the web. Auth: session token in SecureStore, sent as Authorization: Bearer <token> or X-Session-Token.
+
+## Tech stack
+- React Native + Expo, TypeScript. TanStack Query for API state. expo-secure-store for session token. React Hook Form + Zod for forms. Expo Router or React Navigation.
+
+## Rules
+1. Same API as web: same paths, same query/body, same response types. Find the web endpoint for each feature and use it.
+2. One API client: base URL from env, attach auth header from SecureStore on every request.
+3. Never duplicate validation or business logic; that lives in the Next.js API.
+4. Use React Query (useQuery/useMutation) for all API calls; handle loading and error.
+5. Store session_token only in SecureStore; never in AsyncStorage for production.
+6. Role-based navigation after login (teacher → teacher stack, student → student stack, etc.).
+7. Login: POST same login URLs with X-Client: mobile; backend returns session_token in body; store it and use for subsequent requests.
+8. Logout: POST /api/auth/logout with auth header; clear SecureStore; go to login.
+9. Types: align with API responses (Teacher, Student, Exam, etc.); consider sharing types with web repo.
+
+## Roles and modules (same as web)
+- School Admin, Teacher, Student, Accountant. Same modules: dashboard, students, staff, classes, timetable, examinations, marks, fees, attendance, leave, communication, etc. Use the same /api/* routes the web uses for each.
+
+## Full prompt
+See docs/MOBILE_APP_CURSOR_PROMPT.md in the web repo (or this repo if copied) for the full in-depth prompt and examples.
