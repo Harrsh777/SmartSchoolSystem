@@ -57,9 +57,14 @@ interface AcademicYear {
   is_current: boolean;
 }
 
-export default function CopyCheckingPage() {
+interface CopyCheckingPageProps {
+  /** When set (e.g. by teacher dashboard wrapper), used instead of route params */
+  schoolCodeOverride?: string;
+}
+
+export default function CopyCheckingPage({ schoolCodeOverride }: CopyCheckingPageProps = {}) {
   const params = useParams();
-  const schoolCode = (params?.school as string) ?? '';
+  const schoolCode = schoolCodeOverride ?? (params?.school as string) ?? '';
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

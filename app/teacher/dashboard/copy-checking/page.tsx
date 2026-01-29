@@ -55,9 +55,7 @@ export default function TeacherCopyCheckingWrapper() {
     );
   }
 
-  // Reuse the main dashboard copy-checking module, but drive it with the teacher's school code.
-  const params = Promise.resolve({ school: schoolCode });
-
-  return <CopyCheckingPage params={params} />;
+  // Reuse the main dashboard copy-checking module with the teacher's school code.
+  return <CopyCheckingPage schoolCodeOverride={schoolCode} />;
 }
 
