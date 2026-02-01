@@ -20,7 +20,6 @@ import {
   Menu,
   X,
   CalendarDays,
-  ChevronLeft,
   ChevronRight,
   ChevronUp,
   FileBarChart,
@@ -134,6 +133,7 @@ interface SortableMenuItemProps {
   setLibraryModalOpen: (open: boolean) => void;
   setTransportModalOpen: (open: boolean) => void;
   setLeaveModalOpen: (open: boolean) => void;
+  isDragEnabled: boolean;
   t: (key: string) => string;
 }
 
@@ -159,6 +159,7 @@ function SortableMenuItem({
   setLibraryModalOpen,
   setTransportModalOpen,
   setLeaveModalOpen,
+  isDragEnabled,
   t,
 }: SortableMenuItemProps) {
   const {
@@ -193,8 +194,8 @@ function SortableMenuItem({
         className="relative sidebar-menu-item group"
       >
         <div className="flex items-center gap-1">
-          {/* Drag Handle */}
-          {!sidebarCollapsed && (
+          {/* Drag Handle - only show when drag is enabled */}
+          {!sidebarCollapsed && isDragEnabled && (
             <div
               {...attributes}
               {...listeners}
@@ -246,7 +247,7 @@ function SortableMenuItem({
             }`}
           >
             {!sidebarCollapsed && (
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold mr-1.5 ${
                 active 
                   ? 'bg-white/20 text-white' 
                   : 'bg-[rgba(255,255,255,0.08)] dark:bg-[rgba(255,255,255,0.08)] text-[#E2E8F0] group-hover:bg-[rgba(255,255,255,0.12)] group-hover:text-white'
@@ -254,12 +255,12 @@ function SortableMenuItem({
                 {index + 1}
               </span>
             )}
-            <div className={`${sidebarCollapsed ? 'w-10 h-10' : 'w-10 h-10'} rounded-xl flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+            <div className={`${sidebarCollapsed ? 'w-8 h-8' : 'w-8 h-8'} rounded-xl flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active 
                 ? 'bg-white/20 shadow-lg' 
                 : 'bg-transparent group-hover:bg-white/10 group-hover:scale-110 group-hover:shadow-md'
             }`}>
-              <Icon size={20} className={active ? 'text-white' : 'text-slate-300 group-hover:text-white'} />
+              <Icon size={16} className={active ? 'text-white' : 'text-slate-300 group-hover:text-white'} />
             </div>
             <AnimatePresence mode="wait">
               {sidebarCollapsed ? (
@@ -377,33 +378,33 @@ function SortableMenuItem({
   }
   
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="relative sidebar-menu-item group"
-    >
-      <div className="flex items-center gap-1">
-        {/* Drag Handle */}
-        {!sidebarCollapsed && (
-          <div
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing p-1.5 rounded hover:bg-white/10 transition-colors opacity-70 group-hover:opacity-100 flex-shrink-0 touch-none"
-            title="Drag to reorder"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-            }}
-            onTouchStart={(e) => {
-              e.stopPropagation();
-            }}
-          >
-            <GripVertical size={16} className="text-slate-300 hover:text-white pointer-events-none" />
-          </div>
-        )}
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="relative sidebar-menu-item group"
+      >
+        <div className="flex items-center gap-1">
+          {/* Drag Handle - only show when drag is enabled */}
+          {!sidebarCollapsed && isDragEnabled && (
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1.5 rounded hover:bg-white/10 transition-colors opacity-70 group-hover:opacity-100 flex-shrink-0 touch-none"
+              title="Drag to reorder"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              <GripVertical size={16} className="text-slate-300 hover:text-white pointer-events-none" />
+            </div>
+          )}
         
         {hasSubItems ? (
           <button
@@ -415,7 +416,7 @@ function SortableMenuItem({
             }`}
           >
             {!sidebarCollapsed && (
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold mr-1.5 ${
                 active 
                   ? 'bg-white/20 text-white' 
                   : 'bg-[rgba(255,255,255,0.08)] dark:bg-[rgba(255,255,255,0.08)] text-[#E2E8F0] group-hover:bg-[rgba(255,255,255,0.12)] group-hover:text-white'
@@ -423,12 +424,12 @@ function SortableMenuItem({
                 {index + 1}
               </span>
             )}
-            <div className={`${sidebarCollapsed ? 'w-10 h-10' : 'w-10 h-10'} rounded-xl flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+            <div className={`${sidebarCollapsed ? 'w-8 h-8' : 'w-8 h-8'} rounded-xl flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active 
                 ? 'bg-white/20 shadow-lg' 
                 : 'bg-transparent group-hover:bg-white/10 group-hover:scale-110 group-hover:shadow-md'
             }`}>
-              <Icon size={20} className={active ? 'text-white' : 'text-slate-300 group-hover:text-white'} />
+              <Icon size={16} className={active ? 'text-white' : 'text-slate-300 group-hover:text-white'} />
             </div>
             <AnimatePresence mode="wait">
               {sidebarCollapsed ? (
@@ -514,7 +515,7 @@ function SortableMenuItem({
             }`}
           >
             {!sidebarCollapsed && (
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-2 ${
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold mr-1.5 ${
                 active 
                   ? 'bg-white/20 text-white' 
                   : 'bg-[rgba(255,255,255,0.08)] dark:bg-[rgba(255,255,255,0.08)] text-[#E2E8F0] group-hover:bg-[rgba(255,255,255,0.12)] group-hover:text-white'
@@ -522,12 +523,12 @@ function SortableMenuItem({
                 {index + 1}
               </span>
             )}
-            <div className={`${sidebarCollapsed ? 'w-10 h-10' : 'w-10 h-10'} rounded-xl flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+            <div className={`${sidebarCollapsed ? 'w-8 h-8' : 'w-8 h-8'} rounded-xl flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active 
                 ? 'bg-white/20 shadow-lg' 
                 : 'bg-transparent group-hover:bg-white/10 group-hover:scale-110 group-hover:shadow-md'
             }`}>
-              <Icon size={20} className={active ? 'text-white' : 'text-slate-300 group-hover:text-white'} />
+              <Icon size={16} className={active ? 'text-white' : 'text-slate-300 group-hover:text-white'} />
             </div>
             {sidebarCollapsed ? (
               <motion.span 
@@ -630,7 +631,7 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
   const router = useRouter();
   const { language, setLanguage, t } = useTranslation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const sidebarCollapsed = false; // Sidebar is always expanded (collapse button removed)
   const [isDesktop, setIsDesktop] = useState(false);
   const [classModalOpen, setClassModalOpen] = useState(false);
   const [timetableModalOpen, setTimetableModalOpen] = useState(false);
@@ -646,18 +647,21 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-  const [quickSearchDropdownOpen, setQuickSearchDropdownOpen] = useState(false);
   const [menuOrder, setMenuOrder] = useState<string[]>([]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [isDragEnabled, setIsDragEnabled] = useState(false);
   /** Avoid hydration mismatch: timer comes from localStorage on client, so only show real value after mount */
   const [timerReady, setTimerReady] = useState(false);
 
-  useEffect(() => {
-    setTimerReady(true);
-  }, []);
-
   // Extract school code from pathname
   const schoolCode = pathname.split('/')[2] || '';
+
+  useEffect(() => {
+    setTimerReady(true);
+    // Check if drag mode is enabled from localStorage
+    const dragEnabled = localStorage.getItem(`drag-enabled-${schoolCode}`);
+    setIsDragEnabled(dragEnabled === 'true');
+  }, [schoolCode]);
 
   // Get user info from session storage
   const [userInfo, setUserInfo] = useState<{ name?: string; role?: string; id?: string; isAdmin?: boolean }>({});
@@ -1086,9 +1090,6 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
       }
       if (!target.closest('.search-container')) {
         setSearchDropdownOpen(false);
-      }
-      if (!target.closest('.quick-search-container')) {
-        setQuickSearchDropdownOpen(false);
       }
       if (!target.closest('.sidebar-menu-item')) {
         // Don't close sub-items when clicking outside if sidebar is collapsed
@@ -1605,58 +1606,68 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
             </div>
             <div className="flex items-center space-x-[0.5cm]">
 
-              {/* Quick Search Button */}
-              <div className="relative quick-search-container">
-                <button
-                  onClick={() => setQuickSearchDropdownOpen(!quickSearchDropdownOpen)}
-                  className="flex flex-col items-center gap-1 hover:opacity-80 transition-opacity"
-                  title="Quick Search"
-                >
-                  <div className="w-10 h-10 rounded-full bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center">
-                    <Search className="text-[#475569] dark:text-[#94A3B8]" size={18} />
+              {/* Menu Search */}
+              <div className="relative search-container">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 size-4" />
+                  <input
+                    type="text"
+                    placeholder="Search menu..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => setSearchDropdownOpen(true)}
+                    className="w-64 pl-10 pr-4 py-2 bg-white dark:bg-[#1e293b] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all"
+                  />
                 </div>
-                  <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">Search</span>
-                </button>
                 
-                {quickSearchDropdownOpen && (
+                {/* Search Results Dropdown */}
+                {searchDropdownOpen && filteredSearchResults.length > 0 && (
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="absolute right-0 top-12 w-64 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-xl rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.08)] border border-white/60 dark:border-gray-700/50 z-50 overflow-hidden"
+                    className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
                   >
                     <div className="p-2">
-                      <button
-                        onClick={() => {
-                          router.push(`${basePath}/students/directory`);
-                          setQuickSearchDropdownOpen(false);
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] rounded-lg transition-all border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
-                      >
-                        <div className="w-10 h-10 rounded-lg bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center flex-shrink-0">
-                          <div className="relative">
-                            <GraduationCap className="text-[#2C3E50] dark:text-[#5A879A]" size={20} />
-                            <Search className="absolute -bottom-1 -right-1 text-[#2C3E50] dark:text-[#5A879A] bg-white dark:bg-[#1A2332] rounded-full p-0.5" size={12} />
-                        </div>
-                              </div>
-                        <span className="text-sm font-medium text-navy dark:text-skyblue">Quick Student Search</span>
-                      </button>
-                      
-                                  <button
-                        onClick={() => {
-                          router.push(`${basePath}/staff-management/directory`);
-                          setQuickSearchDropdownOpen(false);
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] rounded-lg transition-all border border-transparent hover:border-gray-200 dark:hover:border-gray-700 mt-2"
-                      >
-                        <div className="w-10 h-10 rounded-lg bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center flex-shrink-0">
-                          <div className="relative">
-                            <User className="text-[#2C3E50] dark:text-[#5A879A]" size={20} />
-                            <Search className="absolute -bottom-1 -right-1 text-[#2C3E50] dark:text-[#5A879A] bg-white dark:bg-[#1A2332] rounded-full p-0.5" size={12} />
-                                    </div>
-                                    </div>
-                        <span className="text-sm font-medium text-navy dark:text-skyblue">Quick Staff Search</span>
-                                  </button>
+                      {filteredSearchResults.map((item, idx) => {
+                        const ItemIcon = item.icon;
+                        return (
+                          <Link
+                            key={`${item.path}-${idx}`}
+                            href={`${basePath}${item.path}`}
+                            onClick={() => {
+                              setSearchQuery('');
+                              setSearchDropdownOpen(false);
+                            }}
+                            className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors group"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors">
+                              <ItemIcon size={16} className="text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200" />
                             </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                                {item.label}
+                              </div>
+                              {item.parent && (
+                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                  {item.parent} • {item.category}
+                                </div>
+                              )}
+                            </div>
+                            <ChevronRight size={14} className="text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 flex-shrink-0" />
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+                
+                {searchDropdownOpen && searchQuery.trim() && filteredSearchResults.length === 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-4 z-50"
+                  >
+                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center">No results found</p>
                   </motion.div>
                 )}
               </div>
@@ -1864,12 +1875,12 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
 
               {/* Sidebar - Modern, Clean, Professional */}
               <motion.aside
-                initial={{ x: -280 }}
+                initial={{ x: -240 }}
                 animate={{ 
                   x: 0,
-                  width: sidebarCollapsed ? 100 : 280
+                  width: sidebarCollapsed ? 100 : 240
                 }}
-                exit={{ x: -280 }}
+                exit={{ x: -240 }}
                 transition={{ 
                   duration: 0.4, 
                   ease: [0.4, 0, 0.2, 1],
@@ -1891,113 +1902,6 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
               >
                 <nav className={`py-3 ${sidebarCollapsed ? 'px-2' : 'px-1.5'} space-y-1.5 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`}>
                   {/* Search Menu Section */}
-                  <div className="mb-4">
-                    <div className="flex items-center gap-2">
-                      <AnimatePresence mode="wait">
-                        {!sidebarCollapsed ? (
-                          <motion.div 
-                            key="search-input"
-                            initial={{ opacity: 0, width: 0 }}
-                            animate={{ opacity: 1, width: sidebarCollapsed ? 0 : 'auto' }}
-                            exit={{ opacity: 0, width: 0 }}
-                            transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-                            className="relative search-container flex-1"
-                          >
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 size-4" />
-                              <input
-                                type="text"
-                                placeholder="Search menu..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                onFocus={() => setSearchDropdownOpen(true)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-slate-500/30 rounded-lg text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/50 focus:border-slate-400/50 transition-all"
-                              />
-                          </div>
-                          
-                          {/* Search Results Dropdown */}
-                          {searchDropdownOpen && filteredSearchResults.length > 0 && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="absolute top-full left-0 right-0 mt-2 bg-slate-700/98 dark:bg-slate-800/98 backdrop-blur-xl border border-slate-600/40 rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
-                            >
-                              <div className="p-2">
-                                {filteredSearchResults.map((item, idx) => {
-                                  const ItemIcon = item.icon;
-                                  return (
-                                    <Link
-                                      key={`${item.path}-${idx}`}
-                                      href={`${basePath}${item.path}`}
-                                      onClick={() => {
-                                        setSearchQuery('');
-                                        setSearchDropdownOpen(false);
-                                        setSidebarOpen(false);
-                                      }}
-                                      className="flex items-center gap-3 px-2 py-2.5 hover:bg-white/10 rounded-lg transition-colors group"
-                                    >
-                                      <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0 group-hover:bg-white/15 transition-colors">
-                                        <ItemIcon size={16} className="text-slate-300 group-hover:text-white" />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium text-white truncate">
-                                          {item.label}
-                                        </div>
-                                        {item.parent && (
-                                          <div className="text-xs text-slate-400 truncate">
-                                            {item.parent} • {item.category}
-                                          </div>
-                                        )}
-                                      </div>
-                                      <ChevronRight size={14} className="text-slate-400 group-hover:text-white flex-shrink-0" />
-                                    </Link>
-                                  );
-                                })}
-                              </div>
-                            </motion.div>
-                          )}
-                          
-                          {searchDropdownOpen && searchQuery.trim() && filteredSearchResults.length === 0 && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="absolute top-full left-0 right-0 mt-2 bg-slate-700/95 dark:bg-slate-800/95 backdrop-blur-xl border border-slate-600/40 rounded-lg shadow-xl p-4 z-50"
-                            >
-                              <p className="text-sm text-slate-400 text-center">No results found</p>
-                            </motion.div>
-                          )}
-                          </motion.div>
-                        ) : (
-                          <motion.button
-                            key="search-icon"
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                            transition={{ duration: 0.3 }}
-                            onClick={() => setSidebarCollapsed(false)}
-                            className="flex-1 p-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] flex items-center justify-center"
-                            title="Expand Sidebar"
-                          >
-                            <Search size={18} />
-                          </motion.button>
-                        )}
-                      </AnimatePresence>
-                      
-                      {/* Collapse/Expand Button */}
-                      <button
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] flex items-center justify-center flex-shrink-0"
-                        title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-                      >
-                        {sidebarCollapsed ? (
-                          <ChevronRight size={14} />
-                        ) : (
-                          <ChevronLeft size={14} />
-                        )}
-                      </button>
-                        </div>
-                  </div>
-                  
                   {/* Menu Items */}
                   <DndContext
                     sensors={sensors}
@@ -2041,6 +1945,7 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
                         setLibraryModalOpen={setLibraryModalOpen}
                         setTransportModalOpen={setTransportModalOpen}
                         setLeaveModalOpen={setLeaveModalOpen}
+                        isDragEnabled={isDragEnabled}
                         t={t}
                       />
                                 );

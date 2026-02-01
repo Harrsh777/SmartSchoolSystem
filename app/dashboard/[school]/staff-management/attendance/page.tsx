@@ -35,6 +35,7 @@ export default function StaffAttendancePage({
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
+  const [showPunch, setShowPunch] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isMarked, setIsMarked] = useState(false);
@@ -373,6 +374,18 @@ export default function StaffAttendancePage({
                 ))}
               </select>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowPunch(!showPunch)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                showPunch
+                  ? 'bg-orange-100 border-orange-300 text-orange-700 hover:bg-orange-200'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span className="text-sm font-medium">Punch</span>
+              {showPunch && <span className="text-xs">(Check In/Out shown)</span>}
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -406,15 +419,19 @@ export default function StaffAttendancePage({
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Role</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Department</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Check In</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Check Out</th>
+                {showPunch && (
+                  <>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Check In</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Check Out</th>
+                  </>
+                )}
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Remarks</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredStaff.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={showPunch ? 8 : 6} className="px-4 py-8 text-center text-gray-500">
                     No staff found
                   </td>
                 </tr>
@@ -444,24 +461,28 @@ export default function StaffAttendancePage({
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm">
-                        <Input
-                          type="time"
-                          value={checkInTimes[member.id] || ''}
-                          onChange={(e) => setCheckInTimes(prev => ({ ...prev, [member.id]: e.target.value }))}
-                          className="w-32"
-                          disabled={currentStatus === 'absent' || currentStatus === 'leave' || currentStatus === 'holiday'}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <Input
-                          type="time"
-                          value={checkOutTimes[member.id] || ''}
-                          onChange={(e) => setCheckOutTimes(prev => ({ ...prev, [member.id]: e.target.value }))}
-                          className="w-32"
-                          disabled={currentStatus === 'absent' || currentStatus === 'leave' || currentStatus === 'holiday'}
-                        />
-                      </td>
+                      {showPunch && (
+                        <>
+                          <td className="px-4 py-3 text-sm">
+                            <Input
+                              type="time"
+                              value={checkInTimes[member.id] || ''}
+                              onChange={(e) => setCheckInTimes(prev => ({ ...prev, [member.id]: e.target.value }))}
+                              className="w-32"
+                              disabled={currentStatus === 'absent' || currentStatus === 'leave' || currentStatus === 'holiday'}
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <Input
+                              type="time"
+                              value={checkOutTimes[member.id] || ''}
+                              onChange={(e) => setCheckOutTimes(prev => ({ ...prev, [member.id]: e.target.value }))}
+                              className="w-32"
+                              disabled={currentStatus === 'absent' || currentStatus === 'leave' || currentStatus === 'holiday'}
+                            />
+                          </td>
+                        </>
+                      )}
                       <td className="px-4 py-3 text-sm">
                         <Input
                           type="text"

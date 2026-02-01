@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    const academicYearFilter = searchParams.get('academic_year');
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -27,11 +28,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch all classes
-    const { data: classes, error: classesError } = await supabase
+    // Fetch classes (optionally filter by academic year)
+    let classesQuery = supabase
       .from('classes')
       .select('id, class, section, academic_year, class_teacher_id')
-      .eq('school_code', schoolCode)
+      .eq('school_code', schoolCode);
+
+    if (academicYearFilter) {
+      classesQuery = classesQuery.eq('academic_year', academicYearFilter);
+    }
+
+    const { data: classes, error: classesError } = await classesQuery
       .order('class', { ascending: true })
       .order('section', { ascending: true });
 
@@ -80,14 +87,39 @@ export async function GET(request: NextRequest) {
         );
         const totalSubjects = uniqueSubjects.size;
 
-        // Get all students for this class
-        const { data: allStudents } = await supabase
-          .from('students')
-          .select('id, created_at, status')
-          .eq('school_code', schoolCode)
-          .eq('class', cls.class)
-          .eq('section', cls.section)
-          .eq('academic_year', cls.academic_year);
+        // Get all students for this class (match class + section; academic_year can match or be null/empty)
+        // Use flexible class matching: "NUR" and "NUR." often refer to the same class
+        const classTrimmed = (cls.class || '').toString().trim();
+        const classWithoutTrailingPeriod = classTrimmed.replace(/\.+$/, '');
+        const classVariants = [...new Set([cls.class, classTrimmed, classWithoutTrailingPeriod].filter(Boolean))];
+
+        let allStudentsRaw: { id: string; created_at: string | null; status: string; academic_year: string | null }[] = [];
+        if (classVariants.length > 0) {
+          const { data } = await supabase
+            .from('students')
+            .select('id, created_at, status, academic_year')
+            .eq('school_code', schoolCode)
+            .in('class', classVariants)
+            .eq('section', cls.section || '');
+          allStudentsRaw = data || [];
+        } else {
+          const { data } = await supabase
+            .from('students')
+            .select('id, created_at, status, academic_year')
+            .eq('school_code', schoolCode)
+            .eq('class', cls.class)
+            .eq('section', cls.section || '');
+          allStudentsRaw = data || [];
+        }
+
+        // Include students where academic_year matches, or student's is null/empty (for students added without academic_year)
+        const classYear = (cls.academic_year || '').toString().trim();
+        const allStudents = (allStudentsRaw || []).filter((s) => {
+          const studentYear = (s.academic_year || '').toString().trim();
+          if (!studentYear) return true; // Student has no academic_year - include
+          if (!classYear) return true; // Class has no academic_year - include
+          return studentYear === classYear;
+        });
 
         // Calculate student statistics
         const totalStudents = allStudents?.length || 0;

@@ -92,7 +92,12 @@ export default function DashboardPage({
     totalStudents: 0,
     totalStaff: 0,
     feeCollection: { collected: 0, total: 0, todayCollection: 0, monthlyCollection: 0 },
-    todayAttendance: { percentage: 0, present: 0 },
+    todayAttendance: {
+      percentage: 0,
+      present: 0,
+      students: { present: 0, total: 0, percentage: 0 },
+      staff: { present: 0, total: 0, percentage: 0 },
+    },
     upcomingExams: 0,
     recentNotices: 0,
   });
@@ -1128,34 +1133,41 @@ export default function DashboardPage({
             </div>
             
             {/* Title */}
-            <p className="text-sm font-medium text-gray-600 mb-2">
+            <p className="text-sm font-medium text-gray-600 mb-1">
               Staff & Student Attendance
             </p>
+            <p className="text-xs text-gray-400 mb-2">Today&apos;s marked attendance</p>
             
             {/* Main Value - Both Staff and Student */}
             <div className="mb-3 space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-500">Staff</span>
                 <span className="text-lg font-bold text-gray-900">
-                  {loading ? '...' : `${stats.todayAttendance.staff?.percentage ?? 0}%`}
+                  {loading ? '...' : (stats.todayAttendance.staff?.total ?? 0) > 0
+                    ? `${stats.todayAttendance.staff?.present ?? 0}/${stats.todayAttendance.staff?.total ?? 0} (${stats.todayAttendance.staff?.percentage ?? 0}%)`
+                    : '—'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-500">Students</span>
                 <span className="text-lg font-bold text-gray-900">
-                  {loading ? '...' : `${stats.todayAttendance.students?.percentage ?? 0}%`}
+                  {loading ? '...' : (stats.todayAttendance.students?.total ?? 0) > 0
+                    ? `${stats.todayAttendance.students?.present ?? 0}/${stats.todayAttendance.students?.total ?? 0} (${stats.todayAttendance.students?.percentage ?? 0}%)`
+                    : '—'}
                 </span>
               </div>
             </div>
             
             {/* Progress Bars - Staff and Student */}
             <div className="space-y-2">
-              <div className="relative w-full bg-pink-100 rounded-full h-1.5 overflow-hidden">
+              <div className="relative w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                 <motion.div 
                   className="bg-green-500 h-full rounded-full"
                   initial={{ width: 0 }}
                   animate={{ 
-                    width: loading ? '0%' : `${Math.min(stats.todayAttendance.staff?.percentage ?? 0, 100)}%` 
+                    width: loading ? '0%' : (stats.todayAttendance.staff?.total ?? 0) > 0
+                      ? `${Math.min(stats.todayAttendance.staff?.percentage ?? 0, 100)}%`
+                      : '0%'
                   }}
                   transition={{ duration: 0.8, ease: 'easeOut' }}
                 />
@@ -1165,7 +1177,9 @@ export default function DashboardPage({
                   className="bg-emerald-500 h-full rounded-full"
                   initial={{ width: 0 }}
                   animate={{ 
-                    width: loading ? '0%' : `${Math.min(stats.todayAttendance.students?.percentage ?? 0, 100)}%` 
+                    width: loading ? '0%' : (stats.todayAttendance.students?.total ?? 0) > 0
+                      ? `${Math.min(stats.todayAttendance.students?.percentage ?? 0, 100)}%`
+                      : '0%'
                   }}
                   transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 }}
                 />

@@ -14,6 +14,7 @@ import {
   Shield,
   BookOpen,
   Calendar,
+  Grid3X3,
 } from 'lucide-react';
 
 interface SettingCard {
@@ -46,6 +47,13 @@ export default function SettingsPage({
       icon: Shield,
       path: '/settings/roles',
       description: 'Staff permissions & module access',
+    },
+    {
+      id: 'rearrange-modules',
+      title: 'Rearrange Modules',
+      icon: Grid3X3,
+      path: '/settings/rearrange',
+      description: 'Customize sidebar module order',
     },
     {
       id: 'institute-info',

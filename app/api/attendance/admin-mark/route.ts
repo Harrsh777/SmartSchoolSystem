@@ -69,10 +69,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare attendance records for upsert
+    // Note: student_attendance table may not have remarks column - only include standard columns
     interface AttendanceRecord {
       student_id?: string;
       status?: string;
-      remarks?: string;
       [key: string]: unknown;
     }
 
@@ -84,7 +84,6 @@ export async function POST(request: NextRequest) {
       attendance_date: attendance_date,
       status: record.status || 'present',
       marked_by: marked_by,
-      remarks: record.remarks || null,
     }));
 
     // Upsert attendance records (update if exists, insert if new)

@@ -69,16 +69,40 @@ export default function ClassOverviewPage({
   const [filterClass, setFilterClass] = useState('');
   const [filterSection, setFilterSection] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [academicYears, setAcademicYears] = useState<string[]>([]);
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);
+
+  useEffect(() => {
+    const fetchAcademicYears = async () => {
+      try {
+        setLoadingAcademicYears(true);
+        const res = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
+        const data = await res.json();
+        if (res.ok && data.data?.length) {
+          setAcademicYears(data.data);
+          setSelectedAcademicYear(data.data[0] || '');
+        }
+      } catch (err) {
+        console.error('Error fetching academic years:', err);
+      } finally {
+        setLoadingAcademicYears(false);
+      }
+    };
+    fetchAcademicYears();
+  }, [schoolCode]);
 
   useEffect(() => {
     fetchClassOverview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode]);
+  }, [schoolCode, selectedAcademicYear]);
 
   const fetchClassOverview = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/classes/overview?school_code=${schoolCode}`);
+      const params = new URLSearchParams({ school_code: schoolCode });
+      if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
+      const response = await fetch(`/api/classes/overview?${params}`);
       const result = await response.json();
 
       if (response.ok && result.data) {
@@ -191,7 +215,7 @@ export default function ClassOverviewPage({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+        className="flex flex-wrap items-center justify-between gap-4"
       >
         <div>
           <h1 className="text-3xl font-bold text-[#1e3a8a] mb-2 flex items-center gap-3">
@@ -199,6 +223,20 @@ export default function ClassOverviewPage({
             Class Overview
           </h1>
           <p className="text-[#64748B]">View all classes with their statistics and timetables</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-[#64748B]">Academic Year:</label>
+          <select
+            value={selectedAcademicYear}
+            onChange={(e) => setSelectedAcademicYear(e.target.value)}
+            disabled={loadingAcademicYears}
+            className="px-4 py-2.5 border border-[#E1E1DB] rounded-lg bg-white text-[#0F172A] text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#60A5FA] focus:border-transparent disabled:opacity-60"
+          >
+            <option value="">All Years</option>
+            {academicYears.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
         </div>
       </motion.div>
 
@@ -384,26 +422,26 @@ export default function ClassOverviewPage({
       {/* Classes Table */}
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[900px]">
             <thead className="bg-gradient-to-r from-[#1e3a8a] to-[#2F6FED] text-white">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">#</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Class</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Section</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Class Teacher</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Total Subjects</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Time Table</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Old Admissions</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">New Admissions</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Active Students</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Deactivated</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider">Total Students</th>
+                <th className="px-2 py-3 text-left text-[10px] font-semibold uppercase tracking-wider w-10">#</th>
+                <th className="px-2 py-3 text-left text-[10px] font-semibold uppercase tracking-wider">Class</th>
+                <th className="px-2 py-3 text-left text-[10px] font-semibold uppercase tracking-wider">Sec</th>
+                <th className="px-2 py-3 text-left text-[10px] font-semibold uppercase tracking-wider">Class Teacher</th>
+                <th className="px-2 py-3 text-center text-[10px] font-semibold uppercase tracking-wider">Subjects</th>
+                <th className="px-2 py-3 text-center text-[10px] font-semibold uppercase tracking-wider">Timetable</th>
+                <th className="px-2 py-3 text-center text-[10px] font-semibold uppercase tracking-wider">Old</th>
+                <th className="px-2 py-3 text-center text-[10px] font-semibold uppercase tracking-wider">New</th>
+                <th className="px-2 py-3 text-center text-[10px] font-semibold uppercase tracking-wider">Active</th>
+                <th className="px-2 py-3 text-center text-[10px] font-semibold uppercase tracking-wider">Inactive</th>
+                <th className="px-2 py-3 text-center text-[10px] font-semibold uppercase tracking-wider">Total</th>
               </tr>
             </thead>
             <tbody className="bg-[#FFFFFF] divide-y divide-[#E1E1DB]">
               {paginatedClasses.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-[#64748B]">
+                  <td colSpan={11} className="px-3 py-8 text-center text-[#64748B] text-sm">
                     {searchQuery || filterClass || filterSection
                       ? 'No classes found matching your filters'
                       : 'No classes found'}
@@ -413,73 +451,73 @@ export default function ClassOverviewPage({
                 <>
                   {paginatedClasses.map((classItem, index) => (
                     <tr key={classItem.id} className="hover:bg-[#F8FAFC] transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-[#64748B]">
+                      <td className="px-2 py-2.5 whitespace-nowrap">
+                        <span className="text-xs font-medium text-[#64748B]">
                           {(startIndex + index + 1).toString().padStart(2, '0')}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-semibold text-[#1e3a8a]">
+                      <td className="px-2 py-2.5 whitespace-nowrap">
+                        <span className="text-xs font-semibold text-[#1e3a8a]">
                           {classItem.class}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-semibold text-[#2F6FED]">
+                      <td className="px-2 py-2.5 whitespace-nowrap">
+                        <span className="text-xs font-semibold text-[#2F6FED]">
                           {classItem.section}
                         </span>
                       </td>
                       <td
-                        className="px-6 py-4 whitespace-nowrap cursor-pointer hover:bg-[#EAF1FF] transition-colors"
+                        className="px-2 py-2.5 whitespace-nowrap cursor-pointer hover:bg-[#EAF1FF] transition-colors max-w-[120px] truncate"
                         onDoubleClick={() => handleDoubleClickTeacher(classItem)}
-                        title="Double-click to assign/change class teacher"
+                        title={classItem.class_teacher?.full_name || 'Double-click to assign class teacher'}
                       >
-                        <span className="text-sm text-[#0F172A]">
+                        <span className="text-xs text-[#0F172A]">
                           {classItem.class_teacher?.full_name || '-'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-[#2F6FED]">
+                      <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="text-xs font-semibold text-[#2F6FED]">
                             {classItem.total_subjects}
                           </span>
                           <button
                             onClick={() => handleAssignSubjects(classItem)}
-                            className="text-xs text-[#F97316] hover:text-[#EA580C] font-medium transition-colors"
+                            className="text-[10px] text-[#F97316] hover:text-[#EA580C] font-medium transition-colors"
                             title="Assign subjects to this class"
                           >
                             Edit
                           </button>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-2 py-2.5 whitespace-nowrap text-center">
                         {classItem.has_timetable ? (
                           <button
                             onClick={() => handleViewTimetable(classItem.id)}
-                            className="text-sm text-[#2F6FED] hover:text-[#1e3a8a] font-medium flex items-center gap-1 transition-colors"
+                            className="text-xs text-[#2F6FED] hover:text-[#1e3a8a] font-medium flex items-center justify-center gap-0.5 transition-colors"
                           >
-                            <Eye size={14} />
+                            <Eye size={12} />
                             View
                           </button>
                         ) : (
-                          <span className="text-sm text-[#64748B]">Not Created</span>
+                          <span className="text-xs text-[#64748B]">-</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-[#0F172A]">{classItem.old_admissions}</span>
+                      <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                        <span className="text-xs text-[#0F172A]">{classItem.old_admissions}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-[#0F172A]">{classItem.new_admissions}</span>
+                      <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                        <span className="text-xs text-[#0F172A]">{classItem.new_admissions}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-semibold text-[#2F6FED]">
+                      <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                        <span className="text-xs font-semibold text-[#2F6FED]">
                           {classItem.active_students}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-[#0F172A]">{classItem.deactivated_students}</span>
+                      <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                        <span className="text-xs text-[#0F172A]">{classItem.deactivated_students}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-semibold text-[#1e3a8a]">
+                      <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                        <span className="text-xs font-semibold text-[#1e3a8a]">
                           {classItem.total_students}
                         </span>
                       </td>
@@ -487,30 +525,30 @@ export default function ClassOverviewPage({
                   ))}
                   {/* Total Row */}
                   <tr className="bg-[#F8FAFC] font-semibold border-t-2 border-[#E1E1DB]">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-[#1e3a8a]">Total</span>
+                    <td className="px-2 py-2.5 whitespace-nowrap">
+                      <span className="text-xs text-[#1e3a8a]">Total</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap"></td>
-                    <td className="px-6 py-4 whitespace-nowrap"></td>
-                    <td className="px-6 py-4 whitespace-nowrap"></td>
-                    <td className="px-6 py-4 whitespace-nowrap"></td>
-                    <td className="px-6 py-4 whitespace-nowrap"></td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-[#0F172A]">{totals.old_admissions}</span>
+                    <td className="px-2 py-2.5 whitespace-nowrap"></td>
+                    <td className="px-2 py-2.5 whitespace-nowrap"></td>
+                    <td className="px-2 py-2.5 whitespace-nowrap"></td>
+                    <td className="px-2 py-2.5 whitespace-nowrap"></td>
+                    <td className="px-2 py-2.5 whitespace-nowrap"></td>
+                    <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                      <span className="text-xs text-[#0F172A]">{totals.old_admissions}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-[#0F172A]">{totals.new_admissions}</span>
+                    <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                      <span className="text-xs text-[#0F172A]">{totals.new_admissions}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-semibold text-[#2F6FED]">
+                    <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                      <span className="text-xs font-semibold text-[#2F6FED]">
                         {totals.active_students}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-[#0F172A]">{totals.deactivated_students}</span>
+                    <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                      <span className="text-xs text-[#0F172A]">{totals.deactivated_students}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-semibold text-[#1e3a8a]">
+                    <td className="px-2 py-2.5 whitespace-nowrap text-center">
+                      <span className="text-xs font-semibold text-[#1e3a8a]">
                         {totals.total_students}
                       </span>
                     </td>
@@ -523,27 +561,27 @@ export default function ClassOverviewPage({
 
         {/* Pagination */}
         {filteredClasses.length > itemsPerPage && (
-          <div className="px-6 py-4 border-t border-[#E1E1DB] flex items-center justify-between bg-[#FFFFFF]">
-            <div className="text-sm text-[#64748B]">
+          <div className="px-3 py-3 border-t border-[#E1E1DB] flex items-center justify-between bg-[#FFFFFF]">
+            <div className="text-xs text-[#64748B]">
               Showing {startIndex + 1}-{Math.min(endIndex, filteredClasses.length)} of {filteredClasses.length} classes
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="p-2 rounded-lg border border-[#E1E1DB] hover:bg-[#F8FAFC] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-[#64748B] hover:text-[#1e3a8a]"
+                className="p-1.5 rounded-lg border border-[#E1E1DB] hover:bg-[#F8FAFC] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-[#64748B] hover:text-[#1e3a8a]"
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={16} />
               </button>
-              <span className="text-sm text-[#64748B] px-3">
+              <span className="text-xs text-[#64748B] px-2">
                 Page {currentPage} of {totalPages}
               </span>
               <button
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                className="p-2 rounded-lg border border-[#E1E1DB] hover:bg-[#F8FAFC] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-[#64748B] hover:text-[#1e3a8a]"
+                className="p-1.5 rounded-lg border border-[#E1E1DB] hover:bg-[#F8FAFC] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-[#64748B] hover:text-[#1e3a8a]"
               >
-                <ChevronRight size={18} />
+                <ChevronRight size={16} />
               </button>
             </div>
           </div>

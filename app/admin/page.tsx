@@ -52,10 +52,7 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { AnimatePresence } from 'framer-motion';
 import SchoolSupervisionView from '@/components/admin/SchoolSupervisionView';
 import AdminPasswordModal from '@/components/admin/AdminPasswordModal';
-import SessionTimeoutModal from '@/components/SessionTimeoutModal';
-import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import { useFakeAnalytics } from '@/hooks/useFakeAnalytics';
-import { setActivityPrefix } from '@/lib/api-interceptor';
 import {
   calculatePercentage,
   getGradeFromPercentage,
@@ -776,25 +773,6 @@ function AdminMarksEntryView({ acceptedSchools }: { acceptedSchools: AcceptedSch
 
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  // Session timeout (20 min) – same hook as teacher; persists across refresh
-  const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
-    timeoutMinutes: 20,
-    warningMinutes: 19,
-    loginPath: '/admin',
-    storageKeyPrefix: 'admin',
-    onLogout: () => setIsAuthenticated(false),
-  });
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      setActivityPrefix('admin');
-      resetTimer();
-    } else {
-      setActivityPrefix(undefined);
-    }
-    return () => setActivityPrefix(undefined);
-  }, [isAuthenticated, resetTimer]);
 
   // Simulated real-time analytics (replace with real API when available)
   const fakeAnalytics = useFakeAnalytics();
@@ -2017,16 +1995,6 @@ export default function AdminDashboard() {
         isOpen={!isAuthenticated} 
         onSuccess={() => setIsAuthenticated(true)} 
       />
-
-      {/* Session Timeout Warning Modal */}
-      {isAuthenticated && (
-        <SessionTimeoutModal
-          isOpen={showWarning}
-          timeRemaining={timeRemaining}
-          onStayLoggedIn={resetTimer}
-          onLogout={handleLogout}
-        />
-      )}
 
       {/* Admin Content - Only show if authenticated */}
       {isAuthenticated ? (
@@ -4103,7 +4071,7 @@ export default function AdminDashboard() {
                         >
                           <option value="en">English</option>
                           <option value="hi">Hindi</option>
-                          <option value="es">Spanish</option>
+                          <option value="pa">Punjabi</option>
                         </select>
                       </div>
                     </div>

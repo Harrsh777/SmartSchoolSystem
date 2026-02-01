@@ -41,6 +41,7 @@ import type { Staff, AcceptedSchool } from '@/lib/supabase';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import HelpModal from '@/components/help/HelpModal';
 import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler, setActivityPrefix } from '@/lib/api-interceptor';
+import { languages } from '@/lib/translations';
 
 interface TeacherLayoutProps {
   children: React.ReactNode;
@@ -886,12 +887,14 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                 </button>
                 {languageDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-[#E1E1DB] z-50 p-2">
-                    <button className="block w-full text-left px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
-                      English
-                    </button>
-                    <button className="block w-full text-left px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
-                      हिंदी
-                    </button>
+                    {languages.map((lang) => (
+                      <button
+                        key={lang.code}
+                        className="block w-full text-left px-3 py-2 hover:bg-[#DBEAFE] rounded-lg"
+                      >
+                        {lang.name}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>

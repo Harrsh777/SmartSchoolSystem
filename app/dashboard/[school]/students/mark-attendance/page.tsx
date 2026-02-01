@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { Calendar, CheckCircle, AlertCircle, Save, ArrowLeft, Users, Filter } from 'lucide-react';
 
-type AttendanceStatus = 'present' | 'absent' | 'late';
+type AttendanceStatus = 'present' | 'absent';
 
 interface Student {
   id: string;
@@ -183,8 +183,10 @@ export default function MarkAttendancePage({
 
       if (response.ok && result.data) {
         const existingAttendance: Record<string, AttendanceStatus> = {};
-        result.data.forEach((record: { student_id: string; status: AttendanceStatus }) => {
-          existingAttendance[record.student_id] = record.status;
+        result.data.forEach((record: { student_id: string; status: string }) => {
+          // Map 'late' to 'present' since Late option has been removed
+          existingAttendance[record.student_id] =
+            record.status === 'late' ? 'present' : (record.status as AttendanceStatus);
         });
         setAttendance(prev => ({ ...prev, ...existingAttendance }));
       }
@@ -417,7 +419,6 @@ export default function MarkAttendancePage({
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Roll No.</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Admission No.</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Student Name</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Status</th>
@@ -426,9 +427,6 @@ export default function MarkAttendancePage({
               <tbody className="bg-white divide-y divide-gray-200">
                 {students.map((student) => (
                   <tr key={student.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                      {student.roll_number || '-'}
-                    </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
                       {student.admission_no}
                     </td>
@@ -456,16 +454,6 @@ export default function MarkAttendancePage({
                           }`}
                         >
                           Absent
-                        </button>
-                        <button
-                          onClick={() => handleStatusChange(student.id, 'late')}
-                          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                            attendance[student.id] === 'late'
-                              ? 'bg-yellow-500 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-yellow-100'
-                          }`}
-                        >
-                          Late
                         </button>
                       </div>
                     </td>

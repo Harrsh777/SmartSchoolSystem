@@ -1,12 +1,11 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { TranslationProvider } from '@/contexts/TranslationContext';
 import type { AcceptedSchool } from '@/lib/supabase';
-import { useSessionTimeout } from '@/hooks/useSessionTimeout';
-import SessionTimeoutModal from '@/components/SessionTimeoutModal';
-import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler, setActivityPrefix } from '@/lib/api-interceptor';
+import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
 
 export default function SchoolDashboardLayout({
   children,
@@ -16,25 +15,22 @@ export default function SchoolDashboardLayout({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
+  const router = useRouter();
   const [schoolName, setSchoolName] = useState('School Dashboard');
 
-  // 20-minute session timeout for school dashboard (persists across refresh)
-  const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
-    timeoutMinutes: 20,
-    warningMinutes: 19,
-    loginPath: '/login',
-    storageKeyPrefix: 'dashboard',
-  });
-
+  // Logout handler for 401 responses only (no inactivity timeout)
   useEffect(() => {
-    setActivityPrefix('dashboard');
-    setLogoutHandler(handleLogout);
+    const logout = () => {
+      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+      sessionStorage.clear();
+      router.push('/login');
+    };
+    setLogoutHandler(logout);
     setupApiInterceptor();
     return () => {
-      setActivityPrefix(undefined);
       removeApiInterceptor();
     };
-  }, [handleLogout]);
+  }, [router]);
 
   useEffect(() => {
     // Get school name from sessionStorage
@@ -64,15 +60,9 @@ export default function SchoolDashboardLayout({
 
   return (
     <TranslationProvider>
-      <DashboardLayout schoolName={schoolName} timeRemaining={timeRemaining}>
+      <DashboardLayout schoolName={schoolName}>
         {children}
       </DashboardLayout>
-      <SessionTimeoutModal
-        isOpen={showWarning}
-        timeRemaining={timeRemaining}
-        onStayLoggedIn={resetTimer}
-        onLogout={handleLogout}
-      />
     </TranslationProvider>
   );
 }

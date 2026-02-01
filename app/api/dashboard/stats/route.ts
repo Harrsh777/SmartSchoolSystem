@@ -68,25 +68,48 @@ export async function GET(request: NextRequest) {
       .order('publish_at', { ascending: false })
       .limit(10);
 
-    // Calculate today's student attendance
-    const { data: todayStudentAttendance, count: studentAttendanceCount } = await supabase
+    // Calculate today's student attendance (try school_code first, fallback to school_id)
+    let todayStudentAttendance: { status: string }[] = [];
+    let totalStudentMarked = 0;
+    const { data: studentAttData } = await supabase
       .from('student_attendance')
-      .select('status', { count: 'exact' })
+      .select('status')
       .eq('school_code', schoolCode)
       .eq('attendance_date', today);
-
-    const totalStudentMarked = studentAttendanceCount || 0;
+    todayStudentAttendance = studentAttData || [];
+    totalStudentMarked = todayStudentAttendance.length;
+    // Fallback: if no results and table might use school_id
+    if (totalStudentMarked === 0 && schoolData?.id) {
+      const { data: studentAttById } = await supabase
+        .from('student_attendance')
+        .select('status')
+        .eq('school_id', schoolData.id)
+        .eq('attendance_date', today);
+      todayStudentAttendance = studentAttById || [];
+      totalStudentMarked = todayStudentAttendance.length;
+    }
     const presentStudentCount = todayStudentAttendance?.filter(a => a.status === 'present').length || 0;
     const studentAttendancePercentage = totalStudentMarked > 0 ? Math.round((presentStudentCount / totalStudentMarked) * 100) : 0;
 
-    // Calculate today's staff attendance
-    const { data: todayStaffAttendance, count: staffAttendanceCount } = await supabase
+    // Calculate today's staff attendance (try school_code first, fallback to school_id)
+    let todayStaffAttendance: { status: string }[] = [];
+    let totalStaffMarked = 0;
+    const { data: staffAttData } = await supabase
       .from('staff_attendance')
-      .select('status', { count: 'exact' })
+      .select('status')
       .eq('school_code', schoolCode)
       .eq('attendance_date', today);
-
-    const totalStaffMarked = staffAttendanceCount || 0;
+    todayStaffAttendance = staffAttData || [];
+    totalStaffMarked = todayStaffAttendance.length;
+    if (totalStaffMarked === 0 && schoolData?.id) {
+      const { data: staffAttById } = await supabase
+        .from('staff_attendance')
+        .select('status')
+        .eq('school_id', schoolData.id)
+        .eq('attendance_date', today);
+      todayStaffAttendance = staffAttById || [];
+      totalStaffMarked = todayStaffAttendance.length;
+    }
     const presentStaffCount = todayStaffAttendance?.filter(a => a.status === 'present').length || 0;
     const staffAttendancePercentage = totalStaffMarked > 0 ? Math.round((presentStaffCount / totalStaffMarked) * 100) : 0;
 

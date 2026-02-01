@@ -32,9 +32,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/Button';
 import type { Student, AcceptedSchool } from '@/lib/supabase';
-import { useSessionTimeout } from '@/hooks/useSessionTimeout';
-import SessionTimeoutModal from '@/components/SessionTimeoutModal';
-import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler, setActivityPrefix } from '@/lib/api-interceptor';
+import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
 
 interface StudentLayoutProps {
   children: React.ReactNode;
@@ -100,31 +98,19 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
   const [loading, setLoading] = useState(true);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set(['Academics'])); // Default: Academics expanded
 
-  // Session timeout (20 minutes) – uses lastActivity_student so refresh/navigation doesn't reset the timer
-  const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
-    timeoutMinutes: 20,
-    warningMinutes: 19,
-    loginPath: '/student/login',
-    storageKeyPrefix: 'student',
-  });
-
-  // Setup API interceptor for session management (same prefix as useSessionTimeout)
+  // Logout handler for 401 responses only (no inactivity timeout)
   useEffect(() => {
-    setActivityPrefix('student');
-    setLogoutHandler(handleLogout);
+    const logout = () => {
+      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+      sessionStorage.clear();
+      router.push('/student/login');
+    };
+    setLogoutHandler(logout);
     setupApiInterceptor();
     return () => {
-      setActivityPrefix(undefined);
       removeApiInterceptor();
     };
-  }, [handleLogout]);
-
-  // Format time remaining as MM:SS
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, [router]);
 
   useEffect(() => {
     const checkDesktop = () => {
@@ -293,25 +279,6 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              {/* Session Timer */}
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 transition-all ${
-                timeRemaining <= 60 
-                  ? 'bg-red-50 border-red-300 text-red-700' 
-                  : timeRemaining <= 300
-                  ? 'bg-yellow-50 border-yellow-300 text-yellow-700'
-                  : 'bg-blue-50 border-blue-300 text-blue-700'
-              }`}>
-                <div className={`w-2 h-2 rounded-full ${
-                  timeRemaining <= 60 
-                    ? 'bg-red-500 animate-pulse' 
-                    : timeRemaining <= 300
-                    ? 'bg-yellow-500'
-                    : 'bg-blue-500'
-                }`} />
-                <span className="font-mono font-bold text-sm">
-                  {formatTime(timeRemaining)}
-                </span>
-              </div>
               <div className="hidden sm:flex items-center gap-3">
                 <div className="text-right">
                   <p className="text-sm font-medium text-[#1e3a8a]">{student.student_name}</p>
@@ -520,14 +487,6 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
           </div>
         </main>
       </div>
-
-      {/* Session Timeout Modal */}
-      <SessionTimeoutModal
-        isOpen={showWarning}
-        timeRemaining={timeRemaining}
-        onStayLoggedIn={resetTimer}
-        onLogout={handleLogout}
-      />
     </div>
   );
 }
