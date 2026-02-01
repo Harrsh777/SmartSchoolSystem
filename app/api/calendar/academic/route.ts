@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     if (includeEvents) {
       let eventsQuery = supabase
         .from('events')
-        .select('*')
+        .select('id,event_date,title,event_type,description')
         .eq('school_code', schoolCode)
         .eq('is_active', true);
 
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     // Also fetch from academic_calendar table (legacy/backward compatibility)
     let academicCalendarQuery = supabase
       .from('academic_calendar')
-      .select('*')
+      .select('id,event_date,title,event_type,description,academic_year')
       .eq('school_code', schoolCode)
       .eq('is_active', true);
 
@@ -100,7 +100,10 @@ export async function GET(request: NextRequest) {
       return dateA - dateB;
     });
 
-    return NextResponse.json({ data: uniqueEntries }, { status: 200 });
+    return NextResponse.json({ data: uniqueEntries }, {
+      status: 200,
+      headers: { 'Cache-Control': 'private, s-maxage=120, stale-while-revalidate=180' },
+    });
   } catch (error) {
     console.error('Error fetching academic calendar:', error);
     return NextResponse.json(

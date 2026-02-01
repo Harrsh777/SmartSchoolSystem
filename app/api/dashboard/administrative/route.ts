@@ -15,19 +15,18 @@ export async function GET(request: NextRequest) {
 
     const today = new Date().toISOString().split('T')[0];
 
-    // Fetch today's student attendance with status breakdown
-    const { data: studentAttendance } = await supabase
-      .from('student_attendance')
-      .select('status, student_id')
-      .eq('school_code', schoolCode)
-      .eq('attendance_date', today);
+    // Run attendance + count queries in parallel to reduce latency
+    const [studentAttendanceRes, totalStudentsRes, staffAttendanceRes, totalStaffRes] = await Promise.all([
+      supabase.from('student_attendance').select('status, student_id').eq('school_code', schoolCode).eq('attendance_date', today),
+      supabase.from('students').select('id', { count: 'exact', head: true }).eq('school_code', schoolCode).eq('status', 'active'),
+      supabase.from('staff_attendance').select('status, staff_id').eq('school_code', schoolCode).eq('attendance_date', today),
+      supabase.from('staff').select('id', { count: 'exact', head: true }).eq('school_code', schoolCode),
+    ]);
 
-    // Get total students
-    const { count: totalStudents } = await supabase
-      .from('students')
-      .select('*', { count: 'exact', head: true })
-      .eq('school_code', schoolCode)
-      .eq('status', 'active');
+    const { data: studentAttendance } = studentAttendanceRes;
+    const { count: totalStudents } = totalStudentsRes;
+    const { data: staffAttendance } = staffAttendanceRes;
+    const { count: totalStaff } = totalStaffRes;
 
     // Calculate student attendance breakdown
     const studentStats = {
@@ -40,27 +39,14 @@ export async function GET(request: NextRequest) {
       total: totalStudents || 0,
     };
 
-    // Fetch today's staff attendance with status breakdown
-    const { data: staffAttendance } = await supabase
-      .from('staff_attendance')
-      .select('status, staff_id')
-      .eq('school_code', schoolCode)
-      .eq('attendance_date', today);
-
-    // Get total staff
-    const { count: totalStaff } = await supabase
-      .from('staff')
-      .select('*', { count: 'exact', head: true })
-      .eq('school_code', schoolCode);
-
     // Calculate staff attendance breakdown
-    // Valid statuses from staff_attendance: 'present', 'absent', 'late', 'half_day', 'leave', 'holiday'
+    // Valid statuses: 'present', 'absent', 'half_day', 'leave', 'holiday' (late removed)
     const staffStats = {
       present: staffAttendance?.filter(a => a.status === 'present').length || 0,
       absent: staffAttendance?.filter(a => a.status === 'absent').length || 0,
       halfday: staffAttendance?.filter(a => a.status === 'half_day' || a.status === 'halfday').length || 0,
       leave: staffAttendance?.filter(a => a.status === 'leave').length || 0,
-      customLeaves: staffAttendance?.filter(a => a.status === 'late' || a.status === 'holiday').length || 0, // Group late and holiday as custom leaves
+      customLeaves: staffAttendance?.filter(a => a.status === 'holiday').length || 0,
       notMarked: (totalStaff || 0) - (staffAttendance?.length || 0),
       total: totalStaff || 0,
     };
@@ -225,7 +211,10 @@ export async function GET(request: NextRequest) {
           leaves: pendingLeaves || [],
         },
       },
-    }, { status: 200 });
+    }, {
+      status: 200,
+      headers: { 'Cache-Control': 'private, s-maxage=60, stale-while-revalidate=120' },
+    });
   } catch (error) {
     console.error('Error fetching administrative data:', error);
     return NextResponse.json(

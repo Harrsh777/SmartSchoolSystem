@@ -31,10 +31,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build query
+    // Build query - select only required fields
     let query = supabase
       .from('notices')
-      .select('*')
+      .select('id,title,content,category,priority,status,publish_at,created_at,updated_at')
       .eq('school_code', schoolCode)
       .order('created_at', { ascending: false });
 

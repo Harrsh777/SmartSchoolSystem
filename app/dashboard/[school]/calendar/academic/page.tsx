@@ -53,16 +53,12 @@ export default function AcademicCalendarPage({
       const response = await fetch(`/api/calendar/academic?school_code=${schoolCode}&academic_year=${selectedYear}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        // Ensure all entries have proper date formatting
+        // Ensure all entries have proper date formatting (use date part only, avoid UTC shift)
         const formattedEntries = result.data.map((entry: CalendarEntry) => {
           if (entry.event_date) {
-            // Normalize date to YYYY-MM-DD format
-            const date = new Date(entry.event_date);
-            if (!isNaN(date.getTime())) {
-              return {
-                ...entry,
-                event_date: date.toISOString().split('T')[0],
-              };
+            const raw = String(entry.event_date).split('T')[0];
+            if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+              return { ...entry, event_date: raw };
             }
           }
           return entry;
@@ -103,14 +99,21 @@ export default function AcademicCalendarPage({
     };
   }, [fetchCalendar]);
 
+  // Use local date (avoid UTC shift in timezones ahead of UTC)
+  const toLocalDateStr = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   const getEventsForDate = (date: Date): CalendarEntry[] => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(date);
     return calendarEntries.filter(entry => {
       if (!entry.event_date) return false;
-      // Handle both string dates and Date objects
-      const eventDateStr = typeof entry.event_date === 'string' 
+      const eventDateStr = typeof entry.event_date === 'string'
         ? entry.event_date.split('T')[0]
-        : new Date(entry.event_date).toISOString().split('T')[0];
+        : toLocalDateStr(new Date(entry.event_date));
       return eventDateStr === dateStr;
     });
   };
@@ -118,11 +121,10 @@ export default function AcademicCalendarPage({
   const getEventsForMonth = (month: number, year: number): CalendarEntry[] => {
     return calendarEntries.filter(entry => {
       if (!entry.event_date) return false;
-      // Handle both string dates and Date objects
-      const eventDate = typeof entry.event_date === 'string'
-        ? new Date(entry.event_date)
-        : new Date(entry.event_date);
-      return eventDate.getMonth() === month && eventDate.getFullYear() === year;
+      const raw = typeof entry.event_date === 'string' ? entry.event_date.split('T')[0] : '';
+      if (!raw) return false;
+      const [y, m] = raw.split('-').map(Number);
+      return m - 1 === month && y === year; // m is 1-based, month is 0-based
     });
   };
 
@@ -171,7 +173,10 @@ export default function AcademicCalendarPage({
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
+    const raw = String(dateStr).split('T')[0];
+    const [y, m, d] = raw.split('-').map(Number);
+    if (isNaN(y) || isNaN(m) || isNaN(d)) return dateStr;
+    const date = new Date(y, m - 1, d); // Parse as local to avoid timezone shift
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -417,10 +422,16 @@ export default function AcademicCalendarPage({
                     }
                   `}>
                     <div className="text-xs">
-                      {event.event_date ? new Date(event.event_date).toLocaleDateString('en-US', { month: 'short' }) : ''}
+                      {event.event_date ? (() => {
+                        const p = String(event.event_date).split('T')[0].split('-').map(Number);
+                        return p.length === 3 ? new Date(p[0], p[1] - 1, p[2]).toLocaleDateString('en-US', { month: 'short' }) : '';
+                      })() : ''}
                     </div>
                     <div className="text-xl">
-                      {event.event_date ? new Date(event.event_date).getDate() : ''}
+                      {event.event_date ? (() => {
+                        const p = String(event.event_date).split('T')[0].split('-').map(Number);
+                        return p.length === 3 ? p[2] : '';
+                      })() : ''}
                     </div>
                   </div>
                   <div className="flex-1">

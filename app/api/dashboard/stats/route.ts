@@ -28,89 +28,51 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch student count (filter by academic_year if provided)
-    let studentQuery = supabase
-      .from('students')
-      .select('*', { count: 'exact', head: true })
-      .eq('school_code', schoolCode)
-      .eq('status', 'active');
-    if (academicYear) {
-      studentQuery = studentQuery.eq('academic_year', academicYear);
-    }
-    const { count: studentCount } = await studentQuery;
-
-    // Fetch staff count
-    const { count: staffCount } = await supabase
-      .from('staff')
-      .select('*', { count: 'exact', head: true })
-      .eq('school_code', schoolCode);
-
     // Get today's date string (used for exams and attendance queries)
     const today = new Date().toISOString().split('T')[0];
 
-    // Fetch upcoming exams from examinations table
-    // Upcoming exams are those with status 'upcoming' or 'ongoing' and start_date >= today
-    const { data: upcomingExams } = await supabase
-      .from('examinations')
-      .select('id')
-      .eq('school_code', schoolCode)
-      .in('status', ['upcoming', 'ongoing'])
-      .gte('start_date', today)
-      .order('start_date', { ascending: true })
-      .limit(10);
+    // Build student count query
+    let studentQuery = supabase.from('students').select('id', { count: 'exact', head: true }).eq('school_code', schoolCode).eq('status', 'active');
+    if (academicYear) studentQuery = studentQuery.eq('academic_year', academicYear);
 
-    // Fetch recent notices (active notices, ordered by publish_at)
-    const { data: recentNotices } = await supabase
-      .from('notices')
-      .select('id')
-      .eq('school_code', schoolCode)
-      .eq('status', 'Active')
-      .order('publish_at', { ascending: false })
-      .limit(10);
+    // Run independent queries in parallel to reduce latency
+    const [
+      studentCountRes,
+      staffCountRes,
+      examsRes,
+      noticesRes,
+      studentAttRes,
+      staffAttRes,
+    ] = await Promise.all([
+      studentQuery,
+      supabase.from('staff').select('id', { count: 'exact', head: true }).eq('school_code', schoolCode),
+      supabase.from('examinations').select('id').eq('school_code', schoolCode).in('status', ['upcoming', 'ongoing']).gte('start_date', today).order('start_date', { ascending: true }).limit(10),
+      supabase.from('notices').select('id').eq('school_code', schoolCode).eq('status', 'Active').order('publish_at', { ascending: false }).limit(10),
+      supabase.from('student_attendance').select('status').eq('school_code', schoolCode).eq('attendance_date', today),
+      supabase.from('staff_attendance').select('status').eq('school_code', schoolCode).eq('attendance_date', today),
+    ]);
 
-    // Calculate today's student attendance (try school_code first, fallback to school_id)
-    let todayStudentAttendance: { status: string }[] = [];
-    let totalStudentMarked = 0;
-    const { data: studentAttData } = await supabase
-      .from('student_attendance')
-      .select('status')
-      .eq('school_code', schoolCode)
-      .eq('attendance_date', today);
-    todayStudentAttendance = studentAttData || [];
-    totalStudentMarked = todayStudentAttendance.length;
-    // Fallback: if no results and table might use school_id
-    if (totalStudentMarked === 0 && schoolData?.id) {
-      const { data: studentAttById } = await supabase
-        .from('student_attendance')
-        .select('status')
-        .eq('school_id', schoolData.id)
-        .eq('attendance_date', today);
-      todayStudentAttendance = studentAttById || [];
-      totalStudentMarked = todayStudentAttendance.length;
+    const studentCount = studentCountRes.count;
+    const staffCount = staffCountRes.count;
+    const upcomingExams = examsRes.data;
+    const recentNotices = noticesRes.data;
+
+    let todayStudentAttendance: { status: string }[] = studentAttRes.data || [];
+    if (todayStudentAttendance.length === 0 && schoolData?.id) {
+      const { data } = await supabase.from('student_attendance').select('status').eq('school_id', schoolData.id).eq('attendance_date', today);
+      todayStudentAttendance = data || [];
     }
-    const presentStudentCount = todayStudentAttendance?.filter(a => a.status === 'present').length || 0;
+    const totalStudentMarked = todayStudentAttendance.length;
+    const presentStudentCount = todayStudentAttendance.filter(a => a.status === 'present').length || 0;
     const studentAttendancePercentage = totalStudentMarked > 0 ? Math.round((presentStudentCount / totalStudentMarked) * 100) : 0;
 
-    // Calculate today's staff attendance (try school_code first, fallback to school_id)
-    let todayStaffAttendance: { status: string }[] = [];
-    let totalStaffMarked = 0;
-    const { data: staffAttData } = await supabase
-      .from('staff_attendance')
-      .select('status')
-      .eq('school_code', schoolCode)
-      .eq('attendance_date', today);
-    todayStaffAttendance = staffAttData || [];
-    totalStaffMarked = todayStaffAttendance.length;
-    if (totalStaffMarked === 0 && schoolData?.id) {
-      const { data: staffAttById } = await supabase
-        .from('staff_attendance')
-        .select('status')
-        .eq('school_id', schoolData.id)
-        .eq('attendance_date', today);
-      todayStaffAttendance = staffAttById || [];
-      totalStaffMarked = todayStaffAttendance.length;
+    let todayStaffAttendance: { status: string }[] = staffAttRes.data || [];
+    if (todayStaffAttendance.length === 0 && schoolData?.id) {
+      const { data } = await supabase.from('staff_attendance').select('status').eq('school_id', schoolData.id).eq('attendance_date', today);
+      todayStaffAttendance = data || [];
     }
-    const presentStaffCount = todayStaffAttendance?.filter(a => a.status === 'present').length || 0;
+    const totalStaffMarked = todayStaffAttendance.length;
+    const presentStaffCount = todayStaffAttendance.filter(a => a.status === 'present').length || 0;
     const staffAttendancePercentage = totalStaffMarked > 0 ? Math.round((presentStaffCount / totalStaffMarked) * 100) : 0;
 
     // Calculate fee collection
@@ -251,7 +213,10 @@ export async function GET(request: NextRequest) {
       recentNotices: recentNotices?.length || 0,
     };
 
-    return NextResponse.json({ data: stats }, { status: 200 });
+    return NextResponse.json({ data: stats }, {
+      status: 200,
+      headers: { 'Cache-Control': 'private, s-maxage=60, stale-while-revalidate=120' },
+    });
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

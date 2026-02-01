@@ -218,7 +218,7 @@ export async function GET() {
     // First, get or create the default permission categories (view, edit)
     const { data: existingCategories, error: catError } = await supabase
       .from('permission_categories')
-      .select('*')
+      .select('id,category_key,category_name,category_type,display_order,is_active')
       .in('category_key', ['view', 'edit']);
 
     if (catError) {
@@ -278,7 +278,7 @@ export async function GET() {
     // First, get all modules (even without sub-modules)
     const { data: allModules, error: modulesError } = await supabase
       .from('modules')
-      .select('*')
+      .select('id,module_key,module_name,display_order,is_active')
       .eq('is_active', true)
       .in('module_key', allowedModuleKeys);
 
@@ -297,8 +297,8 @@ export async function GET() {
       const { data: subModulesData, error: subModulesError } = await supabase
         .from('sub_modules')
         .select(`
-          *,
-          permission_categories(*)
+          id,module_id,sub_module_key,name,route,display_order,is_active,
+          permission_categories(id,category_key,category_name)
         `)
         .eq('is_active', true)
         .in('module_id', moduleIds);

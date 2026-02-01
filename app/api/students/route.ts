@@ -47,21 +47,30 @@ export async function GET(request: NextRequest) {
     const academicYearFilter = searchParams.get('academic_year');
     const statusFilter = searchParams.get('status');
 
-    // Build query
+    // Build query - select only fields needed for list view
+    const studentFields = 'id,admission_no,student_name,first_name,last_name,class,section,academic_year,status,student_contact,father_name,mother_name,father_contact,mother_contact,roll_number,email,created_at,updated_at';
     let query = supabase
       .from('students')
-      .select('*')
+      .select(studentFields)
       .eq('school_code', schoolCode);
 
-    // Apply filters
+    // Apply filters - use flexible class matching (NUR vs NUR. etc.)
     if (classFilter) {
-      query = query.eq('class', classFilter);
+      const trimmed = String(classFilter).trim();
+      const withoutPeriod = trimmed.replace(/\.+$/, '');
+      const classVariants = [...new Set([classFilter, trimmed, withoutPeriod].filter(Boolean))];
+      if (classVariants.length === 1) {
+        query = query.eq('class', classVariants[0]);
+      } else {
+        query = query.in('class', classVariants);
+      }
     }
     if (sectionFilter) {
-      query = query.eq('section', sectionFilter);
+      query = query.eq('section', sectionFilter || '');
     }
     if (academicYearFilter) {
-      query = query.eq('academic_year', academicYearFilter);
+      // Include students with matching academic_year OR null (students added without year)
+      query = query.or(`academic_year.eq.${academicYearFilter},academic_year.is.null`);
     }
     if (statusFilter && statusFilter !== 'all') {
       // Map status filter to database values

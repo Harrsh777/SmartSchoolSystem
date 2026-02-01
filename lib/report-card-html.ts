@@ -273,7 +273,7 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
   <title>Report Card - ${student.student_name} - ${academicYear}</title>
   <style>
     @page {
-      size: A4;
+      size: A4 portrait;
       margin: 8mm;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -289,7 +289,7 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
     .report-card { 
       width: 190mm;
       max-width: 190mm;
-      min-height: 277mm;
+      height: 277mm;
       max-height: 277mm;
       margin: 0 auto; 
       background: white;
@@ -299,6 +299,7 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
       position: relative;
       padding-bottom: 10px;
       font-size: 10px;
+      page-break-inside: avoid;
     }
     ${showWatermark ? `
     .watermark {
@@ -595,23 +596,31 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
     }
     @media print {
       @page {
-        size: A4;
-        margin: 5mm;
+        size: A4 portrait;
+        margin: 8mm;
       }
-      html { font-size: 10px; }
+      html { 
+        font-size: 10px; 
+        width: 210mm;
+        height: 297mm;
+      }
       body { 
         background: white; 
         padding: 0; 
+        margin: 0;
+        width: 210mm;
+        min-height: 297mm;
+        max-height: 297mm;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
       .report-card { 
         box-shadow: none; 
         border-radius: 0; 
-        width: 200mm;
-        max-width: 200mm;
-        min-height: auto;
-        max-height: none;
+        width: 194mm;
+        max-width: 194mm;
+        max-height: 281mm;
+        overflow: hidden;
         page-break-inside: avoid;
       }
       .watermark {

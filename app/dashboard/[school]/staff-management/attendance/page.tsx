@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, Filter, Search, Save } from 'lucide-react';
+import { Calendar, CheckCircle, Filter, Search, Save, CalendarOff } from 'lucide-react';
 
-type AttendanceStatus = 'present' | 'absent' | 'late' | 'half_day' | 'leave' | 'holiday';
+type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'leave' | 'holiday';
 
 interface Staff {
   id: string;
@@ -83,16 +83,17 @@ export default function StaffAttendancePage({
 
         interface StaffAttendanceRecord {
           staff_id: string;
-          status: AttendanceStatus;
+          status: string;
           check_in_time?: string | null;
           check_out_time?: string | null;
           remarks?: string | null;
           [key: string]: unknown;
         }
         result.data.forEach((record: StaffAttendanceRecord) => {
-          // staff_id in attendance table is UUID (staff.id)
+          // staff_id in attendance table is UUID (staff.id); map 'late' to 'present' since Late was removed
           const staffUuid = record.staff_id;
-          existingAttendance[staffUuid] = record.status;
+          const status = (record.status === 'late' ? 'present' : record.status) as AttendanceStatus;
+          existingAttendance[staffUuid] = status;
           if (record.check_in_time) {
             existingCheckIn[staffUuid] = record.check_in_time;
           }
@@ -191,8 +192,6 @@ export default function StaffAttendancePage({
         return 'bg-green-500 hover:bg-green-600 text-white';
       case 'absent':
         return 'bg-red-500 hover:bg-red-600 text-white';
-      case 'late':
-        return 'bg-yellow-500 hover:bg-yellow-600 text-white';
       case 'half_day':
         return 'bg-orange-500 hover:bg-orange-600 text-white';
       case 'leave':
@@ -209,7 +208,6 @@ export default function StaffAttendancePage({
     const counts = {
       present: 0,
       absent: 0,
-      late: 0,
       half_day: 0,
       leave: 0,
       holiday: 0,
@@ -262,7 +260,7 @@ export default function StaffAttendancePage({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+        className="flex items-center justify-between flex-wrap gap-4"
       >
         <div>
           <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
@@ -271,6 +269,13 @@ export default function StaffAttendancePage({
           </h1>
           <p className="text-gray-600">View and manage staff attendance</p>
         </div>
+        <Button
+          onClick={() => handleBulkAction('holiday')}
+          className="bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2"
+        >
+          <CalendarOff size={18} />
+          Mark Holiday
+        </Button>
       </motion.div>
 
       {/* Success Alert */}
@@ -313,7 +318,7 @@ export default function StaffAttendancePage({
         </div>
 
         {/* Statistics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <div className="bg-green-50 rounded-lg p-4 text-center">
             <p className="text-2xl font-bold text-green-600">{counts.present}</p>
             <p className="text-sm text-gray-600 mt-1">Present</p>
@@ -321,10 +326,6 @@ export default function StaffAttendancePage({
           <div className="bg-red-50 rounded-lg p-4 text-center">
             <p className="text-2xl font-bold text-red-600">{counts.absent}</p>
             <p className="text-sm text-gray-600 mt-1">Absent</p>
-          </div>
-          <div className="bg-yellow-50 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-600">{counts.late}</p>
-            <p className="text-sm text-gray-600 mt-1">Late</p>
           </div>
           <div className="bg-orange-50 rounded-lg p-4 text-center">
             <p className="text-2xl font-bold text-orange-600">{counts.half_day}</p>
@@ -446,7 +447,7 @@ export default function StaffAttendancePage({
                       <td className="px-4 py-3 text-sm text-gray-600">{member.department || '-'}</td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap gap-1">
-                          {(['present', 'absent', 'late', 'half_day', 'leave', 'holiday'] as AttendanceStatus[]).map((status) => (
+                          {(['present', 'absent', 'half_day', 'leave', 'holiday'] as AttendanceStatus[]).map((status) => (
                             <button
                               key={status}
                               onClick={() => handleStatusChange(member.id, status)}

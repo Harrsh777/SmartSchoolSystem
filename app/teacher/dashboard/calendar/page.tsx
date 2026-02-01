@@ -60,9 +60,9 @@ export default function CalendarPage() {
         const formatted = (result.data as CalendarEntry[]).map((entry) => {
           const raw = getString(entry.event_date ?? entry.date);
           if (!raw) return entry;
-          const d = new Date(raw);
-          if (isNaN(d.getTime())) return entry;
-          return { ...entry, event_date: d.toISOString().split('T')[0] };
+          const datePart = raw.split('T')[0];
+          if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return { ...entry, event_date: datePart };
+          return entry;
         });
         setCalendarEntries(formatted);
       } else {
@@ -76,8 +76,11 @@ export default function CalendarPage() {
     }
   }, [schoolCode, selectedYear]);
 
+  const toLocalDateStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
   const getEntriesForDate = (date: Date): CalendarEntry[] => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(date);
     return calendarEntries.filter((entry) => {
       const ed = getString(entry.event_date ?? entry.date);
       if (!ed) return false;

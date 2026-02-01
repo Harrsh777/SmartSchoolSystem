@@ -286,7 +286,7 @@ export default function DashboardPage({
   }, [schoolCode, selectedYear]);
 
   const getEventsForDay = (year: number, month: number, day: number) => {
-    const dateStr = new Date(year, month, day).toISOString().split('T')[0];
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     return calendarEntries.filter((e) => {
       const d = e.event_date ? String(e.event_date).split('T')[0] : '';
       return d === dateStr;
@@ -392,7 +392,7 @@ export default function DashboardPage({
       setLoading(true);
       const params = new URLSearchParams({ school_code: schoolCode });
       if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
-      const response = await fetch(`/api/dashboard/stats?${params}`);
+      const response = await fetch(`/api/dashboard/stats?${params}`, { next: { revalidate: 60 } });
       const result = await response.json();
       
       if (response.ok && result.data) {
@@ -458,7 +458,7 @@ export default function DashboardPage({
   const fetchAdministrativeData = async () => {
     try {
       setLoadingAdministrative(true);
-      const response = await fetch(`/api/dashboard/administrative?school_code=${schoolCode}`);
+      const response = await fetch(`/api/dashboard/administrative?school_code=${schoolCode}`, { next: { revalidate: 60 } });
       const result = await response.json();
       if (response.ok && result.data) {
         setAdministrativeData(result.data);
@@ -602,6 +602,40 @@ export default function DashboardPage({
       </Card>
     );
   }
+
+  const handleClassWiseFeeReport = async () => {
+    try {
+      const response = await fetch(`/api/fees/reports/class-wise?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to fetch report');
+      }
+      const rows = result.data || [];
+      const headers = ['Class', 'Section', 'Academic Year', 'Total Students', 'Expected Fees (₹)', 'Collected (₹)', 'Pending (₹)', 'Collection %'];
+      const escapeCsv = (val: unknown) => {
+        const s = String(val ?? '');
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const csvLines = [headers.join(',')];
+      rows.forEach((r: { class?: string; section?: string; academic_year?: string; total_students?: number; expected_fees?: number; collected?: number; pending?: number; collection_percent?: number }) => {
+        csvLines.push([r.class, r.section, r.academic_year, r.total_students, r.expected_fees, r.collected, r.pending, r.collection_percent].map(escapeCsv).join(','));
+      });
+      const csv = csvLines.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `class_wise_fee_report_${schoolCode}_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Error downloading class-wise fee report:', err);
+      alert(err instanceof Error ? err.message : 'Failed to download class-wise fee report.');
+    }
+  };
 
   const handleDownload = async (type: 'students' | 'staff' | 'parents' | 'attendance') => {
     try {
@@ -1853,7 +1887,11 @@ export default function DashboardPage({
                       <Bell size={14} />
                       Send Reminder
                     </button>
-                    <button className="flex items-center gap-2 px-4 py-2 border border-[#2F6FED] text-[#2F6FED] rounded-lg hover:bg-[#EAF1FF] transition-colors text-xs font-medium">
+                    <button
+                      onClick={handleClassWiseFeeReport}
+                      className="flex items-center gap-2 px-4 py-2 border border-[#2F6FED] text-[#2F6FED] rounded-lg hover:bg-[#EAF1FF] transition-colors text-xs font-medium"
+                    >
+                      <Download size={14} />
                       CLASS-WISE FEE REPORT
                     </button>
                   </div>
