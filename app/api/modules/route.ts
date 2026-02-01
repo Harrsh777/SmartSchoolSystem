@@ -215,6 +215,66 @@ export async function GET() {
     // Get all module keys from config
     const allowedModuleKeys = ALLOWED_MODULES_CONFIG.map(m => m.module_key);
     
+    // First, get or create the default permission categories (view, edit)
+    const { data: existingCategories, error: catError } = await supabase
+      .from('permission_categories')
+      .select('*')
+      .in('category_key', ['view', 'edit']);
+
+    if (catError) {
+      console.error('Error fetching permission_categories:', catError);
+    }
+
+    // Create a map of category_key to category
+    const categoriesMap = new Map<string, Record<string, unknown>>();
+    (existingCategories || []).forEach((cat: Record<string, unknown>) => {
+      categoriesMap.set(cat.category_key as string, cat);
+    });
+
+    // Create missing categories if needed
+    if (!categoriesMap.has('view')) {
+      const { data: viewCat, error: viewErr } = await supabase
+        .from('permission_categories')
+        .insert({
+          category_key: 'view',
+          category_name: 'View',
+          category_type: 'view',
+          display_order: 1,
+          is_active: true,
+        })
+        .select()
+        .single();
+      if (viewErr) {
+        console.error('Error creating view category:', viewErr);
+      } else if (viewCat) {
+        categoriesMap.set('view', viewCat as Record<string, unknown>);
+      }
+    }
+
+    if (!categoriesMap.has('edit')) {
+      const { data: editCat, error: editErr } = await supabase
+        .from('permission_categories')
+        .insert({
+          category_key: 'edit',
+          category_name: 'Edit',
+          category_type: 'edit',
+          display_order: 2,
+          is_active: true,
+        })
+        .select()
+        .single();
+      if (editErr) {
+        console.error('Error creating edit category:', editErr);
+      } else if (editCat) {
+        categoriesMap.set('edit', editCat as Record<string, unknown>);
+      }
+    }
+
+    const viewCategory = categoriesMap.get('view');
+    const editCategory = categoriesMap.get('edit');
+
+    console.log('Permission categories - View:', viewCategory?.id, 'Edit:', editCategory?.id);
+    
     // First, get all modules (even without sub-modules)
     const { data: allModules, error: modulesError } = await supabase
       .from('modules')
@@ -318,28 +378,17 @@ export async function GET() {
               }
             });
 
-            // Ensure we have at least view and edit categories
+            // Ensure we have at least view and edit categories - use REAL IDs from database
             const categories = Array.from(categoryMap.values());
             const hasView = categories.some((c: Record<string, unknown>) => (c.category_key as string) === 'view');
             const hasEdit = categories.some((c: Record<string, unknown>) => (c.category_key as string) === 'edit');
 
-            if (!hasView) {
-              categories.push({
-                id: `placeholder-view-${subModule.id}`,
-                category_key: 'view',
-                category_name: 'View',
-                category_type: 'view',
-                display_order: 1,
-              });
+            // Add real categories from the database if missing
+            if (!hasView && viewCategory) {
+              categories.push(viewCategory);
             }
-            if (!hasEdit) {
-              categories.push({
-                id: `placeholder-edit-${subModule.id}`,
-                category_key: 'edit',
-                category_name: 'Edit',
-                category_type: 'edit',
-                display_order: 2,
-              });
+            if (!hasEdit && editCategory) {
+              categories.push(editCategory);
             }
 
             return {

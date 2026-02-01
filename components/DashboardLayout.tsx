@@ -16,6 +16,7 @@ import {
   Bus, 
   MessageSquare, 
   Settings,
+  Settings2,
   Menu,
   X,
   CalendarDays,
@@ -46,7 +47,8 @@ import {
   Tag,
   Receipt,
   CreditCard,
-  Clock
+  Clock,
+  ArrowLeft
 } from 'lucide-react';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { languages } from '@/lib/translations';
@@ -96,6 +98,7 @@ const menuItems = [
   { icon: CalendarDays, label: 'Timetable', path: '/timetable', isModal: true, permission: 'manage_timetable', viewPermission: 'view_timetable' },
   { icon: CalendarDays, label: 'Event/Calendar', path: '/calendar', isModal: true, permission: 'manage_events', viewPermission: 'view_events' },
   { icon: FileText, label: 'Examinations', path: '/examinations', permission: 'manage_exams', viewPermission: 'view_exams' },
+  { icon: Award, label: 'Report Card', path: '/report-card', permission: 'manage_exams', viewPermission: 'view_exams' },
   { icon: GraduationCap, label: 'Marks', path: '/marks', permission: 'manage_exams', viewPermission: 'view_exams' },
   { icon: DollarSign, label: 'Fees', path: '/fees', permission: 'manage_fees', viewPermission: 'view_fees' },
   { icon: Library, label: 'Library', path: '/library', isModal: true, permission: 'manage_library', viewPermission: 'view_library' },
@@ -278,6 +281,7 @@ function SortableMenuItem({
                    item.path === '/timetable' ? t('nav.timetable') :
                    item.path === '/calendar' ? t('nav.calendar') :
                    item.path === '/examinations' ? t('nav.examinations') :
+                   item.path === '/report-card' ? t('nav.report_card') :
                    item.path === '/fees' ? t('nav.fees') :
                    item.path === '/library' ? t('nav.library') :
                    item.path === '/transport' ? t('nav.transport') :
@@ -305,6 +309,7 @@ function SortableMenuItem({
                    item.path === '/timetable' ? t('nav.timetable') :
                    item.path === '/calendar' ? t('nav.calendar') :
                    item.path === '/examinations' ? t('nav.examinations') :
+                   item.path === '/report-card' ? t('nav.report_card') :
                    item.path === '/fees' ? t('nav.fees') :
                    item.path === '/library' ? t('nav.library') :
                    item.path === '/transport' ? t('nav.transport') :
@@ -445,6 +450,7 @@ function SortableMenuItem({
                    item.path === '/timetable' ? t('nav.timetable') :
                    item.path === '/calendar' ? t('nav.calendar') :
                    item.path === '/examinations' ? t('nav.examinations') :
+                   item.path === '/report-card' ? t('nav.report_card') :
                    item.path === '/fees' ? t('nav.fees') :
                    item.path === '/library' ? t('nav.library') :
                    item.path === '/transport' ? t('nav.transport') :
@@ -472,6 +478,7 @@ function SortableMenuItem({
                    item.path === '/timetable' ? t('nav.timetable') :
                    item.path === '/calendar' ? t('nav.calendar') :
                    item.path === '/examinations' ? t('nav.examinations') :
+                   item.path === '/report-card' ? t('nav.report_card') :
                    item.path === '/fees' ? t('nav.fees') :
                    item.path === '/library' ? t('nav.library') :
                    item.path === '/transport' ? t('nav.transport') :
@@ -1145,8 +1152,11 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
     { label: 'Examination Dashboard', path: '/examinations/dashboard', category: 'Examinations', icon: BarChart3, parent: 'Examinations' },
     { label: 'Create Examination', path: '/examinations/create', category: 'Examinations', icon: FileText, parent: 'Examinations' },
     { label: 'Grade Scale', path: '/examinations/grade-scale', category: 'Examinations', icon: GraduationCap, parent: 'Examinations' },
-    { label: 'Report Card', path: '/examinations/report-card', category: 'Examinations', icon: Award, parent: 'Examinations' },
     { label: 'Examination Reports', path: '/examinations/reports', category: 'Examinations', icon: BarChart3, parent: 'Examinations' },
+    { label: 'Report Card', path: '/report-card', category: 'Report Card', icon: Award },
+    { label: 'Generate Report Card', path: '/report-card/generate', category: 'Report Card', icon: Award, parent: 'Report Card' },
+    { label: 'Report Card Dashboard', path: '/report-card/dashboard', category: 'Report Card', icon: BarChart3, parent: 'Report Card' },
+    { label: 'Customize Template', path: '/report-card/templates', category: 'Report Card', icon: Settings2, parent: 'Report Card' },
     // Note: Exam Schedule and View Marks are dynamic routes and cannot be included in sidebar navigation
     // They are accessible from individual exam pages
     
@@ -1420,6 +1430,17 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
           !item.path.includes('[') && 
           !item.path.includes(']')
         )
+        .map(item => ({
+          label: item.label,
+          path: item.path,
+          icon: item.icon || mainMenuItem.icon || DefaultSubItemIcon,
+        }));
+    }
+
+    // Report Card should have sub-items
+    if (mainMenuItem.path === '/report-card') {
+      return searchableItems
+        .filter(item => item.parent === 'Report Card')
         .map(item => ({
           label: item.label,
           path: item.path,
@@ -2052,6 +2073,27 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
         {/* Main Content */}
         <main className="flex-1 lg:ml-0 bg-background min-h-[calc(100vh-4rem)]">
           <div className="p-4 sm:p-6 lg:p-8">
+            {/* Back button - show on all module pages except home */}
+            {pathname !== basePath && pathname !== `${basePath}/` && (
+              <div className="mb-4 -mt-1 -ml-1">
+                <button
+                  onClick={() => {
+                    const segments = pathname.split('/').filter(Boolean);
+                    if (segments.length > 3) {
+                      const parentPath = '/' + segments.slice(0, -1).join('/');
+                      router.push(parentPath);
+                    } else {
+                      router.push(basePath);
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-[#5A7A95] dark:text-[#6B9BB8] hover:text-[#4A6A85] dark:hover:text-[#5A8BA8] hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] rounded-lg transition-colors"
+                  aria-label="Go back"
+                >
+                  <ArrowLeft size={18} />
+                  Back
+                </button>
+              </div>
+            )}
             {children}
           </div>
         </main>

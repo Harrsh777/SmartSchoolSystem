@@ -123,35 +123,118 @@ export async function GET(
     }
 
     // Get individual staff permission overrides
+    // First, get raw staff_permissions to debug
+    const { data: rawStaffPermissions, error: rawSpError } = await supabase
+      .from('staff_permissions')
+      .select('*')
+      .eq('staff_id', id);
+
+    console.log('=== DEBUG: Raw staff_permissions for staff:', id, '===');
+    console.log('Raw permissions count:', rawStaffPermissions?.length || 0);
+    if (rawStaffPermissions && rawStaffPermissions.length > 0) {
+      console.log('Sample raw permission:', JSON.stringify(rawStaffPermissions[0], null, 2));
+    }
+    if (rawSpError) {
+      console.error('Error fetching raw staff permissions:', rawSpError);
+    }
+
+    // Query ALL staff permissions with view_access = true
     const { data: staffPermissions, error: spError } = await supabase
       .from('staff_permissions')
       .select(`
         view_access,
         edit_access,
-        sub_modules!inner(
+        sub_module_id,
+        category_id,
+        sub_modules(
           id,
           sub_module_name,
           sub_module_key,
           route_path,
           display_order,
-          modules!inner(
+          is_active,
+          modules(
             id,
             module_name,
             module_key,
-            display_order
+            display_order,
+            is_active
           )
         ),
-        permission_categories!inner(
+        permission_categories(
+          id,
           category_key,
           category_type
         )
       `)
       .eq('staff_id', id)
-      .eq('permission_categories.category_type', 'view');
+      .eq('view_access', true);
+
+    console.log('Staff permissions with joins found:', staffPermissions?.length || 0, 'for staff:', id);
+    if (staffPermissions && staffPermissions.length > 0) {
+      console.log('Sample joined permission:', JSON.stringify(staffPermissions[0], null, 2));
+    }
 
     if (spError) {
       console.error('Error fetching staff permissions:', spError);
     }
+
+    // FALLBACK: If joins returned fewer results than raw permissions, fetch sub_modules separately
+    let enrichedStaffPermissions = staffPermissions || [];
+    if (rawStaffPermissions && rawStaffPermissions.length > 0 && 
+        (!staffPermissions || staffPermissions.length < rawStaffPermissions.length)) {
+      console.log('Using fallback: fetching sub_modules separately for', rawStaffPermissions.length, 'permissions');
+      
+      // Get unique sub_module_ids from raw permissions
+      const subModuleIds = [...new Set(rawStaffPermissions.map((p: { sub_module_id: string }) => p.sub_module_id))];
+      
+      // Fetch sub_modules with their modules
+      const { data: subModulesData, error: smError } = await supabase
+        .from('sub_modules')
+        .select(`
+          id,
+          sub_module_name,
+          sub_module_key,
+          route_path,
+          display_order,
+          is_active,
+          modules(
+            id,
+            module_name,
+            module_key,
+            display_order,
+            is_active
+          )
+        `)
+        .in('id', subModuleIds);
+
+      if (smError) {
+        console.error('Error fetching sub_modules for fallback:', smError);
+      } else {
+        // Create a map of sub_module_id to sub_module data
+        const subModulesMap = new Map<string, Record<string, unknown>>();
+        (subModulesData || []).forEach((sm: Record<string, unknown>) => {
+          subModulesMap.set(sm.id as string, sm);
+        });
+
+        // Enrich raw permissions with sub_module data
+        enrichedStaffPermissions = rawStaffPermissions
+          .filter((p: { view_access: boolean }) => p.view_access)
+          .map((p: Record<string, unknown>) => ({
+            ...p,
+            sub_modules: subModulesMap.get(p.sub_module_id as string) || null,
+          }))
+          .filter((p: Record<string, unknown>) => p.sub_modules !== null) as unknown as typeof enrichedStaffPermissions;
+
+        console.log('Enriched permissions count:', enrichedStaffPermissions.length);
+        if (enrichedStaffPermissions.length > 0) {
+          console.log('Sample enriched permission:', JSON.stringify(enrichedStaffPermissions[0], null, 2));
+        }
+      }
+    }
+
+    // Use enrichedStaffPermissions for the rest of the processing
+    const finalStaffPermissions = enrichedStaffPermissions;
 
     // Base default sub-modules for ALL staff (Normal Teachers minimum)
     const BASE_DEFAULT_SUB_MODULE_KEYS = [
@@ -298,8 +381,10 @@ export async function GET(
     });
 
     // Then, override with staff permissions
-    (staffPermissions || []).forEach((sp: Record<string, unknown>) => {
-      const subModule = sp.sub_modules as {
+    (finalStaffPermissions || []).forEach((sp: Record<string, unknown>) => {
+      const subModuleRaw = sp.sub_modules;
+      // Handle both array and object formats
+      const subModule = Array.isArray(subModuleRaw) ? subModuleRaw[0] : subModuleRaw as {
         sub_module_key: string;
         sub_module_name: string;
         route_path: string;
@@ -308,9 +393,20 @@ export async function GET(
           module_name: string;
           module_key: string;
           display_order: number;
-        };
+        } | Array<{
+          module_name: string;
+          module_key: string;
+          display_order: number;
+        }>;
       };
+      
+      if (!subModule || !subModule.sub_module_key) return;
+      
       const key = subModule.sub_module_key;
+      
+      // Handle modules being either object or array
+      const moduleData = Array.isArray(subModule.modules) ? subModule.modules[0] : subModule.modules;
+      if (!moduleData) return;
       
       // Only override if view_access is true (if false, it removes access)
       // BUT: Don't remove default modules even if view_access is false
@@ -319,9 +415,9 @@ export async function GET(
       
       if (viewAccess) {
         permissionsMap.set(key, {
-          module_name: subModule.modules.module_name,
-          module_key: subModule.modules.module_key,
-          module_display_order: subModule.modules.display_order,
+          module_name: moduleData.module_name,
+          module_key: moduleData.module_key,
+          module_display_order: moduleData.display_order,
           sub_module_name: subModule.sub_module_name,
           sub_module_key: subModule.sub_module_key,
           route_path: subModule.route_path,
@@ -400,6 +496,16 @@ export async function GET(
         ...module,
         sub_modules: module.sub_modules.sort((a, b) => a.name.localeCompare(b.name)),
       }));
+
+    // Final debug log
+    console.log('=== MENU API FINAL RESULT for staff:', id, '===');
+    console.log('Total modules returned:', menuItems.length);
+    menuItems.forEach(module => {
+      console.log(`  Module: ${module.module_name} (${module.module_key}) - ${module.sub_modules.length} sub-modules`);
+      module.sub_modules.forEach(sm => {
+        console.log(`    - ${sm.name} (view: ${sm.has_view_access}, edit: ${sm.has_edit_access})`);
+      });
+    });
 
     return NextResponse.json({ data: menuItems }, { status: 200 });
   } catch (error) {

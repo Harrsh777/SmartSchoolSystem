@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -53,6 +54,7 @@ interface DashboardStats {
     total: number;
     todayCollection?: number;
     monthlyCollection?: number;
+    feesLast3Months?: number;
   };
   todayAttendance: {
     percentage: number;
@@ -227,6 +229,9 @@ export default function DashboardPage({
   const [classesCount, setClassesCount] = useState(0);
   const [sectionsCount, setSectionsCount] = useState(0);
   const [loadingClasses, setLoadingClasses] = useState(false);
+  const [academicYears, setAcademicYears] = useState<string[]>([]);
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
+  const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);
 
   useEffect(() => {
     fetchSchoolData();
@@ -237,8 +242,19 @@ export default function DashboardPage({
     fetchUpcomingExaminations();
     fetchAdministrativeData();
     fetchClassesAndSections();
+    fetchAcademicYears();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
+
+  useEffect(() => {
+    if (schoolCode && selectedAcademicYear) {
+      fetchDashboardStats();
+      fetchDetailedStats();
+      fetchFinancialData();
+      fetchAdministrativeData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAcademicYear]);
 
   // Academic Calendar (events) for dashboard widget
   useEffect(() => {
@@ -369,7 +385,9 @@ export default function DashboardPage({
   const fetchDashboardStats = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/dashboard/stats?school_code=${schoolCode}`);
+      const params = new URLSearchParams({ school_code: schoolCode });
+      if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
+      const response = await fetch(`/api/dashboard/stats?${params}`);
       const result = await response.json();
       
       if (response.ok && result.data) {
@@ -385,7 +403,9 @@ export default function DashboardPage({
   const fetchDetailedStats = async () => {
     try {
       setLoadingDetailed(true);
-      const response = await fetch(`/api/dashboard/stats-detailed?school_code=${schoolCode}`);
+      const params = new URLSearchParams({ school_code: schoolCode });
+      if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
+      const response = await fetch(`/api/dashboard/stats-detailed?${params}`);
       const result = await response.json();
       if (response.ok && result.data) {
         setDetailedStats(result.data);
@@ -400,7 +420,9 @@ export default function DashboardPage({
   const fetchFinancialData = async () => {
     try {
       setLoadingFinancial(true);
-      const response = await fetch(`/api/dashboard/financial-overview?school_code=${schoolCode}&period=${feePeriod}`);
+      const params = new URLSearchParams({ school_code: schoolCode, period: feePeriod });
+      if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
+      const response = await fetch(`/api/dashboard/financial-overview?${params}`);
       const result = await response.json();
       if (response.ok && result.data) {
         setFinancialData(result.data);
@@ -495,6 +517,29 @@ export default function DashboardPage({
       setPreviousExams([]);
     } finally {
       setLoadingExams(false);
+    }
+  };
+
+  const fetchAcademicYears = async () => {
+    try {
+      setLoadingAcademicYears(true);
+      const response = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (response.ok && result.data && result.data.length > 0) {
+        setAcademicYears(result.data);
+        setSelectedAcademicYear(prev => prev || result.data[0]);
+      } else {
+        const currentYear = new Date().getFullYear().toString();
+        setAcademicYears([currentYear]);
+        setSelectedAcademicYear(prev => prev || currentYear);
+      }
+    } catch (err) {
+      console.error('Error fetching academic years:', err);
+      const currentYear = new Date().getFullYear().toString();
+      setAcademicYears([currentYear]);
+      setSelectedAcademicYear(prev => prev || currentYear);
+    } finally {
+      setLoadingAcademicYears(false);
     }
   };
 
@@ -708,10 +753,35 @@ export default function DashboardPage({
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-          <div>
-              <h1 className="text-3xl font-semibold text-foreground mb-2">
-                {school?.school_name || 'Institute Dashboard'}
-            </h1>
+              {school && typeof (school as unknown as { logo_url?: string }).logo_url === 'string' && (school as unknown as { logo_url?: string }).logo_url ? (
+                <div className="w-24 h-24 rounded-xl overflow-hidden bg-white border border-gray-200 shadow-sm flex-shrink-0 relative">
+                  <Image
+                    src={(school as unknown as { logo_url: string }).logo_url}
+                    alt="School Logo"
+                    fill
+                    className="object-contain"
+                    unoptimized
+                  />
+                </div>
+              ) : null}
+              <div>
+                <h1 className="text-3xl font-semibold text-foreground mb-2">
+                  {school?.school_name || 'Institute Dashboard'}
+                </h1>
+                <div className="flex items-center gap-3 mt-1">
+                  <label className="text-sm text-gray-500">Academic Year:</label>
+                  <select
+                    value={selectedAcademicYear}
+                    onChange={(e) => setSelectedAcademicYear(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] focus:border-transparent"
+                    disabled={loadingAcademicYears}
+                  >
+                    {academicYears.map((year) => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
             
             {/* Quick Actions Dropdown Menu - Positioned relative to navbar button */}
@@ -880,10 +950,9 @@ export default function DashboardPage({
                       })}
                     </div>
                   </div>
-                </motion.div>
-              )}
-          </div>
-          <div className="relative download-menu-container">
+              </motion.div>
+            )}
+            <div className="relative download-menu-container">
             <Button
               onClick={() => setShowDownloadMenu(!showDownloadMenu)}
               className="flex items-center gap-2 bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E3A8A] hover:to-[#2F6FED] text-white shadow-lg shadow-[#2F6FED]/30"
@@ -988,7 +1057,7 @@ export default function DashboardPage({
           </div>
         </motion.div>
 
-        {/* Total Fees Collected This Month Card - Blue */}
+        {/* Total Fees - Last 3 Months Card - Blue */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1006,15 +1075,17 @@ export default function DashboardPage({
             
             {/* Title */}
             <p className="text-sm font-medium text-gray-600 mb-2">
-              Fees Collected This Month
+              Total Fees (Last 3 Months)
             </p>
             
             {/* Main Value */}
             <div className="mb-4">
               <div className="text-3xl font-bold text-gray-900 mb-1">
                 {loading ? '...' : (() => {
-                  const amount = stats.feeCollection.monthlyCollection ?? 0;
-                  if (amount >= 1000) {
+                  const amount = stats.feeCollection.feesLast3Months ?? stats.feeCollection.monthlyCollection ?? 0;
+                  if (amount >= 100000) {
+                    return `₹${(amount / 100000).toFixed(1)}L`;
+                  } else if (amount >= 1000) {
                     return `₹${(amount / 1000).toFixed(1)}K`;
                   } else {
                     return `₹${amount.toLocaleString('en-IN')}`;
@@ -1026,10 +1097,10 @@ export default function DashboardPage({
             {/* Progress Bar at bottom - based on actual data */}
             <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <motion.div 
-                className="bg-red-400 h-full rounded-full"
+                className="bg-blue-500 h-full rounded-full"
                 initial={{ width: 0 }}
                 animate={{ 
-                  width: loading ? '0%' : (stats.feeCollection.monthlyCollection ?? 0) > 0 ? '100%' : '0%'
+                  width: loading ? '0%' : ((stats.feeCollection.feesLast3Months ?? stats.feeCollection.monthlyCollection ?? 0) > 0 ? '100%' : '0%')
                 }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
@@ -1040,7 +1111,7 @@ export default function DashboardPage({
         {/* Annual Revenue Card - Purple */}
         
 
-        {/* Staff Attendance Card - Green */}
+        {/* Staff & Student Attendance Card - Green */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1058,26 +1129,47 @@ export default function DashboardPage({
             
             {/* Title */}
             <p className="text-sm font-medium text-gray-600 mb-2">
-              Staff Attendance
+              Staff & Student Attendance
             </p>
             
-            {/* Main Value */}
-            <div className="mb-4">
-              <div className="text-3xl font-bold text-gray-900 mb-1">
-                {loading ? '...' : `${stats.todayAttendance.staff?.percentage ?? 0}%`}
+            {/* Main Value - Both Staff and Student */}
+            <div className="mb-3 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500">Staff</span>
+                <span className="text-lg font-bold text-gray-900">
+                  {loading ? '...' : `${stats.todayAttendance.staff?.percentage ?? 0}%`}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500">Students</span>
+                <span className="text-lg font-bold text-gray-900">
+                  {loading ? '...' : `${stats.todayAttendance.students?.percentage ?? 0}%`}
+                </span>
               </div>
             </div>
             
-            {/* Progress Bar at bottom - based on actual data */}
-            <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-              <motion.div 
-                className="bg-green-500 h-full rounded-full"
-                initial={{ width: 0 }}
-                animate={{ 
-                  width: loading ? '0%' : `${Math.min(stats.todayAttendance.staff?.percentage ?? 0, 100)}%` 
-                }}
-                transition={{ duration: 0.8, ease: 'easeOut' }}
-              />
+            {/* Progress Bars - Staff and Student */}
+            <div className="space-y-2">
+              <div className="relative w-full bg-pink-100 rounded-full h-1.5 overflow-hidden">
+                <motion.div 
+                  className="bg-green-500 h-full rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ 
+                    width: loading ? '0%' : `${Math.min(stats.todayAttendance.staff?.percentage ?? 0, 100)}%` 
+                  }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                />
+              </div>
+              <div className="relative w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <motion.div 
+                  className="bg-emerald-500 h-full rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ 
+                    width: loading ? '0%' : `${Math.min(stats.todayAttendance.students?.percentage ?? 0, 100)}%` 
+                  }}
+                  transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 }}
+                />
+              </div>
             </div>
           </div>
         </motion.div>
@@ -1180,7 +1272,12 @@ export default function DashboardPage({
                       })()})
                           </span>
                         </div>
-                  <button className="w-6 h-6 rounded-full bg-[#F1F5F9] dark:bg-[#2D3748] flex items-center justify-center hover:bg-[#2C3E50]/10 dark:hover:bg-[#4A707A]/20 transition-colors">
+                  <button
+                    onClick={() => router.push(`/dashboard/${schoolCode}/students/directory`)}
+                    className="w-6 h-6 rounded-full bg-[#F1F5F9] dark:bg-[#2D3748] flex items-center justify-center hover:bg-[#2C3E50]/10 dark:hover:bg-[#4A707A]/20 transition-colors"
+                    aria-label="View students"
+                    title="View students"
+                  >
                     <Play className="text-[#F97316]" size={10} fill="currentColor" />
                   </button>
                       </div>
@@ -1211,7 +1308,7 @@ export default function DashboardPage({
                               initial={{ width: 0 }}
                               animate={{ width: `${femalePercent}%` }}
                               transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
-                              className="bg-[#4A707A] dark:bg-[#5A879A] h-full flex items-center justify-center"
+                              className="bg-[#FF1493] dark:bg-[#5A879A] h-full flex items-center justify-center"
                             >
                               <span className="text-[10px] text-white font-semibold px-1">
                                 {femalePercent.toFixed(1)}%
@@ -1252,8 +1349,8 @@ export default function DashboardPage({
                         )}
                         {femalePercent > 0 && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-[#4A707A] dark:bg-[#5A879A]"></div>
-                            <span className="text-[#64748B]">Female ({femalePercent.toFixed(1)}%)</span>
+                            <div className="w-2 h-2 rounded-full bg-[#FF1493] dark:bg-[#5A879A]"></div>
+                            <span className="text-[#FF1493]">Female ({femalePercent.toFixed(1)}%)</span>
                           </div>
                         )}
                         {remainingPercent > 0 && (
@@ -1279,7 +1376,12 @@ export default function DashboardPage({
                       Staffs ({detailedStats?.staffGenderStats?.total ?? detailedStats?.staffBreakdown?.total ?? 0})
                     </span>
                         </div>
-                  <button className="w-6 h-6 rounded-full bg-[#F1F5F9] dark:bg-[#2D3748] flex items-center justify-center hover:bg-[#2C3E50]/10 dark:hover:bg-[#4A707A]/20 transition-colors">
+                  <button
+                    onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/directory`)}
+                    className="w-6 h-6 rounded-full bg-[#F1F5F9] dark:bg-[#2D3748] flex items-center justify-center hover:bg-[#2C3E50]/10 dark:hover:bg-[#4A707A]/20 transition-colors"
+                    aria-label="View staff"
+                    title="View staff"
+                  >
                     <Play className="text-[#F97316]" size={10} fill="currentColor" />
                   </button>
                   </div>

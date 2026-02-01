@@ -66,7 +66,7 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-[#808080] via-[#F0F5F9] to-[#808080] flex items-center justify-center p-4 relative overflow-hidden">
       {/* Abstract Security Pattern */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
         <div className="absolute inset-0" style={{
@@ -113,7 +113,7 @@ export default function AdminLoginPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="bg-slate-800/90 backdrop-blur-xl rounded-2xl shadow-2xl p-8 md:p-10 border border-slate-700/50"
+          className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl p-8 md:p-10 border border-[#5A7A95]/20"
         >
           {/* Header */}
           <div className="text-center mb-8">
@@ -121,16 +121,16 @@ export default function AdminLoginPage() {
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-              className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 mb-4 shadow-lg shadow-blue-500/50"
+              className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] mb-4 shadow-lg shadow-[#5A7A95]/30"
             >
               <Shield className="text-white" size={32} />
             </motion.div>
-            <h1 className="text-3xl font-bold text-white mb-2">
+            <h1 className="text-3xl font-bold text-[#1e293b] mb-2">
               Administrator Access
             </h1>
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-500/20 border border-red-500/30 rounded-full">
-              <Lock size={14} className="text-red-400" />
-              <span className="text-xs font-semibold text-red-400">Protected System</span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-50 border border-red-200 rounded-full">
+              <Lock size={14} className="text-red-600" />
+              <span className="text-xs font-semibold text-red-600">Protected System</span>
             </div>
           </div>
 
@@ -139,7 +139,7 @@ export default function AdminLoginPage() {
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm flex items-center gap-2"
+              className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2"
             >
               <AlertTriangle size={18} />
               <span>{error}</span>
@@ -176,7 +176,7 @@ export default function AdminLoginPage() {
               disabled={loading}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
-              className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/50 hover:shadow-xl hover:shadow-blue-500/50 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3.5 px-6 bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] text-white font-semibold rounded-xl shadow-lg shadow-[#5A7A95]/30 hover:shadow-xl hover:shadow-[#5A7A95]/40 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -200,15 +200,15 @@ export default function AdminLoginPage() {
           <div className="mt-8 text-center">
             <Link
               href="/login"
-              className="text-sm text-slate-400 hover:text-slate-300 transition-colors"
+              className="text-sm text-[#64748b] hover:text-[#5A7A95] transition-colors"
             >
               ← Back to role selection
             </Link>
           </div>
 
           {/* Security Notice */}
-          <div className="mt-6 pt-6 border-t border-slate-700/50">
-            <p className="text-xs text-slate-500 text-center">
+          <div className="mt-6 pt-6 border-t border-[#E5E7EB]">
+            <p className="text-xs text-[#64748b] text-center">
               This is a secure administrative system. All access attempts are logged and monitored.
             </p>
           </div>

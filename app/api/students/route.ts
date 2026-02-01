@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
         transport_type: studentData.transport_type || null,
         rte: studentData.rte || false,
         new_admission: studentData.new_admission !== undefined ? studentData.new_admission : true,
-        academic_year: new Date().getFullYear().toString(),
+        academic_year: studentData.academic_year || new Date().getFullYear().toString(),
         status: 'active',
       }])
       .select()

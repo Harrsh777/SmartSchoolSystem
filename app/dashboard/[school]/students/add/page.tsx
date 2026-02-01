@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
@@ -23,6 +23,8 @@ export default function AddStudentPage({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [classes, setClasses] = useState<Array<{ id: string; class: string; section: string; academic_year: string }>>([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -33,6 +35,7 @@ export default function AddStudentPage({
     student_name: '',
     class: '',
     section: '',
+    academic_year: '',
     
     // Personal Details
     first_name: '',
@@ -86,6 +89,24 @@ export default function AddStudentPage({
     rte: false,
     new_admission: true,
   });
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        setLoadingClasses(true);
+        const res = await fetch(`/api/classes?school_code=${schoolCode}`);
+        const result = await res.json();
+        if (res.ok && result.data) {
+          setClasses(result.data);
+        }
+      } catch (err) {
+        console.error('Error fetching classes:', err);
+      } finally {
+        setLoadingClasses(false);
+      }
+    };
+    fetchClasses();
+  }, [schoolCode]);
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
@@ -194,8 +215,9 @@ export default function AddStudentPage({
           school_code: schoolCode,
           admission_no: formData.admission_no.trim(),
           student_name: formData.student_name.trim(),
-          class: formData.class.trim(),
-          section: formData.section.trim(),
+    class: formData.class.trim(),
+    section: formData.section.trim(),
+    academic_year: formData.academic_year || new Date().getFullYear().toString(),
           first_name: formData.first_name.trim() || null,
           last_name: formData.last_name.trim() || null,
           date_of_birth: formData.date_of_birth || null,
@@ -275,6 +297,19 @@ export default function AddStudentPage({
         delete newErrors[field];
         return newErrors;
       });
+    }
+  };
+
+  const handleClassSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const classId = e.target.value;
+    const selected = classes.find((c) => c.id === classId);
+    if (selected) {
+      setFormData(prev => ({
+        ...prev,
+        class: selected.class,
+        section: selected.section,
+        academic_year: selected.academic_year || prev.academic_year,
+      }));
     }
   };
 
@@ -475,30 +510,47 @@ export default function AddStudentPage({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Class <span className="text-red-500">*</span>
+                    Class & Section <span className="text-red-500">*</span>
                   </label>
-                  <Input
-                    type="text"
-                    value={formData.class}
-                    onChange={(e) => handleChange('class', e.target.value)}
-                    error={errors.class}
-                    required
-                    placeholder="e.g., 10"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Section <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="text"
-                    value={formData.section}
-                    onChange={(e) => handleChange('section', e.target.value)}
-                    error={errors.section}
-                    required
-                    placeholder="e.g., A"
-                  />
+                  {classes.length > 0 ? (
+                    <select
+                      value={classes.find((c) => c.class === formData.class && c.section === formData.section)?.id ?? ''}
+                      onChange={handleClassSelect}
+                      required
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black ${
+                        errors.class ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                      disabled={loadingClasses}
+                    >
+                      <option value="">Select Class & Section</option>
+                      {classes.map((cls) => (
+                        <option key={cls.id} value={cls.id}>
+                          {cls.class}{cls.section ? `-${cls.section}` : ''} {cls.academic_year ? `(${cls.academic_year})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        type="text"
+                        value={formData.class}
+                        onChange={(e) => handleChange('class', e.target.value)}
+                        error={errors.class}
+                        required
+                        placeholder="Class e.g., 10"
+                      />
+                      <Input
+                        type="text"
+                        value={formData.section}
+                        onChange={(e) => handleChange('section', e.target.value)}
+                        error={errors.section}
+                        required
+                        placeholder="Section e.g., A"
+                      />
+                    </div>
+                  )}
+                  {errors.class && <p className="mt-1 text-sm text-red-500">{errors.class}</p>}
+                  {loadingClasses && <p className="mt-1 text-xs text-gray-500">Loading classes...</p>}
                 </div>
 
                 <div>

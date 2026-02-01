@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    const academicYear = searchParams.get('academic_year');
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -27,11 +28,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch student count
-    const { count: studentCount } = await supabase
+    // Fetch student count (filter by academic_year if provided)
+    let studentQuery = supabase
       .from('students')
       .select('*', { count: 'exact', head: true })
-      .eq('school_code', schoolCode);
+      .eq('school_code', schoolCode)
+      .eq('status', 'active');
+    if (academicYear) {
+      studentQuery = studentQuery.eq('academic_year', academicYear);
+    }
+    const { count: studentCount } = await studentQuery;
 
     // Fetch staff count
     const { count: staffCount } = await supabase
@@ -90,6 +96,7 @@ export async function GET(request: NextRequest) {
     let todayCollection = 0;
     let monthlyCollection = 0;
     let annualRevenue = 0;
+    let feesLast3Months = 0;
     
     try {
       const now = new Date();
@@ -97,6 +104,7 @@ export async function GET(request: NextRequest) {
       const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
       const firstDayOfYear = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
       const lastDayOfYear = new Date(now.getFullYear(), 11, 31).toISOString().split('T')[0];
+      const firstDay3MonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString().split('T')[0];
       
       // Try payments table first (new system)
       const { data: paymentsData, error: paymentsError } = await supabase
@@ -129,6 +137,15 @@ export async function GET(request: NextRequest) {
             if (!p.payment_date) return false;
             const paymentDate = p.payment_date.split('T')[0];
             return paymentDate >= firstDayOfYear && paymentDate <= lastDayOfYear;
+          })
+          .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+        // Calculate fees for last 3 months
+        feesLast3Months = paymentsData
+          .filter(p => {
+            if (!p.payment_date) return false;
+            const paymentDate = p.payment_date.split('T')[0];
+            return paymentDate >= firstDay3MonthsAgo && paymentDate <= lastDayOfMonth;
           })
           .reduce((sum, p) => sum + Number(p.amount || 0), 0);
       } else {
@@ -168,6 +185,14 @@ export async function GET(request: NextRequest) {
               const feeAmount = f.total_amount || f.amount || 0;
               return sum + Number(feeAmount);
             }, 0);
+
+          // Calculate fees for last 3 months
+          feesLast3Months = feesData
+            .filter(f => f.payment_date && f.payment_date >= firstDay3MonthsAgo && f.payment_date <= lastDayOfMonth)
+            .reduce((sum, f) => {
+              const feeAmount = f.total_amount || f.amount || 0;
+              return sum + Number(feeAmount);
+            }, 0);
         }
       }
     } catch (err) {
@@ -183,6 +208,7 @@ export async function GET(request: NextRequest) {
         total: annualRevenue, // Annual revenue (current year)
         todayCollection,
         monthlyCollection,
+        feesLast3Months,
       },
       todayAttendance: {
         percentage: studentAttendancePercentage,

@@ -21,6 +21,7 @@ interface Class {
   id: string;
   class: string;
   section: string;
+  academic_year?: string;
   class_teacher_id: string | null;
   class_teacher_staff_id: string | null;
 }
@@ -143,7 +144,10 @@ export default function MarkAttendancePage({
       const classData = classes.find(c => c.id === selectedClass);
       if (!classData) return;
 
-      const response = await fetch(`/api/students?school_code=${schoolCode}&class=${classData.class}&section=${classData.section}`);
+      const params = new URLSearchParams({ school_code: schoolCode, class: classData.class, section: classData.section });
+      const academicYear = (classData as { academic_year?: string }).academic_year;
+      if (academicYear) params.set('academic_year', academicYear);
+      const response = await fetch(`/api/students?${params}`);
       const result = await response.json();
       
       if (response.ok && result.data) {

@@ -34,13 +34,11 @@ import {
   HelpCircle,
   Languages,
   Zap,
-  Clock,
   ClipboardCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Staff, AcceptedSchool } from '@/lib/supabase';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
-import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 import HelpModal from '@/components/help/HelpModal';
 import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler, setActivityPrefix } from '@/lib/api-interceptor';
 
@@ -119,11 +117,22 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const [isClassTeacher, setIsClassTeacher] = useState(false);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [staffPermissions, setStaffPermissions] = useState<Record<string, unknown> | null>(null);
+  const [dynamicModules, setDynamicModules] = useState<Array<{
+    module_name: string;
+    module_key: string;
+    sub_modules: Array<{
+      name: string;
+      key: string;
+      route: string;
+      has_view_access: boolean;
+      has_edit_access: boolean;
+    }>;
+  }>>([]);
 
-  // Session timeout (20 minutes) – uses lastActivity_teacher so refresh doesn't reset the timer
-  const { showWarning, timeRemaining, handleLogout, resetTimer } = useSessionTimeout({
-    timeoutMinutes: 20,
-    warningMinutes: 19,
+  // Session timeout (2 minutes of inactivity) – auto logout without warning
+  const { handleLogout } = useSessionTimeout({
+    timeoutMinutes: 2,
+    warningMinutes: 0, // No warning, just auto-logout
     loginPath: '/login',
     storageKeyPrefix: 'teacher',
   });
@@ -207,46 +216,78 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
 
   const fetchStaffPermissions = async (staffId: string) => {
     try {
-      // Fetch detailed permissions
-      const response = await fetch(`/api/rbac/staff-permissions/${staffId}`);
+      // Fetch staff menu items (which include permissions)
+      const response = await fetch(`/api/staff/${staffId}/menu`);
       const result = await response.json();
       
-      console.log('Staff permissions API response:', {
+      console.log('Staff menu API response:', {
         ok: response.ok,
         hasData: !!result.data,
-        hasModules: !!result.data?.modules,
-        modulesCount: result.data?.modules?.length || 0,
+        modulesCount: result.data?.length || 0,
         error: result.error,
-        fullResult: result,
       });
       
       if (response.ok && result.data) {
-        setStaffPermissions(result.data);
+        // Store the raw menu modules for dynamic menu generation
+        setDynamicModules(result.data || []);
+        
+        // Convert menu data to permissions format
+        const menuModules = result.data || [];
+        
+        // Build the permissions data structure expected by staffPermissions state
+        const permissionsData = {
+          modules: menuModules.map((module: {
+            module_name: string;
+            module_key: string;
+            sub_modules: Array<{
+              name: string;
+              key: string;
+              route: string;
+              has_view_access: boolean;
+              has_edit_access: boolean;
+            }>;
+          }) => ({
+            id: module.module_key,
+            name: module.module_name,
+            sub_modules: module.sub_modules.map(sm => ({
+              name: sm.name,
+              view_access: sm.has_view_access,
+              edit_access: sm.has_edit_access,
+            })),
+          })),
+        };
+        
+        setStaffPermissions(permissionsData);
         
         // Extract enabled sub-modules and map to permission keys
         const enabledPermissions = new Set<string>();
         const moduleAccessMap = new Map<string, boolean>(); // Track module-level access
         
-        const modules = result.data.modules || [];
-        console.log('Processing modules:', modules.length);
+        console.log('Processing modules:', menuModules.length);
         
-        modules.forEach((module: { 
-          id?: string;
-          name?: string;
-          sub_modules?: Array<{ name?: string; view_access?: boolean; edit_access?: boolean }> 
+        menuModules.forEach((module: {
+          module_name: string;
+          module_key: string;
+          sub_modules: Array<{
+            name: string;
+            key: string;
+            route: string;
+            has_view_access: boolean;
+            has_edit_access: boolean;
+          }>;
         }) => {
           let hasModuleAccess = false;
           
           const subModules = module.sub_modules || [];
-          console.log(`Module "${module.name}" has ${subModules.length} sub-modules`);
+          console.log(`Module "${module.module_name}" has ${subModules.length} sub-modules`);
           
-          subModules.forEach((subModule: { name?: string; view_access?: boolean; edit_access?: boolean }) => {
+          subModules.forEach((subModule) => {
             const subModuleName = subModule.name;
-            const hasAccess = subModule.view_access || subModule.edit_access;
+            const hasAccess = subModule.has_view_access || subModule.has_edit_access;
             
             if (hasAccess && subModuleName) {
               hasModuleAccess = true;
-              console.log(`  - Sub-module "${subModuleName}" has access (view: ${subModule.view_access}, edit: ${subModule.edit_access})`);
+              console.log(`  - Sub-module "${subModuleName}" has access (view: ${subModule.has_view_access}, edit: ${subModule.has_edit_access})`);
               // Map sub-module names to permission keys
               const permKeys = mapSubModuleToPermissions(subModuleName);
               console.log(`  - Mapped to permissions:`, permKeys);
@@ -255,10 +296,10 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
           });
           
           // Store module-level access
-          if (module.id && module.name) {
-            moduleAccessMap.set(module.id.toLowerCase(), hasModuleAccess);
+          if (module.module_key && module.module_name) {
+            moduleAccessMap.set(module.module_key.toLowerCase(), hasModuleAccess);
             // Also check by module name for backward compatibility
-            moduleAccessMap.set(module.name.toLowerCase(), hasModuleAccess);
+            moduleAccessMap.set(module.module_name.toLowerCase(), hasModuleAccess);
           }
         });
         
@@ -270,7 +311,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
         // Store module access map for direct module checking
         (window as unknown as Record<string, unknown>).__moduleAccessMap = moduleAccessMap;
       } else {
-        console.error('Failed to fetch staff permissions:', result.error || 'Unknown error');
+        console.error('Failed to fetch staff menu:', result.error || 'Unknown error');
       }
     } catch (error) {
       console.error('Error fetching staff permissions:', error);
@@ -285,53 +326,79 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       'Reset Password': ['manage_passwords'],
       
       // Staff Management
-      'Staff Directory': ['view_staff'],
+      'Staff Directory': ['view_staff', 'manage_staff'],
       'Add Staff': ['manage_staff', 'view_staff'],
       'Bulk Staff import': ['manage_staff', 'view_staff'],
+      'Bulk Staff Import': ['manage_staff', 'view_staff'],
       'Bulk Staff Photo Upload': ['manage_staff', 'view_staff'],
-      'Staff Attendance': ['view_staff'],
+      'Bulk Photo Upload': ['manage_staff', 'view_staff'],
+      'Staff Attendance': ['view_staff', 'manage_staff'],
       'Student Attendance Marking Report': ['view_staff'],
+      'Staff Attendance Marking Report': ['view_staff'],
       'Quick Staff Search': ['view_staff'],
+      'Role Management': ['manage_staff'],
       
-      // Classes
-      'Add/Modify Class': ['manage_classes', 'view_classes'],
+      // Classes - Updated to match actual sub-module names
+      'Classes Overview': ['view_classes', 'manage_classes'],
+      'Modify Classes': ['manage_classes', 'view_classes'],
+      'Subject Teachers': ['view_classes', 'manage_classes'],
       'Add/Modify Subjects': ['manage_classes', 'view_classes'],
+      'Add/Modify Class': ['manage_classes', 'view_classes'],
       'Assign Teachers': ['manage_classes', 'view_classes'],
       
-      // Timetable
+      // Timetable - Updated to match actual sub-module names
+      'Class Timetable': ['view_timetable', 'manage_timetable'],
+      'Teacher Timetable': ['view_timetable'],
+      'Group Wise Timetable': ['view_timetable'],
       'Teacher Workload': ['view_timetable'],
       'Group wise Timetable': ['view_timetable'],
       'Class Time Table': ['manage_timetable', 'view_timetable'],
       'Teacher Time Table': ['view_timetable'],
       
       // Student Management
+      'Add Student': ['manage_students', 'view_students'],
       'Add student': ['manage_students', 'view_students'],
+      'Student Directory': ['view_students', 'manage_students'],
+      'Student Attendance': ['view_students', 'manage_students'],
+      'Mark Attendance': ['view_students', 'manage_students'],
+      'Bulk Import Students': ['manage_students', 'view_students'],
       'Bulk Student Import': ['manage_students', 'view_students'],
       'Bulk Student Photo Upload': ['manage_students', 'view_students'],
-      'Student Directory': ['view_students'],
       'New Admission Report': ['view_students'],
-      'Student Attendance': ['view_students'],
       'Student Report': ['view_students'],
       'Student Info. Update Settings on App': ['manage_students', 'view_students'],
       'Student Form Config': ['manage_students', 'view_students'],
+      'Student Siblings': ['view_students', 'manage_students'],
       'Student Sibling': ['view_students'],
       'Student Attendance Report': ['view_students'],
       'PTM Attendance': ['view_students'],
       'Quick Student Search': ['view_students'],
       
       // Examinations - Updated to match actual sub-module names
+      'Examination Dashboard': ['view_exams'],
       'Create Examination': ['view_exams', 'manage_exams'],
       'Grade Scale': ['view_exams', 'manage_exams'],
       'Offline Tests': ['view_exams', 'manage_exams'],
       'Report Card': ['view_exams'],
       'Report Card Template': ['view_exams', 'manage_exams'],
       'Examination Reports': ['view_exams'],
-      // Legacy mappings for backward compatibility
       'Exams': ['view_exams', 'manage_exams'],
       'Report Card, Teacher Report Card, Template Selection': ['view_exams', 'manage_exams'],
       'Staff Marks Entry Report': ['view_exams'],
       
-      // Fee Management
+      // Marks
+      'Marks Dashboard': ['view_exams'],
+      'Mark Entry': ['view_exams', 'manage_exams'],
+      'Marks Entry': ['view_exams', 'manage_exams'],
+      
+      // Fee Management - Updated to match actual sub-module names
+      'Fee Dashboard': ['view_fees'],
+      'Fee Heads': ['view_fees', 'manage_fees'],
+      'Fee Structures': ['view_fees', 'manage_fees'],
+      'Collect Payment': ['view_fees', 'manage_fees'],
+      'Student Fee Statements': ['view_fees'],
+      'Discounts & Fines': ['view_fees', 'manage_fees'],
+      'Fee Reports': ['view_fees'],
       'Fee Configuration, Receipt Template': ['view_fees', 'manage_fees'],
       'Fee Basics (Fee Schedule, Fee Component, Fee Fine)': ['view_fees', 'manage_fees'],
       'Fee Discount': ['view_fees', 'manage_fees'],
@@ -343,21 +410,36 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       'Receive online fee payment notification': ['view_fees'],
       'Quick Fee Search': ['view_fees'],
       
-      // Library
-      'Library Basics': ['view_library', 'manage_library'],
-      'Catalogue': ['view_library', 'manage_library'],
-      'Transactions': ['view_library', 'manage_library'],
+      // Library - Updated
       'Library Dashboard': ['view_library'],
+      'Library Basics': ['view_library', 'manage_library'],
+      'Library Catalogue': ['view_library', 'manage_library'],
+      'Catalogue': ['view_library', 'manage_library'],
+      'Library Transactions': ['view_library', 'manage_library'],
+      'Transactions': ['view_library', 'manage_library'],
       
-      // Transport
-      'Transport Basics': ['view_transport', 'manage_transport'],
+      // Transport - Updated
+      'Transport Dashboard': ['view_transport'],
       'Vehicles': ['view_transport', 'manage_transport'],
+      'Stops': ['view_transport', 'manage_transport'],
       'Routes': ['view_transport', 'manage_transport'],
       'Student Route Mapping': ['view_transport', 'manage_transport'],
+      'Transport Basics': ['view_transport', 'manage_transport'],
       'Vehicle expenses': ['view_transport', 'manage_transport'],
       'GPS Tracking': ['view_transport'],
       
+      // Leave Management - Updated
+      'Leave Dashboard': ['view_leave', 'manage_leave'],
+      'Student Leave': ['view_leave', 'manage_leave'],
+      'Staff Leave': ['view_leave', 'manage_leave'],
+      'Leave Basics': ['view_leave', 'manage_leave'],
+      
+      // Event/Calendar - Updated
+      'Academic Calendar': ['view_events', 'manage_events'],
+      'Events': ['view_events', 'manage_events'],
+      
       // Communication
+      'Communication': ['view_communication', 'manage_communication'],
       'Notice/Circular': ['view_communication', 'manage_communication'],
       'Survey': ['view_communication', 'manage_communication'],
       'Incident Log': ['view_communication', 'manage_communication'],
@@ -367,25 +449,38 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       // Reports
       'Report': ['view_reports'],
       
-      // Certificate Management
+      // Certificate Management - Updated
+      'Certificate Dashboard': ['view_certificates'],
+      'New Certificate': ['view_certificates', 'manage_certificates'],
       'Template Selection': ['view_certificates', 'manage_certificates'],
       'Manage Certificate': ['view_certificates', 'manage_certificates'],
       'Classwise student certificate': ['view_certificates', 'manage_certificates'],
       'Certificate Send to Student': ['view_certificates', 'manage_certificates'],
       
-      // Digital Diary
+      // Digital Diary - Updated
+      'Digital Diary': ['view_homework', 'manage_homework'],
       'Create Diary': ['view_homework', 'manage_homework'],
       'Daily Dairy Report': ['view_homework'],
       'Daily Dairy Report(all classes or all batches)': ['view_homework'],
       
-      // Income and Expenditure
+      // Expense/Income - Updated
+      'Expense/Income': ['view_finances', 'manage_finances'],
       'Add/Edit Category': ['view_finances', 'manage_finances'],
       'Add/Edit Payee': ['view_finances', 'manage_finances'],
       'Manage Income': ['view_finances', 'manage_finances'],
       'Manage Expenditure': ['view_finances', 'manage_finances'],
       
-      // Gate Pass
+      // Front Office - Updated
+      'Front Office Dashboard': ['view_gate_pass', 'manage_gate_pass'],
+      'Gate Pass': ['view_gate_pass', 'manage_gate_pass'],
+      'Visitor Management': ['view_gate_pass', 'manage_gate_pass'],
       'Gate Pass Management': ['view_gate_pass', 'manage_gate_pass'],
+      
+      // Copy Checking
+      'Copy Checking': ['view_homework', 'manage_homework'],
+      
+      // Gallery
+      'Gallery': ['view_gallery'],
     };
     return mapping[subModuleName] || [];
   };
@@ -517,21 +612,132 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     return true;
   });
 
+  // Build dynamic menu items from dynamicModules (from API)
+  const dynamicMenuItems: TeacherMenuItem[] = [];
+  if (dynamicModules && dynamicModules.length > 0) {
+    const iconMap: Record<string, typeof Home> = {
+      'fee_management': DollarSign,
+      'classes': BookOpen,
+      'examination': FileText,
+      'timetable': CalendarDays,
+      'student_management': GraduationCap,
+      'staff_management': UserCheck,
+      'library': Library,
+      'transport': Bus,
+      'leave_management': CalendarX,
+      'communication': MessageSquare,
+      'reports': FileBarChart,
+      'gallery': Image,
+      'certificate_management': Award,
+      'digital_diary': BookMarked,
+      'expense_income': TrendingUp,
+      'front_office': DoorOpen,
+      'copy_checking': FileText,
+      'event_calendar': CalendarDays,
+      'marks': FileText,
+      'attendance': Calendar,
+    };
+
+    // Map of module keys to their equivalent base item IDs to prevent duplicates
+    const moduleToBaseItemMap: Record<string, string[]> = {
+      'examination': ['examinations', 'marks'],
+      'classes': ['classes', 'my-class'],
+      'timetable': ['calendar'],
+      'digital_diary': ['homework'],
+      'copy_checking': ['copy-checking'],
+      'student_management': ['students'],
+      'staff_management': ['staff-management'],
+      'certificate_management': ['certificates'],
+      'leave_management': ['apply-leave', 'my-leaves', 'student-leave-approvals'],
+      'communication': ['communication'],
+      'library': ['library'],
+      'gallery': ['gallery'],
+      'reports': ['reports'],
+    };
+
+    dynamicModules.forEach((module) => {
+      // Check if module has any accessible sub-modules
+      const hasAccess = module.sub_modules?.some(sm => sm.has_view_access || sm.has_edit_access);
+      if (!hasAccess) return;
+
+      // Skip if already in base items (check by module key mapping)
+      const equivalentBaseItems = moduleToBaseItemMap[module.module_key] || [];
+      const isAlreadyInBase = filteredTeacherItems.some(item => 
+        equivalentBaseItems.includes(item.id) || 
+        item.label.toLowerCase() === module.module_name.toLowerCase()
+      );
+      if (isAlreadyInBase) {
+        console.log(`Skipping ${module.module_name} - already in base items`);
+        return;
+      }
+
+      // Get the first accessible sub-module's route
+      const firstAccessibleSubModule = module.sub_modules.find(sm => sm.has_view_access || sm.has_edit_access);
+      if (!firstAccessibleSubModule) return;
+
+      const icon = iconMap[module.module_key] || FileText;
+      
+      dynamicMenuItems.push({
+        id: module.module_key,
+        label: module.module_name,
+        icon: icon,
+        path: firstAccessibleSubModule.route,
+        permission: null,
+        viewPermission: null,
+      });
+    });
+    
+    console.log('Built dynamic menu items:', dynamicMenuItems.length, dynamicMenuItems.map(d => ({ id: d.id, label: d.label, path: d.path })));
+  }
+
   // Filter dashboard items based on permissions (only show if teacher has access)
+  // Also skip items that overlap with dynamic modules
+  const dynamicModuleKeys = dynamicModules.map(m => m.module_key);
+  const dynamicModuleNames = dynamicModules.map(m => m.module_name.toLowerCase());
+  
   const filteredDashboardItems = dashboardMenuItems.filter(item => {
     // Skip items that are already in teacherBaseItems
     if (teacherBaseItems.some(baseItem => baseItem.id === item.id)) {
+      return false;
+    }
+    // Skip items that are already in dynamicMenuItems
+    if (dynamicMenuItems.some(dynItem => dynItem.id === item.id || dynItem.label.toLowerCase() === item.label.toLowerCase())) {
+      return false;
+    }
+    // Skip items that match dynamic module keys or names (e.g., 'fees' when 'fee_management' is active)
+    const itemIdLower = item.id.toLowerCase();
+    const itemLabelLower = item.label.toLowerCase();
+    if (dynamicModuleKeys.some(key => 
+      key.includes(itemIdLower) || itemIdLower.includes(key.replace('_', '-')) ||
+      key.replace('_management', '') === itemIdLower || key.replace('_', '-') === itemIdLower
+    )) {
+      return false;
+    }
+    if (dynamicModuleNames.some(name => 
+      name === itemLabelLower || 
+      name.replace(' management', '') === itemLabelLower ||
+      name.replace('/', ' ') === itemLabelLower.replace('/', ' ')
+    )) {
       return false;
     }
     // Check if teacher has permission for this item
     return hasPermission(item);
   });
 
-  // Combine teacher items with filtered dashboard items
+  // Combine teacher items with dynamic items and filtered dashboard items
   const allMenuItems: MenuItem[] = [
     ...filteredTeacherItems,
+    ...dynamicMenuItems,
     ...filteredDashboardItems,
   ];
+
+  // Debug: log all menu items being rendered
+  console.log('=== SIDEBAR DEBUG ===');
+  console.log('Dynamic modules from API:', dynamicModules.length);
+  console.log('Dynamic menu items built:', dynamicMenuItems.length, dynamicMenuItems.map(d => d.id));
+  console.log('Filtered teacher items:', filteredTeacherItems.length);
+  console.log('Filtered dashboard items:', filteredDashboardItems.length);
+  console.log('Total allMenuItems:', allMenuItems.length, allMenuItems.map(m => m.id));
 
   const isActive = (path: string) => {
     if (path === '/teacher/dashboard' && pathname === '/teacher/dashboard') return true;
@@ -574,14 +780,6 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
               <span className="hidden sm:block text-[#1e3a8a] font-semibold">{school?.school_name || teacher.school_code}</span>
             </div>
             <div className="flex items-center space-x-2">
-              {/* Timer Display */}
-              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-[#1e3a8a]/10 rounded-lg border border-[#1e3a8a]/20">
-                <Clock size={16} className="text-[#1e3a8a]" />
-                <span className="text-sm font-medium text-[#1e3a8a] font-mono">
-                  {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
-                </span>
-              </div>
-
               {/* Search */}
               <div className="relative search-container">
                 <button
@@ -776,14 +974,33 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                   {(() => {
                     const sections = [
                       { id: 'core', label: 'Core', items: ['home'] },
-                      { id: 'academics', label: 'Academics', items: ['attendance', 'my-attendance', 'marks', 'examinations', 'my-class', 'classes', 'calendar', 'homework', 'copy-checking'] },
-                      { id: 'leave', label: 'Leave & Requests', items: ['apply-leave', 'my-leaves', 'student-leave-approvals'] },
-                      { id: 'info', label: 'Information', items: ['students', 'institute-info', 'library', 'certificates', 'gallery', 'communication'] },
-                      { id: 'account', label: 'Account', items: ['settings', 'change-password', 'staff-management'] },
+                      { id: 'academics', label: 'Academics', items: ['attendance', 'my-attendance', 'marks', 'examinations', 'my-class', 'classes', 'calendar', 'homework', 'copy-checking', 'timetable'] },
+                      { id: 'leave', label: 'Leave & Requests', items: ['apply-leave', 'my-leaves', 'student-leave-approvals', 'leave_management'] },
+                      { id: 'info', label: 'Information', items: ['students', 'student_management', 'library', 'certificates', 'gallery', 'communication', 'staff-management', 'transport', 'front_office'] },
+                      { id: 'finance', label: 'Finance', items: ['fee_management', 'expense_income'] },
+                      { id: 'account', label: 'Account', items: ['institute-info', 'settings', 'change-password'] },
                     ];
+                    
+                    // Get all item IDs that are in predefined sections
+                    const allSectionItemIds = sections.flatMap(s => s.items);
+                    
+                    // Find any dynamic items not in any section
+                    const uncategorizedItems = allMenuItems.filter(item => !allSectionItemIds.includes(item.id));
+                    
+                    // Add uncategorized section if there are items
+                    if (uncategorizedItems.length > 0) {
+                      sections.splice(sections.length - 1, 0, {
+                        id: 'additional',
+                        label: 'Additional Modules',
+                        items: uncategorizedItems.map(item => item.id),
+                      });
+                    }
+                    
                     let globalOrder = 0;
                     return sections.map((section) => {
                       const sectionItems = allMenuItems.filter(item => section.items.includes(item.id));
+                      // Skip empty sections
+                      if (sectionItems.length === 0) return null;
                       const startIndex = globalOrder;
                       globalOrder += sectionItems.length;
                       return (
@@ -874,14 +1091,6 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
           </div>
         </main>
       </div>
-
-      {/* Session Timeout Modal */}
-      <SessionTimeoutModal
-        isOpen={showWarning}
-        timeRemaining={timeRemaining}
-        onStayLoggedIn={resetTimer}
-        onLogout={handleLogout}
-      />
 
       {/* Help Modal */}
       <HelpModal isOpen={helpModalOpen} onClose={() => setHelpModalOpen(false)} schoolCode={''} />

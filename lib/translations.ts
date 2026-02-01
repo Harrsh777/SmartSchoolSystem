@@ -139,6 +139,16 @@ const translations: Translations = {
     ja: 'カレンダー',
     ar: 'التقويم',
   },
+  'nav.report_card': {
+    en: 'Report Card',
+    es: 'Boleta de calificaciones',
+    fr: 'Bulletin',
+    de: 'Zeugnis',
+    hi: 'रिपोर्ट कार्ड',
+    zh: '成绩单',
+    ja: '成績表',
+    ar: 'التقرير',
+  },
   'nav.examinations': {
     en: 'Examinations',
     es: 'Exámenes',

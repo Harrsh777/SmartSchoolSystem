@@ -269,10 +269,20 @@ export default function BulkImportPage({
                     </ul>
                   </div>
                 </div>
-                <Button onClick={handleDownloadTemplate} className="bg-orange-600 hover:bg-orange-700">
-                  <Download size={20} className="mr-2" />
-                  Download Excel Template
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                  <Button onClick={handleDownloadTemplate} className="bg-orange-600 hover:bg-orange-700">
+                    <Download size={20} className="mr-2" />
+                    Download Excel Template
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentStep(2)}
+                    className="border-orange-600 text-orange-600 hover:bg-orange-50"
+                  >
+                    Continue to Upload
+                    <ArrowRight size={18} className="ml-2" />
+                  </Button>
+                </div>
               </div>
             </Card>
           </motion.div>

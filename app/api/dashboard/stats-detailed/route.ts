@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    const academicYear = searchParams.get('academic_year');
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -31,11 +32,16 @@ export async function GET(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const schoolId = schoolData.id;
 
-    // Fetch all students for this school
-    const { data: allStudents } = await supabase
+    // Fetch all students for this school (filter by academic_year if provided)
+    let studentsQuery = supabase
       .from('students')
       .select('first_name, last_name, gender, created_at')
-      .eq('school_code', schoolCode);
+      .eq('school_code', schoolCode)
+      .eq('status', 'active');
+    if (academicYear) {
+      studentsQuery = studentsQuery.eq('academic_year', academicYear);
+    }
+    const { data: allStudents } = await studentsQuery;
 
     // Calculate gender split
     const totalStudents = allStudents?.length || 0;
