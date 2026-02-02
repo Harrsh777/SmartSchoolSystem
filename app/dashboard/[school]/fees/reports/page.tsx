@@ -13,7 +13,7 @@ import {
   Download,
   TrendingUp,
   AlertTriangle,
-  DollarSign
+  IndianRupee
 } from 'lucide-react';
 
 export default function FeeReportsPage({
@@ -142,7 +142,7 @@ export default function FeeReportsPage({
             { id: 'daily', label: 'Daily Collection', icon: Calendar },
             { id: 'monthly', label: 'Monthly Collection', icon: TrendingUp },
             { id: 'pending', label: 'Pending Fees', icon: AlertTriangle },
-            { id: 'overdue', label: 'Overdue Fees', icon: DollarSign },
+            { id: 'overdue', label: 'Overdue Fees', icon: IndianRupee },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}

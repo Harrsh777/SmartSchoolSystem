@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { DollarSign, Download, Clock, CheckCircle, AlertCircle, Loader2, Receipt } from 'lucide-react';
+import { IndianRupee, Download, Clock, CheckCircle, AlertCircle, Loader2, Receipt } from 'lucide-react';
 
 interface StudentFee {
   id: string;
@@ -143,7 +143,7 @@ export default function StudentFeesPage() {
         animate={{ opacity: 1, y: 0 }}
       >
         <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-          <DollarSign size={32} className="text-indigo-600" />
+          <IndianRupee size={32} className="text-indigo-600" />
           My Fees
         </h1>
         <p className="text-gray-600">View your fee statements and payment history</p>

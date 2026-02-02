@@ -297,7 +297,7 @@ export async function GET() {
       const { data: subModulesData, error: subModulesError } = await supabase
         .from('sub_modules')
         .select(`
-          id,module_id,sub_module_key,name,route,display_order,is_active,
+          id,module_id,sub_module_key,sub_module_name,route_path,display_order,is_active,
           permission_categories(id,category_key,category_name)
         `)
         .eq('is_active', true)

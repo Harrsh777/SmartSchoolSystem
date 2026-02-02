@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Search, DollarSign, CheckCircle, AlertCircle, Loader2, Receipt, Filter, Users, Calendar, FileText, TrendingUp, UserCheck } from 'lucide-react';
+import { ArrowLeft, Search, IndianRupee, CheckCircle, AlertCircle, Loader2, Receipt, Filter, Users, Calendar, FileText, TrendingUp, UserCheck } from 'lucide-react';
 
 interface StudentFee {
   id: string;
@@ -50,6 +50,7 @@ export default function PaymentCollectionPage({
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [classFilter, setClassFilter] = useState('');
+  const [sectionFilter, setSectionFilter] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [studentFees, setStudentFees] = useState<StudentFee[]>([]);
@@ -69,9 +70,13 @@ export default function PaymentCollectionPage({
   const fetchStudents = useCallback(async () => {
     try {
       setLoading(true);
-      const url = classFilter 
-        ? `/api/students?school_code=${schoolCode}&class=${encodeURIComponent(classFilter)}`
-        : `/api/students?school_code=${schoolCode}`;
+      let url = `/api/students?school_code=${schoolCode}`;
+      if (classFilter) {
+        url += `&class=${encodeURIComponent(classFilter)}`;
+      }
+      if (sectionFilter) {
+        url += `&section=${encodeURIComponent(sectionFilter)}`;
+      }
       const response = await fetch(url);
       const result = await response.json();
       if (response.ok) {
@@ -82,7 +87,7 @@ export default function PaymentCollectionPage({
     } finally {
       setLoading(false);
     }
-  }, [schoolCode, classFilter]);
+  }, [schoolCode, classFilter, sectionFilter]);
 
   useEffect(() => {
     fetchStudents();
@@ -123,6 +128,11 @@ export default function PaymentCollectionPage({
     const numB = parseInt(b) || 0;
     return numA - numB;
   });
+
+  // Get unique sections for selected class
+  const uniqueSections = classFilter 
+    ? Array.from(new Set(students.filter(s => s.class === classFilter).map(s => s.section))).sort()
+    : [];
 
   const handleStudentSelect = async (student: Student) => {
     setSelectedStudent(student);
@@ -278,7 +288,7 @@ export default function PaymentCollectionPage({
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
               <div className="p-2 bg-indigo-100 rounded-lg">
-                <DollarSign size={28} className="text-indigo-600" />
+                <IndianRupee size={28} className="text-indigo-600" />
               </div>
               Collect Payment
             </h1>
@@ -337,16 +347,33 @@ export default function PaymentCollectionPage({
                 />
               </div>
               
-              <div className="relative">
-                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10" size={18} />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
+                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10" size={18} />
+                  <select
+                    value={classFilter}
+                    onChange={(e) => {
+                      setClassFilter(e.target.value);
+                      setSectionFilter('');
+                    }}
+                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none text-sm"
+                  >
+                    <option value="">All Classes</option>
+                    {uniqueClasses.map(cls => (
+                      <option key={cls} value={cls}>Class {cls}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <select
-                  value={classFilter}
-                  onChange={(e) => setClassFilter(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none"
+                  value={sectionFilter}
+                  onChange={(e) => setSectionFilter(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none text-sm"
+                  disabled={!classFilter}
                 >
-                  <option value="">All Classes</option>
-                  {uniqueClasses.map(cls => (
-                    <option key={cls} value={cls}>Class {cls}</option>
+                  <option value="">All Sections</option>
+                  {uniqueSections.map(sec => (
+                    <option key={sec} value={sec}>Section {sec}</option>
                   ))}
                 </select>
               </div>

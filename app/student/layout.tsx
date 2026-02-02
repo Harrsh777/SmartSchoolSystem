@@ -12,7 +12,7 @@ import {
   CalendarDays,
   Library,
   FileText, 
-  DollarSign, 
+  IndianRupee, 
   Bell, 
   Menu, 
   X, 
@@ -63,8 +63,8 @@ const menuItems: MenuItem[] = [
   { icon: Library, label: 'Library', path: '/student/dashboard/library', parent: 'Academics' },
   
   // Fees & Transport Module
-  { icon: DollarSign, label: 'Fees & Transport', path: '#', isModule: true },
-  { icon: DollarSign, label: 'Fees', path: '/student/dashboard/fees', parent: 'Fees & Transport' },
+  { icon: IndianRupee, label: 'Fees & Transport', path: '#', isModule: true },
+  { icon: IndianRupee, label: 'Fees', path: '/student/dashboard/fees', parent: 'Fees & Transport' },
   { icon: Bus, label: 'Transport Info', path: '/student/dashboard/transport', parent: 'Fees & Transport' },
   
   // Requests Module

@@ -7,7 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { 
-  DollarSign, 
+  IndianRupee, 
   Search, 
   Plus, 
   LogOut, 
@@ -187,7 +187,7 @@ export default function AccountantDashboard() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-indigo-100 rounded-lg">
-                  <DollarSign className="text-indigo-600" size={24} />
+                  <IndianRupee className="text-indigo-600" size={24} />
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-gray-900">Fees Management</h1>
@@ -260,7 +260,7 @@ export default function AccountantDashboard() {
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <div className="p-2 bg-green-100 rounded-lg">
-                    <DollarSign className="text-green-600" size={20} />
+                    <IndianRupee className="text-green-600" size={20} />
                   </div>
                   <p className="text-sm text-gray-600">Total Fees Given</p>
                 </div>

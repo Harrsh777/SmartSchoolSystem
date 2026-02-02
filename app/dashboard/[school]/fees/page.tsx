@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import { 
-  DollarSign, 
+  IndianRupee, 
   FileText,
   Settings,
   BarChart3,
@@ -121,7 +121,7 @@ export default function FeesPage({
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-              <DollarSign className="text-[#2F6FED]" size={32} />
+              <IndianRupee className="text-[#2F6FED]" size={32} />
               Fees Management
             </h1>
             <p className="text-gray-600">Manage fees, collections, and reports</p>

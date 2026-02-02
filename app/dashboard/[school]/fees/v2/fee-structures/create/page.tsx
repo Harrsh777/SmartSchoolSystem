@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, ArrowRight, CheckCircle, AlertCircle, Loader2, FileText, DollarSign, Calendar, Settings } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle, AlertCircle, Loader2, FileText, IndianRupee, Calendar, Settings } from 'lucide-react';
 
 interface FeeHead {
   id: string;
@@ -508,7 +508,7 @@ export default function CreateFeeStructurePage({
             {step === 3 && (
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <DollarSign size={24} className="text-indigo-600" />
+                  <IndianRupee size={24} className="text-indigo-600" />
                   Step 3: Fee Composition
                 </h2>
 

@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { DollarSign, ArrowLeft, Lock, Building2, User } from 'lucide-react';
+import { IndianRupee, ArrowLeft, Lock, Building2, User } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AccountantLoginPage() {
@@ -70,7 +70,7 @@ export default function AccountantLoginPage() {
         <Card className="p-8 shadow-2xl">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4">
-              <DollarSign className="text-indigo-600" size={32} />
+              <IndianRupee className="text-indigo-600" size={32} />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Accountant Login</h1>
             <p className="text-gray-600">Access your fees management dashboard</p>

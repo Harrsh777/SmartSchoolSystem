@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -17,7 +17,8 @@ import {
   Phone,
   GraduationCap,
   Eye,
-  ChevronRight
+  ChevronRight,
+  Calendar
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
@@ -35,6 +36,7 @@ export default function StudentDirectoryPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<StudentStatus>('active');
   const [academicYear, setAcademicYear] = useState('');
+  const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -44,18 +46,42 @@ export default function StudentDirectoryPage({
     return typeof value === 'string' ? value : '';
   };
 
+  const fetchAcademicYears = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
+      if (response.ok) {
+        const result = await response.json();
+        const years = result.academicYears || [];
+        setAcademicYears(years);
+        // Set current year as default if available
+        const currentYear = new Date().getFullYear();
+        const defaultYear = years.find((y: string) => y.includes(String(currentYear))) || years[0] || '';
+        if (!academicYear && defaultYear) {
+          setAcademicYear(defaultYear);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching academic years:', err);
+    }
+  }, [schoolCode, academicYear]);
+
+  useEffect(() => {
+    fetchAcademicYears();
+  }, [fetchAcademicYears]);
+
   useEffect(() => {
     fetchStudents();
-    const currentYear = new Date().getFullYear();
-    const nextYear = currentYear + 1;
-    setAcademicYear(`Apr ${currentYear} - Mar ${nextYear}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode, selectedStatus]);
+  }, [schoolCode, selectedStatus, academicYear]);
 
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/students?school_code=${schoolCode}&status=${selectedStatus}`);
+      let url = `/api/students?school_code=${schoolCode}&status=${selectedStatus}`;
+      if (academicYear) {
+        url += `&academic_year=${encodeURIComponent(academicYear)}`;
+      }
+      const response = await fetch(url);
       const result = await response.json();
       if (response.ok && result.data) {
         setStudents(result.data);
@@ -141,6 +167,20 @@ export default function StudentDirectoryPage({
           <p className="text-gray-600 text-lg">Manage and view all students in your school</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Academic Year Filter Button */}
+          <div className="flex items-center gap-2">
+            <Calendar size={18} className="text-indigo-600" />
+            <select
+              value={academicYear}
+              onChange={(e) => setAcademicYear(e.target.value)}
+              className="px-4 py-2 border border-indigo-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-indigo-600 font-medium"
+            >
+              <option value="">All Years</option>
+              {academicYears.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
           <Button
             variant="outline"
             onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
@@ -179,23 +219,7 @@ export default function StudentDirectoryPage({
 
       {/* Filters */}
       <Card className="p-6 bg-gradient-to-br from-white to-indigo-50/30 border-indigo-100">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Academic Year
-            </label>
-            <select
-              value={academicYear}
-              onChange={(e) => setAcademicYear(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-            >
-              <option value="">Select Year</option>
-              <option value={`Apr ${new Date().getFullYear()} - Mar ${new Date().getFullYear() + 1}`}>
-                Apr {new Date().getFullYear()} - Mar {new Date().getFullYear() + 1}
-              </option>
-            </select>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Class</label>
             <select

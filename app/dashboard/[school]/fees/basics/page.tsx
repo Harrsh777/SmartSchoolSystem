@@ -12,7 +12,7 @@ import {
   Edit,
   X,
   Calendar,
-  DollarSign,
+  IndianRupee,
   Tag,
   Settings,
   FileText,
@@ -304,7 +304,7 @@ export default function FeeBasicsPage({
         <Card className="p-4 bg-green-50 border-green-200">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-lg bg-green-500 flex items-center justify-center">
-              <DollarSign className="text-white" size={24} />
+              <IndianRupee className="text-white" size={24} />
             </div>
             <div>
               <p className="text-sm text-gray-600">No. of Fee schedule created</p>
@@ -352,7 +352,7 @@ export default function FeeBasicsPage({
         <Card className="p-4 bg-gray-50 border-gray-200">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-lg bg-gray-500 flex items-center justify-center">
-              <DollarSign className="text-white" size={24} />
+              <IndianRupee className="text-white" size={24} />
             </div>
             <div>
               <p className="text-sm text-gray-600">No. of Fee fine created</p>

@@ -17,7 +17,7 @@ import {
   ArrowRight,
   Plus,
   RefreshCw,
-  DollarSign
+  IndianRupee
 } from 'lucide-react';
 
 interface Vehicle {
@@ -550,11 +550,11 @@ export default function TransportDashboardPage({
                       <h3 className="font-bold text-gray-900 dark:text-white mb-2">{stop.name}</h3>
                       <div className="flex items-center gap-4 text-sm">
                         <div className="flex items-center gap-1">
-                          <DollarSign className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={14} />
+                          <IndianRupee className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={14} />
                           <span className="text-gray-700 dark:text-gray-300">Pickup: ₹{stop.pickup_fare}</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <DollarSign className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={14} />
+                          <IndianRupee className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={14} />
                           <span className="text-gray-700 dark:text-gray-300">Drop: ₹{stop.drop_fare}</span>
                         </div>
                       </div>

@@ -14,7 +14,7 @@ import {
   MapPin, 
   Calendar, 
   GraduationCap,
-  DollarSign,
+  IndianRupee,
   Clock,
   Users,
   CheckCircle2,
@@ -271,7 +271,7 @@ export default function StudentDetailPage({
   const tabs = [
     { id: 'overview', label: 'Overview', icon: User },
     { id: 'attendance', label: 'Attendance', icon: Calendar },
-    { id: 'financial', label: 'Financial', icon: DollarSign },
+    { id: 'financial', label: 'Financial', icon: IndianRupee },
     { id: 'academic', label: 'Academic', icon: GraduationCap },
   ];
 
@@ -340,7 +340,7 @@ export default function StudentDetailPage({
         >
           <Card className="p-5 bg-gradient-to-br from-green-500 to-green-600 text-white hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-2">
-              <DollarSign size={20} className="opacity-90" />
+              <IndianRupee size={20} className="opacity-90" />
               <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Total Paid</span>
             </div>
             <p className="text-3xl font-bold mb-1">{formatCurrency(financialStats.totalPaid)}</p>
@@ -732,7 +732,7 @@ export default function StudentDetailPage({
                 <div className="grid md:grid-cols-3 gap-4">
                   <Card className="p-5 bg-gradient-to-br from-green-500 to-green-600 text-white">
                     <div className="flex items-center justify-between mb-2">
-                      <DollarSign size={20} className="opacity-90" />
+                      <IndianRupee size={20} className="opacity-90" />
                       <TrendingUp size={16} className="opacity-90" />
                     </div>
                     <p className="text-2xl font-bold mb-1">Total Paid</p>

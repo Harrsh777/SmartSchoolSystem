@@ -6,7 +6,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import { X, DollarSign, Calendar, FileText, Download, CheckCircle, XCircle } from 'lucide-react';
+import { X, IndianRupee, Calendar, FileText, Download, CheckCircle, XCircle } from 'lucide-react';
 import { getString } from '@/lib/type-utils';
 
 interface AddFeeModalProps {
@@ -395,7 +395,7 @@ export default function AddFeeModal({
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                <DollarSign size={16} />
+                <IndianRupee size={16} />
                 Fee Amount (₹) <span className="text-red-500">*</span>
               </label>
               <Input
@@ -411,7 +411,7 @@ export default function AddFeeModal({
 
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                <DollarSign size={16} />
+                <IndianRupee size={16} />
                 Transport Fee (₹) <span className="text-gray-500 text-xs">(Optional)</span>
               </label>
               <Input

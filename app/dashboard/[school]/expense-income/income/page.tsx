@@ -16,7 +16,7 @@ import {
   Save,
   X,
   Calendar,
-  DollarSign,
+  IndianRupee,
   FileText,
 } from 'lucide-react';
 
@@ -370,7 +370,7 @@ export default function ManageIncomePage({
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      <DollarSign size={14} className="inline mr-1" />
+                      <IndianRupee size={14} className="inline mr-1" />
                       Amount <span className="text-red-500">*</span>
                     </label>
                     <Input

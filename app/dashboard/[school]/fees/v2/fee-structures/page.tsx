@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, Clock, Users, DollarSign, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, Clock, Users, IndianRupee, TrendingUp } from 'lucide-react';
 
 const MONTHS = [
   { value: 1, label: 'January' },
@@ -377,7 +377,7 @@ export default function FeeStructuresPage({
 
                     <div className="flex items-center gap-3 text-sm pt-2 border-t border-gray-200">
                       <div className="flex items-center gap-2 text-gray-600 min-w-[80px]">
-                        <DollarSign size={16} className="text-green-600" />
+                        <IndianRupee size={16} className="text-green-600" />
                         <span className="font-medium">Total:</span>
                       </div>
                       <span className="text-xl font-bold text-indigo-600">

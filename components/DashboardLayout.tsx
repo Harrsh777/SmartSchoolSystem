@@ -11,7 +11,7 @@ import {
   UserCheck, 
   BookOpen, 
   FileText, 
-  DollarSign, 
+  IndianRupee, 
   Library, 
   Bus, 
   MessageSquare, 
@@ -47,7 +47,8 @@ import {
   Receipt,
   CreditCard,
   Clock,
-  ArrowLeft
+  ArrowLeft,
+  Download
 } from 'lucide-react';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { languages } from '@/lib/translations';
@@ -99,7 +100,7 @@ const menuItems = [
   { icon: FileText, label: 'Examinations', path: '/examinations', permission: 'manage_exams', viewPermission: 'view_exams' },
   { icon: Award, label: 'Report Card', path: '/report-card', permission: 'manage_exams', viewPermission: 'view_exams' },
   { icon: GraduationCap, label: 'Marks', path: '/marks', permission: 'manage_exams', viewPermission: 'view_exams' },
-  { icon: DollarSign, label: 'Fees', path: '/fees', permission: 'manage_fees', viewPermission: 'view_fees' },
+  { icon: IndianRupee, label: 'Fees', path: '/fees', permission: 'manage_fees', viewPermission: 'view_fees' },
   { icon: Library, label: 'Library', path: '/library', isModal: true, permission: 'manage_library', viewPermission: 'view_library' },
   { icon: Bus, label: 'Transport', path: '/transport', isModal: true, permission: 'manage_transport', viewPermission: 'view_transport' },
   { icon: CalendarDays, label: 'Leave Management', path: '/leave', isModal: true, permission: 'manage_leaves', viewPermission: 'view_leaves' },
@@ -249,6 +250,7 @@ function SortableMenuItem({
             {!sidebarCollapsed && (
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold mr-1.5 ${
                 active 
+                
                   ? 'bg-white/20 text-white' 
                   : 'bg-[rgba(255,255,255,0.08)] dark:bg-[rgba(255,255,255,0.08)] text-[#E2E8F0] group-hover:bg-[rgba(255,255,255,0.12)] group-hover:text-white'
               }`}>
@@ -638,6 +640,10 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
   const [studentModalOpen, setStudentModalOpen] = useState(false);
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const [libraryModalOpen, setLibraryModalOpen] = useState(false);
+  const [attendanceReportModalOpen, setAttendanceReportModalOpen] = useState(false);
+  const [reportFromDate, setReportFromDate] = useState('');
+  const [reportToDate, setReportToDate] = useState('');
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const [transportModalOpen, setTransportModalOpen] = useState(false);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
@@ -875,7 +881,7 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
     // Icon mapping for modules
     const iconMap: Record<string, typeof Home> = {
       'student_management': Users,
-      'fee_management': DollarSign,
+      'fee_management': IndianRupee,
       'staff_management': UserCheck,
       'examination': FileText,
       'marks': GraduationCap,
@@ -1066,6 +1072,77 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
     router.push('/login');
   };
 
+  const handleDownloadAttendanceReport = async () => {
+    if (!reportFromDate || !reportToDate) {
+      alert('Please select both from and to dates');
+      return;
+    }
+
+    try {
+      setDownloadingReport(true);
+      const response = await fetch(
+        `/api/attendance/report?school_code=${schoolCode}&from_date=${reportFromDate}&to_date=${reportToDate}`
+      );
+      
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to generate report');
+      }
+      
+      const result = await response.json();
+      const data = result.data || [];
+      
+      // Generate CSV
+      const headers = ['Date', 'Student Name', 'Admission No', 'Class', 'Section', 'Status', 'Marked By'];
+      const escapeCsv = (val: unknown) => {
+        const s = String(val ?? '');
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      
+      const csvLines = [headers.join(',')];
+      data.forEach((record: { 
+        attendance_date?: string;
+        student_name?: string;
+        admission_no?: string;
+        class?: string;
+        section?: string;
+        status?: string;
+        marked_by_name?: string;
+      }) => {
+        csvLines.push([
+          record.attendance_date,
+          record.student_name,
+          record.admission_no,
+          record.class,
+          record.section,
+          record.status,
+          record.marked_by_name || 'N/A',
+        ].map(escapeCsv).join(','));
+      });
+      
+      const csv = csvLines.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `student_attendance_report_${reportFromDate}_to_${reportToDate}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      setAttendanceReportModalOpen(false);
+      setReportFromDate('');
+      setReportToDate('');
+    } catch (err) {
+      console.error('Error downloading attendance report:', err);
+      alert(err instanceof Error ? err.message : 'Failed to download attendance report');
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   useEffect(() => {
     const checkDesktop = () => {
       setIsDesktop(window.innerWidth >= 1024);
@@ -1134,6 +1211,7 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
     { label: 'Student Directory', path: '/students/directory', category: 'Student Management', icon: Users, parent: 'Student Management' },
     { label: 'Student Attendance', path: '/students/attendance', category: 'Student Management', icon: Users, parent: 'Student Management' },
     { label: 'Mark Attendance', path: '/students/mark-attendance', category: 'Student Management', icon: Users, parent: 'Student Management' },
+    { label: 'Student Attendance Report', path: '/students/attendance-report', category: 'Student Management', icon: Users, parent: 'Student Management' },
     { label: 'Bulk Import Students', path: '/students/bulk-import', category: 'Student Management', icon: Users, parent: 'Student Management' },
     { label: 'Student Siblings', path: '/students/siblings', category: 'Student Management', icon: Users, parent: 'Student Management' },
     
@@ -1167,7 +1245,7 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
     { label: 'Mark Entry', path: '/marks-entry', category: 'Marks', icon: ClipboardList, parent: 'Marks' },
     
     // Fees - V2 System (Primary) + Legacy
-    { label: 'Fees', path: '/fees', category: 'Fees', icon: DollarSign },
+    { label: 'Fees', path: '/fees', category: 'Fees', icon: IndianRupee },
     { label: 'Fee Dashboard', path: '/fees/v2/dashboard', category: 'Fees', icon: BarChart3, parent: 'Fees' },
     { label: 'Fee Heads', path: '/fees/v2/fee-heads', category: 'Fees', icon: Tag, parent: 'Fees' },
     { label: 'Fee Structures', path: '/fees/v2/fee-structures', category: 'Fees', icon: FileText, parent: 'Fees' },
@@ -1579,7 +1657,7 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
               >
                 {sidebarOpen ? <X size={24} className="text-[#2C3E50] dark:text-[#5A879A]" /> : <Menu size={24} className="text-[#2C3E50] dark:text-[#5A879A]" />}
               </button>
-              <Link href="/" className="text-xl font-bold bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] bg-clip-text text-transparent">
+              <Link href={schoolCode ? `/dashboard/${schoolCode}` : '/'} className="text-xl font-bold bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] bg-clip-text text-transparent">
                 EduCore
               </Link>
               <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
@@ -1630,6 +1708,37 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
                     <div className="p-2">
                       {filteredSearchResults.map((item, idx) => {
                         const ItemIcon = item.icon;
+                        const isAttendanceReport = item.path === '/students/attendance-report';
+                        
+                        if (isAttendanceReport) {
+                          return (
+                            <button
+                              key={`${item.path}-${idx}`}
+                              onClick={() => {
+                                setSearchQuery('');
+                                setSearchDropdownOpen(false);
+                                setAttendanceReportModalOpen(true);
+                              }}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors group text-left"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors">
+                                <ItemIcon size={16} className="text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                                  {item.label}
+                                </div>
+                                {item.parent && (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                    {item.parent} • {item.category}
+                                  </div>
+                                )}
+                              </div>
+                              <ChevronRight size={14} className="text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 flex-shrink-0" />
+                            </button>
+                          );
+                        }
+                        
                         return (
                           <Link
                             key={`${item.path}-${idx}`}
@@ -1676,9 +1785,10 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
               <div className="relative quick-actions-menu-container">
                 <button
                   id="quick-actions-navbar-button"
+                  onClick={() => router.push(basePath)}
                   className="flex flex-col items-center gap-1 hover:opacity-80 transition-opacity"
                   aria-label="Quick Actions"
-                  title="Quick Actions"
+                  title="Go to Dashboard for Quick Actions"
                 >
                   <div className="w-10 h-10 rounded-full bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center">
                     <ChevronUp className="text-[#2C3E50] dark:text-[#5A879A]" size={18} />
@@ -1812,30 +1922,6 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
                       </div>
                       <span className="text-[#5A7A95] dark:text-[#6B9BB8] font-semibold">My Profile</span>
                     </div>
-
-                    {/* Activity Section */}
-                    <div className="px-4 py-3">
-                      <h3 className="font-bold text-navy dark:text-skyblue mb-2">Activity</h3>
-                      
-                      {/* Updates */}
-                      <button
-                        onClick={() => {
-                          setProfileDropdownOpen(false);
-                          // Handle updates click
-                        }}
-                        className="w-full flex items-center gap-3 px-2 py-2 hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] rounded-lg transition-colors"
-                      >
-                        <Lightbulb size={20} className="text-yellow-500" />
-                        <span className="flex-1 text-left text-navy dark:text-skyblue">Updates</span>
-                        <div className="flex items-center gap-2">
-                          <span className="bg-red-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full">24</span>
-                          <ChevronDown size={16} className="text-gray-400 dark:text-gray-500 rotate-[-90deg]" />
-                        </div>
-                      </button>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="border-t border-gray-200 dark:border-gray-700"></div>
 
                     {/* Logout */}
                     <button
@@ -2061,6 +2147,94 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
         userName={userInfo.name}
         userRole={userInfo.role}
       />
+
+      {/* Student Attendance Report Modal */}
+      <AnimatePresence>
+        {attendanceReportModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={() => setAttendanceReportModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Student Attendance Report
+                </h2>
+                <button
+                  onClick={() => setAttendanceReportModalOpen(false)}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={reportFromDate}
+                    onChange={(e) => setReportFromDate(e.target.value)}
+                    max={new Date().toISOString().split('T')[0]}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    value={reportToDate}
+                    onChange={(e) => setReportToDate(e.target.value)}
+                    min={reportFromDate}
+                    max={new Date().toISOString().split('T')[0]}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setAttendanceReportModalOpen(false)}
+                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDownloadAttendanceReport}
+                  disabled={!reportFromDate || !reportToDate || downloadingReport}
+                  className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {downloadingReport ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={18} />
+                      Download Report
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
     </ErrorBoundary>
   );

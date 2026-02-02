@@ -9,7 +9,7 @@ import {
   Home, 
   ArrowLeft, 
   Search, 
-  DollarSign, 
+  IndianRupee, 
   Calendar, 
   Settings,
   BookOpen,
@@ -52,7 +52,7 @@ export default function NotFound() {
 
   const suggestedLinks = [
     { label: 'Dashboard', icon: Home, path: basePath, color: 'bg-blue-500' },
-    { label: 'Fees', icon: DollarSign, path: `${basePath}/fees`, color: 'bg-green-500' },
+    { label: 'Fees', icon: IndianRupee, path: `${basePath}/fees`, color: 'bg-green-500' },
     { label: 'Students', icon: GraduationCap, path: `${basePath}/students`, color: 'bg-purple-500' },
     { label: 'Attendance', icon: Calendar, path: `${basePath}/attendance`, color: 'bg-orange-500' },
     { label: 'Classes', icon: BookOpen, path: `${basePath}/classes`, color: 'bg-indigo-500' },

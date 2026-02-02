@@ -8,7 +8,7 @@ import {
   User,
   GraduationCap,
   FileText,
-  DollarSign,
+  IndianRupee,
   BookOpen,
   Shield,
 } from 'lucide-react';
@@ -340,7 +340,7 @@ export default function SchoolSupervisionView({ acceptedSchools }: SchoolSupervi
             {/* Fees */}
             <Card className="p-6">
               <h3 className="text-lg font-bold text-[#2B2B2B] mb-4 flex items-center gap-2">
-                <DollarSign size={20} className="text-[#2B2B2B]" />
+                <IndianRupee size={20} className="text-[#2B2B2B]" />
                 Fees
               </h3>
               <div className="space-y-2">

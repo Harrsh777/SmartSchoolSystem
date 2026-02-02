@@ -9,7 +9,7 @@ import Button from '@/components/ui/Button';
 import { 
   Users, 
   UserCheck, 
-  DollarSign, 
+  IndianRupee, 
   Download,
   ChevronDown,
   RefreshCw,
@@ -688,7 +688,7 @@ export default function DashboardPage({
 
   const quickActionsMenuItems: Record<string, MenuItem[]> = {
     quick: [
-      { label: 'Student-wise Fee', path: '/fees/student-wise', icon: DollarSign, color: '#F97316' },
+      { label: 'Student-wise Fee', path: '/fees/student-wise', icon: IndianRupee, color: '#F97316' },
       { label: 'Create Diary', path: '/homework', icon: BookMarked, color: '#F97316' },
       { label: 'Notice / Circular', path: '/communication/notices', icon: FileText, color: '#F97316' },
       { label: 'Post An Event', path: '/calendar/events', icon: CalendarDays, color: '#F97316' },
@@ -722,7 +722,7 @@ export default function DashboardPage({
       ]},
     ],
     finance: [
-      { label: 'Fees', path: '/fees', icon: DollarSign, color: '#F97316', subItems: [
+      { label: 'Fees', path: '/fees', icon: IndianRupee, color: '#F97316', subItems: [
         { label: 'Fee Configuration', path: '/fees/configuration', icon: Settings },
         { label: 'Fee Basics', path: '/fees/basics', icon: Calendar },
         { label: 'Class-wise Fee', path: '/fees/class-wise', icon: Users },
@@ -1054,7 +1054,7 @@ export default function DashboardPage({
 
       {/* KPI Cards - Colorful Design */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* Total Students Card - Blue */}
+        {/* Total Students & Staff Card - Blue */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1065,8 +1065,8 @@ export default function DashboardPage({
           <div className="relative">
             {/* Icon at top left */}
             <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <UserPlus className="text-blue-600" size={24} />
+              <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
+                <UserPlus className="text-blue-600" size={18} />
               </div>
             </div>
             
@@ -1076,27 +1076,25 @@ export default function DashboardPage({
             </p>
             
             {/* Main Value */}
-            <div className="mb-4">
-              <div className="text-3xl font-bold text-gray-900 mb-1">
+            <div className="mb-3">
+              <div className="text-3xl font-bold text-gray-900">
                 {loading ? '...' : stats.totalStudents.toLocaleString()}
               </div>
             </div>
-            
-            {/* Progress Bar at bottom - based on actual data */}
-            <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-              <motion.div 
-                className="bg-blue-500 h-full rounded-full"
-                initial={{ width: 0 }}
-                animate={{ 
-                  width: loading ? '0%' : stats.totalStudents > 0 ? '100%' : '0%'
-                }}
-                transition={{ duration: 0.8, ease: 'easeOut' }}
-              />
+
+            {/* Total Staff */}
+            <div className="pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Total Staff</span>
+                <span className="text-lg font-bold text-gray-800">
+                  {loading ? '...' : stats.totalStaff.toLocaleString()}
+                </span>
+              </div>
             </div>
           </div>
         </motion.div>
 
-        {/* Total Fees - Last 3 Months Card - Blue */}
+        {/* Total Fees & Expenses Card - Blue */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1107,21 +1105,21 @@ export default function DashboardPage({
           <div className="relative">
             {/* Icon at top left */}
             <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <DollarSign className="text-blue-600" size={24} />
+              <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center">
+                <IndianRupee className="text-green-600" size={18} />
               </div>
             </div>
             
             {/* Title */}
             <p className="text-sm font-medium text-gray-600 mb-2">
-              Total Fees (Last 3 Months)
+              Total Fees (This Year)
             </p>
             
             {/* Main Value */}
-            <div className="mb-4">
-              <div className="text-3xl font-bold text-gray-900 mb-1">
-                {loading ? '...' : (() => {
-                  const amount = stats.feeCollection.feesLast3Months ?? stats.feeCollection.monthlyCollection ?? 0;
+            <div className="mb-3">
+              <div className="text-3xl font-bold text-green-600">
+                {loadingFinancial ? '...' : (() => {
+                  const amount = financialData?.feeManagement?.totalCollected ?? 0;
                   if (amount >= 100000) {
                     return `₹${(amount / 100000).toFixed(1)}L`;
                   } else if (amount >= 1000) {
@@ -1132,17 +1130,24 @@ export default function DashboardPage({
                 })()}
               </div>
             </div>
-            
-            {/* Progress Bar at bottom - based on actual data */}
-            <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-              <motion.div 
-                className="bg-blue-500 h-full rounded-full"
-                initial={{ width: 0 }}
-                animate={{ 
-                  width: loading ? '0%' : ((stats.feeCollection.feesLast3Months ?? stats.feeCollection.monthlyCollection ?? 0) > 0 ? '100%' : '0%')
-                }}
-                transition={{ duration: 0.8, ease: 'easeOut' }}
-              />
+
+            {/* Total Expenses */}
+            <div className="pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Total Expenses</span>
+                <span className="text-lg font-bold text-red-600">
+                  {loadingFinancial ? '...' : (() => {
+                    const amount = financialData?.incomeAndExpense?.totalExpense ?? 0;
+                    if (amount >= 100000) {
+                      return `₹${(amount / 100000).toFixed(1)}L`;
+                    } else if (amount >= 1000) {
+                      return `₹${(amount / 1000).toFixed(1)}K`;
+                    } else {
+                      return `₹${amount.toLocaleString('en-IN')}`;
+                    }
+                  })()}
+                </span>
+              </div>
             </div>
           </div>
         </motion.div>
@@ -1161,8 +1166,8 @@ export default function DashboardPage({
           <div className="relative">
             {/* Icon at top left */}
             <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-                <UserCheck className="text-green-600" size={24} />
+              <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center">
+                <UserCheck className="text-green-600" size={18} />
               </div>
             </div>
             
@@ -1233,8 +1238,8 @@ export default function DashboardPage({
           <div className="relative">
             {/* Icon at top left */}
             <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
-                <BookOpen className="text-orange-600" size={24} />
+              <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center">
+                <BookOpen className="text-orange-600" size={18} />
               </div>
             </div>
             
@@ -2409,7 +2414,7 @@ export default function DashboardPage({
               <p className="text-sm text-gray-600 mt-1">Register new student</p>
             </button>
             <button
-              onClick={() => router.push(`/dashboard/${schoolCode}/attendance`)}
+              onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/attendance`)}
               className="p-4 rounded-lg border-2 border-gray-200 hover:border-black hover:bg-gray-50 transition-colors text-left"
             >
               <p className="font-semibold text-black">Mark Attendance</p>

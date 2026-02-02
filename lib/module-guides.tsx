@@ -9,7 +9,7 @@ import {
   CalendarDays, 
   FileText, 
   GraduationCap, 
-  DollarSign, 
+  IndianRupee, 
   Library, 
   Bus, 
   MessageSquare, 
@@ -619,7 +619,7 @@ export const moduleGuides: Record<string, ModuleGuide> = {
 
   'fees': {
     moduleName: 'Fees Management',
-    moduleIcon: <DollarSign size={32} />,
+    moduleIcon: <IndianRupee size={32} />,
     description: 'Manage fee structure and fee collections',
     steps: [
       {
@@ -644,7 +644,7 @@ export const moduleGuides: Record<string, ModuleGuide> = {
           'Select fee type and enter payment amount',
           'Record payment method and receipt number',
         ],
-        icon: <DollarSign size={20} />,
+        icon: <IndianRupee size={20} />,
       },
       {
         stepNumber: 3,

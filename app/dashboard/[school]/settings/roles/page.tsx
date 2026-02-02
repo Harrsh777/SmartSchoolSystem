@@ -7,7 +7,6 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import {
   Shield,
-  ArrowLeft,
   Save,
   CheckCircle,
   AlertCircle,
@@ -21,7 +20,6 @@ import {
   X,
   User,
 } from 'lucide-react';
-import Link from 'next/link';
 
 interface Staff {
   id: string;
@@ -138,14 +136,14 @@ export default function StaffPermissionsPage({
             const subModuleMap = new Map<string, Record<string, unknown>>();
             
             (module.sub_modules || [])
-              .filter((sm: Record<string, unknown>) => sm.is_active !== false && sm.sub_module_name)
+              .filter((sm: Record<string, unknown>) => sm && sm.is_active !== false && sm.sub_module_name)
               .forEach((subModule: Record<string, unknown>) => {
                 const key = (subModule.sub_module_key || subModule.id) as string;
                 if (subModuleMap.has(key)) return;
                 
                 const categoryMap = new Map<string, Record<string, unknown>>();
                 ((subModule.permission_categories as Record<string, unknown>[]) || [])
-                  .filter((cat: Record<string, unknown>) => cat.is_active !== false)
+                  .filter((cat: Record<string, unknown>) => cat && cat.is_active !== false)
                   .forEach((category: Record<string, unknown>) => {
                     const catKey = String(category.category_key ?? category.id ?? '');
                     if (catKey && !categoryMap.has(catKey)) {
@@ -376,12 +374,6 @@ export default function StaffPermissionsPage({
           className="flex items-center justify-between"
         >
           <div className="flex items-center gap-4">
-            <Link href={`/dashboard/${schoolCode}/settings`}>
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </Link>
             <div>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
                 <Shield className="h-8 w-8 text-[#2F6FED]" />

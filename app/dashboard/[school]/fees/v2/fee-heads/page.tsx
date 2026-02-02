@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Loader2, DollarSign } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Loader2, IndianRupee } from 'lucide-react';
 
 interface FeeHead {
   id: string;
@@ -177,7 +177,7 @@ export default function FeeHeadsPage({
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-              <DollarSign size={32} className="text-indigo-600" />
+              <IndianRupee size={32} className="text-indigo-600" />
               Fee Heads Management
             </h1>
             <p className="text-gray-600">Manage fee types (Tuition, Transport, Library, etc.)</p>

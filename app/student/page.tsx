@@ -10,7 +10,7 @@ import {
   User,
   Calendar,
   BookOpen,
-  DollarSign,
+  IndianRupee,
   FileText,
   Clock,
   Award,
@@ -445,7 +445,7 @@ export default function StudentDashboard() {
             { id: 'overview', label: 'Overview', icon: User },
             { id: 'attendance', label: 'Attendance', icon: Calendar },
             { id: 'marks', label: 'Marks', icon: Award },
-            { id: 'fees', label: 'Fees', icon: DollarSign },
+            { id: 'fees', label: 'Fees', icon: IndianRupee },
             { id: 'exams', label: 'Exams', icon: FileText },
             { id: 'timetable', label: 'Timetable', icon: Clock },
             { id: 'report', label: 'Report Card', icon: BookOpen },
@@ -498,7 +498,7 @@ export default function StudentDashboard() {
               <Card hover>
                 <div className="flex items-center space-x-4">
                   <div className="bg-purple-500 p-3 rounded-lg">
-                    <DollarSign className="text-white" size={24} />
+                    <IndianRupee className="text-white" size={24} />
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Pending Fees</p>

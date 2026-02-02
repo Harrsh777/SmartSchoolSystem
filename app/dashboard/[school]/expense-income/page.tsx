@@ -12,7 +12,7 @@ import {
   Edit,
   Trash2,
   TrendingUp,
-  DollarSign,
+  IndianRupee,
   Users,
   X,
   Filter,
@@ -233,7 +233,7 @@ export default function ExpenseIncomePage({
         <nav className="flex space-x-8">
           {[
             { id: 'overview', label: 'Overview', icon: TrendingUp },
-            { id: 'income', label: 'Income', icon: DollarSign },
+            { id: 'income', label: 'Income', icon: IndianRupee },
             { id: 'expense', label: 'Expenses', icon: TrendingUp },
             { id: 'salary', label: 'Salaries', icon: Users },
             { id: 'reports', label: 'Reports', icon: Download },
@@ -331,7 +331,7 @@ function OverviewTab({
                 {overviewData ? formatCurrency(overviewData.income.month) : '₹0'}
               </p>
             </div>
-            <DollarSign className="text-green-600" size={32} />
+            <IndianRupee className="text-green-600" size={32} />
           </div>
         </Card>
 
@@ -367,7 +367,7 @@ function OverviewTab({
                 {overviewData ? formatCurrency(overviewData.income.year) : '₹0'}
               </p>
             </div>
-            <DollarSign className="text-purple-600" size={32} />
+            <IndianRupee className="text-purple-600" size={32} />
           </div>
         </Card>
       </div>

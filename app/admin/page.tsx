@@ -33,7 +33,7 @@ import {
   Activity,
   Key,
   HelpCircle,
-  DollarSign,
+  IndianRupee,
   Shield,
   Edit,
   Eye,
@@ -2343,7 +2343,7 @@ export default function AdminDashboard() {
                         className="mt-2 space-y-1.5 pl-2"
                       >
                         {[
-                          { id: 'fees', label: 'Fees', icon: DollarSign, color: 'from-emerald-500 to-green-500' },
+                          { id: 'fees', label: 'Fees', icon: IndianRupee, color: 'from-emerald-500 to-green-500' },
                           { id: 'communications', label: 'Communications', icon: Bell, color: 'from-pink-500 to-rose-500' },
                         ].map((item) => {
                           const Icon = item.icon;
@@ -3883,7 +3883,7 @@ export default function AdminDashboard() {
               </div>
               <Card>
                 <div className="text-center py-12">
-                  <DollarSign className="mx-auto mb-4 text-gray-400" size={48} />
+                  <IndianRupee className="mx-auto mb-4 text-gray-400" size={48} />
                   <p className="text-gray-600 text-lg">Fees management coming soon</p>
                   <p className="text-sm text-gray-500 mt-2">View and manage fee transactions across all schools</p>
                 </div>

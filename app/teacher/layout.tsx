@@ -16,7 +16,7 @@ import {
   Image,
   Building2,
   BookOpen,
-  DollarSign,
+  IndianRupee,
   Library,
   Bus,
   MessageSquare,
@@ -94,7 +94,7 @@ const dashboardMenuItems: TeacherMenuItem[] = [
   { id: 'timetable', icon: CalendarDays, label: 'Timetable', path: '/teacher/dashboard/timetable', permission: 'manage_timetable', viewPermission: 'view_timetable' },
   { id: 'calendar', icon: CalendarDays, label: 'Event/Calendar', path: '/teacher/dashboard/calendar', permission: 'manage_events', viewPermission: 'view_events' },
   { id: 'examinations', icon: FileText, label: 'Examinations', path: '/teacher/dashboard/examinations', permission: 'manage_exams', viewPermission: 'view_exams' },
-  { id: 'fees', icon: DollarSign, label: 'Fees', path: '/teacher/dashboard/fees', permission: 'manage_fees', viewPermission: 'view_fees' },
+  { id: 'fees', icon: IndianRupee, label: 'Fees', path: '/teacher/dashboard/fees', permission: 'manage_fees', viewPermission: 'view_fees' },
   { id: 'library', icon: Library, label: 'Library', path: '/teacher/dashboard/library', permission: 'manage_library', viewPermission: 'view_library' },
   { id: 'transport', icon: Bus, label: 'Transport', path: '/teacher/dashboard/transport', permission: 'manage_transport', viewPermission: 'view_transport' },
   { id: 'communication', icon: MessageSquare, label: 'Communication', path: '/teacher/dashboard/communication', permission: null, viewPermission: null },
@@ -617,7 +617,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const dynamicMenuItems: TeacherMenuItem[] = [];
   if (dynamicModules && dynamicModules.length > 0) {
     const iconMap: Record<string, typeof Home> = {
-      'fee_management': DollarSign,
+      'fee_management': IndianRupee,
       'classes': BookOpen,
       'examination': FileText,
       'timetable': CalendarDays,

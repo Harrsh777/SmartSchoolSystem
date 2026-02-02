@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { 
   ArrowLeft, 
-  DollarSign,
+  IndianRupee,
   Search,
   User,
   CheckCircle2,
@@ -196,7 +196,7 @@ export default function StudentWiseFeePage({
         <div>
           <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg">
-              <DollarSign className="text-white" size={24} />
+              <IndianRupee className="text-white" size={24} />
             </div>
             Student-wise Fee
           </h1>
@@ -285,7 +285,7 @@ export default function StudentWiseFeePage({
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-5 bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] text-white">
           <div className="flex items-center justify-between mb-2">
-            <DollarSign size={20} className="opacity-90" />
+            <IndianRupee size={20} className="opacity-90" />
             <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Total</span>
           </div>
           <p className="text-3xl font-bold mb-1">

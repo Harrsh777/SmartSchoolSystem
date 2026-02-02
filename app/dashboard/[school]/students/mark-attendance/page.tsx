@@ -6,9 +6,9 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, AlertCircle, Save, ArrowLeft, Users, Filter } from 'lucide-react';
+import { Calendar, CheckCircle, AlertCircle, Save, ArrowLeft, Users, Filter, CalendarOff } from 'lucide-react';
 
-type AttendanceStatus = 'present' | 'absent';
+type AttendanceStatus = 'present' | 'absent' | 'holiday';
 
 interface Student {
   id: string;
@@ -38,6 +38,7 @@ export default function MarkAttendancePage({
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('');
+  const [selectedSection, setSelectedSection] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
   const [isAdmin, setIsAdmin] = useState(false);
@@ -53,12 +54,12 @@ export default function MarkAttendancePage({
   }, [schoolCode]);
 
   useEffect(() => {
-    if (selectedClass && selectedDate) {
+    if (selectedClass && selectedSection && selectedDate) {
       fetchStudents();
       fetchExistingAttendance();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClass, selectedDate, schoolCode]);
+  }, [selectedClass, selectedSection, selectedDate, schoolCode]);
 
   const checkPermissions = () => {
     const storedStaff = sessionStorage.getItem('staff');
@@ -137,16 +138,17 @@ export default function MarkAttendancePage({
   };
 
   const fetchStudents = async () => {
-    if (!selectedClass) return;
+    if (!selectedClass || !selectedSection) return;
     
     try {
       setLoading(true);
-      const classData = classes.find(c => c.id === selectedClass);
-      if (!classData) return;
 
-      const params = new URLSearchParams({ school_code: schoolCode, class: classData.class, section: classData.section });
-      const academicYear = (classData as { academic_year?: string }).academic_year;
-      if (academicYear) params.set('academic_year', academicYear);
+      const params = new URLSearchParams({ 
+        school_code: schoolCode, 
+        class: selectedClass, 
+        section: selectedSection 
+      });
+      
       const response = await fetch(`/api/students?${params}`);
       const result = await response.json();
       
@@ -173,11 +175,15 @@ export default function MarkAttendancePage({
   };
 
   const fetchExistingAttendance = async () => {
-    if (!selectedClass || !selectedDate) return;
+    if (!selectedClass || !selectedSection || !selectedDate) return;
 
     try {
+      // Find the class ID based on class and section
+      const classData = classes.find(c => c.class === selectedClass && c.section === selectedSection);
+      if (!classData) return;
+
       const response = await fetch(
-        `/api/attendance/class?school_code=${schoolCode}&class_id=${selectedClass}&date=${selectedDate}`
+        `/api/attendance/class?school_code=${schoolCode}&class_id=${classData.id}&date=${selectedDate}`
       );
       const result = await response.json();
 
@@ -208,8 +214,15 @@ export default function MarkAttendancePage({
   };
 
   const handleSave = async () => {
-    if (!selectedClass || !selectedDate) {
-      setError('Please select a class and date');
+    if (!selectedClass || !selectedSection || !selectedDate) {
+      setError('Please select a class, section, and date');
+      return;
+    }
+
+    // Find the class ID based on class and section
+    const classData = classes.find(c => c.class === selectedClass && c.section === selectedSection);
+    if (!classData) {
+      setError('Invalid class or section selected');
       return;
     }
 
@@ -261,7 +274,7 @@ export default function MarkAttendancePage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
-          class_id: selectedClass,
+          class_id: classData.id,
           attendance_date: selectedDate,
           attendance_records: attendanceRecords,
           marked_by: staffIdToUse,
@@ -337,15 +350,35 @@ export default function MarkAttendancePage({
             <label className="text-sm font-medium text-gray-700">Class:</label>
             <select
               value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
+              onChange={(e) => {
+                setSelectedClass(e.target.value);
+                setSelectedSection('');
+              }}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
             >
               <option value="">Select Class</option>
-              {classes.map((cls) => (
-                <option key={cls.id} value={cls.id}>
-                  {cls.class}{cls.section ? `-${cls.section}` : ''}
-                </option>
+              {Array.from(new Set(classes.map(c => c.class))).sort().map((cls) => (
+                <option key={cls} value={cls}>{cls}</option>
               ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">Section:</label>
+            <select
+              value={selectedSection}
+              onChange={(e) => setSelectedSection(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              disabled={!selectedClass}
+            >
+              <option value="">Select Section</option>
+              {classes
+                .filter(c => c.class === selectedClass)
+                .map((cls) => (
+                  <option key={cls.id} value={cls.section}>
+                    {cls.section || 'No Section'}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -361,6 +394,36 @@ export default function MarkAttendancePage({
             />
           </div>
         </div>
+
+        {/* Attendance Summary Stats */}
+        {selectedClass && selectedSection && students.length > 0 && (
+          <div className="grid grid-cols-4 gap-4 mb-4 pt-4 border-t border-gray-200">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">
+                {Object.values(attendance).filter(s => s === 'present').length}
+              </div>
+              <div className="text-xs text-gray-500">Present</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">
+                {Object.values(attendance).filter(s => s === 'absent').length}
+              </div>
+              <div className="text-xs text-gray-500">Absent</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-600">
+                {students.length - Object.keys(attendance).length}
+              </div>
+              <div className="text-xs text-gray-500">Not Marked</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {Object.values(attendance).filter(s => s === 'holiday').length}
+              </div>
+              <div className="text-xs text-gray-500">Holiday</div>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800">
@@ -385,13 +448,12 @@ export default function MarkAttendancePage({
       </Card>
 
       {/* Attendance Marking */}
-      {selectedClass && students.length > 0 && (
+      {selectedClass && selectedSection && students.length > 0 && (
         <Card>
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-gray-900">
-                {classes.find(c => c.id === selectedClass)?.class}
-                {classes.find(c => c.id === selectedClass)?.section ? `-${classes.find(c => c.id === selectedClass)?.section}` : ''}
+                {selectedClass}{selectedSection ? `-${selectedSection}` : ''}
               </h2>
               <p className="text-sm text-gray-600 mt-1">
                 {selectedDate} • {students.length} students
@@ -402,6 +464,7 @@ export default function MarkAttendancePage({
                 variant="outline"
                 size="sm"
                 onClick={() => handleBulkAction('present')}
+                className="border-green-300 text-green-600 hover:bg-green-50"
               >
                 Mark All Present
               </Button>
@@ -409,8 +472,18 @@ export default function MarkAttendancePage({
                 variant="outline"
                 size="sm"
                 onClick={() => handleBulkAction('absent')}
+                className="border-red-300 text-red-600 hover:bg-red-50"
               >
                 Mark All Absent
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleBulkAction('holiday')}
+                className="border-blue-300 text-blue-600 hover:bg-blue-50"
+              >
+                <CalendarOff size={16} className="mr-2" />
+                Mark Holiday
               </Button>
             </div>
           </div>
@@ -455,6 +528,16 @@ export default function MarkAttendancePage({
                         >
                           Absent
                         </button>
+                        <button
+                          onClick={() => handleStatusChange(student.id, 'holiday')}
+                          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                            attendance[student.id] === 'holiday'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-blue-100'
+                          }`}
+                        >
+                          Holiday
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -476,7 +559,7 @@ export default function MarkAttendancePage({
         </Card>
       )}
 
-      {selectedClass && students.length === 0 && !loading && (
+      {selectedClass && selectedSection && students.length === 0 && !loading && (
         <Card>
           <div className="text-center py-12">
             <Users size={48} className="mx-auto mb-4 text-gray-400" />
@@ -485,11 +568,11 @@ export default function MarkAttendancePage({
         </Card>
       )}
 
-      {!selectedClass && (
+      {(!selectedClass || !selectedSection) && (
         <Card>
           <div className="text-center py-12">
             <Calendar size={48} className="mx-auto mb-4 text-gray-400" />
-            <p className="text-gray-600">Please select a class to mark attendance</p>
+            <p className="text-gray-600">Please select a class and section to mark attendance</p>
           </div>
         </Card>
       )}

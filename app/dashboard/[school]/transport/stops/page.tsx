@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { MapPin, Plus, Edit, Trash2, Loader2, X, Save, AlertCircle, CheckCircle, DollarSign, ArrowLeft, Clock } from 'lucide-react';
+import { MapPin, Plus, Edit, Trash2, Loader2, X, Save, AlertCircle, CheckCircle, IndianRupee, ArrowLeft, Clock } from 'lucide-react';
 
 interface Stop {
   id: string;
@@ -351,7 +351,7 @@ export default function StopsPage({
                   <div className="space-y-3">
                     <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
                       <div className="flex items-center gap-2">
-                        <DollarSign className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={16} />
+                        <IndianRupee className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={16} />
                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Pickup Fare</span>
                       </div>
                       <span className="text-lg font-bold text-[#6B9BB8] dark:text-[#7DB5D3]">₹{stop.pickup_fare}</span>
@@ -359,7 +359,7 @@ export default function StopsPage({
 
                     <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
                       <div className="flex items-center gap-2">
-                        <DollarSign className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={16} />
+                        <IndianRupee className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={16} />
                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Drop Fare</span>
                       </div>
                       <span className="text-lg font-bold text-[#6B9BB8] dark:text-[#7DB5D3]">₹{stop.drop_fare}</span>
