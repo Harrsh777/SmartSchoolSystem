@@ -22,7 +22,6 @@ export async function GET(request: NextRequest) {
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     const financialYearStart = currentMonth >= 3 ? currentYear : currentYear - 1;
-    const financialYearEnd = financialYearStart + 1;
     const startDate = new Date(financialYearStart, 3, 1).toISOString().split('T')[0];
     const endDate = now.toISOString().split('T')[0];
 
@@ -39,8 +38,6 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-
-    const studentIds = students.map(s => s.id);
 
     // Fetch payments (v2) - collected per student
     const { data: payments } = await supabase

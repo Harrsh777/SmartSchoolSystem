@@ -11,7 +11,6 @@ import {
   Lock, 
   ArrowRight, 
   Shield,
-  Award,
   BookOpen,
   Star,
   GraduationCap,
@@ -93,43 +92,11 @@ export default function StaffLoginPage() {
     }
   };
 
-  const professionalQuotes = [
-    { text: "Empowering minds, shaping futures", icon: <GraduationCap className="w-5 h-5" /> },
-    { text: "Education is the passport to the future", icon: <BookOpen className="w-5 h-5" /> },
-    { text: "Teaching: where passion meets purpose", icon: <Star className="w-5 h-5" /> },
-    { text: "Inspire, educate, transform", icon: <Target className="w-5 h-5" /> },
-  ];
-
-  const [currentQuote] = useState(() => 
-    professionalQuotes[Math.floor(Math.random() * professionalQuotes.length)]
-  );
-
 
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden">
-      {/* Enhanced Gradient Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-teal-600 via-cyan-600 to-emerald-600">
-        {/* Sophisticated Pattern Overlay */}
-        <div 
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
-        
-        {/* Professional Educators Image */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-15">
-          <motion.img
-            src="https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=1200&h=800&fit=crop&q=80"
-            alt="Professional educators"
-            className="w-full h-full object-cover"
-            initial={{ scale: 1.1, opacity: 0 }}
-            animate={{ scale: 1, opacity: 0.15 }}
-            transition={{ duration: 1.5 }}
-          />
-        </div>
-      </div>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#2E7D5A] via-[#00000] to-[#6ED7A5]">
+
 
       {/* Animated Geometric Shapes */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -228,51 +195,11 @@ export default function StaffLoginPage() {
                 </div>
               </div>
 
-              {/* Floating Stats Cards */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.8 }}
-                className="absolute -bottom-6 -right-6 bg-white rounded-2xl shadow-2xl p-6 backdrop-blur-sm"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-gradient-to-br from-teal-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
-                    <Award className="text-white" size={28} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-gray-900">95%</p>
-                    <p className="text-sm text-gray-600">Success Rate</p>
-                  </div>
-                </div>
-              </motion.div>
+             
             </motion.div>
 
             {/* Professional Quote Card */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1 }}
-              className="bg-white/95 backdrop-blur-md rounded-2xl p-8 shadow-xl border border-white/50"
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-cyan-500 rounded-xl flex items-center justify-center flex-shrink-0 relative">
-                  {currentQuote.icon}
-                  <motion.div
-                    className="absolute inset-0 bg-teal-400/20 rounded-xl"
-                    animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  />
-                </div>
-                <div>
-                  <p className="text-sm text-teal-600 font-semibold mb-1 uppercase tracking-wide">
-                    Professional Insight
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900 leading-relaxed">
-                    {currentQuote.text}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
+          
 
             {/* Stats Grid */}
             <motion.div
@@ -321,12 +248,7 @@ export default function StaffLoginPage() {
                     <UserCheck className="text-white" size={40} />
                   </motion.div>
                   
-                  <h2 className="text-3xl font-bold text-white mb-2">
-                    Faculty Portal
-                  </h2>
-                  <p className="text-teal-50 text-sm font-medium">
-                    Secure access for educators and administrators
-                  </p>
+               
                 </div>
               </div>
 
@@ -469,14 +391,7 @@ export default function StaffLoginPage() {
 
                 {/* Divider */}
                 <div className="relative my-8">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200" />
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-4 bg-white text-gray-500 font-medium">
-                      Need assistance?
-                    </span>
-                  </div>
+                
                 </div>
 
                 {/* Footer Links */}
@@ -489,16 +404,7 @@ export default function StaffLoginPage() {
                     <span>Back to role selection</span>
                   </Link>
                   
-                  <p className="text-xs text-gray-500">
-                    By signing in, you agree to our{' '}
-                    <Link href="/terms" className="text-teal-600 hover:underline">
-                      Terms of Service
-                    </Link>
-                    {' '}and{' '}
-                    <Link href="/privacy" className="text-teal-600 hover:underline">
-                      Privacy Policy
-                    </Link>
-                  </p>
+                
                 </div>
               </div>
             </motion.div>

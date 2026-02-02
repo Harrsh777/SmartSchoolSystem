@@ -19,7 +19,9 @@ export async function GET(request: NextRequest) {
       .from('student_fees')
       .select(`
         id,
-        balance_due,
+        base_amount,
+        paid_amount,
+        adjustment_amount,
         due_date,
         status,
         student:students!inner(
@@ -33,7 +35,6 @@ export async function GET(request: NextRequest) {
       `)
       .eq('student.school_code', schoolCode)
       .in('status', ['pending', 'partial', 'overdue'])
-      .gt('balance_due', 0)
       .order('due_date', { ascending: true })
       .limit(limit);
 
@@ -64,6 +65,12 @@ export async function GET(request: NextRequest) {
       
       if (!student?.id) return;
 
+      const baseAmount = Number(fee.base_amount || 0);
+      const paidAmount = Number(fee.paid_amount || 0);
+      const adjustmentAmount = Number(fee.adjustment_amount || 0);
+      const balanceDue = baseAmount + adjustmentAmount - paidAmount;
+      if (balanceDue <= 0) return;
+
       if (!studentMap.has(student.id)) {
         studentMap.set(student.id, {
           id: student.id,
@@ -77,7 +84,7 @@ export async function GET(request: NextRequest) {
       }
 
       const data = studentMap.get(student.id)!;
-      data.pending_amount += fee.balance_due || 0;
+      data.pending_amount += balanceDue;
       
       // Keep the earliest due date
       if (fee.due_date && new Date(fee.due_date) < new Date(data.due_date)) {

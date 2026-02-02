@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = getServiceRoleClient();
 
-    // Get student fees with their payment information grouped by month
+    // Get student fees grouped by month
     const { data: studentFees, error: feesError } = await supabase
       .from('student_fees')
       .select(`
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
         due_month,
         base_amount,
         paid_amount,
-        balance_due,
+        adjustment_amount,
         status,
         student:students!inner(school_code)
       `)
@@ -65,8 +65,15 @@ export async function GET(request: NextRequest) {
       }
 
       const data = monthlyMap.get(key)!;
-      data.collected += fee.paid_amount || 0;
-      data.pending += fee.balance_due || 0;
+      const baseAmount = Number(fee.base_amount || 0);
+      const paidAmount = Number(fee.paid_amount || 0);
+      const adjustmentAmount = Number(fee.adjustment_amount || 0);
+      const balanceDue = baseAmount + adjustmentAmount - paidAmount;
+
+      data.collected += paidAmount;
+      if (balanceDue > 0) {
+        data.pending += balanceDue;
+      }
 
       if (fee.status === 'paid') {
         data.students_paid += 1;

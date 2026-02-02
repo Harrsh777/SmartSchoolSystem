@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState, useEffect, useMemo } from 'react';
+import { ReactNode, useState, useEffect, useMemo, useRef } from 'react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import MenuSkeletonLoader from '@/components/MenuSkeletonLoader';
 import Link from 'next/link';
@@ -38,7 +38,6 @@ import {
   TrendingUp,
   DoorOpen,
   User,
-  Lightbulb,
   GraduationCap,
   GripVertical,
   ClipboardList,
@@ -658,9 +657,101 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
   const [isDragEnabled, setIsDragEnabled] = useState(false);
   /** Avoid hydration mismatch: timer comes from localStorage on client, so only show real value after mount */
   const [timerReady, setTimerReady] = useState(false);
+  // Inactivity tracking
+  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+  const [logoutCountdown, setLogoutCountdown] = useState(30);
+  const inactivityTimeoutRef = useRef<number | null>(null);
+  const logoutIntervalRef = useRef<number | null>(null);
 
   // Extract school code from pathname
   const schoolCode = pathname.split('/')[2] || '';
+
+  const clearInactivityTimers = () => {
+    if (typeof window === 'undefined') return;
+    if (inactivityTimeoutRef.current !== null) {
+      window.clearTimeout(inactivityTimeoutRef.current);
+      inactivityTimeoutRef.current = null;
+    }
+    if (logoutIntervalRef.current !== null) {
+      window.clearInterval(logoutIntervalRef.current);
+      logoutIntervalRef.current = null;
+    }
+  };
+
+  const startWarningCountdown = () => {
+    if (typeof window === 'undefined') return;
+    setShowInactivityWarning(true);
+    setLogoutCountdown(30);
+
+    if (logoutIntervalRef.current !== null) {
+      window.clearInterval(logoutIntervalRef.current);
+    }
+
+    logoutIntervalRef.current = window.setInterval(() => {
+      setLogoutCountdown((prev) => {
+        if (prev <= 1) {
+          clearInactivityTimers();
+          // Auto logout when countdown finishes
+          void handleLogout();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const startInactivityTimer = () => {
+    if (typeof window === 'undefined') return;
+    if (inactivityTimeoutRef.current !== null) {
+      window.clearTimeout(inactivityTimeoutRef.current);
+    }
+    // 120 seconds of inactivity before showing warning
+    inactivityTimeoutRef.current = window.setTimeout(() => {
+      startWarningCountdown();
+    }, 120_000);
+  };
+
+  const resetInactivityTimer = () => {
+    if (typeof window === 'undefined') return;
+    setShowInactivityWarning(false);
+    setLogoutCountdown(30);
+    clearInactivityTimers();
+    startInactivityTimer();
+  };
+
+  const handleStayLoggedIn = () => {
+    resetInactivityTimer();
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      'mousemove',
+      'keydown',
+      'click',
+      'scroll',
+      'touchstart',
+    ];
+
+    const handleActivity = () => {
+      resetInactivityTimer();
+    };
+
+    // Start timers and attach listeners
+    resetInactivityTimer();
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, handleActivity);
+    });
+
+    return () => {
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, handleActivity);
+      });
+      clearInactivityTimers();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolCode]);
 
   useEffect(() => {
     setTimerReady(true);
@@ -1646,6 +1737,52 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
       }}
     >
       <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
+      {/* Inactivity Warning Modal */}
+      <AnimatePresence>
+        {showInactivityWarning && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900"
+            >
+              <h2 className="mb-2 text-xl font-semibold text-slate-900 dark:text-slate-50">
+                Inactive Session
+              </h2>
+              <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
+                You are inactive. You will be logged out in{' '}
+                <span className="font-semibold text-red-600 dark:text-red-400">
+                  {logoutCountdown}
+                </span>{' '}
+                seconds.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleStayLoggedIn}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Stay Logged In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                >
+                  Logout Now
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Top Navigation - Modern and Vibrant */}
       <nav className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl border-b border-white/60 dark:border-gray-700/50 sticky top-0 z-40 shadow-sm">
         <div className="px-4 sm:px-6 lg:px-8">

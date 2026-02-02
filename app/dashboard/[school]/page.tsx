@@ -1060,7 +1060,8 @@ export default function DashboardPage({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0 }}
           whileHover={{ y: -2 }}
-          className="group relative bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
+          onClick={() => router.push(`/dashboard/${schoolCode}/students/directory`)}
+          className="group relative cursor-pointer bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
         >
           <div className="relative">
             {/* Icon at top left */}
@@ -1100,7 +1101,8 @@ export default function DashboardPage({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           whileHover={{ y: -2 }}
-          className="group relative bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
+          onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/dashboard`)}
+          className="group relative cursor-pointer bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
         >
           <div className="relative">
             {/* Icon at top left */}
@@ -1161,7 +1163,8 @@ export default function DashboardPage({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           whileHover={{ y: -2 }}
-          className="group relative bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
+          onClick={() => router.push(`/dashboard/${schoolCode}/attendance`)}
+          className="group relative cursor-pointer bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
         >
           <div className="relative">
             {/* Icon at top left */}
@@ -1233,7 +1236,8 @@ export default function DashboardPage({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
           whileHover={{ y: -2 }}
-          className="group relative bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
+          onClick={() => router.push(`/dashboard/${schoolCode}/classes/overview`)}
+          className="group relative cursor-pointer bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
         >
           <div className="relative">
             {/* Icon at top left */}

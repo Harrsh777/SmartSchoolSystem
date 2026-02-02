@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
         amount,
         payment_mode,
         payment_date,
-        receipt_no,
+        receipt_number,
         student:students!inner(
           id,
           student_name,
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       amount: payment.amount,
       payment_date: payment.payment_date,
       payment_mode: payment.payment_mode,
-      receipt_no: payment.receipt_no || '',
+      receipt_no: payment.receipt_number || '',
     }));
 
     return NextResponse.json({ data: recentPayments });
