@@ -10,11 +10,7 @@ import {
   Mail, 
   Lock, 
   ArrowRight, 
-  Shield,
-  BookOpen,
-  Star,
-  GraduationCap,
-  Target
+  Shield
 } from 'lucide-react';
 
 export default function StaffLoginPage() {

@@ -1053,236 +1053,163 @@ export default function DashboardPage({
       </motion.div>
 
       {/* KPI Cards - Colorful Design */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* Total Students & Staff Card - Blue */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0 }}
-          whileHover={{ y: -2 }}
-          onClick={() => router.push(`/dashboard/${schoolCode}/students/directory`)}
-          className="group relative cursor-pointer bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
-        >
-          <div className="relative">
-            {/* Icon at top left */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
-                <UserPlus className="text-blue-600" size={18} />
-              </div>
-            </div>
-            
-            {/* Title */}
-            <p className="text-sm font-medium text-gray-600 mb-2">
-              Total Students
-            </p>
-            
-            {/* Main Value */}
-            <div className="mb-3">
-              <div className="text-3xl font-bold text-gray-900">
-                {loading ? '...' : stats.totalStudents.toLocaleString()}
-              </div>
-            </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <motion.div
+  initial={{ opacity: 0, y: 12 }}
+  animate={{ opacity: 1, y: 0 }}
+  whileHover={{ y: -2 }}
+  onClick={() => router.push(`/dashboard/${schoolCode}/students/directory`)}
+  className="cursor-pointer bg-white rounded-lg p-4 border border-gray-100 shadow-sm hover:shadow-md transition"
+>
+  <div className="flex items-center justify-between mb-3">
+    <p className="text-xs font-medium text-gray-500">Students & Staff</p>
+    <div className="w-8 h-8 rounded-md bg-blue-100 flex items-center justify-center">
+      <UserPlus size={16} className="text-blue-600" />
+    </div>
+  </div>
 
-            {/* Total Staff */}
-            <div className="pt-3 border-t border-gray-100">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500">Total Staff</span>
-                <span className="text-lg font-bold text-gray-800">
-                  {loading ? '...' : stats.totalStaff.toLocaleString()}
-                </span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+  <div className="grid grid-cols-2 gap-3">
+    {/* Students */}
+    <div className="text-center border-r border-gray-100 pr-2">
+      <p className="text-xs text-gray-500 mb-1">Students</p>
+      <p className="text-2xl font-semibold text-gray-900">
+        {loading ? '...' : stats.totalStudents.toLocaleString()}
+      </p>
+    </div>
 
-        {/* Total Fees & Expenses Card - Blue */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          whileHover={{ y: -2 }}
-          onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/dashboard`)}
-          className="group relative cursor-pointer bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
-        >
-          <div className="relative">
-            {/* Icon at top left */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center">
-                <IndianRupee className="text-green-600" size={18} />
-              </div>
-            </div>
-            
-            {/* Title */}
-            <p className="text-sm font-medium text-gray-600 mb-2">
-              Total Fees (This Year)
-            </p>
-            
-            {/* Main Value */}
-            <div className="mb-3">
-              <div className="text-3xl font-bold text-green-600">
-                {loadingFinancial ? '...' : (() => {
-                  const amount = financialData?.feeManagement?.totalCollected ?? 0;
-                  if (amount >= 100000) {
-                    return `₹${(amount / 100000).toFixed(1)}L`;
-                  } else if (amount >= 1000) {
-                    return `₹${(amount / 1000).toFixed(1)}K`;
-                  } else {
-                    return `₹${amount.toLocaleString('en-IN')}`;
-                  }
-                })()}
-              </div>
-            </div>
+    {/* Staff */}
+    <div className="text-center pl-2">
+      <p className="text-xs text-gray-500 mb-1">Staff</p>
+      <p className="text-2xl font-semibold text-gray-900">
+        {loading ? '...' : stats.totalStaff.toLocaleString()}
+      </p>
+    </div>
+  </div>
+</motion.div>
 
-            {/* Total Expenses */}
-            <div className="pt-3 border-t border-gray-100">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500">Total Expenses</span>
-                <span className="text-lg font-bold text-red-600">
-                  {loadingFinancial ? '...' : (() => {
-                    const amount = financialData?.incomeAndExpense?.totalExpense ?? 0;
-                    if (amount >= 100000) {
-                      return `₹${(amount / 100000).toFixed(1)}L`;
-                    } else if (amount >= 1000) {
-                      return `₹${(amount / 1000).toFixed(1)}K`;
-                    } else {
-                      return `₹${amount.toLocaleString('en-IN')}`;
-                    }
-                  })()}
-                </span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
 
-        {/* Annual Revenue Card - Purple */}
-        
+{/* FEES & EXPENSES */}
+<motion.div
+  initial={{ opacity: 0, y: 12 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ delay: 0.05 }}
+  whileHover={{ y: -2 }}
+  onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/dashboard`)}
+  className="cursor-pointer bg-white rounded-lg p-4 border border-gray-100 shadow-sm hover:shadow-md transition"
+>
+  <div className="w-8 h-8 rounded-md bg-green-100 flex items-center justify-center mb-2">
+    <IndianRupee size={16} className="text-green-600" />
+  </div>
 
-        {/* Staff & Student Attendance Card - Green */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          whileHover={{ y: -2 }}
-          onClick={() => router.push(`/dashboard/${schoolCode}/attendance`)}
-          className="group relative cursor-pointer bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
-        >
-          <div className="relative">
-            {/* Icon at top left */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center">
-                <UserCheck className="text-green-600" size={18} />
-              </div>
-            </div>
-            
-            {/* Title */}
-            <p className="text-sm font-medium text-gray-600 mb-1">
-              Staff & Student Attendance
-            </p>
-            <p className="text-xs text-gray-400 mb-2">Today&apos;s marked attendance</p>
-            
-            {/* Main Value - Both Staff and Student */}
-            <div className="mb-3 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-500">Staff</span>
-                <span className="text-lg font-bold text-gray-900">
-                  {loading ? '...' : (stats.todayAttendance.staff?.total ?? 0) > 0
-                    ? `${stats.todayAttendance.staff?.present ?? 0}/${stats.todayAttendance.staff?.total ?? 0} (${stats.todayAttendance.staff?.percentage ?? 0}%)`
-                    : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-500">Students</span>
-                <span className="text-lg font-bold text-gray-900">
-                  {loading ? '...' : (stats.todayAttendance.students?.total ?? 0) > 0
-                    ? `${stats.todayAttendance.students?.present ?? 0}/${stats.todayAttendance.students?.total ?? 0} (${stats.todayAttendance.students?.percentage ?? 0}%)`
-                    : '—'}
-                </span>
-              </div>
-            </div>
-            
-            {/* Progress Bars - Staff and Student */}
-            <div className="space-y-2">
-              <div className="relative w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                <motion.div 
-                  className="bg-green-500 h-full rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ 
-                    width: loading ? '0%' : (stats.todayAttendance.staff?.total ?? 0) > 0
-                      ? `${Math.min(stats.todayAttendance.staff?.percentage ?? 0, 100)}%`
-                      : '0%'
-                  }}
-                  transition={{ duration: 0.8, ease: 'easeOut' }}
-                />
-              </div>
-              <div className="relative w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                <motion.div 
-                  className="bg-emerald-500 h-full rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ 
-                    width: loading ? '0%' : (stats.todayAttendance.students?.total ?? 0) > 0
-                      ? `${Math.min(stats.todayAttendance.students?.percentage ?? 0, 100)}%`
-                      : '0%'
-                  }}
-                  transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 }}
-                />
-              </div>
-            </div>
-          </div>
-        </motion.div>
+  <p className="text-xs font-medium text-gray-500">Total Fees</p>
+  <p className="text-2xl font-semibold text-green-600 leading-tight">
+    {loadingFinancial ? '...' : (() => {
+      const amt = financialData?.feeManagement?.totalCollected ?? 0;
+      return amt >= 100000 ? `₹${(amt / 100000).toFixed(1)}L`
+        : amt >= 1000 ? `₹${(amt / 1000).toFixed(1)}K`
+        : `₹${amt.toLocaleString('en-IN')}`;
+    })()}
+  </p>
 
-        {/* All Classes & Sections Card - Orange */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          whileHover={{ y: -2 }}
-          onClick={() => router.push(`/dashboard/${schoolCode}/classes/overview`)}
-          className="group relative cursor-pointer bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-all duration-200 border border-gray-100"
-        >
-          <div className="relative">
-            {/* Icon at top left */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center">
-                <BookOpen className="text-orange-600" size={18} />
-              </div>
-            </div>
-            
-            {/* Title */}
-            <p className="text-sm font-medium text-gray-600 mb-2">
-              All Classes & Sections
-            </p>
-            
-            {/* Main Value - Two rows for Classes and Sections */}
-            <div className="mb-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Classes:</span>
-                <div className="text-2xl font-bold text-gray-900">
-                  {loadingClasses ? '...' : classesCount}
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Sections:</span>
-                <div className="text-2xl font-bold text-gray-900">
-                  {loadingClasses ? '...' : sectionsCount}
-                </div>
-              </div>
-            </div>
-            
-            {/* Progress Bar at bottom - based on sections count */}
-            <div className="relative w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-              <motion.div 
-                className="bg-orange-500 h-full rounded-full"
-                initial={{ width: 0 }}
-                animate={{ 
-                  width: loadingClasses ? '0%' : sectionsCount > 0 ? '100%' : '0%'
-                }}
-                transition={{ duration: 0.8, ease: 'easeOut' }}
-              />
-            </div>
-          </div>
-        </motion.div>
+  <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between text-sm">
+    <span className="text-gray-500">Expenses</span>
+    <span className="font-semibold text-red-600">
+      {loadingFinancial ? '...' : (() => {
+        const amt = financialData?.incomeAndExpense?.totalExpense ?? 0;
+        return amt >= 100000 ? `₹${(amt / 100000).toFixed(1)}L`
+          : amt >= 1000 ? `₹${(amt / 1000).toFixed(1)}K`
+          : `₹${amt.toLocaleString('en-IN')}`;
+      })()}
+    </span>
+  </div>
+</motion.div>
 
-      </div>
+{/* ATTENDANCE */}
+<motion.div
+  initial={{ opacity: 0, y: 12 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ delay: 0.1 }}
+  whileHover={{ y: -2 }}
+  onClick={() => router.push(`/dashboard/${schoolCode}/attendance`)}
+  className="cursor-pointer bg-white rounded-lg p-4 border border-gray-100 shadow-sm hover:shadow-md transition"
+>
+  <div className="w-8 h-8 rounded-md bg-emerald-100 flex items-center justify-center mb-2">
+    <UserCheck size={16} className="text-emerald-600" />
+  </div>
+
+  <p className="text-xs font-medium text-gray-500 mb-1">
+    Today’s Attendance
+  </p>
+
+  <div className="space-y-1 text-sm">
+    <div className="flex justify-between">
+      <span className="text-gray-500">Staff</span>
+      <span className="font-semibold">
+        {stats.todayAttendance.staff?.percentage ?? 0}%
+      </span>
+    </div>
+    <div className="flex justify-between">
+      <span className="text-gray-500">Students</span>
+      <span className="font-semibold">
+        {stats.todayAttendance.students?.percentage ?? 0}%
+      </span>
+    </div>
+  </div>
+
+  <div className="mt-2 space-y-1">
+    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+      <motion.div
+        className="h-full bg-emerald-500"
+        animate={{ width: `${stats.todayAttendance.staff?.percentage ?? 0}%` }}
+      />
+    </div>
+    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+      <motion.div
+        className="h-full bg-green-500"
+        animate={{ width: `${stats.todayAttendance.students?.percentage ?? 0}%` }}
+      />
+    </div>
+  </div>
+</motion.div>
+
+{/* CLASSES & SECTIONS */}
+<motion.div
+  initial={{ opacity: 0, y: 12 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ delay: 0.15 }}
+  whileHover={{ y: -2 }}
+  onClick={() => router.push(`/dashboard/${schoolCode}/classes/overview`)}
+  className="cursor-pointer bg-white rounded-lg p-4 border border-gray-100 shadow-sm hover:shadow-md transition"
+>
+  <div className="w-8 h-8 rounded-md bg-orange-100 flex items-center justify-center mb-2">
+    <BookOpen size={16} className="text-orange-600" />
+  </div>
+
+  <p className="text-xs font-medium text-gray-500 mb-1">
+    Classes & Sections
+  </p>
+
+  <div className="space-y-1 text-sm">
+    <div className="flex justify-between">
+      <span className="text-gray-500">Classes</span>
+      <span className="font-semibold">{classesCount}</span>
+    </div>
+    <div className="flex justify-between">
+      <span className="text-gray-500">Sections</span>
+      <span className="font-semibold">{sectionsCount}</span>
+    </div>
+  </div>
+
+  <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+    <motion.div
+      className="h-full bg-orange-500"
+      animate={{ width: sectionsCount ? '100%' : '0%' }}
+    />
+  </div>
+</motion.div>
+
+</div>
+
 
       {/* Staff & Student Enrollment Overview and Examination Management Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
