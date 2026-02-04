@@ -58,10 +58,7 @@ export default function TeacherSelectionModal({
       setError(null); // Clear previous errors
       fetchStaff();
       setSelectedTeacherIds(new Set(existingTeacherIds || []));
-      // Check teacher availability if day and periodOrder are provided
-      if (day && periodOrder !== undefined) {
-        checkTeacherAvailability();
-      }
+      // Availability check runs after staff is loaded (inside fetchStaff)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, existingTeacherIds, day, periodOrder]);
@@ -164,6 +161,9 @@ export default function TeacherSelectionModal({
         
         setStaff(staffToShow);
         setFilteredStaff(staffToShow);
+        if (day != null && periodOrder !== undefined && currentClassId) {
+          checkTeacherAvailability();
+        }
       } else {
         const errorMsg = result.error || 'No data in response';
         console.error('Failed to fetch staff:', errorMsg, result);
@@ -184,6 +184,14 @@ export default function TeacherSelectionModal({
   };
 
   const handleToggleTeacher = (teacherId: string) => {
+    const teacher = staff.find(t => t.id === teacherId);
+    const isBusy = teacher?.isBusy && !existingTeacherIds.includes(teacherId);
+    if (isBusy && teacher?.busyClass) {
+      alert(
+        `This teacher is not available at this slot as they have another class (${teacher.busyClass}) at that time.`
+      );
+      return;
+    }
     setSelectedTeacherIds((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(teacherId)) {
@@ -200,61 +208,23 @@ export default function TeacherSelectionModal({
 
     try {
       setCheckingAvailability(true);
-      // Fetch all timetable slots for the school and filter by day and period_order
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        day,
+        period_order: String(periodOrder),
+        exclude_class_id: currentClassId,
+      });
       const response = await fetch(
-        `/api/timetable/slots?school_code=${schoolCode}`
+        `/api/timetable/teacher-availability?${params.toString()}`
       );
 
       if (response.ok) {
         const result = await response.json();
         const busyTeachers = new Map<string, string>(); // teacherId -> className
+        (result.data || []).forEach((item: { teacher_id: string; class_name: string }) => {
+          busyTeachers.set(item.teacher_id, item.class_name);
+        });
 
-        if (result.data && Array.isArray(result.data)) {
-          result.data.forEach((slot: {
-            day: string;
-            period_order?: number;
-            period?: string | number;
-            class_id: string;
-            teacher_ids?: string[];
-            teacher_id?: string;
-            class?: { class: string; section: string } | Array<{ class: string; section: string }>;
-            class_reference?: { class: string; section: string };
-          }) => {
-            // Check if this slot matches the day and period_order
-            const slotPeriodOrder = slot.period_order !== undefined && slot.period_order !== null 
-              ? slot.period_order 
-              : (slot.period ? parseInt(String(slot.period), 10) : null);
-            
-            if (slot.day === day && slotPeriodOrder === periodOrder) {
-              // Only check slots from other classes
-              if (slot.class_id && slot.class_id !== currentClassId) {
-                let className = 'Unknown Class';
-                
-                // Try to get class name from class_reference first (JSON field)
-                if (slot.class_reference) {
-                  className = `${slot.class_reference.class}-${slot.class_reference.section}`;
-                } else if (slot.class) {
-                  // Try nested relation
-                  className = Array.isArray(slot.class) 
-                    ? `${slot.class[0]?.class || ''}-${slot.class[0]?.section || ''}`
-                    : `${slot.class.class}-${slot.class.section}`;
-                }
-              
-                // Check both teacher_id and teacher_ids
-                if (slot.teacher_id) {
-                  busyTeachers.set(slot.teacher_id, className);
-                }
-                if (slot.teacher_ids && Array.isArray(slot.teacher_ids)) {
-                  slot.teacher_ids.forEach((tid: string) => {
-                    busyTeachers.set(tid, className);
-                  });
-                }
-              }
-            }
-          });
-        }
-
-        // Update staff with busy status
         setStaff(prev => prev.map(teacher => ({
           ...teacher,
           isBusy: busyTeachers.has(teacher.id),
@@ -313,6 +283,11 @@ export default function TeacherSelectionModal({
               <p className="text-sm text-gray-600 mt-1">
                 Select teachers for <span className="font-semibold">{subjectName}</span>
               </p>
+              {day != null && periodOrder !== undefined && currentClassId && (
+                <p className="text-xs text-amber-700 mt-1 bg-amber-50 px-2 py-1 rounded">
+                  Teachers already taking another class at this slot are marked and cannot be selected.
+                </p>
+              )}
             </div>
             <button
               onClick={onClose}
@@ -429,7 +404,7 @@ export default function TeacherSelectionModal({
                               <>
                                 <span>•</span>
                                 <span className="text-red-600 font-medium">
-                                  Already assigned to {teacher.busyClass}
+                                  Not available — has another class ({teacher.busyClass}) at this slot
                                 </span>
                               </>
                             )}

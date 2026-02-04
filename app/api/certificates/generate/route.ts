@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { getPublicBaseUrl } from '@/lib/env';
 
 /**
  * POST /api/certificates/generate
@@ -179,7 +180,7 @@ export async function POST(request: NextRequest) {
           status: 'DRAFT',
           issued_by: issued_by || null,
           metadata,
-          verification_url: `${process.env.NEXT_PUBLIC_APP_URL || ''}/verify-certificate/${certificateCode}`,
+          verification_url: `${getPublicBaseUrl()}/verify-certificate/${certificateCode}`,
         },
       ])
       .select()

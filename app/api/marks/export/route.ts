@@ -31,8 +31,16 @@ export async function GET(request: NextRequest) {
       ...(section && { section }),
     });
 
-    // Fetch from our view API
-    const viewResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/marks/view?${params}`);
+    // Fetch from our view API (use getAppUrl for server-side base URL)
+    const { getAppUrl } = await import('@/lib/env');
+    const baseUrl = getAppUrl();
+    if (!baseUrl) {
+      return NextResponse.json(
+        { error: 'NEXT_PUBLIC_APP_URL is not set. Required for server-side export.' },
+        { status: 500 }
+      );
+    }
+    const viewResponse = await fetch(`${baseUrl}/api/marks/view?${params}`);
     const viewData = await viewResponse.json();
 
     if (!viewResponse.ok || !viewData.data) {

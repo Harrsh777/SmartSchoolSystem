@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, Filter, Search, Save, CalendarOff } from 'lucide-react';
+import { Calendar, CheckCircle, Filter, Search, Save, CalendarOff, Users } from 'lucide-react';
+import EmptyState from '@/components/ui/EmptyState';
 
 type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'leave' | 'holiday';
 
@@ -432,8 +433,13 @@ export default function StaffAttendancePage({
             <tbody className="divide-y divide-gray-100">
               {filteredStaff.length === 0 ? (
                 <tr>
-                  <td colSpan={showPunch ? 8 : 6} className="px-4 py-8 text-center text-gray-500">
-                    No staff found
+                  <td colSpan={showPunch ? 8 : 6} className="px-4 py-4">
+                    <EmptyState
+                      icon={Users}
+                      title="No staff found"
+                      description="Select a department or add staff in Staff Management to mark attendance."
+                      compact
+                    />
                   </td>
                 </tr>
               ) : (

@@ -3,8 +3,16 @@ import { supabase } from '@/lib/supabase';
 import { comparePassword } from '@/lib/password-utils';
 import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
 import { createSession } from '@/lib/session-store';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
+  const rate = await checkRateLimit(request, 'auth-teacher-login', { windowMs: 60 * 1000, max: 10 });
+  if (!rate.success) {
+    return NextResponse.json(
+      { error: 'Too many login attempts. Please try again later.' },
+      { status: 429, headers: { 'Retry-After': '60' } }
+    );
+  }
   try {
     const body = await request.json();
     const school_code = typeof body.school_code === 'string' ? body.school_code.trim() : '';

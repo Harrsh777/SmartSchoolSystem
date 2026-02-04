@@ -380,7 +380,7 @@ export default function FeeConfigurationPage({
                   const newEnabled = !config.payment_url_enabled;
                   if (newEnabled && !config.payment_url) {
                     // Auto-generate payment URL
-                    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://online.edutinker.com';
+                    const baseUrl = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL || '');
                     const generatedUrl = `${baseUrl}/form/student/fee?schoolId=${schoolCode}&dc=IN&name=${encodeURIComponent('School')}`;
                     setConfig({ ...config, payment_url_enabled: newEnabled, payment_url: generatedUrl });
                   } else {
@@ -407,7 +407,7 @@ export default function FeeConfigurationPage({
                   type="text"
                   value={config.payment_url}
                   onChange={(e) => setConfig({ ...config, payment_url: e.target.value })}
-                  placeholder="https://online.edutinker.com/form/student/fee?schoolId=..."
+                  placeholder="https://your-domain.com/form/student/fee?schoolId=..."
                   className="flex-1"
                 />
                 <button

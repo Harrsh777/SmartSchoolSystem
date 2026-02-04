@@ -233,6 +233,31 @@ export default function StudentAttendancePage() {
     return days.reverse();
   };
 
+  const handleExport = () => {
+    const days = getWindowDays();
+    if (days.length === 0) return;
+    const headers = ['Date', 'Day', 'Status', 'Marked By'];
+    const escapeCsv = (v: string) => {
+      const s = String(v ?? '');
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const rows = days.map((d) => [
+      d.date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      d.date.toLocaleDateString('en-US', { weekday: 'long' }),
+      d.status === 'not_marked' ? 'Not Marked' : d.status.charAt(0).toUpperCase() + d.status.slice(1),
+      d.record?.marked_by_staff?.full_name ?? d.record?.marked_by ?? '',
+    ].map(escapeCsv).join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attendance_${getWindowLabel().replace(/\s*–\s*/g, '_').replace(/,?\s+/g, '_')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -381,8 +406,12 @@ export default function StudentAttendancePage() {
       <Card>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-black">Attendance (Last 30 Days)</h2>
-          {attendance.length > 0 && (
-            <button className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors">
+          {getWindowDays().length > 0 && (
+            <button
+              type="button"
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
               <Download size={18} />
               <span>Export</span>
             </button>

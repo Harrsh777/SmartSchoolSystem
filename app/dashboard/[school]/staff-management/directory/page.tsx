@@ -25,6 +25,7 @@ import {
   Eye
 } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
+import EmptyState from '@/components/ui/EmptyState';
 
 export default function StaffDirectoryPage({
   params,
@@ -524,14 +525,15 @@ export default function StaffDirectoryPage({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center">
-                      <div className="flex flex-col items-center gap-3">
-                        <Users size={48} className="text-gray-300" />
-                        <p className="text-gray-500 font-medium">No staff found</p>
-                        <p className="text-sm text-gray-400">
-                          {searchQuery ? 'Try adjusting your search criteria' : 'No staff members in this category'}
-                        </p>
-                      </div>
+                    <td colSpan={7} className="px-4 py-4">
+                      <EmptyState
+                        icon={Users}
+                        title="No staff found"
+                        description={searchQuery ? 'Try adjusting your search or filters.' : 'Add staff members from the Add Staff page to see them here.'}
+                        actionLabel={!searchQuery ? 'Add Staff' : undefined}
+                        onAction={!searchQuery ? () => router.push(`/dashboard/${schoolCode}/staff-management/add`) : undefined}
+                        compact
+                      />
                     </td>
                   </tr>
                 )}
