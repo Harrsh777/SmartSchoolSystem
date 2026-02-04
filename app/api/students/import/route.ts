@@ -33,9 +33,43 @@ export async function POST(request: NextRequest) {
     const schoolId = schoolData.id;
     const currentYear = new Date().getFullYear().toString();
 
+    // Get allowed class/section/academic_year from the school's Classes module (only these can be imported)
+    const { data: existingClasses, error: classesError } = await supabase
+      .from('classes')
+      .select('class, section, academic_year')
+      .eq('school_code', school_code);
+
+    if (classesError) {
+      return NextResponse.json(
+        { error: 'Failed to load classes', details: classesError.message },
+        { status: 500 }
+      );
+    }
+
+    // Map normalized key (case-insensitive) -> canonical { class, section, academic_year } from Classes table
+    const classKeyToCanonical = new Map<string, { class: string; section: string; academic_year: string }>();
+    for (const c of existingClasses ?? []) {
+      const key = `${String(c.class).toUpperCase().trim()}-${String(c.section).toUpperCase().trim()}-${String(c.academic_year ?? '').trim()}`;
+      classKeyToCanonical.set(key, {
+        class: String(c.class ?? '').trim(),
+        section: String(c.section ?? '').trim(),
+        academic_year: String(c.academic_year ?? '').trim() || currentYear,
+      });
+    }
+
+    if (classKeyToCanonical.size === 0) {
+      return NextResponse.json(
+        { error: 'No classes found. Create classes in the Classes module first, then import students.' },
+        { status: 400 }
+      );
+    }
+
     // Check for existing admission numbers
     interface StudentInput {
       admission_no: string;
+      class?: unknown;
+      section?: unknown;
+      academic_year?: unknown;
       [key: string]: unknown;
     }
     const admissionNos = students.map((s: StudentInput) => s.admission_no).filter(Boolean);
@@ -65,18 +99,46 @@ export async function POST(request: NextRequest) {
       existingLogins?.map(l => l.admission_no) || []
     );
 
-    // Prepare students for insertion with school_code - include all new fields
-    const studentsToInsert = students
-      .filter((s: StudentInput) => !existingAdmissionNos.has(s.admission_no))
-      .map((student: StudentInput) => ({
+    const errors: Array<{ row: number; error: string }> = [];
+    let failedCount = 0;
+
+    // Build list of students to insert: only those with non-duplicate admission_no AND class/section that exists in Classes
+    const studentsToInsert: Array<Record<string, unknown>> = [];
+    students.forEach((student: StudentInput, idx: number) => {
+      const row = idx + 1;
+      if (existingAdmissionNos.has(student.admission_no)) {
+        errors.push({ row, error: 'Admission number already exists' });
+        failedCount++;
+        return;
+      }
+      const cls = student.class != null ? String(student.class).trim() : '';
+      const sec = student.section != null ? String(student.section).trim() : '';
+      const year = (student.academic_year != null ? String(student.academic_year).trim() : null) || currentYear;
+      if (!cls || !sec) {
+        errors.push({ row, error: 'Class and section are required' });
+        failedCount++;
+        return;
+      }
+      const classKey = `${cls.toUpperCase()}-${sec.toUpperCase()}-${year}`;
+      const canonical = classKeyToCanonical.get(classKey);
+      if (!canonical) {
+        errors.push({
+          row,
+          error: `Class/section "${cls}-${sec}" (year ${year}) not found. Create it in Classes first.`,
+        });
+        failedCount++;
+        return;
+      }
+      studentsToInsert.push({
+        _importRow: row,
         school_id: schoolId,
         school_code: school_code,
         admission_no: student.admission_no,
         student_name: student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim(),
         first_name: student.first_name || null,
         last_name: student.last_name || null,
-        class: student.class,
-        section: student.section,
+        class: canonical.class,
+        section: canonical.section,
         date_of_birth: student.date_of_birth || null,
         gender: student.gender || null,
         address: student.address || null,
@@ -105,7 +167,6 @@ export async function POST(request: NextRequest) {
         apaar_no: student.apaar_no || null,
         rte: student.rte ?? false,
         new_admission: student.new_admission ?? true,
-        // Parent/Guardian Information
         father_name: student.father_name || null,
         father_occupation: student.father_occupation || null,
         father_contact: student.father_contact || null,
@@ -114,33 +175,31 @@ export async function POST(request: NextRequest) {
         mother_contact: student.mother_contact || null,
         staff_relation: student.staff_relation || null,
         transport_type: student.transport_type || null,
-        // Backward compatibility
         parent_name: student.father_name || student.mother_name || student.parent_name || null,
         parent_phone: student.father_contact || student.mother_contact || student.parent_phone || null,
         parent_email: student.parent_email || null,
-        academic_year: currentYear,
+        academic_year: canonical.academic_year,
         status: 'active',
-      }));
+      });
+    });
 
-    const errors: Array<{ row: number; error: string }> = [];
     let successCount = 0;
-    let failedCount = 0;
     const generatedPasswords: Array<{ admission_no: string; password: string }> = [];
 
-    // Insert in batches and generate passwords
+    // Insert in batches and generate passwords (strip _importRow before insert)
     for (let i = 0; i < studentsToInsert.length; i += BATCH_SIZE) {
       const batch = studentsToInsert.slice(i, i + BATCH_SIZE);
-      
+      const batchForDb = batch.map(({ _importRow: _r, ...s }) => s) as Record<string, unknown>[];
+
       const { error: insertError, data: insertedStudents } = await supabase
         .from('students')
-        .insert(batch)
+        .insert(batchForDb)
         .select('admission_no');
 
       if (insertError) {
-        // Handle batch errors
-        batch.forEach((_, idx) => {
+        batch.forEach((s: Record<string, unknown>) => {
           errors.push({
-            row: i + idx + 1,
+            row: (s._importRow as number) ?? i + 1,
             error: insertError.message,
           });
           failedCount++;
@@ -217,17 +276,6 @@ export async function POST(request: NextRequest) {
         console.error(`Error generating password for ${student.admission_no}:`, err);
       }
     }
-
-    // Add errors for duplicates
-    students.forEach((student: StudentInput, idx: number) => {
-      if (existingAdmissionNos.has(student.admission_no)) {
-        errors.push({
-          row: idx + 1,
-          error: 'Admission number already exists',
-        });
-        failedCount++;
-      }
-    });
 
     return NextResponse.json({
       total: students.length,

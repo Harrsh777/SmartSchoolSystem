@@ -45,7 +45,6 @@ import {
   Tag,
   Receipt,
   CreditCard,
-  Clock,
   ArrowLeft,
   Download
 } from 'lucide-react';
@@ -82,8 +81,6 @@ import HelpModal from '@/components/help/HelpModal';
 interface DashboardLayoutProps {
   children: ReactNode;
   schoolName: string;
-  /** Session timer remaining seconds (e.g. from useSessionTimeout). When set, shows mm:ss next to header. */
-  timeRemaining?: number;
 }
 
 const menuItems = [
@@ -299,7 +296,7 @@ function SortableMenuItem({
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-                  className="font-semibold text-sm tracking-wide flex-1 text-left"
+                  className="font-semibold text-xs tracking-wide flex-1 text-left"
                 >
                   {item.path === '' ? t('nav.home') : 
                    item.path === '/institute-info' ? t('nav.institute_info') :
@@ -361,7 +358,7 @@ function SortableMenuItem({
                     }`}
                   >
                     <SubIcon size={16} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
-                    <span className="font-medium text-sm tracking-wide flex-1 text-left">
+                    <span className="font-medium text-xs tracking-wide flex-1 text-left">
                       {subItem.label}
                     </span>
                     <ExternalLink size={14} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
@@ -468,7 +465,7 @@ function SortableMenuItem({
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-                  className="font-semibold text-sm tracking-wide flex-1 text-left"
+                  className="font-semibold text-xs tracking-wide flex-1 text-left"
                 >
                   {item.path === '' ? t('nav.home') : 
                    item.path === '/institute-info' ? t('nav.institute_info') :
@@ -558,7 +555,7 @@ function SortableMenuItem({
                  item.label}
               </motion.span>
             ) : (
-              <span className="font-semibold text-sm tracking-wide flex-1 text-left">
+              <span className="font-semibold text-xs tracking-wide flex-1 text-left">
                 {item.path === '' ? t('nav.home') : 
                  item.path === '/institute-info' ? t('nav.institute_info') :
                  item.path === '/admin-roles' ? t('nav.admin_roles') :
@@ -610,7 +607,7 @@ function SortableMenuItem({
                   }`}
                 >
                   <SubIcon size={16} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
-                  <span className="font-medium text-sm tracking-wide flex-1 text-left">
+                  <span className="font-medium text-xs tracking-wide flex-1 text-left">
                     {subItem.label}
                   </span>
                   <ExternalLink size={14} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
@@ -627,7 +624,7 @@ function SortableMenuItem({
   );
 }
 
-export default function DashboardLayout({ children, schoolName, timeRemaining }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, schoolName }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { language, setLanguage, t } = useTranslation();
@@ -655,106 +652,11 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
   const [menuOrder, setMenuOrder] = useState<string[]>([]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [isDragEnabled, setIsDragEnabled] = useState(false);
-  /** Avoid hydration mismatch: timer comes from localStorage on client, so only show real value after mount */
-  const [timerReady, setTimerReady] = useState(false);
-  // Inactivity tracking
-  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
-  const [logoutCountdown, setLogoutCountdown] = useState(30);
-  const inactivityTimeoutRef = useRef<number | null>(null);
-  const logoutIntervalRef = useRef<number | null>(null);
-
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   // Extract school code from pathname
   const schoolCode = pathname.split('/')[2] || '';
 
-  const clearInactivityTimers = () => {
-    if (typeof window === 'undefined') return;
-    if (inactivityTimeoutRef.current !== null) {
-      window.clearTimeout(inactivityTimeoutRef.current);
-      inactivityTimeoutRef.current = null;
-    }
-    if (logoutIntervalRef.current !== null) {
-      window.clearInterval(logoutIntervalRef.current);
-      logoutIntervalRef.current = null;
-    }
-  };
-
-  const startWarningCountdown = () => {
-    if (typeof window === 'undefined') return;
-    setShowInactivityWarning(true);
-    setLogoutCountdown(30);
-
-    if (logoutIntervalRef.current !== null) {
-      window.clearInterval(logoutIntervalRef.current);
-    }
-
-    logoutIntervalRef.current = window.setInterval(() => {
-      setLogoutCountdown((prev) => {
-        if (prev <= 1) {
-          clearInactivityTimers();
-          // Auto logout when countdown finishes
-          void handleLogout();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const startInactivityTimer = () => {
-    if (typeof window === 'undefined') return;
-    if (inactivityTimeoutRef.current !== null) {
-      window.clearTimeout(inactivityTimeoutRef.current);
-    }
-    // 120 seconds of inactivity before showing warning
-    inactivityTimeoutRef.current = window.setTimeout(() => {
-      startWarningCountdown();
-    }, 120_000);
-  };
-
-  const resetInactivityTimer = () => {
-    if (typeof window === 'undefined') return;
-    setShowInactivityWarning(false);
-    setLogoutCountdown(30);
-    clearInactivityTimers();
-    startInactivityTimer();
-  };
-
-  const handleStayLoggedIn = () => {
-    resetInactivityTimer();
-  };
-
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const activityEvents: Array<keyof WindowEventMap> = [
-      'mousemove',
-      'keydown',
-      'click',
-      'scroll',
-      'touchstart',
-    ];
-
-    const handleActivity = () => {
-      resetInactivityTimer();
-    };
-
-    // Start timers and attach listeners
-    resetInactivityTimer();
-    activityEvents.forEach((evt) => {
-      window.addEventListener(evt, handleActivity);
-    });
-
-    return () => {
-      activityEvents.forEach((evt) => {
-        window.removeEventListener(evt, handleActivity);
-      });
-      clearInactivityTimers();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode]);
-
-  useEffect(() => {
-    setTimerReady(true);
     // Check if drag mode is enabled from localStorage
     const dragEnabled = localStorage.getItem(`drag-enabled-${schoolCode}`);
     setIsDragEnabled(dragEnabled === 'true');
@@ -1300,7 +1202,7 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
     { label: 'Student Management', path: '/students', category: 'Student Management', icon: Users },
     { label: 'Add Student', path: '/students/add', category: 'Student Management', icon: Users, parent: 'Student Management' },
     { label: 'Student Directory', path: '/students/directory', category: 'Student Management', icon: Users, parent: 'Student Management' },
-    { label: 'Student Attendance', path: '/students/attendance', category: 'Student Management', icon: Users, parent: 'Student Management' },
+    
     { label: 'Mark Attendance', path: '/students/mark-attendance', category: 'Student Management', icon: Users, parent: 'Student Management' },
     { label: 'Student Attendance Report', path: '/students/attendance-report', category: 'Student Management', icon: Users, parent: 'Student Management' },
     { label: 'Bulk Import Students', path: '/students/bulk-import', category: 'Student Management', icon: Users, parent: 'Student Management' },
@@ -1700,6 +1602,18 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
     }));
   };
 
+  // Filter sidebar menu items by search (main label + sub-item labels)
+  const sidebarFilteredItems = useMemo(() => {
+    const q = sidebarSearchQuery.trim().toLowerCase();
+    if (!q) return sortedMenuItems;
+    return sortedMenuItems.filter((item) => {
+      const labelMatch = (item.label || '').toLowerCase().includes(q);
+      if (labelMatch) return true;
+      const subItems = getSubItems(item);
+      return subItems.some((sub) => (sub.label || '').toLowerCase().includes(q));
+    });
+  }, [sortedMenuItems, sidebarSearchQuery, userInfoLoaded]);
+
   // Auto-expand sections that have active sub-items
   // Run this effect when pathname changes OR when userInfo is loaded
   useEffect(() => {
@@ -1737,52 +1651,6 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
       }}
     >
       <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
-      {/* Inactivity Warning Modal */}
-      <AnimatePresence>
-        {showInactivityWarning && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900"
-            >
-              <h2 className="mb-2 text-xl font-semibold text-slate-900 dark:text-slate-50">
-                Inactive Session
-              </h2>
-              <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-                You are inactive. You will be logged out in{' '}
-                <span className="font-semibold text-red-600 dark:text-red-400">
-                  {logoutCountdown}
-                </span>{' '}
-                seconds.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={handleStayLoggedIn}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  Stay Logged In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleLogout()}
-                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-                >
-                  Logout Now
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Top Navigation - Modern and Vibrant */}
       <nav className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl border-b border-white/60 dark:border-gray-700/50 sticky top-0 z-40 shadow-sm">
         <div className="px-4 sm:px-6 lg:px-8">
@@ -1798,19 +1666,6 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
                 EduCore
               </Link>
               <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
-              {timeRemaining != null && (
-                <>
-                  <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/10 rounded-lg border border-[#5A7A95]/20 dark:border-[#6B9BB8]/20">
-                    <Clock size={16} className="text-[#5A7A95] dark:text-[#6B9BB8]" />
-                    <span className="text-sm font-medium text-[#5A7A95] dark:text-[#6B9BB8] font-mono" suppressHydrationWarning>
-                      {timerReady
-                        ? `${Math.floor(timeRemaining / 60)}:${(timeRemaining % 60).toString().padStart(2, '0')}`
-                        : '20:00'}
-                    </span>
-                  </div>
-                  <div className="hidden md:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
-                </>
-              )}
               <span className="hidden sm:block text-[#2C3E50] dark:text-[#F8FAFC] font-semibold">{schoolName}</span>
               <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
               <span className="hidden sm:block text-sm text-gray-600 dark:text-gray-400 font-medium">ID: {schoolCode}</span>
@@ -1821,99 +1676,48 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
             </div>
             <div className="flex items-center space-x-[0.5cm]">
 
-              {/* Menu Search */}
+              {/* Search – Quick jump to Student or Staff directory */}
               <div className="relative search-container">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 size-4" />
-                  <input
-                    type="text"
-                    placeholder="Search menu..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onFocus={() => setSearchDropdownOpen(true)}
-                    className="w-64 pl-10 pr-4 py-2 bg-white dark:bg-[#1e293b] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all"
-                  />
-                </div>
-                
-                {/* Search Results Dropdown */}
-                {searchDropdownOpen && filteredSearchResults.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSearchDropdownOpen((prev) => !prev)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1e293b] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] transition-all"
+                  aria-label="Search"
+                  aria-expanded={searchDropdownOpen}
+                >
+                  <Search size={18} className="text-gray-500 dark:text-gray-400" />
+                  Search
+                  <ChevronDown size={16} className={`text-gray-500 dark:text-gray-400 transition-transform ${searchDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {searchDropdownOpen && (
                   <motion.div
-                    initial={{ opacity: 0, y: -10 }}
+                    initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
+                    exit={{ opacity: 0, y: -8 }}
+                    className="absolute top-full left-0 mt-2 min-w-[200px] bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50"
                   >
-                    <div className="p-2">
-                      {filteredSearchResults.map((item, idx) => {
-                        const ItemIcon = item.icon;
-                        const isAttendanceReport = item.path === '/students/attendance-report';
-                        
-                        if (isAttendanceReport) {
-                          return (
-                            <button
-                              key={`${item.path}-${idx}`}
-                              onClick={() => {
-                                setSearchQuery('');
-                                setSearchDropdownOpen(false);
-                                setAttendanceReportModalOpen(true);
-                              }}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors group text-left"
-                            >
-                              <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors">
-                                <ItemIcon size={16} className="text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
-                                  {item.label}
-                                </div>
-                                {item.parent && (
-                                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                    {item.parent} • {item.category}
-                                  </div>
-                                )}
-                              </div>
-                              <ChevronRight size={14} className="text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 flex-shrink-0" />
-                            </button>
-                          );
-                        }
-                        
-                        return (
-                          <Link
-                            key={`${item.path}-${idx}`}
-                            href={`${basePath}${item.path}`}
-                            onClick={() => {
-                              setSearchQuery('');
-                              setSearchDropdownOpen(false);
-                            }}
-                            className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors group"
-                          >
-                            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors">
-                              <ItemIcon size={16} className="text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
-                                {item.label}
-                              </div>
-                              {item.parent && (
-                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                  {item.parent} • {item.category}
-                                </div>
-                              )}
-                            </div>
-                            <ChevronRight size={14} className="text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 flex-shrink-0" />
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </motion.div>
-                )}
-                
-                {searchDropdownOpen && searchQuery.trim() && filteredSearchResults.length === 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-4 z-50"
-                  >
-                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center">No results found</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchDropdownOpen(false);
+                        router.push(`${basePath}/students/directory`);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 text-left text-sm font-medium text-gray-800 dark:text-gray-200 transition-colors"
+                    >
+                      <GraduationCap size={18} className="text-[#5A7A95] dark:text-[#6B9BB8]" />
+                      Quick search student
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchDropdownOpen(false);
+                        router.push(`${basePath}/staff-management/directory`);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 text-left text-sm font-medium text-gray-800 dark:text-gray-200 transition-colors"
+                    >
+                      <UserCheck size={18} className="text-[#5A7A95] dark:text-[#6B9BB8]" />
+                      Quick search staff
+                    </button>
                   </motion.div>
                 )}
               </div>
@@ -2124,7 +1928,22 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
                 }}
               >
                 <nav className={`py-3 ${sidebarCollapsed ? 'px-2' : 'px-1.5'} space-y-1.5 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`}>
-                  {/* Search Menu Section */}
+                  {/* Sidebar search – filter modules */}
+                  {!sidebarCollapsed && (
+                    <div className="px-2 pb-2">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <input
+                          type="text"
+                          placeholder="Search modules..."
+                          value={sidebarSearchQuery}
+                          onChange={(e) => setSidebarSearchQuery(e.target.value)}
+                          className="w-full pl-8 pr-3 py-2 rounded-lg bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 text-xs focus:outline-none focus:ring-2 focus:ring-[#5A7A95] focus:border-transparent"
+                          aria-label="Search modules"
+                        />
+                      </div>
+                    </div>
+                  )}
                   {/* Menu Items */}
                   <DndContext
                     sensors={sensors}
@@ -2133,14 +1952,18 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
                     onDragEnd={handleDragEnd}
                   >
                     <SortableContext
-                      items={sortedMenuItems.map(item => item.path)}
+                      items={sidebarFilteredItems.map(item => item.path)}
                       strategy={verticalListSortingStrategy}
                       key={`menu-${userInfoLoaded}-${Object.keys(userInfo).length}`}
                     >
                       {(!userInfoLoaded || (menuLoading && !userInfo.isAdmin)) ? (
                         <MenuSkeletonLoader count={6} collapsed={sidebarCollapsed} />
+                      ) : sidebarFilteredItems.length === 0 && sidebarSearchQuery.trim() ? (
+                        <div className="px-3 py-4 text-center text-slate-400 text-xs">
+                          No modules match &quot;{sidebarSearchQuery.trim()}&quot;
+                        </div>
                       ) : (
-                        sortedMenuItems.map((item, index) => {
+                        sidebarFilteredItems.map((item, index) => {
                     const active = isActive(item.path);
                     // Only calculate subItems if userInfo is loaded
                     const subItems = userInfoLoaded ? getSubItems(item) : [];
@@ -2184,7 +2007,7 @@ export default function DashboardLayout({ children, schoolName, timeRemaining }:
                                 <GripVertical size={16} className="text-slate-400" />
                             </div>
                               <span className="text-sm font-semibold text-white">
-                                {sortedMenuItems.find(item => item.path === activeDragId)?.label}
+                                {sidebarFilteredItems.find(item => item.path === activeDragId)?.label || sortedMenuItems.find(item => item.path === activeDragId)?.label}
                               </span>
                       </div>
                           </div>

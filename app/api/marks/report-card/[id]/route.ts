@@ -3,7 +3,8 @@ import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 /**
  * GET /api/marks/report-card/[id]
- * Serve HTML for a saved report card by ID
+ * Serve HTML for a saved report card by ID.
+ * If student_id query param is provided (student portal), only serve when sent_at is set and student_id matches.
  */
 export async function GET(
   request: NextRequest,
@@ -11,6 +12,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const studentIdParam = request.nextUrl.searchParams.get('student_id');
 
     if (!id) {
       return NextResponse.json({ error: 'Report card ID is required' }, { status: 400 });
@@ -20,12 +22,19 @@ export async function GET(
 
     const { data, error } = await supabase
       .from('report_cards')
-      .select('html_content, student_name, academic_year')
+      .select('id, html_content, student_name, academic_year, student_id, sent_at')
       .eq('id', id)
       .single();
 
     if (error || !data) {
       return NextResponse.json({ error: 'Report card not found' }, { status: 404 });
+    }
+
+    // Student portal: only allow viewing if this report card was sent to this student
+    if (studentIdParam) {
+      if (data.student_id !== studentIdParam || !data.sent_at) {
+        return NextResponse.json({ error: 'Report card not found or not yet sent to you' }, { status: 404 });
+      }
     }
 
     const html = data.html_content as string;

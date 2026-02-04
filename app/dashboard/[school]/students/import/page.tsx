@@ -197,8 +197,8 @@ export default function ImportStudentsPage({
 
     const csvContent = [
       headers.join(','),
-      'STU001,John Doe,10,A,2010-05-15,Male,John Parent,1234567890,parent@example.com,123 Main St',
-      'STU002,Jane Smith,10,B,2010-08-20,Female,Jane Parent,0987654321,parent2@example.com,456 Oak Ave'
+      'STU001,John Doe,10,A,15-05-2010,Male,John Parent,1234567890,parent@example.com,123 Main St',
+      'STU002,Jane Smith,10,B,20-08-2010,Female,Jane Parent,0987654321,parent2@example.com,456 Oak Ave'
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -340,7 +340,7 @@ export default function ImportStudentsPage({
                 </ul>
                 <h3 className="font-semibold text-black mt-4 mb-3">Optional Fields:</h3>
                 <ul className="space-y-2 text-sm text-gray-700">
-                  <li><span className="font-medium">date_of_birth</span> - Format: YYYY-MM-DD</li>
+                  <li><span className="font-medium">date_of_birth</span> - Format: DD-MM-YYYY or YYYY-MM-DD</li>
                   <li><span className="font-medium">gender</span> - Male, Female, or Other</li>
                   <li><span className="font-medium">parent_name</span> - Parent/Guardian name</li>
                   <li><span className="font-medium">parent_phone</span> - Contact number</li>

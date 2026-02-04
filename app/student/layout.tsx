@@ -57,6 +57,7 @@ const menuItems: MenuItem[] = [
   { icon: Calendar, label: 'Attendance', path: '/student/dashboard/attendance', parent: 'Academics' },
   { icon: FileText, label: 'Examinations', path: '/student/dashboard/examinations', parent: 'Academics' },
   { icon: BarChart3, label: 'Marks', path: '/student/dashboard/marks', parent: 'Academics' },
+  { icon: Award, label: 'Report Card', path: '/student/dashboard/report-card', parent: 'Academics' },
   { icon: ClipboardCheck, label: 'Copy Checking', path: '/student/dashboard/copy-checking', parent: 'Academics' },
   { icon: CalendarDays, label: 'Academic Calendar', path: '/student/dashboard/calendar/academic', parent: 'Academics' },
   { icon: BookOpen, label: 'Digital Diary', path: '/student/dashboard/diary', parent: 'Academics' },

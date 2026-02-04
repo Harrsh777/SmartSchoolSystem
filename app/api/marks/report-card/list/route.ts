@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     // Order by updated_at desc so re-generated cards appear first; fallback to created_at
     let query = supabase
       .from('report_cards')
-      .select('id, school_code, student_id, exam_id, student_name, admission_no, class_name, section, academic_year, created_at, updated_at')
+      .select('id, school_code, student_id, exam_id, student_name, admission_no, class_name, section, academic_year, created_at, updated_at, sent_at')
       .eq('school_code', schoolCode)
       .order('updated_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });

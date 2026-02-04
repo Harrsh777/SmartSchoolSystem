@@ -38,9 +38,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Staff, AcceptedSchool } from '@/lib/supabase';
-import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import HelpModal from '@/components/help/HelpModal';
-import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler, setActivityPrefix } from '@/lib/api-interceptor';
+import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
 import { languages } from '@/lib/translations';
 
 interface TeacherLayoutProps {
@@ -130,24 +129,16 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     }>;
   }>>([]);
 
-  // Session timeout (2 minutes of inactivity) – auto logout without warning
-  const { handleLogout } = useSessionTimeout({
-    timeoutMinutes: 2,
-    warningMinutes: 0, // No warning, just auto-logout
-    loginPath: '/login',
-    storageKeyPrefix: 'teacher',
-  });
-
-  // Setup API interceptor for session management
+  // Logout handler for 401 responses only (no inactivity timeout)
   useEffect(() => {
-    setActivityPrefix('teacher');
-    setLogoutHandler(handleLogout);
-    setupApiInterceptor();
-    return () => {
-      setActivityPrefix(undefined);
-      removeApiInterceptor();
+    const logout = () => {
+      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+      router.push('/login');
     };
-  }, [handleLogout]);
+    setLogoutHandler(logout);
+    setupApiInterceptor();
+    return () => removeApiInterceptor();
+  }, [router]);
   
   // State for navbar dropdowns
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);

@@ -8,8 +8,8 @@ export const AUTH_COOKIE_NAME = 'auth_session';
 /** Cookie name for server-side session token (DB-backed session id) */
 export const SESSION_ID_COOKIE_NAME = 'session_id';
 
-/** Session duration in seconds (20 minutes) */
-export const SESSION_MAX_AGE = 20 * 60;
+/** Session duration in seconds (30 days – user stays logged in until they click Logout) */
+export const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
 
 export type AuthRole = 'school' | 'teacher' | 'student' | 'accountant';
 

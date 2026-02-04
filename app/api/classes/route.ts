@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+/** Escape % and _ for use in ilike so class/section match is case-insensitive and exact. */
+function escapeIlike(value: string): string {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -46,13 +54,13 @@ export async function GET(request: NextRequest) {
     // Get student counts and teacher info for each class
     const classesWithCounts = await Promise.all(
       (classes || []).map(async (cls) => {
-        // Get student count
+        // Get student count (case-insensitive so "Class-4" / "class-4" / "CLASS-4" all match)
         const { count } = await supabase
           .from('students')
           .select('*', { count: 'exact', head: true })
           .eq('school_code', schoolCode)
-          .eq('class', cls.class)
-          .eq('section', cls.section)
+          .ilike('class', escapeIlike(cls.class ?? ''))
+          .ilike('section', escapeIlike(cls.section ?? ''))
           .eq('academic_year', cls.academic_year);
 
         // Get teacher info if assigned

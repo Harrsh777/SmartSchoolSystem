@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
             errors.push('Date of Birth cannot be in the future');
           }
         } else {
-          errors.push('Invalid Date of Birth format. Use YYYY-MM-DD');
+          errors.push('Invalid Date of Birth format. Use DD-MM-YYYY or YYYY-MM-DD');
         }
       }
 
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
         if (parsedDate) {
           mappedData.date_of_admission = parsedDate;
         } else {
-          warnings.push('Invalid Date of Admission format. Use YYYY-MM-DD');
+          warnings.push('Invalid Date of Admission format. Use DD-MM-YYYY or YYYY-MM-DD');
         }
       }
 

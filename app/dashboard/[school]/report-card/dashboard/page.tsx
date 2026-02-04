@@ -2,10 +2,10 @@
 
 import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, FileText, Eye, Download, Printer, Plus, Search, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, FileText, Eye, Download, Printer, Plus, Search, Loader2, Trash2, Send, CheckSquare, Square } from 'lucide-react';
 
 interface ReportCardItem {
   id: string;
@@ -18,6 +18,7 @@ interface ReportCardItem {
   section: string;
   academic_year: string;
   created_at: string;
+  sent_at?: string | null;
 }
 
 export default function ReportCardDashboardPage({
@@ -34,6 +35,9 @@ export default function ReportCardDashboardPage({
   const [classFilter, setClassFilter] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const fetchReportCards = async () => {
     setLoading(true);
@@ -93,10 +97,50 @@ export default function ReportCardDashboardPage({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to delete');
       setReportCards((prev) => prev.filter((c) => c.id !== card.id));
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(card.id); return n; });
     } catch (e) {
       alert((e as Error).message);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredCards.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredCards.map((c) => c.id)));
+    }
+  };
+
+  const handleSendReportCards = async () => {
+    if (selectedIds.size === 0) return;
+    setSending(true);
+    try {
+      const res = await fetch('/api/marks/report-card/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_code: schoolCode, report_card_ids: Array.from(selectedIds) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to send');
+      setSendModalOpen(false);
+      setSelectedIds(new Set());
+      await fetchReportCards();
+      alert(data.message || `${data.sent_count} report card(s) sent. Students can view them in their Report Card module.`);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -112,7 +156,15 @@ export default function ReportCardDashboardPage({
           </h1>
           <p className="text-gray-600">View and manage all generated report cards</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <Button
+            onClick={() => setSendModalOpen(true)}
+            disabled={selectedIds.size === 0}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:pointer-events-none"
+          >
+            <Send size={18} className="mr-2" />
+            Send Report Card {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+          </Button>
           <Button onClick={() => router.push(`/dashboard/${schoolCode}/report-card/generate`)} className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
             <Plus size={18} className="mr-2" />
             Generate Report Card
@@ -178,23 +230,68 @@ export default function ReportCardDashboardPage({
             <table className="w-full">
               <thead className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
                 <tr>
+                  <th className="px-3 py-3 text-left w-12">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      className="p-1 rounded hover:bg-white/20 transition-colors"
+                      title={selectedIds.size === filteredCards.length ? 'Deselect all' : 'Select all'}
+                    >
+                      {selectedIds.size === filteredCards.length && filteredCards.length > 0 ? (
+                        <CheckSquare size={22} className="text-white" />
+                      ) : (
+                        <Square size={22} className="text-white/90" />
+                      )}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Admission No</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Student Name</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Class-Section</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Academic Year</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Generated</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Status</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredCards.map((card, index) => (
-                  <motion.tr key={card.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.03 }} className="hover:bg-gray-50">
+                  <motion.tr
+                    key={card.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    className={`hover:bg-gray-50 ${selectedIds.has(card.id) ? 'bg-blue-50/50' : ''}`}
+                  >
+                    <td className="px-3 py-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleSelect(card.id)}
+                        className="p-1 rounded hover:bg-gray-200 transition-colors"
+                      >
+                        {selectedIds.has(card.id) ? (
+                          <CheckSquare size={20} className="text-[#1e3a8a]" />
+                        ) : (
+                          <Square size={20} className="text-gray-400" />
+                        )}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-sm font-mono text-gray-900">{card.admission_no || '-'}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-gray-900">{card.student_name || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{card.class_name || '-'}-{card.section || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{card.academic_year || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {card.created_at ? new Date(card.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {card.sent_at ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                          Sent {new Date(card.sent_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                          Not sent
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-2">
@@ -211,6 +308,48 @@ export default function ReportCardDashboardPage({
           </div>
         )}
       </Card>
+
+      {/* Send Report Card confirmation modal */}
+      <AnimatePresence>
+        {sendModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={() => !sending && setSendModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
+                  <Send className="text-emerald-600" size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Send Report Cards</h3>
+                  <p className="text-sm text-gray-500">Make them visible to students</p>
+                </div>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Send <strong>{selectedIds.size}</strong> report card(s) to the selected students? They will see them in their <strong>Report Card</strong> module on the student dashboard.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <Button variant="outline" onClick={() => !sending && setSendModalOpen(false)} disabled={sending} className="border-gray-300">
+                  Cancel
+                </Button>
+                <Button onClick={handleSendReportCards} disabled={sending} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  {sending ? <><Loader2 size={18} className="animate-spin mr-2" />Sending...</> : <><Send size={18} className="mr-2" />Send</>}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

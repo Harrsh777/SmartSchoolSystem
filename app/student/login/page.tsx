@@ -5,9 +5,6 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import FloatingLabelInput from '@/components/auth/FloatingLabelInput';
-import { updateActivity } from '@/hooks/useSessionTimeout';
-
-const STUDENT_ACTIVITY_KEY = 'lastActivity_student';
 import { 
   GraduationCap, 
   User, 
@@ -31,12 +28,6 @@ export default function StudentLoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(STUDENT_ACTIVITY_KEY);
-    }
-  }, []);
 
   const validate = () => {
     const errors: Record<string, string> = {};
@@ -62,7 +53,6 @@ export default function StudentLoginPage() {
       if (response.ok && result.success) {
         sessionStorage.setItem('student', JSON.stringify(result.student));
         sessionStorage.setItem('role', 'student');
-        updateActivity('student', true);
         router.push('/student/dashboard');
       } else {
         setError(result.error || 'Invalid credentials.');

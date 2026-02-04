@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Search,
   X,
+  RefreshCw,
 } from 'lucide-react';
 import AssignTeacherModal from '@/components/classes/AssignTeacherModal';
 import AssignSubjectsModal from '@/components/classes/AssignSubjectsModal';
@@ -72,6 +73,8 @@ export default function ClassOverviewPage({
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAcademicYears = async () => {
@@ -145,6 +148,61 @@ export default function ClassOverviewPage({
   const handleSubjectsAssigned = () => {
     setAssigningSubjects(null);
     fetchClassOverview();
+  };
+
+  const handleExport = () => {
+    const escapeCsv = (val: unknown) => {
+      const s = String(val ?? '');
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const headers = ['#', 'Class', 'Section', 'Academic Year', 'Class Teacher', 'Subjects', 'Timetable', 'Old', 'New', 'Active', 'Inactive', 'Total'];
+    const rows = filteredClasses.map((cls, i) => [
+      i + 1,
+      cls.class,
+      cls.section,
+      cls.academic_year,
+      cls.class_teacher?.full_name ?? '',
+      cls.total_subjects,
+      cls.has_timetable ? 'Yes' : 'No',
+      cls.old_admissions,
+      cls.new_admissions,
+      cls.active_students,
+      cls.deactivated_students,
+      cls.total_students,
+    ].map(escapeCsv).join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `class-overview-${selectedAcademicYear || 'all'}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const syncClassesFromStudents = async () => {
+    try {
+      setSyncing(true);
+      setSyncMessage(null);
+      const response = await fetch('/api/classes/sync-from-students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_code: schoolCode }),
+      });
+      const result = await response.json();
+      if (response.ok && result.created !== undefined) {
+        setSyncMessage(result.message ?? (result.created > 0 ? `Created ${result.created} class(es) from students.` : 'All classes are already in sync.'));
+        if (result.created > 0) await fetchClassOverview();
+      } else {
+        setSyncMessage(result.error ?? 'Sync failed.');
+      }
+    } catch (err) {
+      console.error('Error syncing classes from students:', err);
+      setSyncMessage('Failed to sync classes.');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   // Calculate statistics
@@ -224,7 +282,16 @@ export default function ClassOverviewPage({
           </h1>
           <p className="text-[#64748B]">View all classes with their statistics and timetables</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={syncClassesFromStudents}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 px-4 py-2.5 border border-[#E1E1DB] rounded-lg bg-white text-[#0F172A] text-sm font-medium hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#60A5FA] focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing...' : 'Sync from students'}
+          </button>
           <label className="text-sm font-medium text-[#64748B]">Academic Year:</label>
           <select
             value={selectedAcademicYear}
@@ -238,6 +305,9 @@ export default function ClassOverviewPage({
             ))}
           </select>
         </div>
+        {syncMessage && (
+          <p className="w-full mt-2 text-sm text-[#64748B]">{syncMessage}</p>
+        )}
       </motion.div>
 
       {/* Summary Statistics */}
@@ -353,7 +423,10 @@ export default function ClassOverviewPage({
               )}
             </button>
             
-            <button className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#64748B] bg-[#F8FAFC] hover:bg-[#E5E7EB] rounded-lg transition-all">
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#64748B] bg-[#F8FAFC] hover:bg-[#E5E7EB] rounded-lg transition-all"
+            >
               <Download size={18} />
               EXPORT
             </button>

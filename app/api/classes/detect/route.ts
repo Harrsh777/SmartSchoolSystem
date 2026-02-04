@@ -41,18 +41,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Group and count
+    // Group and count (only students with non-empty class and section)
     const classMap = new Map<string, { class: string; section: string; academic_year: string; student_count: number }>();
     
     students?.forEach(student => {
-      const key = `${student.class}-${student.section}-${student.academic_year}`;
+      const cls = student.class != null ? String(student.class).trim() : '';
+      const sec = student.section != null ? String(student.section).trim() : '';
+      const year = student.academic_year != null ? String(student.academic_year).trim() : '';
+      if (!cls || !sec) return;
+      const key = `${cls}-${sec}-${year}`;
       if (classMap.has(key)) {
         classMap.get(key)!.student_count++;
       } else {
         classMap.set(key, {
-          class: student.class,
-          section: student.section,
-          academic_year: student.academic_year,
+          class: cls,
+          section: sec,
+          academic_year: year,
           student_count: 1,
         });
       }

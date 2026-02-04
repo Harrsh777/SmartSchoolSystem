@@ -10,7 +10,7 @@ import { SESSION_ID_COOKIE_NAME } from '@/lib/auth-cookie';
 import type { AuthRole } from '@/lib/auth-cookie';
 import { cookies } from 'next/headers';
 
-const SESSION_TTL_SECONDS = 20 * 60; // 20 minutes, match auth cookie
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days – user stays logged in until they click Logout
 const TOKEN_BYTES = 32;
 
 function generateSessionToken(): string {

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { Plus, Search, HelpCircle, BookOpen } from 'lucide-react';
+import { Plus, Search, HelpCircle, BookOpen, RefreshCw } from 'lucide-react';
 import ClassesTable from '@/components/classes/ClassesTable';
 import AddClassModal from '@/components/classes/AddClassModal';
 import AssignTeacherModal from '@/components/classes/AssignTeacherModal';
@@ -26,54 +26,41 @@ export default function ClassesPage({
   const [selectedClass, setSelectedClass] = useState<ClassWithDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showTutorial, setShowTutorial] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchClasses();
-    // Automatically detect and create classes from students
-    autoDetectClasses();
+    // On load: sync classes from all existing students (creates any missing class/section rows)
+    syncClassesFromStudents(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
-  const autoDetectClasses = async () => {
+  const syncClassesFromStudents = async (silent = false) => {
     try {
-      // Detect classes from students
-      const detectResponse = await fetch(`/api/classes/detect?school_code=${schoolCode}`);
-      const detectResult = await detectResponse.json();
-
-      if (detectResponse.ok && detectResult.data) {
-        // Filter only new classes (that don't exist)
-        interface ClassData {
-          exists?: boolean;
-          class: string;
-          section: string;
-          [key: string]: unknown;
+      if (!silent) setSyncing(true);
+      setSyncMessage(null);
+      const response = await fetch('/api/classes/sync-from-students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_code: schoolCode }),
+      });
+      const result = await response.json();
+      if (response.ok && result.created !== undefined) {
+        if (result.created > 0) {
+          await fetchClasses();
+          if (!silent) setSyncMessage(result.message ?? `Created ${result.created} class(es) from students.`);
+        } else if (!silent) {
+          setSyncMessage(result.message ?? 'All classes are already in sync.');
         }
-        const newClasses = detectResult.data.filter((cls: ClassData) => !cls.exists);
-        
-        if (newClasses.length > 0) {
-          // Automatically create them
-          const createResponse = await fetch('/api/classes/detect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              school_code: schoolCode,
-              classes: newClasses,
-            }),
-          });
-
-          const createResult = await createResponse.json();
-
-          if (createResponse.ok) {
-            // Refresh classes list
-            fetchClasses();
-          } else {
-            console.error('Error auto-creating classes:', createResult.error);
-          }
-        }
+      } else if (!silent) {
+        setSyncMessage(result.error ?? 'Sync failed.');
       }
-    } catch (error) {
-      console.error('Error auto-detecting classes:', error);
-      // Silently fail - don't show error to user
+    } catch (err) {
+      console.error('Error syncing classes from students:', err);
+      if (!silent) setSyncMessage('Failed to sync classes.');
+    } finally {
+      if (!silent) setSyncing(false);
     }
   };
 
@@ -178,12 +165,25 @@ export default function ClassesPage({
               <HelpCircle size={18} className="mr-2" />
               Tutorial
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => syncClassesFromStudents(false)}
+              disabled={syncing}
+            >
+              <RefreshCw size={18} className={`mr-2 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Sync from students'}
+            </Button>
             <Button onClick={() => setShowAddModal(true)}>
               <Plus size={18} className="mr-2" />
               Add Class
             </Button>
           </div>
         </div>
+        {syncMessage && (
+          <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+            {syncMessage}
+          </p>
+        )}
       </motion.div>
 
       {/* Search */}

@@ -106,6 +106,11 @@ export async function GET(request: NextRequest) {
     }
 
     const today = new Date().toISOString().split('T')[0];
+
+    // Today's expense
+    const todayExpense = (expenseEntries || [])
+      .filter(e => e.entry_date && e.entry_date.toString().split('T')[0] === today)
+      .reduce((sum, entry) => sum + parseFloat(entry.amount?.toString() || '0'), 0);
     
     // Calculate today's collection from payments or fees
     let todayCollection = 0;
@@ -223,6 +228,7 @@ export async function GET(request: NextRequest) {
         incomeAndExpense: {
           totalIncome,
           totalExpense,
+          todayExpense,
           monthlyData,
         },
         feeManagement: {

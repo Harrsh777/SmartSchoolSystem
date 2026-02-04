@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+/** Escape % and _ for use in ilike so class/section match is case-insensitive and exact. */
+function escapeIlike(value: string): string {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -87,30 +95,13 @@ export async function GET(request: NextRequest) {
         );
         const totalSubjects = uniqueSubjects.size;
 
-        // Get all students for this class (match class + section; academic_year can match or be null/empty)
-        // Use flexible class matching: "NUR" and "NUR." often refer to the same class
-        const classTrimmed = (cls.class || '').toString().trim();
-        const classWithoutTrailingPeriod = classTrimmed.replace(/\.+$/, '');
-        const classVariants = [...new Set([cls.class, classTrimmed, classWithoutTrailingPeriod].filter(Boolean))];
-
-        let allStudentsRaw: { id: string; created_at: string | null; status: string; academic_year: string | null }[] = [];
-        if (classVariants.length > 0) {
-          const { data } = await supabase
-            .from('students')
-            .select('id, created_at, status, academic_year')
-            .eq('school_code', schoolCode)
-            .in('class', classVariants)
-            .eq('section', cls.section || '');
-          allStudentsRaw = data || [];
-        } else {
-          const { data } = await supabase
-            .from('students')
-            .select('id, created_at, status, academic_year')
-            .eq('school_code', schoolCode)
-            .eq('class', cls.class)
-            .eq('section', cls.section || '');
-          allStudentsRaw = data || [];
-        }
+        // Get all students for this class (case-insensitive match so "Class-4" / "CLASS-4" / "class-4" all match)
+        const { data: allStudentsRaw = [] } = await supabase
+          .from('students')
+          .select('id, created_at, status, academic_year')
+          .eq('school_code', schoolCode)
+          .ilike('class', escapeIlike(cls.class ?? ''))
+          .ilike('section', escapeIlike(cls.section ?? ''));
 
         // Include students where academic_year matches, or student's is null/empty (for students added without academic_year)
         const classYear = (cls.academic_year || '').toString().trim();
