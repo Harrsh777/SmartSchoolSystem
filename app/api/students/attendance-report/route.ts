@@ -12,6 +12,8 @@ export async function GET(request: NextRequest) {
     const schoolCode = searchParams.get('school_code');
     let fromDate = searchParams.get('from_date');
     let toDate = searchParams.get('to_date');
+    const classParam = searchParams.get('class');
+    const sectionParam = searchParams.get('section');
 
     if (!schoolCode) {
       return NextResponse.json({ error: 'School code is required' }, { status: 400 });
@@ -28,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = getServiceRoleClient();
 
-    const { data: attendanceRecords, error: attendanceError } = await supabase
+    let query = supabase
       .from('student_attendance')
       .select(`
         id,
@@ -52,12 +54,14 @@ export async function GET(request: NextRequest) {
       .lte('attendance_date', toDate)
       .order('attendance_date', { ascending: true });
 
+    const { data: attendanceRecords, error: attendanceError } = await query;
+
     if (attendanceError) {
       console.error('Error fetching attendance:', attendanceError);
       return NextResponse.json({ error: attendanceError.message }, { status: 500 });
     }
 
-    const formattedData = (attendanceRecords || []).map((record) => {
+    let formattedData = (attendanceRecords || []).map((record) => {
       const student = record.student as {
         student_name?: string;
         admission_no?: string;
@@ -76,6 +80,13 @@ export async function GET(request: NextRequest) {
         marked_by_name: staff?.full_name || 'N/A',
       };
     });
+
+    if (classParam?.trim()) {
+      formattedData = formattedData.filter((row) => row.class === classParam.trim());
+    }
+    if (sectionParam?.trim()) {
+      formattedData = formattedData.filter((row) => row.section === sectionParam.trim());
+    }
 
     return NextResponse.json({ data: formattedData });
   } catch (error) {

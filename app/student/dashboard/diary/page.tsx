@@ -33,7 +33,7 @@ export default function StudentDiaryPage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [diaries, setDiaries] = useState<DiaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'HOMEWORK' | 'OTHER'>('all');
+  const [filter, setFilter] = useState<'all' | 'HOMEWORK' | 'OTHER' | 'ASSIGNMENT' | 'NOTICE'>('all');
   const [readFilter, setReadFilter] = useState<'all' | 'read' | 'unread'>('all');
 
   useEffect(() => {
@@ -128,6 +128,10 @@ export default function StudentDiaryPage() {
         return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'OTHER':
         return 'bg-purple-100 text-purple-700 border-purple-200';
+      case 'ASSIGNMENT':
+        return 'bg-amber-100 text-amber-700 border-amber-200';
+      case 'NOTICE':
+        return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       default:
         return 'bg-gray-100 text-gray-700 border-gray-200';
     }
@@ -139,6 +143,10 @@ export default function StudentDiaryPage() {
         return 'Homework';
       case 'OTHER':
         return 'Announcement';
+      case 'ASSIGNMENT':
+        return 'Assignment';
+      case 'NOTICE':
+        return 'Notice';
       default:
         return type;
     }
@@ -225,7 +233,9 @@ export default function StudentDiaryPage() {
             >
               <option value="all">All Types</option>
               <option value="HOMEWORK">Homework</option>
+              <option value="ASSIGNMENT">Assignment</option>
               <option value="OTHER">Announcements</option>
+              <option value="NOTICE">Notice</option>
             </select>
           </div>
           <div>

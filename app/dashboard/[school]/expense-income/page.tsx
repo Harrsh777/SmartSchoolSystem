@@ -17,7 +17,9 @@ import {
   X,
   Filter,
   Download,
+  Printer,
 } from 'lucide-react';
+import { getExpensesPrintHtml, printHtml, downloadHtml } from '@/lib/print-utils';
 
 interface FinancialYear {
   id: string;
@@ -818,6 +820,7 @@ function ExpenseTab({
   });
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchExpenseEntries();
@@ -883,20 +886,96 @@ function ExpenseTab({
     return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === expenseEntries.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(expenseEntries.map((e) => e.id)));
+  };
+
+  const selectedEntries = expenseEntries.filter((e) => selectedIds.has(e.id));
+
+  const handlePrintSelected = () => {
+    if (selectedEntries.length === 0) return;
+    const html = getExpensesPrintHtml(
+      selectedEntries.map((e) => ({
+        id: e.id,
+        category: e.category,
+        amount: e.amount,
+        entry_date: e.entry_date,
+        paid_to: e.paid_to,
+        payment_mode: e.payment_mode,
+        notes: e.notes,
+      })),
+      'Expense Report'
+    );
+    printHtml(html, 'Expense Report');
+  };
+
+  const handleDownloadSelected = () => {
+    if (selectedEntries.length === 0) return;
+    const html = getExpensesPrintHtml(
+      selectedEntries.map((e) => ({
+        id: e.id,
+        category: e.category,
+        amount: e.amount,
+        entry_date: e.entry_date,
+        paid_to: e.paid_to,
+        payment_mode: e.payment_mode,
+        notes: e.notes,
+      })),
+      'Expense Report'
+    );
+    downloadHtml(html, `Expenses_${new Date().toISOString().slice(0, 10)}.html`);
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-bold text-gray-900">Expense Entries</h2>
-        <Button
-          onClick={() => {
-            setEditingEntry(null);
-            setShowModal(true);
-          }}
-          className="bg-orange-500 hover:bg-orange-600 text-white"
-        >
-          <Plus size={18} className="mr-2" />
-          Add Expense
-        </Button>
+        <div className="flex items-center gap-2">
+          {expenseEntries.length > 0 && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadSelected}
+                disabled={selectedIds.size === 0}
+                title="Download selected expenses"
+              >
+                <Download size={16} className="mr-1" />
+                Download ({selectedIds.size})
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrintSelected}
+                disabled={selectedIds.size === 0}
+                title="Print selected expenses"
+              >
+                <Printer size={16} className="mr-1" />
+                Print ({selectedIds.size})
+              </Button>
+            </>
+          )}
+          <Button
+            onClick={() => {
+              setEditingEntry(null);
+              setShowModal(true);
+            }}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+          >
+            <Plus size={18} className="mr-2" />
+            Add Expense
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -958,6 +1037,14 @@ function ExpenseTab({
               <table className="w-full">
                 <thead className="bg-teal-700 text-white">
                   <tr>
+                    <th className="px-2 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={expenseEntries.length > 0 && selectedIds.size === expenseEntries.length}
+                        onChange={toggleSelectAll}
+                        className="rounded border-gray-300"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Category</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Amount</th>
@@ -969,6 +1056,14 @@ function ExpenseTab({
                 <tbody className="divide-y divide-gray-200">
                   {expenseEntries.map((entry) => (
                     <tr key={entry.id} className="hover:bg-gray-50">
+                      <td className="px-2 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(entry.id)}
+                          onChange={() => toggleSelect(entry.id)}
+                          className="rounded border-gray-300"
+                        />
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-700">{formatDate(entry.entry_date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{entry.category}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(entry.amount)}</td>

@@ -1602,43 +1602,50 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     }));
   };
 
-  // Filter sidebar menu items by search (main label + sub-item labels)
+  // Filter sidebar menu items by search (main label, path, and sub-item labels/paths)
   const sidebarFilteredItems = useMemo(() => {
     const q = sidebarSearchQuery.trim().toLowerCase();
     if (!q) return sortedMenuItems;
     return sortedMenuItems.filter((item) => {
       const labelMatch = (item.label || '').toLowerCase().includes(q);
-      if (labelMatch) return true;
+      const pathMatch = (item.path || '').toLowerCase().includes(q);
+      if (labelMatch || pathMatch) return true;
       const subItems = getSubItems(item);
-      return subItems.some((sub) => (sub.label || '').toLowerCase().includes(q));
+      return subItems.some((sub) => {
+        const subLabelMatch = (sub.label || '').toLowerCase().includes(q);
+        const subPathMatch = (sub.path || '').toLowerCase().includes(q);
+        return subLabelMatch || subPathMatch;
+      });
     });
   }, [sortedMenuItems, sidebarSearchQuery, userInfoLoaded]);
 
-  // Auto-expand sections that have active sub-items
-  // Run this effect when pathname changes OR when userInfo is loaded
+  // Auto-expand sections that have active sub-items, or when search matches a sub-item
   useEffect(() => {
-    // Only run if userInfo has been loaded
-    if (!userInfoLoaded) {
+    if (!userInfoLoaded) return;
+
+    const q = sidebarSearchQuery.trim().toLowerCase();
+
+    if (q) {
+      // When searching: expand any section that is shown and has sub-items (so user sees matching submodules)
+      sidebarFilteredItems.forEach((item) => {
+        const subItems = getSubItems(item);
+        if (subItems.length > 0) {
+          setExpandedSections(prev => ({ ...prev, [item.label]: true }));
+        }
+      });
       return;
     }
 
+    // No search: expand sections that have the active sub-item
     filteredMenuItems.forEach((item) => {
       const subItems = getSubItems(item);
       const hasActiveSubItem = subItems.some(subItem => isActive(subItem.path));
       if (hasActiveSubItem) {
-        setExpandedSections(prev => {
-          if (!prev[item.label]) {
-            return {
-              ...prev,
-              [item.label]: true
-            };
-          }
-          return prev;
-        });
+        setExpandedSections(prev => (prev[item.label] ? prev : { ...prev, [item.label]: true }));
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, userInfo, userInfoLoaded]);
+  }, [pathname, userInfo, userInfoLoaded, sidebarSearchQuery, sidebarFilteredItems]);
 
   return (
     <ErrorBoundary

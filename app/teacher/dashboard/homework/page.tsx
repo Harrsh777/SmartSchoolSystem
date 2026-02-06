@@ -27,7 +27,7 @@ interface DiaryEntry {
   id: string;
   title: string;
   content: string | null;
-  type: 'HOMEWORK' | 'OTHER';
+  type: 'HOMEWORK' | 'OTHER' | 'ASSIGNMENT' | 'NOTICE';
   mode: 'GENERAL' | 'SUBJECT_WISE';
   created_at: string;
   diary_targets: Array<{
@@ -54,7 +54,7 @@ export default function TeacherDigitalDiaryPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [editingDiary, setEditingDiary] = useState<DiaryEntry | null>(null);
-  const [diaryType, setDiaryType] = useState<'HOMEWORK' | 'OTHER'>('HOMEWORK');
+  const [diaryType, setDiaryType] = useState<'HOMEWORK' | 'OTHER' | 'ASSIGNMENT' | 'NOTICE'>('HOMEWORK');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -190,6 +190,10 @@ export default function TeacherDigitalDiaryPage() {
         return 'bg-emerald-100 text-emerald-800';
       case 'OTHER':
         return 'bg-emerald-700/20 text-emerald-800';
+      case 'ASSIGNMENT':
+        return 'bg-amber-100 text-amber-800';
+      case 'NOTICE':
+        return 'bg-blue-100 text-blue-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -279,6 +283,17 @@ export default function TeacherDigitalDiaryPage() {
             </Button>
             <Button
               onClick={() => {
+                setDiaryType('ASSIGNMENT');
+                setEditingDiary(null);
+                setShowModal(true);
+              }}
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              <Plus size={18} className="mr-2" />
+              Assignment
+            </Button>
+            <Button
+              onClick={() => {
                 setDiaryType('OTHER');
                 setEditingDiary(null);
                 setShowModal(true);
@@ -286,7 +301,18 @@ export default function TeacherDigitalDiaryPage() {
               className="bg-emerald-700 hover:bg-emerald-800 text-white"
             >
               <Plus size={18} className="mr-2" />
-              Others
+              Other
+            </Button>
+            <Button
+              onClick={() => {
+                setDiaryType('NOTICE');
+                setEditingDiary(null);
+                setShowModal(true);
+              }}
+              className="bg-blue-500 hover:bg-blue-600 text-white"
+            >
+              <Plus size={18} className="mr-2" />
+              Notice
             </Button>
           </div>
         </div>
@@ -454,7 +480,7 @@ function DiaryModal({
   schoolCode: string;
   academicYearId?: string | null;
   diary: DiaryEntry | null;
-  defaultType: 'HOMEWORK' | 'OTHER';
+  defaultType: 'HOMEWORK' | 'OTHER' | 'ASSIGNMENT' | 'NOTICE';
   onClose: () => void;
 }) {
   const [saving, setSaving] = useState(false);
@@ -706,7 +732,9 @@ function DiaryModal({
                 required
               >
                 <option value="HOMEWORK">Homework</option>
+                <option value="ASSIGNMENT">Assignment</option>
                 <option value="OTHER">Other</option>
+                <option value="NOTICE">Notice</option>
               </select>
             </div>
 

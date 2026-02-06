@@ -127,9 +127,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['HOMEWORK', 'OTHER'].includes(type)) {
+    if (!['HOMEWORK', 'OTHER', 'ASSIGNMENT', 'NOTICE'].includes(type)) {
       return NextResponse.json(
-        { error: 'Invalid diary type. Must be HOMEWORK or OTHER' },
+        { error: 'Invalid diary type. Must be HOMEWORK, OTHER, ASSIGNMENT, or NOTICE' },
         { status: 400 }
       );
     }

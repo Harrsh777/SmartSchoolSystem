@@ -24,8 +24,11 @@ import {
   Shield,
   History,
   LogOut,
-  LogIn
+  LogIn,
+  Download,
+  Printer
 } from 'lucide-react';
+import { getGatePassSlipHtml, printHtml } from '@/lib/print-utils';
 
 interface GatePass {
   id: string;
@@ -391,6 +394,44 @@ export default function FrontOfficeDashboardPage({
     }
   };
 
+  const handlePrintGatePass = (gatePass: GatePass) => {
+    const html = getGatePassSlipHtml({
+      id: gatePass.id,
+      person_type: gatePass.person_type,
+      person_name: gatePass.person_name,
+      class: gatePass.class,
+      section: gatePass.section,
+      pass_type: gatePass.pass_type,
+      reason: gatePass.reason,
+      date: gatePass.date,
+      time_out: gatePass.time_out,
+      expected_return_time: gatePass.expected_return_time,
+      actual_return_time: gatePass.actual_return_time,
+      approved_by_name: gatePass.approved_by_name,
+      status: gatePass.status,
+    });
+    printHtml(html, `Gate Pass - ${gatePass.person_name}`);
+  };
+
+  const handleDownloadGatePass = async (gatePass: GatePass) => {
+    try {
+      const res = await fetch(`/api/gate-pass/${gatePass.id}/download-pdf`);
+      if (!res.ok) throw new Error('Failed to generate PDF');
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition');
+      const match = disposition?.match(/filename="?([^";]+)"?/);
+      const name = (gatePass.person_name || 'GatePass').replace(/[^a-zA-Z0-9\s.-]/g, '').trim() || 'GatePass';
+      const filename = match ? match[1].trim() : `${name} Gate Pass.pdf`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      console.error('Download PDF error:', err);
+      setErrorMessage('Failed to download PDF. Please try again.');
+    }
+  };
 
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20">
@@ -643,10 +684,10 @@ export default function FrontOfficeDashboardPage({
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 pt-4 border-t border-amber-200">
+                    <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-amber-200">
                       <Button
                         onClick={() => handleApproveGatePass(gatePass.id)}
-                        className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white shadow-md"
+                        className="flex-1 min-w-0 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white shadow-md"
                         size="sm"
                       >
                         <CheckCircle2 size={16} className="mr-2" />
@@ -655,11 +696,29 @@ export default function FrontOfficeDashboardPage({
                       <Button
                         onClick={() => handleRejectGatePass(gatePass.id)}
                         variant="outline"
-                        className="flex-1 border-red-300 text-red-700 hover:bg-red-50 shadow-sm"
+                        className="flex-1 min-w-0 border-red-300 text-red-700 hover:bg-red-50 shadow-sm"
                         size="sm"
                       >
                         <XCircle size={16} className="mr-2" />
                         Reject
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownloadGatePass(gatePass)}
+                        className="border-gray-300"
+                        title="Download gate pass"
+                      >
+                        <Download size={14} />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePrintGatePass(gatePass)}
+                        className="border-gray-300"
+                        title="Print gate pass"
+                      >
+                        <Printer size={14} />
                       </Button>
                     </div>
                   </motion.div>
@@ -742,18 +801,34 @@ export default function FrontOfficeDashboardPage({
                         </div>
                       )}
                     </div>
-                    {(gatePass.status === 'approved' || gatePass.status === 'active') && (
-                      <div className="pt-4 border-t border-emerald-200">
+                    <div className="pt-4 border-t border-emerald-200 flex flex-wrap items-center gap-2">
+                        {(gatePass.status === 'approved' || gatePass.status === 'active') && (
+                          <Button
+                            onClick={() => handleMarkReturned(gatePass.id)}
+                            className="flex-1 min-w-0 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md"
+                            size="sm"
+                          >
+                            <CheckCircle size={16} className="mr-2" />
+                            Mark Returned
+                          </Button>
+                        )}
                         <Button
-                          onClick={() => handleMarkReturned(gatePass.id)}
-                          className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md"
+                          variant="outline"
                           size="sm"
+                          onClick={() => handleDownloadGatePass(gatePass)}
+                          title="Download gate pass"
                         >
-                          <CheckCircle size={16} className="mr-2" />
-                          Mark Returned
+                          <Download size={14} />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePrintGatePass(gatePass)}
+                          title="Print gate pass"
+                        >
+                          <Printer size={14} />
                         </Button>
                       </div>
-                    )}
                   </motion.div>
                 ))}
               </div>
@@ -937,6 +1012,26 @@ export default function FrontOfficeDashboardPage({
                         <span className="ml-2 font-semibold text-gray-900">{gatePass.approved_by_name}</span>
                       </div>
                     )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownloadGatePass(gatePass)}
+                      title="Download gate pass"
+                    >
+                      <Download size={14} className="mr-1" />
+                      Download
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePrintGatePass(gatePass)}
+                      title="Print gate pass"
+                    >
+                      <Printer size={14} className="mr-1" />
+                      Print
+                    </Button>
                   </div>
                 </motion.div>
               ))}

@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { DoorOpen, Plus, Search, Users, X, Calendar, FileText } from 'lucide-react';
+import { DoorOpen, Plus, Search, Users, X, Calendar, FileText, Download, Printer } from 'lucide-react';
+import { getGatePassPrintHtml, getGatePassSlipHtml, printHtml } from '@/lib/print-utils';
 
 interface GatePass {
   id: string;
@@ -41,6 +42,7 @@ export default function GatePassPage({
   const [totalCount, setTotalCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchStats();
@@ -73,6 +75,112 @@ export default function GatePassPage({
       console.error('Error fetching gate passes:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === gatePasses.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(gatePasses.map((p) => p.id)));
+  };
+
+  const selectedPasses = gatePasses.filter((p) => selectedIds.has(p.id));
+
+  const handlePrintGatePass = (pass: GatePass) => {
+    const html = getGatePassSlipHtml({
+      id: pass.id,
+      person_type: pass.person_type,
+      person_name: pass.person_name,
+      class: pass.class,
+      section: pass.section,
+      pass_type: pass.pass_type,
+      reason: pass.reason,
+      date: pass.date,
+      time_out: pass.time_out,
+      expected_return_time: pass.expected_return_time,
+      approved_by_name: pass.approved_by_name,
+      status: pass.status,
+    });
+    printHtml(html, `Gate Pass - ${pass.person_name}`);
+  };
+
+  const handleDownloadGatePass = async (pass: GatePass) => {
+    try {
+      const res = await fetch(`/api/gate-pass/${pass.id}/download-pdf`);
+      if (!res.ok) throw new Error('Failed to generate PDF');
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition');
+      const match = disposition?.match(/filename="?([^";]+)"?/);
+      const name = (pass.person_name || 'GatePass').replace(/[^a-zA-Z0-9\s.-]/g, '').trim() || 'GatePass';
+      const filename = match ? match[1].trim() : `${name} Gate Pass.pdf`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      console.error('Download PDF error:', err);
+      alert('Failed to download PDF. Please try again.');
+    }
+  };
+
+  const handlePrintSelected = () => {
+    if (selectedPasses.length === 0) return;
+    const html = getGatePassPrintHtml(
+      selectedPasses.map((p) => ({
+        id: p.id,
+        person_type: p.person_type,
+        person_name: p.person_name,
+        class: p.class,
+        section: p.section,
+        pass_type: p.pass_type,
+        reason: p.reason,
+        date: p.date,
+        time_out: p.time_out,
+        expected_return_time: p.expected_return_time,
+        approved_by_name: p.approved_by_name,
+        status: p.status,
+      })),
+      'Gate Passes'
+    );
+    printHtml(html, 'Gate Passes');
+  };
+
+  const handleDownloadSelected = async () => {
+    if (selectedPasses.length === 0) return;
+    const ids = selectedPasses.map((p) => p.id);
+    try {
+      if (ids.length === 1) {
+        const pass = selectedPasses[0];
+        await handleDownloadGatePass(pass);
+        return;
+      }
+      const res = await fetch('/api/gate-pass/download-pdf-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error('Failed to generate ZIP');
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition');
+      const match = disposition?.match(/filename="?([^";]+)"?/);
+      const filename = match ? match[1].trim() : `Gate_Passes_${new Date().toISOString().split('T')[0]}.zip`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      console.error('Download error:', err);
+      alert('Failed to download. Please try again.');
     }
   };
 
@@ -122,8 +230,34 @@ export default function GatePassPage({
         </div>
       </div>
 
-      {/* Create Button */}
-      <div className="flex justify-end">
+      {/* Create Button and Download/Print */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {gatePasses.length > 0 && (
+          <>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadSelected}
+                disabled={selectedIds.size === 0}
+                title="Download selected gate passes"
+              >
+                <Download size={16} className="mr-1" />
+                Download ({selectedIds.size})
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrintSelected}
+                disabled={selectedIds.size === 0}
+                title="Print selected gate passes"
+              >
+                <Printer size={16} className="mr-1" />
+                Print ({selectedIds.size})
+              </Button>
+            </div>
+          </>
+        )}
         <Button
           onClick={() => setShowCreateModal(true)}
           className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E40AF] hover:to-[#2563EB] text-white"
@@ -144,6 +278,14 @@ export default function GatePassPage({
             <table className="w-full">
               <thead className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] text-white">
                 <tr>
+                  <th className="px-2 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={gatePasses.length > 0 && selectedIds.size === gatePasses.length}
+                      onChange={toggleSelectAll}
+                      className="rounded border-gray-300"
+                    />
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Person Name</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Person Type</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Pass Type</th>
@@ -151,21 +293,30 @@ export default function GatePassPage({
                   <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Time Out</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Status</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {gatePasses.map((gatePass) => (
                   <tr key={gatePass.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{gatePass.person_name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 capitalize">{gatePass.person_type}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {gatePass.pass_type ? gatePass.pass_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{gatePass.reason || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {gatePass.date ? new Date(gatePass.date).toLocaleDateString('en-GB') : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{gatePass.time_out || '-'}</td>
+                    <td className="px-2 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(gatePass.id)}
+                        onChange={() => toggleSelect(gatePass.id)}
+                        className="rounded border-gray-300"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{gatePass.person_name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 capitalize">{gatePass.person_type}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {gatePass.pass_type ? gatePass.pass_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{gatePass.reason || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {gatePass.date ? new Date(gatePass.date).toLocaleDateString('en-GB') : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{gatePass.time_out || '-'}</td>
                     <td className="px-4 py-3 text-sm">
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -182,6 +333,26 @@ export default function GatePassPage({
                       >
                         {gatePass.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadGatePass(gatePass)}
+                          className="p-1.5 text-gray-600 hover:bg-gray-100 rounded"
+                          title="Download gate pass"
+                        >
+                          <Download size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePrintGatePass(gatePass)}
+                          className="p-1.5 text-gray-600 hover:bg-gray-100 rounded"
+                          title="Print gate pass"
+                        >
+                          <Printer size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

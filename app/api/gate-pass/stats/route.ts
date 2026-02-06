@@ -20,8 +20,7 @@ export async function GET(request: NextRequest) {
     const { count, error } = await supabase
       .from('gate_passes')
       .select('*', { count: 'exact', head: true })
-      .eq('school_code', schoolCode)
-      .eq('is_active', true);
+      .eq('school_code', schoolCode);
 
     if (error) {
       return NextResponse.json(

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
     const period = searchParams.get('period') || '30';
+    const staffIdsParam = searchParams.get('staff_ids'); // optional comma-separated UUIDs
 
     if (!schoolCode || !startDate || !endDate) {
       return NextResponse.json(
@@ -20,6 +21,10 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const filterStaffIds = staffIdsParam
+      ? staffIdsParam.split(',').map((id) => id.trim()).filter(Boolean)
+      : null;
 
     // Get school information
     const { data: schoolData, error: schoolError } = await supabase
@@ -35,12 +40,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch all staff
-    const { data: staffData, error: staffError } = await supabase
+    // Fetch staff (all or filtered by staff_ids)
+    let staffQuery = supabase
       .from('staff')
       .select('id, staff_id, full_name, role, department')
       .eq('school_code', schoolCode)
       .order('full_name');
+
+    if (filterStaffIds && filterStaffIds.length > 0) {
+      staffQuery = staffQuery.in('id', filterStaffIds);
+    }
+
+    const { data: staffData, error: staffError } = await staffQuery;
 
     if (staffError) {
       return NextResponse.json(
@@ -55,7 +66,8 @@ export async function GET(request: NextRequest) {
       .select('staff_id, attendance_date, status')
       .eq('school_code', schoolCode)
       .gte('attendance_date', startDate)
-      .lte('attendance_date', endDate);
+      .lte('attendance_date', endDate)
+      .order('attendance_date', { ascending: true });
 
     if (attendanceError) {
       return NextResponse.json(
@@ -64,20 +76,42 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Calculate summaries
-    const staffSummaries = (staffData || []).map((staff) => {
-      const staffAttendance = (attendanceData || []).filter(
-        (record) => record.staff_id === staff.id
-      );
+    const staffMap = new Map((staffData || []).map((s) => [s.id, s]));
+    const attendanceList = attendanceData || [];
 
-      const present = staffAttendance.filter((r) => r.status === 'present').length;
-      const absent = staffAttendance.filter((r) => r.status === 'absent').length;
-      const late = staffAttendance.filter((r) => r.status === 'late').length;
-      const halfDay = staffAttendance.filter((r) => r.status === 'half_day').length;
-      const leave = staffAttendance.filter((r) => r.status === 'leave').length;
+    // Detailed rows: one per staff per date (Teacher Name, Date, Status), sorted by date then name
+    const sortedDetailed = [...attendanceList]
+      .sort((a, b) => {
+        if (a.attendance_date !== b.attendance_date) return a.attendance_date.localeCompare(b.attendance_date);
+        const nameA = staffMap.get(a.staff_id)?.full_name || '';
+        const nameB = staffMap.get(b.staff_id)?.full_name || '';
+        return nameA.localeCompare(nameB);
+      })
+      .map((record: { staff_id: string; attendance_date: string; status: string }) => {
+        const staff = staffMap.get(record.staff_id);
+        const dateStr = record.attendance_date?.split('T')[0] || record.attendance_date;
+        const formattedDate = dateStr ? new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+        const statusLabel = (record.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+        return {
+          'Staff ID': staff?.staff_id || '',
+          'Teacher Name': staff?.full_name || '',
+          'Role': staff?.role || '',
+          'Department': staff?.department || '',
+          'Date': formattedDate,
+          'Status': statusLabel,
+        };
+      });
+
+    // Summary per staff (for summary sheet)
+    const staffSummaries = (staffData || []).map((staff) => {
+      const staffAttendance = attendanceList.filter((record: { staff_id: string }) => record.staff_id === staff.id);
+      const present = staffAttendance.filter((r: { status: string }) => r.status === 'present').length;
+      const absent = staffAttendance.filter((r: { status: string }) => r.status === 'absent').length;
+      const late = staffAttendance.filter((r: { status: string }) => r.status === 'late').length;
+      const halfDay = staffAttendance.filter((r: { status: string }) => r.status === 'half_day').length;
+      const leave = staffAttendance.filter((r: { status: string }) => r.status === 'leave').length;
       const totalDays = staffAttendance.length;
       const attendancePercentage = totalDays > 0 ? (present / totalDays) * 100 : 0;
-
       return {
         'Staff ID': staff.staff_id || '',
         'Full Name': staff.full_name || '',
@@ -92,73 +126,54 @@ export async function GET(request: NextRequest) {
         'Attendance %': Math.round(attendancePercentage * 100) / 100,
       };
     });
-
-    // Sort by attendance percentage (descending)
     staffSummaries.sort((a, b) => (b['Attendance %'] as number) - (a['Attendance %'] as number));
 
     // Create workbook
     const wb = XLSX.utils.book_new();
 
-    // Add header information
-    const headerData = [
+    // Sheet 1: Detailed Attendance (teacher name, date, status - one row per day per staff)
+    const detailHeaderRows = [
       [schoolData.school_name || 'School Name'],
-      ['Staff Attendance Marking Report'],
-      [`Period: Last ${period} Days`],
-      [`Report Date: ${new Date().toLocaleDateString()}`],
-      [`Date Range: ${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`],
-      [], // Empty row
+      ['Staff Attendance Report – Detailed (Name, Date, Status)'],
+      [`Date Range: ${new Date(startDate).toLocaleDateString('en-GB')} - ${new Date(endDate).toLocaleDateString('en-GB')}`],
+      [],
+      ['Staff ID', 'Teacher Name', 'Role', 'Department', 'Date', 'Status'],
     ];
-
-    // Add summary row
-    const totalPresent = staffSummaries.reduce((sum, s) => sum + (s['Present'] as number), 0);
-    const totalAbsent = staffSummaries.reduce((sum, s) => sum + (s['Absent'] as number), 0);
-    const avgAttendance = staffSummaries.length > 0
-      ? Math.round(
-          (staffSummaries.reduce((sum, s) => sum + (s['Attendance %'] as number), 0) / staffSummaries.length) * 100
-        ) / 100
-      : 0;
-
-    headerData.push(
-      ['Summary'],
-      [`Total Staff: ${staffSummaries.length}`],
-      [`Total Present Days: ${totalPresent}`],
-      [`Total Absent Days: ${totalAbsent}`],
-      [`Average Attendance: ${avgAttendance}%`],
-      [] // Empty row
-    );
-
-    // Create header sheet
-    const headerWs = XLSX.utils.aoa_to_sheet(headerData);
-    
-    // Set column widths for header
-    headerWs['!cols'] = [{ wch: 50 }];
-    
-    // Merge cells for title
-    if (!headerWs['!merges']) headerWs['!merges'] = [];
-    headerWs['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } });
-    headerWs['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 10 } });
-    
-    XLSX.utils.book_append_sheet(wb, headerWs, 'Report Info');
-
-    // Create main data sheet
-    const ws = XLSX.utils.json_to_sheet(staffSummaries);
-    
-    // Set column widths
-    ws['!cols'] = [
-      { wch: 12 }, // Staff ID
-      { wch: 25 }, // Full Name
-      { wch: 20 }, // Role
-      { wch: 20 }, // Department
-      { wch: 10 }, // Present
-      { wch: 10 }, // Absent
-      { wch: 10 }, // Late
-      { wch: 10 }, // Half Day
-      { wch: 10 }, // Leave
-      { wch: 12 }, // Total Days
-      { wch: 15 }, // Attendance %
+    const detailDataRows = sortedDetailed.map((row) => [
+      row['Staff ID'],
+      row['Teacher Name'],
+      row['Role'],
+      row['Department'],
+      row['Date'],
+      row['Status'],
+    ]);
+    const detailedWs = XLSX.utils.aoa_to_sheet([...detailHeaderRows, ...detailDataRows]);
+    detailedWs['!cols'] = [
+      { wch: 12 },
+      { wch: 28 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 12 },
     ];
+    XLSX.utils.book_append_sheet(wb, detailedWs, 'Detailed Attendance');
 
-    XLSX.utils.book_append_sheet(wb, ws, 'Attendance Report');
+    // Sheet 2: Summary (totals per staff)
+    const summaryWs = XLSX.utils.json_to_sheet(staffSummaries);
+    summaryWs['!cols'] = [
+      { wch: 12 },
+      { wch: 25 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 15 },
+    ];
+    XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
 
     // Generate Excel file buffer
     const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });

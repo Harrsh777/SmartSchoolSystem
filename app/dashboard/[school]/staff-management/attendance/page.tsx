@@ -38,6 +38,7 @@ export default function StaffAttendancePage({
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [showPunch, setShowPunch] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isMarked, setIsMarked] = useState(false);
 
@@ -137,7 +138,8 @@ export default function StaffAttendancePage({
     try {
       // Check if there are any attendance records to save
       if (Object.keys(attendance).length === 0) {
-        alert('Please mark attendance for at least one staff member');
+        setToast({ message: 'Please mark attendance for at least one staff member', type: 'error' });
+        setTimeout(() => setToast(null), 5000);
         setSaving(false);
         return;
       }
@@ -170,18 +172,26 @@ export default function StaffAttendancePage({
       if (response.ok) {
         setIsMarked(true);
         setSaveSuccess(true);
+        setToast({
+          message: `Attendance saved successfully for ${new Date(selectedDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
+          type: 'success',
+        });
         setTimeout(() => setSaveSuccess(false), 3000);
+        setTimeout(() => setToast(null), 5000);
         fetchExistingAttendance();
       } else {
         const errorMessage = result.error || 'Failed to save attendance';
-        const errorDetails = result.details ? `: ${result.details}` : '';
-        console.error('Attendance error response:', result);
-        console.error('Response status:', response.status);
-        alert(`${errorMessage}${errorDetails}`);
+        const errorDetails = result.details ? ` ${result.details}` : '';
+        setToast({ message: `${errorMessage}${errorDetails}`.trim(), type: 'error' });
+        setTimeout(() => setToast(null), 6000);
       }
     } catch (err) {
       console.error('Error saving attendance:', err);
-      alert(`Failed to save attendance: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setToast({
+        message: `Failed to save attendance: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        type: 'error',
+      });
+      setTimeout(() => setToast(null), 6000);
     } finally {
       setSaving(false);
     }
@@ -279,24 +289,37 @@ export default function StaffAttendancePage({
         </Button>
       </motion.div>
 
-      {/* Success Alert */}
+      {/* Fixed toast: always visible on save success/error */}
       <AnimatePresence>
-        {saveSuccess && (
+        {toast && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2 shadow-sm"
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 right-6 z-50 max-w-md rounded-xl shadow-lg border flex items-start gap-3 p-4"
+            style={{
+              backgroundColor: toast.type === 'success' ? '#f0fdf4' : '#fef2f2',
+              borderColor: toast.type === 'success' ? '#bbf7d0' : '#fecaca',
+            }}
           >
-            <CheckCircle size={20} className="text-green-600 flex-shrink-0" />
-            <span className="font-medium">
-              Staff attendance has been marked successfully for {new Date(selectedDate).toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}!
-            </span>
+            {toast.type === 'success' ? (
+              <CheckCircle size={24} className="text-green-600 flex-shrink-0 mt-0.5" />
+            ) : (
+              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-500 flex items-center justify-center text-white text-sm font-bold">!</span>
+            )}
+            <p
+              className={`text-sm font-medium ${toast.type === 'success' ? 'text-green-800' : 'text-red-800'}`}
+            >
+              {toast.message}
+            </p>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="ml-auto text-gray-500 hover:text-gray-700 p-1"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
           </motion.div>
         )}
       </AnimatePresence>

@@ -7,7 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import { ArrowLeft, Plus, Edit, Trash2, Calendar, X } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Calendar, X, Download, Upload } from 'lucide-react';
 
 interface Event {
   id: string;
@@ -32,6 +32,8 @@ export default function EventsPage({
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [classes, setClasses] = useState<string[]>([]);
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     fetchEvents();
@@ -99,6 +101,42 @@ export default function EventsPage({
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
+  const handleDownloadTemplate = () => {
+    window.open('/api/calendar/events/template', '_blank');
+  };
+
+  const handleBulkImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    setImportMessage(null);
+    if (!file) return;
+    const formData = new FormData();
+    formData.set('file', file);
+    formData.set('school_code', schoolCode);
+    setImporting(true);
+    try {
+      const res = await fetch('/api/calendar/events/bulk-import', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await res.json();
+      if (res.ok && result.data) {
+        const { created, errors } = result.data;
+        let msg = result.message || `Imported ${created} event(s).`;
+        if (errors?.length) msg += ` ${errors.length} row(s) skipped (see console).`;
+        setImportMessage({ type: 'success', text: msg });
+        fetchEvents();
+        setTimeout(() => setImportMessage(null), 6000);
+      } else {
+        setImportMessage({ type: 'error', text: result.error || 'Import failed.' });
+      }
+    } catch (err) {
+      setImportMessage({ type: 'error', text: 'Failed to import. Please try again.' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -108,36 +146,54 @@ export default function EventsPage({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 pb-12">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-            <Calendar size={32} />
+          <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1E3A8A] to-[#2F6FED] flex items-center justify-center">
+              <Calendar size={28} className="text-white" />
+            </div>
             Events & Holidays
           </h1>
           <p className="text-gray-600">Manage school events and holidays</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <Button
             onClick={() => {
               setEditingEvent(null);
               setShowAddModal(true);
             }}
-            className="bg-orange-500 hover:bg-orange-600 text-white"
+            className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E40AF] hover:to-[#2563EB] text-white"
           >
             <Plus size={18} className="mr-2" />
             Add Event
           </Button>
           <Button
             variant="outline"
+            onClick={handleDownloadTemplate}
+            className="border-[#1E3A8A] text-[#1E3A8A] hover:bg-blue-50"
+          >
+            <Download size={18} className="mr-2" />
+            Download Template
+          </Button>
+          <label className="cursor-pointer inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-[#1E3A8A] text-[#1E3A8A] hover:bg-blue-50 font-medium text-sm">
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleBulkImportFile}
+              disabled={importing}
+            />
+            <Upload size={18} />
+            {importing ? 'Importing...' : 'Bulk Import'}
+          </label>
+          <Button
+            variant="outline"
             onClick={() => {
               router.push(`/dashboard/${schoolCode}/calendar/academic`);
-              // Small delay to ensure navigation completes before potential refresh
-              setTimeout(() => {
-                // Trigger a page refresh by dispatching a custom event
-                window.dispatchEvent(new Event('calendar-refresh'));
-              }, 100);
+              setTimeout(() => window.dispatchEvent(new Event('calendar-refresh')), 100);
             }}
+            className="border-gray-300 text-gray-700 hover:bg-gray-50"
           >
             <ArrowLeft size={18} className="mr-2" />
             Back to Calendar
@@ -145,10 +201,22 @@ export default function EventsPage({
         </div>
       </div>
 
-      <Card>
+      {importMessage && (
+        <div
+          className={`rounded-lg border px-4 py-3 ${
+            importMessage.type === 'success'
+              ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}
+        >
+          {importMessage.text}
+        </div>
+      )}
+
+      <Card className="overflow-hidden p-0 border border-gray-200 shadow-lg">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-teal-700 text-white">
+            <thead className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] text-white">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold">Title</th>
@@ -180,7 +248,7 @@ export default function EventsPage({
                             setEditingEvent(event);
                             setShowAddModal(true);
                           }}
-                          className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                          className="p-2 text-[#1E3A8A] hover:bg-blue-50 rounded-lg transition-colors"
                           title="Edit"
                         >
                           <Edit size={16} />
@@ -347,7 +415,7 @@ function EventModal({
                 <select
                   value={formData.event_type}
                   onChange={(e) => setFormData(prev => ({ ...prev, event_type: e.target.value as 'event' | 'holiday' }))}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
                   required
                 >
                   <option value="event">Event</option>
@@ -388,7 +456,7 @@ function EventModal({
               <select
                 value={formData.applicable_for}
                 onChange={(e) => setFormData(prev => ({ ...prev, applicable_for: e.target.value as 'all' | 'students' | 'staff', applicable_classes: [] }))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
                 required
               >
                 <option value="all">All (Students & Staff)</option>
@@ -412,7 +480,7 @@ function EventModal({
                         onClick={() => toggleClass(cls)}
                         className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
                           formData.applicable_classes.includes(cls)
-                            ? 'bg-orange-500 text-white'
+                            ? 'bg-[#1E3A8A] text-white'
                             : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                         }`}
                       >
@@ -428,7 +496,7 @@ function EventModal({
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving} className="bg-orange-500 hover:bg-orange-600 text-white">
+              <Button type="submit" disabled={saving} className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E40AF] hover:to-[#2563EB] text-white">
                 {saving ? 'Saving...' : (event ? 'Update' : 'Add Event')}
               </Button>
             </div>
