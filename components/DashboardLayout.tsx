@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState, useEffect, useMemo, useRef } from 'react';
+import { ReactNode, useState, useEffect, useMemo } from 'react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import MenuSkeletonLoader from '@/components/MenuSkeletonLoader';
 import Link from 'next/link';
@@ -645,7 +645,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [notificationsDropdownOpen, setNotificationsDropdownOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [, setSearchQuery] = useState('');
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -1335,15 +1335,6 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     });
   };
 
-  // Search functionality
-  const filteredSearchResults = searchQuery.trim() 
-    ? getSearchableItems().filter(item => 
-        item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (item.parent && item.parent.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : [];
-
   // Close search dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1617,6 +1608,8 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
         return subLabelMatch || subPathMatch;
       });
     });
+    // getSubItems is stable per render; omitting to avoid unnecessary recompute
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortedMenuItems, sidebarSearchQuery, userInfoLoaded]);
 
   // Auto-expand sections that have active sub-items, or when search matches a sub-item

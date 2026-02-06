@@ -37,7 +37,7 @@ export default function StaffAttendancePage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [showPunch, setShowPunch] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [, setSaveSuccess] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isMarked, setIsMarked] = useState(false);

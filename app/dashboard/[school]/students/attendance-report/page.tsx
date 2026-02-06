@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo } from 'react';
+import { use, useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -63,6 +63,31 @@ export default function StudentAttendanceReportPage({
   const [toDate, setToDate] = useState(defaultRange.to);
   const [reportRows, setReportRows] = useState<AttendanceRow[]>([]);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
+
+  const fetchReport = useCallback(async () => {
+    if (!schoolCode || !selectedClass || !selectedSection || !fromDate || !toDate) return;
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        from_date: fromDate,
+        to_date: toDate,
+        class: selectedClass,
+        section: selectedSection,
+      });
+      const res = await fetch(`/api/students/attendance-report?${params}`);
+      const result = await res.json();
+      if (res.ok && result.data) {
+        setReportRows(result.data);
+      } else {
+        setReportRows([]);
+      }
+    } catch {
+      setReportRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [schoolCode, selectedClass, selectedSection, fromDate, toDate]);
   const [downloadFrom, setDownloadFrom] = useState(defaultRange.from);
   const [downloadTo, setDownloadTo] = useState(defaultRange.to);
   const [downloadClass, setDownloadClass] = useState('');
@@ -76,19 +101,7 @@ export default function StudentAttendanceReportPage({
     return Array.from(new Set(classes.filter((c) => c.class === selectedClass).map((c) => c.section))).sort();
   }, [classes, selectedClass]);
 
-  useEffect(() => {
-    fetchClasses();
-  }, [schoolCode]);
-
-  useEffect(() => {
-    if (schoolCode && selectedClass && selectedSection && fromDate && toDate) {
-      fetchReport();
-    } else {
-      setReportRows([]);
-    }
-  }, [schoolCode, selectedClass, selectedSection, fromDate, toDate]);
-
-  const fetchClasses = async () => {
+  const fetchClasses = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`/api/classes?school_code=${schoolCode}`);
@@ -106,32 +119,19 @@ export default function StudentAttendanceReportPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolCode]);
 
-  const fetchReport = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        school_code: schoolCode,
-        from_date: fromDate,
-        to_date: toDate,
-        class: selectedClass,
-        section: selectedSection,
-      });
-      const res = await fetch(`/api/students/attendance-report?${params}`);
-      const result = await res.json();
-      if (res.ok && result.data) {
-        setReportRows(result.data);
-      } else {
-        setReportRows([]);
-      }
-    } catch (err) {
-      console.error('Error fetching report:', err);
+  useEffect(() => {
+    fetchClasses();
+  }, [fetchClasses]);
+
+  useEffect(() => {
+    if (schoolCode && selectedClass && selectedSection && fromDate && toDate) {
+      fetchReport();
+    } else {
       setReportRows([]);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [schoolCode, selectedClass, selectedSection, fromDate, toDate, fetchReport]);
 
   const summaryByStudent = useMemo((): StudentSummary[] => {
     const byStudent = new Map<string, { name: string; admission_no: string; class: string; section: string; present: number; absent: number; other: number }>();
@@ -219,7 +219,7 @@ export default function StudentAttendanceReportPage({
       a.click();
       URL.revokeObjectURL(a.href);
       setShowDownloadModal(false);
-    } catch (err) {
+    } catch {
       setDownloadError('Failed to download. Please try again.');
     } finally {
       setDownloading(false);

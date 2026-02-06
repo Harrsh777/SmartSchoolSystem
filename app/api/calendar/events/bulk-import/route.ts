@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { header: 1, defval: '' }) as unknown[][];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { header: 1, defval: '' }) as unknown as unknown[][];
     if (!rows.length) {
       return NextResponse.json(
         { error: 'Excel file is empty' },

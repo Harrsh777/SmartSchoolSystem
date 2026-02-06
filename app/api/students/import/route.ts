@@ -189,7 +189,12 @@ export async function POST(request: NextRequest) {
     // Insert in batches and generate passwords (strip _importRow before insert)
     for (let i = 0; i < studentsToInsert.length; i += BATCH_SIZE) {
       const batch = studentsToInsert.slice(i, i + BATCH_SIZE);
-      const batchForDb = batch.map(({ _importRow: _r, ...s }) => s) as Record<string, unknown>[];
+      // Strip _importRow before insert (omit from payload)
+      const batchForDb = batch.map((s) => {
+        const { _importRow, ...rest } = s as Record<string, unknown> & { _importRow?: number };
+        void _importRow; // intentionally omitted from insert
+        return rest;
+      }) as Record<string, unknown>[];
 
       const { error: insertError, data: insertedStudents } = await supabase
         .from('students')

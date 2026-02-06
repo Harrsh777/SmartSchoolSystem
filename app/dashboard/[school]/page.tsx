@@ -234,7 +234,7 @@ export default function DashboardPage({
   const [loadingCalendar, setLoadingCalendar] = useState(false);
   const [classesCount, setClassesCount] = useState(0);
   const [sectionsCount, setSectionsCount] = useState(0);
-  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [, setLoadingClasses] = useState(false);
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);

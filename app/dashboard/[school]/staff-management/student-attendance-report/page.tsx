@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo } from 'react';
+import { use, useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -80,17 +80,7 @@ export default function StudentAttendanceReportPage({
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
-  useEffect(() => {
-    fetchStaff();
-  }, [schoolCode]);
-
-  useEffect(() => {
-    if (schoolCode && dateFrom && dateTo) {
-      fetchAttendance();
-    }
-  }, [schoolCode, dateFrom, dateTo]);
-
-  const fetchStaff = async () => {
+  const fetchStaff = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`/api/staff?school_code=${schoolCode}`);
@@ -103,9 +93,9 @@ export default function StudentAttendanceReportPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [schoolCode]);
 
-  const fetchAttendance = async () => {
+  const fetchAttendance = useCallback(async () => {
     try {
       const res = await fetch(
         `/api/attendance/staff?school_code=${schoolCode}&start_date=${dateFrom}&end_date=${dateTo}`
@@ -120,7 +110,17 @@ export default function StudentAttendanceReportPage({
       console.error('Error fetching attendance:', err);
       setAttendance([]);
     }
-  };
+  }, [schoolCode, dateFrom, dateTo]);
+
+  useEffect(() => {
+    fetchStaff();
+  }, [fetchStaff]);
+
+  useEffect(() => {
+    if (schoolCode && dateFrom && dateTo) {
+      fetchAttendance();
+    }
+  }, [schoolCode, dateFrom, dateTo, fetchAttendance]);
 
   // Compute stats per staff: only marked attendance (present, absent, late, half_day, leave, holiday)
   const staffStats: StaffStats[] = useMemo(() => {

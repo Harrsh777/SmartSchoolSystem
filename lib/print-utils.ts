@@ -198,6 +198,7 @@ export function printHtml(html: string, title?: string): void {
   }
   w.document.write(html);
   w.document.close();
+  if (title) w.document.title = title;
   w.focus();
   setTimeout(() => {
     w.print();

@@ -130,7 +130,7 @@ export default function EventsPage({
       } else {
         setImportMessage({ type: 'error', text: result.error || 'Import failed.' });
       }
-    } catch (err) {
+    } catch {
       setImportMessage({ type: 'error', text: 'Failed to import. Please try again.' });
     } finally {
       setImporting(false);

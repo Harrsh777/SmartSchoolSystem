@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = getServiceRoleClient();
 
-    let query = supabase
+    const query = supabase
       .from('student_attendance')
       .select(`
         id,

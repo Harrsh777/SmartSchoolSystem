@@ -39,7 +39,7 @@ export async function GET(
     const pdfBytes = await generateGatePassPdf(pass);
     const filename = getGatePassPdfFilename(pass.person_name || 'GatePass');
 
-    return new NextResponse(pdfBytes, {
+    return new NextResponse(pdfBytes as unknown as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
