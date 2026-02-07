@@ -265,17 +265,7 @@ export default function DigitalDiaryPage({
               <Plus size={18} className="mr-2" />
               Other
             </Button>
-            <Button
-              onClick={() => {
-                setDiaryType('NOTICE');
-                setEditingDiary(null);
-                setShowModal(true);
-              }}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white"
-            >
-              <Plus size={18} className="mr-2" />
-              Notice
-            </Button>
+           
           </div>
         </div>
       </Card>

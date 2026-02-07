@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input';
 import { DoorOpen, Plus, Search, Users, X, Calendar, FileText, Download, Printer } from 'lucide-react';
 import { getGatePassPrintHtml, getGatePassSlipHtml, printHtml } from '@/lib/print-utils';
 
+
 interface GatePass {
   id: string;
   person_type: 'student' | 'staff';
@@ -148,8 +149,7 @@ export default function GatePassPage({
         expected_return_time: p.expected_return_time,
         approved_by_name: p.approved_by_name,
         status: p.status,
-      })),
-      'Gate Passes'
+      }))
     );
     printHtml(html, 'Gate Passes');
   };

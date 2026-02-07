@@ -46,7 +46,8 @@ import {
   Receipt,
   CreditCard,
   ArrowLeft,
-  Download
+  Download,
+  CalendarRange
 } from 'lucide-react';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { languages } from '@/lib/translations';
@@ -87,6 +88,7 @@ const menuItems = [
   { icon: Home, label: 'Home', path: '', permission: null, viewPermission: null }, // Always visible
   { icon: Building2, label: 'Institute Info', path: '/institute-info', permission: null, viewPermission: null }, // Always visible
   { icon: Shield, label: 'Admin Role Management', path: '/settings/roles', permission: null, viewPermission: null }, // Admin only - handled separately
+  { icon: CalendarRange, label: 'Academic Year Management', path: '/academic-year-management', permission: null, viewPermission: null }, // Admin only
   { icon: Key, label: 'Password Manager', path: '/password', permission: 'manage_passwords', viewPermission: 'manage_passwords' },
   { icon: UserCheck, label: 'Staff Management', path: '/staff-management', permission: 'manage_staff', viewPermission: 'view_staff' },
   { icon: BookOpen, label: 'Classes', path: '/classes', isModal: true, permission: 'manage_classes', viewPermission: 'view_classes' },
@@ -1180,6 +1182,11 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Basic Institute Info', path: '/institute-info', category: 'Management', icon: Building2, parent: 'Institute Info' },
     
     { label: 'Role Management', path: '/settings/roles', category: 'Management', icon: Shield },
+    { label: 'Academic Year Management', path: '/academic-year-management', category: 'Management', icon: CalendarRange },
+    { label: 'Year Setup', path: '/academic-year-management/year-setup', category: 'Management', icon: CalendarRange, parent: 'Academic Year Management' },
+    { label: 'Promotion Engine', path: '/academic-year-management/promotion-engine', category: 'Management', icon: CalendarRange, parent: 'Academic Year Management' },
+    { label: 'Year Closure', path: '/academic-year-management/year-closure', category: 'Management', icon: CalendarRange, parent: 'Academic Year Management' },
+    { label: 'Audit Logs', path: '/academic-year-management/audit-logs', category: 'Management', icon: CalendarRange, parent: 'Academic Year Management' },
     { label: 'Password Manager', path: '/password', category: 'Management', icon: Key },
     
     // Staff Management
@@ -1323,8 +1330,8 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
       
       // Always show items without permission requirement
       if (mainMenuItem.permission === null) {
-        // Role Management is only for admin/principal
-        if (item.path === '/settings/roles') {
+        // Role Management and Academic Year Management are only for admin/principal
+        if (item.path === '/settings/roles' || item.path === '/academic-year-management') {
           return isAdmin;
         }
         return true;

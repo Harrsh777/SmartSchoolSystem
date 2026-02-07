@@ -240,6 +240,7 @@ export default function DashboardPage({
   const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);
 
   useEffect(() => {
+    if (!schoolCode) return;
     fetchSchoolData();
     fetchDashboardStats();
     fetchDetailedStats();
@@ -336,11 +337,9 @@ export default function DashboardPage({
 
   // Refetch financial data when period changes
   useEffect(() => {
-    if (schoolCode) {
-      fetchFinancialData();
-    }
+    if (schoolCode) fetchFinancialData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feePeriod]);
+  }, [feePeriod, schoolCode]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -424,17 +423,21 @@ export default function DashboardPage({
   };
 
   const fetchFinancialData = async () => {
+    if (!schoolCode) return;
     try {
       setLoadingFinancial(true);
       const params = new URLSearchParams({ school_code: schoolCode, period: feePeriod });
       if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
       const response = await fetch(`/api/dashboard/financial-overview?${params}`);
-      const result = await response.json();
+      const result = response.ok ? await response.json().catch(() => ({})) : {};
       if (response.ok && result.data) {
         setFinancialData(result.data);
+      } else {
+        setFinancialData(null);
       }
     } catch (err) {
       console.error('Error fetching financial data:', err);
+      setFinancialData(null);
     } finally {
       setLoadingFinancial(false);
     }
