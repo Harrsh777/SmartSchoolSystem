@@ -9,8 +9,6 @@ import Input from '@/components/ui/Input';
 import { 
   Search, 
   Download, 
-  Filter, 
-  Settings, 
   Edit, 
   User,
   Mail,
@@ -39,7 +37,7 @@ export default function StudentDirectoryPage({
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
 
   // Helper to safely get string value
   const getString = (value: unknown): string => {
@@ -51,11 +49,11 @@ export default function StudentDirectoryPage({
       const response = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
       if (response.ok) {
         const result = await response.json();
-        const years = result.academicYears || [];
-        setAcademicYears(years);
-        // Set current year as default if available
+        const years = result.data || result.academicYears || [];
+        setAcademicYears(Array.isArray(years) ? years : []);
+        // Set current year as default if available (only on initial load)
         const currentYear = new Date().getFullYear();
-        const defaultYear = years.find((y: string) => y.includes(String(currentYear))) || years[0] || '';
+        const defaultYear = (Array.isArray(years) ? years : []).find((y: string) => String(y).includes(String(currentYear))) || (Array.isArray(years) ? years[0] : '');
         if (!academicYear && defaultYear) {
           setAcademicYear(defaultYear);
         }
@@ -147,33 +145,32 @@ export default function StudentDirectoryPage({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-200 border-t-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 text-lg font-medium">Loading students...</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-200 border-t-blue-800 mx-auto mb-3"></div>
+          <p className="text-gray-600 text-sm font-medium">Loading students...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      {/* Header - compact */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
+          <h1 className="text-xl font-bold text-blue-900 mb-0.5">
             Student Directory
           </h1>
-          <p className="text-gray-600 text-lg">Manage and view all students in your school</p>
+          <p className="text-gray-600 text-sm">Manage and view all students in your school</p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Academic Year Filter Button */}
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
-            <Calendar size={18} className="text-indigo-600" />
+            <Calendar size={16} className="text-blue-800" />
             <select
               value={academicYear}
               onChange={(e) => setAcademicYear(e.target.value)}
-              className="px-4 py-2 border border-indigo-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-indigo-600 font-medium"
+              className="px-3 py-1.5 text-sm border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white text-blue-800 font-medium"
             >
               <option value="">All Years</option>
               {academicYears.map(year => (
@@ -183,32 +180,33 @@ export default function StudentDirectoryPage({
           </div>
           <Button
             variant="outline"
+            size="sm"
             onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-            className="border-indigo-300 text-indigo-600 hover:bg-indigo-50"
+            className="border-blue-200 text-blue-800 hover:bg-blue-50 text-sm"
           >
             {viewMode === 'grid' ? 'List View' : 'Grid View'}
           </Button>
-          <Button className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg">
-            <Download size={18} className="mr-2" />
+          <Button size="sm" className="bg-blue-800 hover:bg-blue-900 text-white">
+            <Download size={16} className="mr-1.5" />
             Export
           </Button>
         </div>
       </div>
 
       {/* Status Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {statusTabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setSelectedStatus(tab.id)}
-            className={`px-6 py-3 rounded-xl font-semibold text-sm whitespace-nowrap transition-all duration-200 ${
+            className={`px-4 py-2 rounded-lg font-semibold text-xs whitespace-nowrap transition-all ${
               selectedStatus === tab.id
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg scale-105'
+                ? 'bg-blue-800 text-white shadow'
                 : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
             }`}
           >
             {tab.label}
-            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+            <span className={`ml-1.5 px-1.5 py-0.5 rounded text-xs ${
               selectedStatus === tab.id ? 'bg-white/20' : 'bg-gray-100'
             }`}>
               {tab.count}
@@ -218,17 +216,17 @@ export default function StudentDirectoryPage({
       </div>
 
       {/* Filters */}
-      <Card className="p-6 bg-gradient-to-br from-white to-indigo-50/30 border-indigo-100">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <Card className="p-4 bg-white border-blue-100">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Class</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Class</label>
             <select
               value={selectedClass}
               onChange={(e) => {
                 setSelectedClass(e.target.value);
                 setSelectedSection('');
               }}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white"
             >
               <option value="">All Classes</option>
               {uniqueClasses.map(cls => (
@@ -238,11 +236,11 @@ export default function StudentDirectoryPage({
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Section</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Section</label>
             <select
               value={selectedSection}
               onChange={(e) => setSelectedSection(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white disabled:bg-gray-100"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white disabled:bg-gray-100"
               disabled={!selectedClass}
             >
               <option value="">All Sections</option>
@@ -253,34 +251,24 @@ export default function StudentDirectoryPage({
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Search</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Search</label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <Input
                 type="text"
                 placeholder="Name, admission ID, email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 py-2.5 rounded-xl border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                className="pl-9 pr-3 py-2 text-sm rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-700"
               />
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+        <div className="pt-3 border-t border-gray-200">
           <p className="text-sm text-gray-600">
-            Showing <span className="font-semibold text-indigo-600">{filteredStudents.length}</span> students
+            Showing <span className="font-semibold text-blue-800">{filteredStudents.length}</span> students
           </p>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="text-indigo-600 border-indigo-300 hover:bg-indigo-50">
-              <Filter size={16} className="mr-2" />
-              More Filters
-            </Button>
-            <Button variant="outline" className="text-indigo-600 border-indigo-300 hover:bg-indigo-50">
-              <Settings size={16} className="mr-2" />
-              Settings
-            </Button>
-          </div>
         </div>
       </Card>
 
@@ -295,47 +283,47 @@ export default function StudentDirectoryPage({
               transition={{ delay: index * 0.05 }}
             >
               <Card 
-                className="p-6 hover:shadow-xl transition-all duration-300 cursor-pointer border-2 border-transparent hover:border-indigo-300 group bg-gradient-to-br from-white to-indigo-50/20"
+                className="p-6 hover:shadow-xl transition-all duration-300 cursor-pointer border-2 border-transparent hover:border-blue-200 group bg-gradient-to-br from-white to-blue-50/20"
                 onClick={() => handleStudentClick(student.id!)}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold shadow-lg">
+                    <div className="w-16 h-16 rounded-full bg-blue-800 flex items-center justify-center text-white text-xl font-bold shadow-lg">
                       {(() => {
                         const name = getString(student.student_name);
                         return name ? name.charAt(0).toUpperCase() : '?';
                       })()}
                     </div>
                     <div>
-                      <h3 className="font-bold text-lg text-gray-900 group-hover:text-indigo-600 transition-colors">
+                      <h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-800 transition-colors">
                         {getString(student.student_name) || 'N/A'}
                       </h3>
                       <p className="text-sm text-gray-500">#{getString(student.admission_no) || 'N/A'}</p>
                     </div>
                   </div>
-                  <ChevronRight className="text-gray-400 group-hover:text-indigo-600 transition-colors" size={20} />
+                  <ChevronRight className="text-gray-400 group-hover:text-blue-800 transition-colors" size={20} />
                 </div>
 
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <GraduationCap size={16} className="text-indigo-500" />
+                    <GraduationCap size={16} className="text-blue-700" />
                     <span>Class {getString(student.class) || 'N/A'} - {getString(student.section) || 'N/A'}</span>
                   </div>
                   {!!student.roll_number && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <User size={16} className="text-indigo-500" />
+                      <User size={16} className="text-blue-700" />
                       <span>Roll: {getString(student.roll_number)}</span>
                     </div>
                   )}
                   {!!student.email && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Mail size={16} className="text-indigo-500" />
+                      <Mail size={16} className="text-blue-700" />
                       <span className="truncate">{getString(student.email)}</span>
                     </div>
                   )}
                   {(!!student.father_contact || !!student.mother_contact) && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Phone size={16} className="text-indigo-500" />
+                      <Phone size={16} className="text-blue-700" />
                       <span>{getString(student.father_contact) || getString(student.mother_contact)}</span>
                     </div>
                   )}
@@ -362,7 +350,7 @@ export default function StudentDirectoryPage({
                       e.stopPropagation();
                       handleStudentClick(student.id!);
                     }}
-                    className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium flex items-center gap-1"
+                    className="px-4 py-1.5 bg-blue-800 text-white rounded-lg hover:bg-blue-900 transition-colors text-sm font-medium flex items-center gap-1"
                   >
                     <Eye size={14} />
                     View
@@ -373,17 +361,17 @@ export default function StudentDirectoryPage({
           ))}
         </div>
       ) : (
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden border-blue-100">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+              <thead className="bg-blue-800 text-white">
                 <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Student</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Admission ID</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Class</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Contact</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Status</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Student</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Admission ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Class</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Contact</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -391,12 +379,12 @@ export default function StudentDirectoryPage({
                   filteredStudents.map((student) => (
                     <tr 
                       key={student.id} 
-                      className="hover:bg-indigo-50/50 transition-colors cursor-pointer"
+                      className="hover:bg-blue-50/50 transition-colors cursor-pointer"
                       onClick={() => handleStudentClick(student.id!)}
                     >
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                          <div className="w-10 h-10 rounded-full bg-blue-800 flex items-center justify-center text-white text-sm font-bold">
                             {(() => {
                               const name = getString(student.student_name);
                               return name ? name.charAt(0).toUpperCase() : '?';
@@ -405,7 +393,7 @@ export default function StudentDirectoryPage({
                           <div>
                             <div className="font-semibold text-gray-900">{getString(student.student_name) || 'N/A'}</div>
                             {!!student.email && (
-                              <div className="text-sm text-gray-500 flex items-center gap-1">
+                              <div className="text-xs text-gray-500 flex items-center gap-1">
                                 <Mail size={12} />
                                 {getString(student.email)}
                               </div>
@@ -413,9 +401,9 @@ export default function StudentDirectoryPage({
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-gray-700 font-medium">{getString(student.admission_no) || 'N/A'}</td>
-                      <td className="px-6 py-4">
-                        <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">
+                      <td className="px-4 py-3 text-sm text-gray-700 font-medium">{getString(student.admission_no) || 'N/A'}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-sm font-medium">
                           {(() => {
                             const className = getString(student.class) || 'N/A';
                             const section = getString(student.section) || 'N/A';
@@ -423,17 +411,15 @@ export default function StudentDirectoryPage({
                           })()}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-600">
-                          {(() => {
-                            const fatherContact = getString(student.father_contact);
-                            const motherContact = getString(student.mother_contact);
-                            return fatherContact || motherContact || 'N/A';
-                          })()}
-                        </div>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {(() => {
+                          const fatherContact = getString(student.father_contact);
+                          const motherContact = getString(student.mother_contact);
+                          return fatherContact || motherContact || 'N/A';
+                        })()}
                       </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
                           (() => {
                             const status = getString(student.status);
                             return status === 'active' 
@@ -449,27 +435,27 @@ export default function StudentDirectoryPage({
                           })()}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleStudentClick(student.id!);
                             }}
-                            className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"
+                            className="p-1.5 text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
                             title="View Details"
                           >
-                            <Eye size={18} />
+                            <Eye size={16} />
                           </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               router.push(`/dashboard/${schoolCode}/students/edit/${student.id}`);
                             }}
-                            className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"
+                            className="p-1.5 text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
                             title="Edit"
                           >
-                            <Edit size={18} />
+                            <Edit size={16} />
                           </button>
                         </div>
                       </td>
@@ -477,7 +463,7 @@ export default function StudentDirectoryPage({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
+                    <td colSpan={6} className="px-6 py-8 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <User className="text-gray-400" size={48} />
                         <p className="text-gray-600 font-medium">No students found</p>

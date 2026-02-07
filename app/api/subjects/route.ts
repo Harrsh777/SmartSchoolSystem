@@ -15,10 +15,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch all subjects for the school
-    // Schema: id, name, color, school_id, school_code, created_at, updated_at
+    // Schema: id, name, color, category (optional), school_id, school_code, created_at, updated_at
     const { data: subjects, error } = await supabase
       .from('subjects')
-      .select('id, name, color, school_id, school_code, created_at, updated_at')
+      .select('id, name, color, category, school_id, school_code, created_at, updated_at')
       .eq('school_code', schoolCode)
       .order('name', { ascending: true });
 
@@ -48,7 +48,8 @@ export async function POST(request: NextRequest) {
     const { 
       school_code, 
       name, 
-      color
+      color,
+      category,
     } = body;
 
     if (!school_code || !name) {
@@ -57,6 +58,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const validCategory = category === 'scholastic' || category === 'non_scholastic' ? category : null;
 
     // Get school ID
     const { data: schoolData, error: schoolError } = await supabase
@@ -72,7 +75,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Schema only supports: id, name, color, school_id, school_code, created_at, updated_at
+    // Schema: id, name, color, category (optional), school_id, school_code, created_at, updated_at
     const { data: subject, error: insertError } = await supabase
       .from('subjects')
       .insert([{
@@ -80,6 +83,7 @@ export async function POST(request: NextRequest) {
         school_code: school_code,
         name: name.trim(),
         color: color || '#6366f1',
+        ...(validCategory != null && { category: validCategory }),
       }])
       .select()
       .single();

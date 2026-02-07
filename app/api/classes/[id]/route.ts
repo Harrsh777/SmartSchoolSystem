@@ -157,17 +157,34 @@ export async function DELETE(
       );
     }
 
-    // Check if class has students (count not used but kept for future use)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // Get class details to match students by class, section, academic_year
+    const { data: classRow, error: classError } = await supabase
+      .from('classes')
+      .select('class, section, academic_year')
+      .eq('id', id)
+      .eq('school_code', schoolCode)
+      .single();
+
+    if (classError || !classRow) {
+      return NextResponse.json(
+        { error: 'Class not found' },
+        { status: 404 }
+      );
+    }
+
     const { count: studentCount } = await supabase
       .from('students')
       .select('*', { count: 'exact', head: true })
       .eq('school_code', schoolCode)
-      .not('class', 'is', null)
-      .not('section', 'is', null);
+      .eq('class', classRow.class)
+      .eq('section', classRow.section ?? '');
 
-    // For now, we'll allow deletion if no students exist
-    // You can add more checks here
+    if (studentCount && studentCount > 0) {
+      return NextResponse.json(
+        { error: 'Delete all students from this class first, then you can delete this class.' },
+        { status: 400 }
+      );
+    }
 
     // Delete class
     const { error: deleteError } = await supabase

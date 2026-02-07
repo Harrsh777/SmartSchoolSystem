@@ -13,7 +13,8 @@ export async function PUT(
     const body = await request.json();
     const { 
       name, 
-      color
+      color,
+      category,
     } = body;
 
     if (!schoolCode) {
@@ -30,11 +31,14 @@ export async function PUT(
       );
     }
 
-    // Schema only supports: id, name, color, school_id, school_code, created_at, updated_at
+    const validCategory = category === 'scholastic' || category === 'non_scholastic' ? category : category === '' || category === null ? null : undefined;
+
+    // Schema: id, name, color, category (optional), school_id, school_code, created_at, updated_at
     interface SubjectUpdateData {
       name: string;
       updated_at: string;
       color?: string;
+      category?: string | null;
     }
 
     const updateData: SubjectUpdateData = {
@@ -43,6 +47,7 @@ export async function PUT(
     };
 
     if (color !== undefined) updateData.color = color;
+    if (validCategory !== undefined) updateData.category = validCategory;
 
     const { data: subject, error: updateError } = await supabase
       .from('subjects')

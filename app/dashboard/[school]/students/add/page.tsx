@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
@@ -8,7 +8,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import { ArrowLeft, Camera, Upload, X } from 'lucide-react';
+import { ArrowLeft, Camera, Upload, X, Video } from 'lucide-react';
 
 interface FormErrors {
   [key: string]: string;
@@ -29,6 +29,10 @@ export default function AddStudentPage({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [, setCreatedStudentId] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [formData, setFormData] = useState({
     // Required fields
     admission_no: '',
@@ -36,22 +40,21 @@ export default function AddStudentPage({
     class: '',
     section: '',
     academic_year: '',
-    
     // Personal Details
     first_name: '',
+    middle_name: '',
     last_name: '',
     date_of_birth: '',
     gender: '',
     blood_group: '',
     email: '',
     student_contact: '',
-    
     // Address
     address: '',
     city: '',
     state: '',
     pincode: '',
-    
+    landmark: '',
     // Academic
     roll_number: '',
     date_of_admission: '',
@@ -61,25 +64,31 @@ export default function AddStudentPage({
     last_school_result: '',
     medium: '',
     schooling_type: '',
-    
     // Identification
     aadhaar_number: '',
     rfid: '',
     pen_no: '',
     apaar_no: '',
     sr_no: '',
-    
-    // Parent/Guardian
-    parent_name: '',
-    parent_phone: '',
-    father_name: '',
+    // Parent/Guardian - Father (First, Middle, Last)
+    father_first_name: '',
+    father_middle_name: '',
+    father_last_name: '',
     father_occupation: '',
     father_contact: '',
-    mother_name: '',
+    // Mother (First, Middle, Last)
+    mother_first_name: '',
+    mother_middle_name: '',
+    mother_last_name: '',
     mother_occupation: '',
     mother_contact: '',
+    // Guardian (First, Middle, Last)
+    guardian_first_name: '',
+    guardian_middle_name: '',
+    guardian_last_name: '',
+    parent_name: '',
+    parent_phone: '',
     staff_relation: '',
-    
     // Other
     religion: '',
     category: '',
@@ -89,6 +98,17 @@ export default function AddStudentPage({
     rte: false,
     new_admission: true,
   });
+
+  const ageAsOfToday = useMemo(() => {
+    if (!formData.date_of_birth) return null;
+    const dob = new Date(formData.date_of_birth);
+    const today = new Date();
+    if (dob > today) return null;
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+    return age;
+  }, [formData.date_of_birth]);
 
   useEffect(() => {
     const fetchClasses = async () => {
@@ -115,8 +135,9 @@ export default function AddStudentPage({
     if (!formData.admission_no.trim()) {
       newErrors.admission_no = 'Admission number is required';
     }
-    if (!formData.student_name.trim()) {
-      newErrors.student_name = 'Student name is required';
+    const fullNameFromParts = [formData.first_name, formData.middle_name, formData.last_name].filter(Boolean).join(' ').trim();
+    if (!formData.student_name.trim() && !fullNameFromParts) {
+      newErrors.student_name = 'Student name or First/Middle/Last name is required';
     }
     if (!formData.class.trim()) {
       newErrors.class = 'Class is required';
@@ -208,17 +229,23 @@ export default function AddStudentPage({
       const cleanAadhaar = (aadhaar: string) => aadhaar ? aadhaar.replace(/\D/g, '') : '';
       const cleanPincode = (pincode: string) => pincode ? pincode.replace(/\D/g, '') : '';
 
+      const fullName = [formData.first_name, formData.middle_name, formData.last_name].filter(Boolean).join(' ').trim();
+      const fatherName = [formData.father_first_name, formData.father_middle_name, formData.father_last_name].filter(Boolean).join(' ').trim();
+      const motherName = [formData.mother_first_name, formData.mother_middle_name, formData.mother_last_name].filter(Boolean).join(' ').trim();
+      const guardianName = [formData.guardian_first_name, formData.guardian_middle_name, formData.guardian_last_name].filter(Boolean).join(' ').trim();
+
       const response = await fetch('/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
           admission_no: formData.admission_no.trim(),
-          student_name: formData.student_name.trim(),
-    class: formData.class.trim(),
-    section: formData.section.trim(),
-    academic_year: formData.academic_year || new Date().getFullYear().toString(),
+          student_name: formData.student_name.trim() || fullName || formData.admission_no,
+          class: formData.class.trim(),
+          section: formData.section.trim(),
+          academic_year: formData.academic_year || new Date().getFullYear().toString(),
           first_name: formData.first_name.trim() || null,
+          middle_name: formData.middle_name.trim() || null,
           last_name: formData.last_name.trim() || null,
           date_of_birth: formData.date_of_birth || null,
           gender: formData.gender || null,
@@ -229,6 +256,7 @@ export default function AddStudentPage({
           city: formData.city.trim() || null,
           state: formData.state.trim() || null,
           pincode: cleanPincode(formData.pincode) || null,
+          landmark: formData.landmark.trim() || null,
           roll_number: formData.roll_number.trim() || null,
           date_of_admission: formData.date_of_admission || null,
           last_class: formData.last_class.trim() || null,
@@ -242,12 +270,12 @@ export default function AddStudentPage({
           pen_no: formData.pen_no.trim() || null,
           apaar_no: formData.apaar_no.trim() || null,
           sr_no: formData.sr_no.trim() || null,
-          parent_name: formData.parent_name.trim() || null,
+          parent_name: guardianName || formData.parent_name.trim() || null,
           parent_phone: cleanPhone(formData.parent_phone) || null,
-          father_name: formData.father_name.trim() || null,
+          father_name: fatherName || null,
           father_occupation: formData.father_occupation.trim() || null,
           father_contact: cleanPhone(formData.father_contact) || null,
-          mother_name: formData.mother_name.trim() || null,
+          mother_name: motherName || null,
           mother_occupation: formData.mother_occupation.trim() || null,
           mother_contact: cleanPhone(formData.mother_contact) || null,
           staff_relation: formData.staff_relation.trim() || null,
@@ -300,17 +328,34 @@ export default function AddStudentPage({
     }
   };
 
-  const handleClassSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const classId = e.target.value;
-    const selected = classes.find((c) => c.id === classId);
-    if (selected) {
-      setFormData(prev => ({
-        ...prev,
-        class: selected.class,
-        section: selected.section,
-        academic_year: selected.academic_year || prev.academic_year,
-      }));
-    }
+  const uniqueClassNames = useMemo(
+    () => Array.from(new Set(classes.map((c) => c.class).filter(Boolean))).sort(),
+    [classes]
+  );
+  const sectionsForSelectedClass = useMemo(
+    () =>
+      formData.class
+        ? Array.from(
+            new Set(
+              classes.filter((c) => c.class === formData.class).map((c) => c.section).filter((s) => s != null)
+            )
+          ).sort()
+        : [],
+    [classes, formData.class]
+  );
+
+  const handleClassChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setFormData(prev => ({ ...prev, class: value, section: '', academic_year: '' }));
+  };
+  const handleSectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const section = e.target.value;
+    const match = classes.find((c) => c.class === formData.class && c.section === section);
+    setFormData(prev => ({
+      ...prev,
+      section,
+      academic_year: match?.academic_year || prev.academic_year,
+    }));
   };
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -392,32 +437,86 @@ export default function AddStudentPage({
     }
   };
 
+  // Camera: start/stop stream when modal opens/closes
+  useEffect(() => {
+    if (!showCamera) return;
+    let stream: MediaStream | null = null;
+    const startCamera = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        console.error('Camera error:', err);
+        alert('Could not access camera. Please allow camera permission.');
+        setShowCamera(false);
+      }
+    };
+    startCamera();
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+      streamRef.current = null;
+    };
+  }, [showCamera]);
+
+  const handleCapturePhoto = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !streamRef.current) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        setPhotoFile(file);
+        setPhotoPreview(URL.createObjectURL(blob));
+        setShowCamera(false);
+      },
+      'image/jpeg',
+      0.92
+    );
+  };
+
+  const closeCamera = () => {
+    setShowCamera(false);
+  };
+
   return (
-    <div className="space-y-8 pb-8">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-4">
+    <div className="flex flex-col min-h-[calc(100vh-2rem)]">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between flex-shrink-0 py-2">
+        <div className="flex items-center gap-3">
           <Button
             variant="outline"
+            size="sm"
             onClick={() => router.push(`/dashboard/${schoolCode}/students`)}
           >
-            <ArrowLeft size={18} className="mr-2" />
+            <ArrowLeft size={18} className="mr-1" />
             Back
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Add Student</h1>
-            <p className="text-gray-600">Add a new student to your school</p>
+            <h1 className="text-xl font-bold text-black">Add Student</h1>
+            <p className="text-sm text-gray-600">Add a new student to your school</p>
           </div>
         </div>
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
+        className="flex-1 min-h-0 flex flex-col"
       >
-        <Card className="flex flex-col overflow-hidden" style={{ maxHeight: 'calc(100vh - 160px)' }}>
-          <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <div className="flex-1 overflow-y-auto overflow-x-hidden pr-2 space-y-8 pb-4" style={{ maxHeight: 'calc(100vh - 260px)' }}>
+        <Card className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden pr-2 space-y-6 py-2">
             {/* Profile Photo Section */}
             <div>
               <h2 className="text-xl font-bold text-black mb-4 pb-2 border-b border-gray-200">
@@ -461,18 +560,55 @@ export default function AddStudentPage({
                     <Button
                       type="button"
                       variant="outline"
-                      className="cursor-pointer border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
+                      className="cursor-pointer border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white mr-2"
                     >
                       <Upload size={18} className="mr-2" />
                       {photoPreview ? 'Change Photo' : 'Upload Photo'}
                     </Button>
                   </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowCamera(true)}
+                    className="border-emerald-600 text-emerald-600 hover:bg-emerald-600 hover:text-white"
+                  >
+                    <Video size={18} className="mr-2" />
+                    Take Photo
+                  </Button>
                   <p className="text-sm text-gray-500 mt-2">
-                    Supported: JPG, PNG, GIF • Max 5MB
+                    Upload image or take a live photo • JPG, PNG, GIF • Max 5MB
                   </p>
                 </div>
               </div>
             </div>
+
+            {/* Camera modal */}
+            {showCamera && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+                <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
+                  <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">Take Photo</h3>
+                    <button type="button" onClick={closeCamera} className="p-1 rounded hover:bg-gray-100">
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="p-4">
+                    <div className="relative bg-black rounded-lg overflow-hidden aspect-[4/3]">
+                      <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                      <canvas ref={canvasRef} className="hidden" />
+                    </div>
+                    <div className="flex gap-3 mt-4">
+                      <Button type="button" onClick={handleCapturePhoto} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+                        Capture
+                      </Button>
+                      <Button type="button" variant="outline" onClick={closeCamera}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Required Information */}
             <div>
@@ -510,47 +646,67 @@ export default function AddStudentPage({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Class & Section <span className="text-red-500">*</span>
+                    Class <span className="text-red-500">*</span>
                   </label>
                   {classes.length > 0 ? (
                     <select
-                      value={classes.find((c) => c.class === formData.class && c.section === formData.section)?.id ?? ''}
-                      onChange={handleClassSelect}
+                      value={formData.class}
+                      onChange={handleClassChange}
                       required
                       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black ${
                         errors.class ? 'border-red-500' : 'border-gray-300'
                       }`}
                       disabled={loadingClasses}
                     >
-                      <option value="">Select Class & Section</option>
-                      {classes.map((cls) => (
-                        <option key={cls.id} value={cls.id}>
-                          {cls.class}{cls.section ? `-${cls.section}` : ''} {cls.academic_year ? `(${cls.academic_year})` : ''}
-                        </option>
+                      <option value="">Select Class</option>
+                      {uniqueClassNames.map((cls) => (
+                        <option key={cls} value={cls}>{cls}</option>
                       ))}
                     </select>
                   ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      <Input
-                        type="text"
-                        value={formData.class}
-                        onChange={(e) => handleChange('class', e.target.value)}
-                        error={errors.class}
-                        required
-                        placeholder="Class e.g., 10"
-                      />
-                      <Input
-                        type="text"
-                        value={formData.section}
-                        onChange={(e) => handleChange('section', e.target.value)}
-                        error={errors.section}
-                        required
-                        placeholder="Section e.g., A"
-                      />
-                    </div>
+                    <Input
+                      type="text"
+                      value={formData.class}
+                      onChange={(e) => handleChange('class', e.target.value)}
+                      error={errors.class}
+                      required
+                      placeholder="Class e.g., 10"
+                    />
                   )}
                   {errors.class && <p className="mt-1 text-sm text-red-500">{errors.class}</p>}
                   {loadingClasses && <p className="mt-1 text-xs text-gray-500">Loading classes...</p>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Section <span className="text-red-500">*</span>
+                  </label>
+                  {classes.length > 0 ? (
+                    <select
+                      value={formData.section}
+                      onChange={handleSectionChange}
+                      required
+                      disabled={!formData.class || loadingClasses}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black ${
+                        errors.section ? 'border-red-500' : 'border-gray-300'
+                      } disabled:opacity-50`}
+                    >
+                      <option value="">Select Section</option>
+                      {sectionsForSelectedClass.map((sec) => (
+                        <option key={sec} value={sec}>{sec}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      type="text"
+                      value={formData.section}
+                      onChange={(e) => handleChange('section', e.target.value)}
+                      error={errors.section}
+                      required
+                      placeholder="Section e.g., A"
+                    />
+                  )}
+                  {errors.section && <p className="mt-1 text-sm text-red-500">{errors.section}</p>}
                 </div>
 
                 <div>
@@ -597,7 +753,17 @@ export default function AddStudentPage({
                     placeholder="First name"
                   />
                 </div>
-
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Middle Name
+                  </label>
+                  <Input
+                    type="text"
+                    value={formData.middle_name}
+                    onChange={(e) => handleChange('middle_name', e.target.value)}
+                    placeholder="Middle name"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Last Name
@@ -609,7 +775,6 @@ export default function AddStudentPage({
                     placeholder="Last name"
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Date of Birth
@@ -621,6 +786,16 @@ export default function AddStudentPage({
                     error={errors.date_of_birth}
                   />
                 </div>
+                {ageAsOfToday !== null && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Age as of today
+                    </label>
+                    <p className="px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700">
+                      {ageAsOfToday} {ageAsOfToday === 1 ? 'year' : 'years'}
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -745,6 +920,17 @@ export default function AddStudentPage({
                     maxLength={6}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Landmark
+                  </label>
+                  <Input
+                    type="text"
+                    value={formData.landmark}
+                    onChange={(e) => handleChange('landmark', e.target.value)}
+                    placeholder="Landmark (e.g. near temple)"
+                  />
+                </div>
               </div>
             </div>
 
@@ -756,7 +942,7 @@ export default function AddStudentPage({
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Aadhaar Number
+                    1. Aadhaar Number
                   </label>
                   <Input
                     type="text"
@@ -770,7 +956,7 @@ export default function AddStudentPage({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    RFID
+                    2. RFID
                   </label>
                   <Input
                     type="text"
@@ -782,7 +968,7 @@ export default function AddStudentPage({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    PEN Number
+                    3. PEN Number
                   </label>
                   <Input
                     type="text"
@@ -794,7 +980,7 @@ export default function AddStudentPage({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    APAAR Number
+                    4. APAAR Number
                   </label>
                   <Input
                     type="text"
@@ -806,7 +992,7 @@ export default function AddStudentPage({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Serial Number
+                    5. Serial Number
                   </label>
                   <Input
                     type="text"
@@ -824,112 +1010,148 @@ export default function AddStudentPage({
                 Parent/Guardian Information
               </h2>
               <div className="grid md:grid-cols-2 gap-6">
+                {/* Father — First, Middle, Last */}
+                <div className="md:col-span-2 text-sm font-semibold text-gray-700 mb-1">Father</div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Parent/Guardian Name
-                  </label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Father First Name</label>
                   <Input
                     type="text"
-                    value={formData.parent_name}
-                    onChange={(e) => handleChange('parent_name', e.target.value)}
-                    placeholder="Parent/Guardian name"
+                    value={formData.father_first_name}
+                    onChange={(e) => handleChange('father_first_name', e.target.value)}
+                    placeholder="First name"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Parent Phone
-                  </label>
-                  <Input
-                    type="tel"
-                    value={formData.parent_phone}
-                    onChange={(e) => handleChange('parent_phone', e.target.value)}
-                    error={errors.parent_phone}
-                    placeholder="10-digit phone number"
-                    maxLength={10}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Father Name
-                  </label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Father Middle Name</label>
                   <Input
                     type="text"
-                    value={formData.father_name}
-                    onChange={(e) => handleChange('father_name', e.target.value)}
-                    placeholder="Father's name"
+                    value={formData.father_middle_name}
+                    onChange={(e) => handleChange('father_middle_name', e.target.value)}
+                    placeholder="Middle name"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Father Occupation
-                  </label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Father Last Name</label>
+                  <Input
+                    type="text"
+                    value={formData.father_last_name}
+                    onChange={(e) => handleChange('father_last_name', e.target.value)}
+                    placeholder="Last name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Father Occupation</label>
                   <Input
                     type="text"
                     value={formData.father_occupation}
                     onChange={(e) => handleChange('father_occupation', e.target.value)}
-                    placeholder="Father's occupation"
+                    placeholder="Occupation"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Father Contact
-                  </label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Father Contact</label>
                   <Input
                     type="tel"
                     value={formData.father_contact}
                     onChange={(e) => handleChange('father_contact', e.target.value)}
                     error={errors.father_contact}
-                    placeholder="10-digit phone number"
+                    placeholder="10-digit phone"
                     maxLength={10}
                   />
                 </div>
 
+                {/* Mother — First, Middle, Last */}
+                <div className="md:col-span-2 text-sm font-semibold text-gray-700 mb-1 mt-2">Mother</div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Mother Name
-                  </label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Mother First Name</label>
                   <Input
                     type="text"
-                    value={formData.mother_name}
-                    onChange={(e) => handleChange('mother_name', e.target.value)}
-                    placeholder="Mother's name"
+                    value={formData.mother_first_name}
+                    onChange={(e) => handleChange('mother_first_name', e.target.value)}
+                    placeholder="First name"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Mother Occupation
-                  </label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Mother Middle Name</label>
+                  <Input
+                    type="text"
+                    value={formData.mother_middle_name}
+                    onChange={(e) => handleChange('mother_middle_name', e.target.value)}
+                    placeholder="Middle name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Mother Last Name</label>
+                  <Input
+                    type="text"
+                    value={formData.mother_last_name}
+                    onChange={(e) => handleChange('mother_last_name', e.target.value)}
+                    placeholder="Last name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Mother Occupation</label>
                   <Input
                     type="text"
                     value={formData.mother_occupation}
                     onChange={(e) => handleChange('mother_occupation', e.target.value)}
-                    placeholder="Mother's occupation"
+                    placeholder="Occupation"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Mother Contact
-                  </label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Mother Contact</label>
                   <Input
                     type="tel"
                     value={formData.mother_contact}
                     onChange={(e) => handleChange('mother_contact', e.target.value)}
                     error={errors.mother_contact}
-                    placeholder="10-digit phone number"
+                    placeholder="10-digit phone"
                     maxLength={10}
                   />
                 </div>
 
+                {/* Guardian — First, Middle, Last */}
+                <div className="md:col-span-2 text-sm font-semibold text-gray-700 mb-1 mt-2">Guardian</div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Staff Relation
-                  </label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Guardian First Name</label>
+                  <Input
+                    type="text"
+                    value={formData.guardian_first_name}
+                    onChange={(e) => handleChange('guardian_first_name', e.target.value)}
+                    placeholder="First name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Guardian Middle Name</label>
+                  <Input
+                    type="text"
+                    value={formData.guardian_middle_name}
+                    onChange={(e) => handleChange('guardian_middle_name', e.target.value)}
+                    placeholder="Middle name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Guardian Last Name</label>
+                  <Input
+                    type="text"
+                    value={formData.guardian_last_name}
+                    onChange={(e) => handleChange('guardian_last_name', e.target.value)}
+                    placeholder="Last name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Parent/Guardian Phone</label>
+                  <Input
+                    type="tel"
+                    value={formData.parent_phone}
+                    onChange={(e) => handleChange('parent_phone', e.target.value)}
+                    error={errors.parent_phone}
+                    placeholder="10-digit phone"
+                    maxLength={10}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Staff Relation</label>
                   <Input
                     type="text"
                     value={formData.staff_relation}

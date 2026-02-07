@@ -1008,9 +1008,15 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
         const newItems = currentPaths.filter(path => !validOrder.includes(path));
         const mergedOrder = [...validOrder, ...newItems];
         
-        // Only update if order changed or if menuOrder is empty
+        // Only update state if order changed or if menuOrder is empty
         if (menuOrder.length === 0 || JSON.stringify(mergedOrder) !== JSON.stringify(menuOrder)) {
           setMenuOrder(mergedOrder);
+        }
+        // Only write to localStorage when we are not truncating the saved order.
+        // If current menu has fewer items than saved, the menu is likely still loading
+        // (e.g. only alwaysVisible items). Writing now would overwrite the full saved order.
+        const notTruncating = validOrder.length >= parsedOrder.length;
+        if (notTruncating) {
           localStorage.setItem(`menu-order-${schoolCode}`, JSON.stringify(mergedOrder));
         }
       } catch (error) {

@@ -8,10 +8,13 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { Plus, Edit, Trash2, ArrowLeft, Search, BookOpen } from 'lucide-react';
 
+type SubjectCategory = 'scholastic' | 'non_scholastic' | null;
+
 interface Subject {
   id: string;
   name: string;
   color?: string;
+  category?: SubjectCategory | string | null;
   school_id?: string;
   school_code?: string;
   created_at?: string;
@@ -33,6 +36,7 @@ export default function SubjectsPage({
   const [formData, setFormData] = useState({
     name: '',
     color: '#6366f1',
+    category: '' as '' | 'scholastic' | 'non_scholastic',
   });
 
   const fetchSubjects = useCallback(async () => {
@@ -60,15 +64,18 @@ export default function SubjectsPage({
     setFormData({
       name: '',
       color: '#6366f1',
+      category: '',
     });
     setShowAddModal(true);
   };
 
   const handleEdit = (subject: Subject) => {
     setEditingSubject(subject);
+    const cat = subject.category;
     setFormData({
       name: subject.name,
       color: subject.color || '#6366f1',
+      category: (cat === 'scholastic' || cat === 'non_scholastic' ? cat : '') as '' | 'scholastic' | 'non_scholastic',
     });
     setShowAddModal(true);
   };
@@ -105,16 +112,16 @@ export default function SubjectsPage({
         : `/api/subjects?school_code=${schoolCode}`;
       
       const method = editingSubject ? 'PUT' : 'POST';
+      const payload = editingSubject
+        ? { name: formData.name, color: formData.color, category: formData.category || null }
+        : { name: formData.name, color: formData.color, school_code: schoolCode, ...(formData.category && { category: formData.category }) };
 
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...formData,
-          school_code: schoolCode,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const result = await response.json();
@@ -223,6 +230,7 @@ export default function SubjectsPage({
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">#</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Subject Name</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Category</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Color</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Created At</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Action</th>
@@ -237,6 +245,9 @@ export default function SubjectsPage({
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-[#0F172A]">
                       {subject.name}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-[#64748B]">
+                      {subject.category === 'scholastic' ? 'Scholastic' : subject.category === 'non_scholastic' ? 'Non-Scholastic' : '—'}
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <div className="flex items-center gap-2">
@@ -272,7 +283,7 @@ export default function SubjectsPage({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-[#64748B]">
+                  <td colSpan={6} className="px-4 py-8 text-center text-[#64748B]">
                     {searchQuery ? 'No subjects found matching your search' : 'No subjects found. Add your first subject!'}
                   </td>
                 </tr>
@@ -308,6 +319,21 @@ export default function SubjectsPage({
                   className="border-[#E5E7EB] focus:ring-[#2F6FED]"
                   placeholder="Enter subject name"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#0F172A] mb-2">
+                  Category <span className="text-[#64748B] font-normal">(optional)</span>
+                </label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value as '' | 'scholastic' | 'non_scholastic' })}
+                  className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[#0F172A] focus:ring-2 focus:ring-[#2F6FED] focus:border-[#2F6FED]"
+                >
+                  <option value="">None</option>
+                  <option value="scholastic">Scholastic</option>
+                  <option value="non_scholastic">Non-Scholastic</option>
+                </select>
               </div>
 
               <div>

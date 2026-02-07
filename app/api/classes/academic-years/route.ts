@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 /**
  * GET /api/classes/academic-years
- * Get unique academic years from classes table for a school
+ * Get unique academic years from classes table AND students table for a school (merged, deduplicated).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -18,27 +18,35 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch unique academic years from classes table
-    const { data: classes, error } = await supabase
+    const { data: classes, error: classesError } = await supabase
       .from('classes')
       .select('academic_year')
       .eq('school_code', schoolCode);
 
-    if (error) {
+    if (classesError) {
       return NextResponse.json(
-        { error: 'Failed to fetch academic years', details: error.message },
+        { error: 'Failed to fetch academic years', details: classesError.message },
         { status: 500 }
       );
     }
 
-    // Get unique academic years and sort them (descending - newest first)
-    const uniqueYears = Array.from(
-      new Set((classes || []).map((c) => c.academic_year).filter(Boolean))
-    ).sort((a, b) => {
-      // Sort by year value (assuming format like "2025" or "2024-2025")
-      // Extract first year for comparison
-      const yearA = parseInt(a.split('-')[0] || a);
-      const yearB = parseInt(b.split('-')[0] || b);
-      return yearB - yearA; // Descending order
+    // Fetch unique academic years from students table (so we show years that have students too)
+    const { data: students, error: studentsError } = await supabase
+      .from('students')
+      .select('academic_year')
+      .eq('school_code', schoolCode)
+      .not('academic_year', 'is', null);
+
+    if (studentsError) {
+      // Non-fatal: still return years from classes
+    }
+
+    const fromClasses = (classes || []).map((c) => c.academic_year).filter(Boolean);
+    const fromStudents = (students || []).map((s) => s.academic_year).filter(Boolean);
+    const uniqueYears = Array.from(new Set([...fromClasses, ...fromStudents])).sort((a, b) => {
+      const yearA = parseInt(String(a).split('-')[0] || String(a), 10);
+      const yearB = parseInt(String(b).split('-')[0] || String(b), 10);
+      return yearB - yearA;
     });
 
     return NextResponse.json({ data: uniqueYears }, { status: 200 });

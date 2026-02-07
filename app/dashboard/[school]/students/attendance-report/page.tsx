@@ -325,30 +325,30 @@ export default function StudentAttendanceReportPage({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full table-auto text-sm">
               <thead>
                 <tr className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Student</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Admission No</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase">Present</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase">Absent</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase">Other</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase">Total Marked</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase">Attendance %</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide">Student</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide">Admission No</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide">Present</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide">Absent</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide">Other</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide">Total Marked</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide">Attendance %</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {summaryByStudent.map((row) => (
                   <tr key={`${row.student_name}-${row.admission_no}`} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{row.student_name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{row.admission_no}</td>
-                    <td className="px-4 py-3 text-right text-green-600 font-medium">{row.present}</td>
-                    <td className="px-4 py-3 text-right text-red-600">{row.absent}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">{row.other}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{row.totalMarked}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-3 py-2 font-medium text-gray-900">{row.student_name}</td>
+                    <td className="px-3 py-2 text-gray-600">{row.admission_no}</td>
+                    <td className="px-3 py-2 text-right text-green-600 font-medium">{row.present}</td>
+                    <td className="px-3 py-2 text-right text-red-600">{row.absent}</td>
+                    <td className="px-3 py-2 text-right text-gray-600">{row.other}</td>
+                    <td className="px-3 py-2 text-right text-gray-700">{row.totalMarked}</td>
+                    <td className="px-3 py-2 text-right">
                       {row.percent != null ? (
-                        <span className={`inline-flex px-2 py-1 rounded-lg text-sm font-semibold ${
+                        <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-semibold ${
                           row.percent >= 90 ? 'bg-green-100 text-green-800' :
                           row.percent >= 75 ? 'bg-amber-100 text-amber-800' :
                           'bg-red-100 text-red-800'
