@@ -4,6 +4,7 @@ import { comparePassword } from '@/lib/password-utils';
 import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
 import { createSession } from '@/lib/session-store';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { createLoginAuditLog } from '@/lib/login-audit';
 
 export async function POST(request: NextRequest) {
   const rate = await checkRateLimit(request, 'auth-teacher-login', { windowMs: 60 * 1000, max: 10 });
@@ -20,6 +21,12 @@ export async function POST(request: NextRequest) {
     const password = typeof body.password === 'string' ? body.password : '';
 
     if (!school_code || !staff_id || !password) {
+      await createLoginAuditLog(request, {
+        name: staff_id || school_code || 'UNKNOWN',
+        role: 'Teacher',
+        loginType: 'teacher',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'School code, staff ID, and password are required' },
         { status: 400 }
@@ -36,6 +43,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (!schoolError && school && school.is_hold) {
+      await createLoginAuditLog(request, {
+        name: staff_id || school_code || 'UNKNOWN',
+        role: 'Teacher',
+        loginType: 'teacher',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'This school is on hold. Please contact admin.' },
         { status: 403 }
@@ -51,6 +64,12 @@ export async function POST(request: NextRequest) {
 
     if (loginError) {
       console.error('Staff login query error:', loginError.message);
+      await createLoginAuditLog(request, {
+        name: staff_id || school_code || 'UNKNOWN',
+        role: 'Teacher',
+        loginType: 'teacher',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -87,6 +106,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (!loginData) {
+      await createLoginAuditLog(request, {
+        name: staff_id || school_code || 'UNKNOWN',
+        role: 'Teacher',
+        loginType: 'teacher',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -99,6 +124,12 @@ export async function POST(request: NextRequest) {
 
     // Check if account is active
     if (!loginData.is_active) {
+      await createLoginAuditLog(request, {
+        name: displayStaffId ?? staff_id,
+        role: 'Teacher',
+        loginType: 'teacher',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Your account is inactive. Please contact your school administrator.' },
         { status: 403 }
@@ -116,6 +147,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isPasswordValid) {
+      await createLoginAuditLog(request, {
+        name: displayStaffId ?? staff_id,
+        role: 'Teacher',
+        loginType: 'teacher',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -131,6 +168,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (teacherError || !teacher) {
+      await createLoginAuditLog(request, {
+        name: displayStaffId ?? staff_id,
+        role: 'Teacher',
+        loginType: 'teacher',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Staff profile not found' },
         { status: 404 }
@@ -153,6 +196,13 @@ export async function POST(request: NextRequest) {
       maxAgeSeconds: SESSION_MAX_AGE,
     });
 
+    await createLoginAuditLog(request, {
+      userId: (teacher as { id: string }).id,
+      name: (teacher as { full_name?: string }).full_name ?? displayStaffId ?? staff_id,
+      role: 'Teacher',
+      loginType: 'teacher',
+      status: 'success',
+    });
     const response = NextResponse.json({
       success: true,
       teacher: teacherProfile,

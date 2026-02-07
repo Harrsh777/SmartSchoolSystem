@@ -27,7 +27,22 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
     // Simulate a small delay for better UX
     await new Promise(resolve => setTimeout(resolve, 300));
 
-    if (password === ADMIN_PASSWORD) {
+    const success = password === ADMIN_PASSWORD;
+
+    // Record login attempt in audit log (works with /api/auth/log-login)
+    await fetch('/api/auth/log-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: null,
+        name: 'Admin Panel',
+        role: 'Super Admin',
+        loginType: 'admin-panel',
+        status: success ? 'success' : 'failed',
+      }),
+    }).catch(() => {});
+
+    if (success) {
       setLoading(false);
       onSuccess();
       setPassword('');

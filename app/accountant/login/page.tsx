@@ -33,13 +33,23 @@ export default function AccountantLoginPage() {
 
       const result = await response.json();
 
-      if (response.ok && result.data) {
-        // Store accountant data in sessionStorage
+      const loggedIn = response.ok && result.data;
+      await fetch('/api/auth/log-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: result.data?.staff?.id ?? null,
+          name: result.data?.staff?.full_name ?? formData.staff_id ?? 'Unknown',
+          role: 'Accountant',
+          loginType: 'accountant',
+          status: loggedIn ? 'success' : 'failed',
+        }),
+      }).catch(() => {});
+
+      if (loggedIn) {
         sessionStorage.setItem('accountant', JSON.stringify(result.data.staff));
         sessionStorage.setItem('school', JSON.stringify(result.data.school));
         sessionStorage.setItem('role', 'accountant');
-        
-        // Redirect to accountant dashboard
         router.push('/accountant/dashboard');
       } else {
         setError(result.error || 'Login failed. Please check your credentials.');

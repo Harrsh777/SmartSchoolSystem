@@ -4,6 +4,7 @@ import { comparePassword } from '@/lib/password-utils';
 import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
 import { createSession } from '@/lib/session-store';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { createLoginAuditLog } from '@/lib/login-audit';
 
 export async function POST(request: NextRequest) {
   const rate = await checkRateLimit(request, 'auth-student-login', { windowMs: 60 * 1000, max: 10 });
@@ -32,6 +33,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (!schoolError && school && school.is_hold) {
+      await createLoginAuditLog(request, {
+        name: admission_no || school_code || 'UNKNOWN',
+        role: 'Student',
+        loginType: 'student',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'This school is on hold. Please contact admin.' },
         { status: 403 }
@@ -47,6 +54,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (loginError || !loginData) {
+      await createLoginAuditLog(request, {
+        name: admission_no || school_code || 'UNKNOWN',
+        role: 'Student',
+        loginType: 'student',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -55,6 +68,12 @@ export async function POST(request: NextRequest) {
 
     // Check if account is active
     if (!loginData.is_active) {
+      await createLoginAuditLog(request, {
+        name: admission_no,
+        role: 'Student',
+        loginType: 'student',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Your account is inactive. Please contact your school administrator.' },
         { status: 403 }
@@ -65,6 +84,12 @@ export async function POST(request: NextRequest) {
     const isPasswordValid = await comparePassword(password, loginData.password_hash);
     
     if (!isPasswordValid) {
+      await createLoginAuditLog(request, {
+        name: admission_no,
+        role: 'Student',
+        loginType: 'student',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -80,6 +105,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (studentError || !student) {
+      await createLoginAuditLog(request, {
+        name: admission_no,
+        role: 'Student',
+        loginType: 'student',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Student profile not found' },
         { status: 404 }
@@ -88,6 +119,13 @@ export async function POST(request: NextRequest) {
 
     // Check if student status is active
     if (student.status !== 'active') {
+      await createLoginAuditLog(request, {
+        userId: (student as { id: string }).id,
+        name: (student as { student_name?: string }).student_name ?? admission_no,
+        role: 'Student',
+        loginType: 'student',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Your account is inactive. Please contact your school administrator.' },
         { status: 403 }
@@ -101,6 +139,15 @@ export async function POST(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...studentProfile } = student as StudentWithPassword;
     const normalizedSchoolCode = school_code.toUpperCase();
+
+    // Log success first (so we record even if createSession fails)
+    await createLoginAuditLog(request, {
+      userId: (student as { id: string }).id,
+      name: (student as { student_name?: string }).student_name ?? admission_no,
+      role: 'Student',
+      loginType: 'student',
+      status: 'success',
+    });
 
     // Create server-side session (stored in public.sessions)
     const { sessionToken, expiresAt } = await createSession({
@@ -121,6 +168,16 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('Student login error:', error);
+    try {
+      await createLoginAuditLog(request, {
+        name: 'Unknown',
+        role: 'Student',
+        loginType: 'student',
+        status: 'failed',
+      });
+    } catch {
+      // ignore
+    }
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

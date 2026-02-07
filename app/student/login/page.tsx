@@ -43,14 +43,32 @@ export default function StudentLoginPage() {
     setError('');
     if (!validate()) return;
     setLoading(true);
+    let result: { success?: boolean; student?: { id?: string; student_name?: string }; error?: string } = {};
     try {
       const response = await fetch('/api/auth/student/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      const result = await response.json();
-      if (response.ok && result.success) {
+      try {
+        result = await response.json();
+      } catch {
+        result = {};
+      }
+      const loggedIn = response.ok && result.success;
+      // Always record login attempt (so audit works even if JSON or redirect fails)
+      await fetch('/api/auth/log-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: result.student?.id ?? null,
+          name: result.student?.student_name ?? formData.admission_no ?? 'Unknown',
+          role: 'Student',
+          loginType: 'student',
+          status: loggedIn ? 'success' : 'failed',
+        }),
+      }).catch(() => {});
+      if (loggedIn) {
         sessionStorage.setItem('student', JSON.stringify(result.student));
         sessionStorage.setItem('role', 'student');
         router.push('/student/dashboard');
@@ -59,6 +77,17 @@ export default function StudentLoginPage() {
       }
     } catch {
       setError('An error occurred.');
+      // Log failed attempt when request threw
+      await fetch('/api/auth/log-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.admission_no || 'Unknown',
+          role: 'Student',
+          loginType: 'student',
+          status: 'failed',
+        }),
+      }).catch(() => {});
     } finally {
       setLoading(false);
     }

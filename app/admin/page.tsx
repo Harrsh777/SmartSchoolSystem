@@ -47,6 +47,8 @@ import {
   UserCheck,
   ChevronDown,
   ClipboardList,
+  LogIn,
+  Download,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { AnimatePresence } from 'framer-motion';
@@ -147,6 +149,7 @@ type ViewMode =
   | 'system-settings'
   | 'analytics'
   | 'users'
+  | 'login-audit'
   | 'students'
   | 'staff'
   | 'classes'
@@ -916,6 +919,29 @@ export default function AdminDashboard() {
   const [usersStatusFilter, setUsersStatusFilter] = useState('all');
   const [usersSearch, setUsersSearch] = useState('');
   const [usersSchoolFilter, setUsersSchoolFilter] = useState('all');
+
+  // Login audit state
+  const [loginAuditData, setLoginAuditData] = useState<Array<{
+    id: string;
+    user_id: string | null;
+    name: string;
+    role: string;
+    login_type: string | null;
+    ip_address: string | null;
+    user_agent: string | null;
+    login_at: string;
+    status: string;
+  }>>([]);
+  const [loginAuditPagination, setLoginAuditPagination] = useState<{ page: number; limit: number; total: number; totalPages: number } | null>(null);
+  const [loginAuditStats, setLoginAuditStats] = useState<{ timeSeries: Array<{ date: string; success: number; failed: number; total: number }>; roleBreakdown: Array<{ role: string; success: number; failed: number; total: number }> } | null>(null);
+  const [loadingLoginAudit, setLoadingLoginAudit] = useState(false);
+  const [loginAuditPage, setLoginAuditPage] = useState(1);
+  const [loginAuditRole, setLoginAuditRole] = useState('all');
+  const [loginAuditStatus, setLoginAuditStatus] = useState('all');
+  const [loginAuditDateFrom, setLoginAuditDateFrom] = useState('');
+  const [loginAuditDateTo, setLoginAuditDateTo] = useState('');
+  const [loginAuditIp, setLoginAuditIp] = useState('');
+  const [loginAuditTableMissing, setLoginAuditTableMissing] = useState(false);
   
   // Sidebar dropdown state
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['core', 'management']));
@@ -992,6 +1018,8 @@ export default function AdminDashboard() {
       fetchAnalytics();
     } else if (viewMode === 'users') {
       fetchUsers();
+    } else if (viewMode === 'login-audit') {
+      fetchLoginAudit();
     } else if (viewMode === 'demo-query') {
       fetchDemoRequests();
     }
@@ -1011,6 +1039,13 @@ export default function AdminDashboard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usersPage, usersRoleFilter, usersStatusFilter, usersSearch, usersSchoolFilter, viewMode]);
+
+  useEffect(() => {
+    if (viewMode === 'login-audit') {
+      fetchLoginAudit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loginAuditPage, loginAuditRole, loginAuditStatus, loginAuditDateFrom, loginAuditDateTo, loginAuditIp, viewMode]);
 
   const fetchAllSchools = async () => {
     try {
@@ -1390,6 +1425,52 @@ export default function AdminDashboard() {
     } finally {
       setLoadingUsers(false);
     }
+  };
+
+  const fetchLoginAudit = async () => {
+    try {
+      setLoadingLoginAudit(true);
+      const params = new URLSearchParams();
+      params.append('page', loginAuditPage.toString());
+      params.append('limit', '25');
+      if (loginAuditRole !== 'all') params.append('role', loginAuditRole);
+      if (loginAuditStatus !== 'all') params.append('status', loginAuditStatus);
+      if (loginAuditDateFrom) params.append('dateFrom', loginAuditDateFrom);
+      if (loginAuditDateTo) params.append('dateTo', loginAuditDateTo);
+      if (loginAuditIp.trim()) params.append('ip', loginAuditIp.trim());
+      const response = await fetch(`/api/admin/login-audit?${params.toString()}`);
+      const result = await response.json();
+      if (response.ok) {
+        setLoginAuditData(Array.isArray(result.data) ? result.data : []);
+        setLoginAuditPagination(result.pagination ?? null);
+        setLoginAuditStats(result.stats ?? null);
+        setLoginAuditTableMissing(Boolean(result.tableMissing));
+      } else {
+        setLoginAuditData([]);
+        setLoginAuditPagination(null);
+        setLoginAuditStats(null);
+        setLoginAuditTableMissing(false);
+      }
+    } catch (error) {
+      console.error('Error fetching login audit:', error);
+      setLoginAuditData([]);
+      setLoginAuditPagination(null);
+      setLoginAuditStats(null);
+      setLoginAuditTableMissing(false);
+    } finally {
+      setLoadingLoginAudit(false);
+    }
+  };
+
+  const exportLoginAuditCsv = () => {
+    const params = new URLSearchParams();
+    params.append('export', 'csv');
+    if (loginAuditRole !== 'all') params.append('role', loginAuditRole);
+    if (loginAuditStatus !== 'all') params.append('status', loginAuditStatus);
+    if (loginAuditDateFrom) params.append('dateFrom', loginAuditDateFrom);
+    if (loginAuditDateTo) params.append('dateTo', loginAuditDateTo);
+    if (loginAuditIp.trim()) params.append('ip', loginAuditIp.trim());
+    window.open(`/api/admin/login-audit?${params.toString()}`, '_blank');
   };
 
   const updateUserStatus = async (userType: string, identifier: string, schoolCode: string, isActive: boolean) => {
@@ -2096,6 +2177,7 @@ export default function AdminDashboard() {
                           { id: 'analytics', label: 'Analytics', icon: Activity, color: 'from-purple-500 to-pink-500' },
                           { id: 'users', label: 'Users', icon: UserCheck, color: 'from-indigo-500 to-blue-500' },
                           { id: 'demo-query', label: 'Demo Query', icon: ClipboardList, color: 'from-amber-500 to-orange-500' },
+                          { id: 'login-audit', label: 'Login Audit', icon: LogIn, color: 'from-rose-500 to-red-500' },
                         ].map((item) => {
                           const Icon = item.icon;
                           const active = viewMode === item.id;
@@ -3099,6 +3181,274 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
                   </div>
+                )}
+              </Card>
+            </motion.div>
+          )}
+
+          {viewMode === 'login-audit' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="space-y-6"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Login Audit</h2>
+                  <p className="text-gray-600 dark:text-gray-400">Who logged in, when, from where, and success or failed attempts.</p>
+                </div>
+                <Button
+                  onClick={exportLoginAuditCsv}
+                  variant="secondary"
+                  className="inline-flex items-center gap-2"
+                >
+                  <Download size={18} />
+                  Export CSV
+                </Button>
+              </div>
+
+              {/* Filters */}
+              <Card className="p-4">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Role</label>
+                    <select
+                      value={loginAuditRole}
+                      onChange={(e) => { setLoginAuditRole(e.target.value); setLoginAuditPage(1); }}
+                      className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm min-w-[140px]"
+                    >
+                      <option value="all">All</option>
+                      <option value="School Admin">School Admin</option>
+                      <option value="Teacher">Teacher</option>
+                      <option value="Student">Student</option>
+                      <option value="Accountant">Accountant</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Status</label>
+                    <select
+                      value={loginAuditStatus}
+                      onChange={(e) => { setLoginAuditStatus(e.target.value); setLoginAuditPage(1); }}
+                      className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm min-w-[120px]"
+                    >
+                      <option value="all">All</option>
+                      <option value="success">Success</option>
+                      <option value="failed">Failed</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">From</label>
+                    <input
+                      type="date"
+                      value={loginAuditDateFrom}
+                      onChange={(e) => { setLoginAuditDateFrom(e.target.value); setLoginAuditPage(1); }}
+                      className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">To</label>
+                    <input
+                      type="date"
+                      value={loginAuditDateTo}
+                      onChange={(e) => { setLoginAuditDateTo(e.target.value); setLoginAuditPage(1); }}
+                      className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">IP</label>
+                    <input
+                      type="text"
+                      placeholder="Filter by IP"
+                      value={loginAuditIp}
+                      onChange={(e) => { setLoginAuditIp(e.target.value); setLoginAuditPage(1); }}
+                      className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm min-w-[140px]"
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              {/* Charts */}
+              {loginAuditStats && (loginAuditStats.timeSeries.length > 0 || loginAuditStats.roleBreakdown.length > 0) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {loginAuditStats.timeSeries.length > 0 && (
+                    <Card className="p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Logins over time</h3>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={loginAuditStats.timeSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                          <XAxis dataKey="date" tick={{ fontSize: 11 }} className="text-gray-600" />
+                          <YAxis tick={{ fontSize: 11 }} />
+                          <Tooltip
+                            contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                            labelFormatter={(v) => `Date: ${v}`}
+                            formatter={(value: number | undefined, name: string | undefined) => [value ?? 0, name === 'success' ? 'Success' : name === 'failed' ? 'Failed' : 'Total']}
+                          />
+                          <Bar dataKey="success" fill="#10b981" name="Success" radius={[4, 4, 0, 0]} stackId="a" />
+                          <Bar dataKey="failed" fill="#ef4444" name="Failed" radius={[4, 4, 0, 0]} stackId="a" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </Card>
+                  )}
+                  {loginAuditStats.roleBreakdown.length > 0 && (
+                    <Card className="p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">By role</h3>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={loginAuditStats.roleBreakdown} layout="vertical" margin={{ top: 8, right: 8, left: 60, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                          <XAxis type="number" tick={{ fontSize: 11 }} />
+                          <YAxis type="category" dataKey="role" width={80} tick={{ fontSize: 11 }} />
+                          <Tooltip
+                            contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                            formatter={(value: number | undefined, name: string | undefined) => [value ?? 0, name === 'success' ? 'Success' : name === 'failed' ? 'Failed' : 'Total']}
+                          />
+                          <Bar dataKey="success" fill="#10b981" name="Success" radius={[0, 4, 4, 0]} stackId="a" />
+                          <Bar dataKey="failed" fill="#ef4444" name="Failed" radius={[0, 4, 4, 0]} stackId="a" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Table */}
+              <Card className="p-6 overflow-hidden">
+                {loadingLoginAudit ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#5A7A95] dark:text-[#6B9BB8]" />
+                  </div>
+                ) : loginAuditData.length === 0 ? (
+                  <div className="text-center py-12">
+                    <LogIn className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+                    {loginAuditTableMissing ? (
+                      <div className="max-w-2xl mx-auto text-left bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-6 mt-4">
+                        <p className="font-semibold text-amber-800 dark:text-amber-200 mb-2">Setup required</p>
+                        <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
+                          The <code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded">login_audit_log</code> table is missing. Run the SQL below in Supabase → SQL Editor, then refresh and log in again from any portal.
+                        </p>
+                        <div className="relative">
+                          <pre className="text-xs bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto max-h-48 overflow-y-auto"><code>{`CREATE TABLE IF NOT EXISTS login_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  login_type TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  login_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_login_audit_login_at ON login_audit_log(login_at DESC);
+CREATE INDEX IF NOT EXISTS idx_login_audit_role ON login_audit_log(role);
+CREATE INDEX IF NOT EXISTS idx_login_audit_status ON login_audit_log(status);
+CREATE INDEX IF NOT EXISTS idx_login_audit_ip ON login_audit_log(ip_address);`}</code></pre>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="absolute top-2 right-2"
+                            onClick={() => {
+                              const sql = `CREATE TABLE IF NOT EXISTS login_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  login_type TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  login_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_login_audit_login_at ON login_audit_log(login_at DESC);
+CREATE INDEX IF NOT EXISTS idx_login_audit_role ON login_audit_log(role);
+CREATE INDEX IF NOT EXISTS idx_login_audit_status ON login_audit_log(status);
+CREATE INDEX IF NOT EXISTS idx_login_audit_ip ON login_audit_log(ip_address);`;
+                              void navigator.clipboard.writeText(sql).then(() => alert('SQL copied to clipboard. Paste it in Supabase SQL Editor.'));
+                            }}
+                          >
+                            Copy SQL
+                          </Button>
+                        </div>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-3">
+                          After the table exists, every login (school / teacher / student / accountant) will appear here.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-gray-500 dark:text-gray-400">No login attempts recorded yet.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Log in from the school, teacher, student, or accountant portal—then click Refresh.</p>
+                        <Button variant="secondary" size="sm" className="mt-4" onClick={() => fetchLoginAudit()}>
+                          <RefreshCw size={16} className="mr-2" />
+                          Refresh
+                        </Button>
+                      </>
+                    )}
+                    {!loginAuditTableMissing && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">If attempts still don’t appear, check the server terminal for [LoginAudit] errors.</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-gray-200 dark:border-gray-700">
+                            <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Name</th>
+                            <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Role</th>
+                            <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">IP</th>
+                            <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Device</th>
+                            <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</th>
+                            <th className="pb-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Time</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {loginAuditData.map((row) => (
+                            <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                              <td className="py-3 pr-4 font-medium text-gray-900 dark:text-white">{row.name || '—'}</td>
+                              <td className="py-3 pr-4 text-gray-700 dark:text-gray-300">{row.role || '—'}</td>
+                              <td className="py-3 pr-4 text-gray-700 dark:text-gray-300 font-mono text-sm">{row.ip_address || '—'}</td>
+                              <td className="py-3 pr-4 text-gray-600 dark:text-gray-400 text-sm max-w-[220px] truncate" title={row.user_agent || ''}>{row.user_agent ? (row.user_agent.length > 50 ? row.user_agent.slice(0, 50) + '…' : row.user_agent) : '—'}</td>
+                              <td className="py-3 pr-4">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${row.status === 'success' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'}`}>
+                                  {row.status === 'success' ? 'Success' : 'Failed'}
+                                </span>
+                              </td>
+                              <td className="py-3 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">
+                                {row.login_at ? new Date(row.login_at).toLocaleString() : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {loginAuditPagination && loginAuditPagination.totalPages > 1 && (
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Page {loginAuditPagination.page} of {loginAuditPagination.totalPages} ({loginAuditPagination.total} total)
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={loginAuditPagination.page <= 1}
+                            onClick={() => setLoginAuditPage((p) => Math.max(1, p - 1))}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={loginAuditPagination.page >= loginAuditPagination.totalPages}
+                            onClick={() => setLoginAuditPage((p) => p + 1)}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </Card>
             </motion.div>

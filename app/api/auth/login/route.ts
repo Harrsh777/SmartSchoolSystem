@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
 import { createSession } from '@/lib/session-store';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { createLoginAuditLog } from '@/lib/login-audit';
 
 export async function POST(request: NextRequest) {
   const rate = await checkRateLimit(request, 'auth-login', { windowMs: 60 * 1000, max: 10 });
@@ -32,6 +33,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error || !school) {
+      await createLoginAuditLog(request, {
+        name: school_code?.toString() ?? 'UNKNOWN',
+        role: 'School Admin',
+        loginType: 'school',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Invalid school code or password' },
         { status: 401 }
@@ -40,6 +47,13 @@ export async function POST(request: NextRequest) {
 
     // Check if school is on hold
     if (school.is_hold) {
+      await createLoginAuditLog(request, {
+        userId: (school as { id?: string }).id,
+        name: (school as { school_name?: string }).school_name ?? school.school_code ?? 'UNKNOWN',
+        role: 'School Admin',
+        loginType: 'school',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'This school is on hold. Please contact admin.' },
         { status: 403 }
@@ -57,6 +71,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isPasswordValid) {
+      await createLoginAuditLog(request, {
+        userId: (school as { id?: string }).id,
+        name: (school as { school_name?: string }).school_name ?? school.school_code ?? 'UNKNOWN',
+        role: 'School Admin',
+        loginType: 'school',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Invalid school code or password' },
         { status: 401 }
@@ -77,6 +98,13 @@ export async function POST(request: NextRequest) {
       maxAgeSeconds: SESSION_MAX_AGE,
     });
 
+    await createLoginAuditLog(request, {
+      userId: (school as { id?: string }).id ?? null,
+      name: (school as { school_name?: string }).school_name ?? school.school_code ?? 'UNKNOWN',
+      role: 'School Admin',
+      loginType: 'school',
+      status: 'success',
+    });
     const response = NextResponse.json(
       {
         success: true,

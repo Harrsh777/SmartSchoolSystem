@@ -50,7 +50,20 @@ export default function AdminLoginPage() {
 
       const result = await response.json();
 
-      if (response.ok && result.success) {
+      const loggedIn = response.ok && result.success;
+      await fetch('/api/auth/log-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: result.school?.id ?? null,
+          name: result.school?.school_name ?? formData.school_code ?? 'Unknown',
+          role: 'School Admin',
+          loginType: 'school',
+          status: loggedIn ? 'success' : 'failed',
+        }),
+      }).catch(() => {});
+
+      if (loggedIn) {
         sessionStorage.setItem('school', JSON.stringify(result.school));
         sessionStorage.setItem('role', 'admin');
         router.push(`/dashboard/${result.school.school_code}`);

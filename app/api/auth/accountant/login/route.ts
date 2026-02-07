@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
 import { createSession } from '@/lib/session-store';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { createLoginAuditLog } from '@/lib/login-audit';
 
 export async function POST(request: NextRequest) {
   const rate = await checkRateLimit(request, 'auth-accountant-login', { windowMs: 60 * 1000, max: 10 });
@@ -18,6 +19,12 @@ export async function POST(request: NextRequest) {
     const { school_code, staff_id, password } = body;
 
     if (!school_code || !staff_id || !password) {
+      await createLoginAuditLog(request, {
+        name: staff_id || school_code || 'UNKNOWN',
+        role: 'Accountant',
+        loginType: 'accountant',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'School code, staff ID, and password are required' },
         { status: 400 }
@@ -32,6 +39,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (!holdCheckError && school && school.is_hold) {
+      await createLoginAuditLog(request, {
+        name: staff_id || school_code || 'UNKNOWN',
+        role: 'Accountant',
+        loginType: 'accountant',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'This school is on hold. Please contact admin.' },
         { status: 403 }
@@ -47,6 +60,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (loginError || !loginData) {
+      await createLoginAuditLog(request, {
+        name: staff_id || school_code || 'UNKNOWN',
+        role: 'Accountant',
+        loginType: 'accountant',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -54,6 +73,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (!loginData.is_active) {
+      await createLoginAuditLog(request, {
+        name: staff_id,
+        role: 'Accountant',
+        loginType: 'accountant',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Account is inactive. Please contact administrator.' },
         { status: 403 }
@@ -63,6 +88,12 @@ export async function POST(request: NextRequest) {
     // Step 2: Verify password
     const isValidPassword = await bcrypt.compare(password, loginData.password_hash);
     if (!isValidPassword) {
+      await createLoginAuditLog(request, {
+        name: staff_id,
+        role: 'Accountant',
+        loginType: 'accountant',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -78,6 +109,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (staffError || !staffData) {
+      await createLoginAuditLog(request, {
+        name: staff_id,
+        role: 'Accountant',
+        loginType: 'accountant',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Staff record not found' },
         { status: 404 }
@@ -86,6 +123,13 @@ export async function POST(request: NextRequest) {
 
     // Step 4: Verify role is accountant
     if (!staffData.role.toLowerCase().includes('accountant')) {
+      await createLoginAuditLog(request, {
+        userId: staffData.id,
+        name: staffData.full_name ?? staff_id,
+        role: 'Accountant',
+        loginType: 'accountant',
+        status: 'failed',
+      });
       return NextResponse.json(
         { error: 'Access denied. Only accountants can access this portal.' },
         { status: 403 }
@@ -133,6 +177,13 @@ export async function POST(request: NextRequest) {
       maxAgeSeconds: SESSION_MAX_AGE,
     });
 
+    await createLoginAuditLog(request, {
+      userId: staffData.id,
+      name: staffData.full_name ?? staff_id,
+      role: 'Accountant',
+      loginType: 'accountant',
+      status: 'success',
+    });
     const response = NextResponse.json({
       message: 'Login successful',
       data: {
