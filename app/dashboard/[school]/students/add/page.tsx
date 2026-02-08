@@ -8,7 +8,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import { ArrowLeft, Camera, Upload, X, Video } from 'lucide-react';
+import { Camera, Upload, X, Video } from 'lucide-react';
 
 interface FormErrors {
   [key: string]: string;
@@ -104,10 +104,18 @@ export default function AddStudentPage({
     const dob = new Date(formData.date_of_birth);
     const today = new Date();
     if (dob > today) return null;
-    let age = today.getFullYear() - dob.getFullYear();
-    const m = today.getMonth() - dob.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-    return age;
+    let years = today.getFullYear() - dob.getFullYear();
+    let months = today.getMonth() - dob.getMonth();
+    let days = today.getDate() - dob.getDate();
+    if (days < 0) {
+      months--;
+      days += new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+    }
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    return { years, months, days };
   }, [formData.date_of_birth]);
 
   useEffect(() => {
@@ -135,9 +143,8 @@ export default function AddStudentPage({
     if (!formData.admission_no.trim()) {
       newErrors.admission_no = 'Admission number is required';
     }
-    const fullNameFromParts = [formData.first_name, formData.middle_name, formData.last_name].filter(Boolean).join(' ').trim();
-    if (!formData.student_name.trim() && !fullNameFromParts) {
-      newErrors.student_name = 'Student name or First/Middle/Last name is required';
+    if (!formData.student_name.trim()) {
+      newErrors.student_name = 'Student name is required';
     }
     if (!formData.class.trim()) {
       newErrors.class = 'Class is required';
@@ -229,7 +236,6 @@ export default function AddStudentPage({
       const cleanAadhaar = (aadhaar: string) => aadhaar ? aadhaar.replace(/\D/g, '') : '';
       const cleanPincode = (pincode: string) => pincode ? pincode.replace(/\D/g, '') : '';
 
-      const fullName = [formData.first_name, formData.middle_name, formData.last_name].filter(Boolean).join(' ').trim();
       const fatherName = [formData.father_first_name, formData.father_middle_name, formData.father_last_name].filter(Boolean).join(' ').trim();
       const motherName = [formData.mother_first_name, formData.mother_middle_name, formData.mother_last_name].filter(Boolean).join(' ').trim();
       const guardianName = [formData.guardian_first_name, formData.guardian_middle_name, formData.guardian_last_name].filter(Boolean).join(' ').trim();
@@ -240,13 +246,13 @@ export default function AddStudentPage({
         body: JSON.stringify({
           school_code: schoolCode,
           admission_no: formData.admission_no.trim(),
-          student_name: formData.student_name.trim() || fullName || formData.admission_no,
+          student_name: formData.student_name.trim() || formData.admission_no,
           class: formData.class.trim(),
           section: formData.section.trim(),
           academic_year: formData.academic_year || new Date().getFullYear().toString(),
-          first_name: formData.first_name.trim() || null,
-          middle_name: formData.middle_name.trim() || null,
-          last_name: formData.last_name.trim() || null,
+          first_name: null,
+          middle_name: null,
+          last_name: null,
           date_of_birth: formData.date_of_birth || null,
           gender: formData.gender || null,
           blood_group: formData.blood_group || null,
@@ -492,22 +498,7 @@ export default function AddStudentPage({
   return (
     <div className="flex flex-col min-h-[calc(100vh-2rem)]">
       {/* Compact Header */}
-      <div className="flex items-center justify-between flex-shrink-0 py-2">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push(`/dashboard/${schoolCode}/students`)}
-          >
-            <ArrowLeft size={18} className="mr-1" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold text-black">Add Student</h1>
-            <p className="text-sm text-gray-600">Add a new student to your school</p>
-          </div>
-        </div>
-      </div>
+    
 
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -744,39 +735,6 @@ export default function AddStudentPage({
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    First Name
-                  </label>
-                  <Input
-                    type="text"
-                    value={formData.first_name}
-                    onChange={(e) => handleChange('first_name', e.target.value)}
-                    placeholder="First name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Middle Name
-                  </label>
-                  <Input
-                    type="text"
-                    value={formData.middle_name}
-                    onChange={(e) => handleChange('middle_name', e.target.value)}
-                    placeholder="Middle name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Last Name
-                  </label>
-                  <Input
-                    type="text"
-                    value={formData.last_name}
-                    onChange={(e) => handleChange('last_name', e.target.value)}
-                    placeholder="Last name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Date of Birth
                   </label>
                   <Input
@@ -792,7 +750,9 @@ export default function AddStudentPage({
                       Age as of today
                     </label>
                     <p className="px-4 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700">
-                      {ageAsOfToday} {ageAsOfToday === 1 ? 'year' : 'years'}
+                      {ageAsOfToday.years} {ageAsOfToday.years === 1 ? 'year' : 'years'}
+                      {ageAsOfToday.months > 0 && ` ${ageAsOfToday.months} ${ageAsOfToday.months === 1 ? 'month' : 'months'}`}
+                      {ageAsOfToday.days > 0 && ` ${ageAsOfToday.days} ${ageAsOfToday.days === 1 ? 'day' : 'days'}`}
                     </p>
                   </div>
                 )}

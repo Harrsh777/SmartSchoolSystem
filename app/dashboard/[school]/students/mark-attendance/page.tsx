@@ -15,6 +15,7 @@ interface Student {
   roll_number: string | null;
   student_name: string;
   admission_no: string;
+  academic_year?: string | null;
 }
 
 interface Class {
@@ -46,6 +47,25 @@ export default function MarkAttendancePage({
   const [currentStaffStaffId, setCurrentStaffStaffId] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentAcademicYear, setCurrentAcademicYear] = useState<string>('');
+
+  useEffect(() => {
+    const loadAcademicYear = async () => {
+      try {
+        const res = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
+        const data = await res.json();
+        const years = (data.data || []) as string[];
+        if (years.length > 0) {
+          const currentCalYear = new Date().getFullYear();
+          const match = years.find((y: string) => String(y).includes(String(currentCalYear)));
+          setCurrentAcademicYear(match || years[0]);
+        }
+      } catch {
+        setCurrentAcademicYear('');
+      }
+    };
+    loadAcademicYear();
+  }, [schoolCode]);
 
   useEffect(() => {
     checkPermissions();
@@ -59,7 +79,7 @@ export default function MarkAttendancePage({
       fetchExistingAttendance();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClass, selectedSection, selectedDate, schoolCode]);
+  }, [selectedClass, selectedSection, selectedDate, schoolCode, currentAcademicYear]);
 
   const checkPermissions = () => {
     const storedStaff = sessionStorage.getItem('staff');
@@ -123,10 +143,10 @@ export default function MarkAttendancePage({
             cls.class_teacher_staff_id === checkStaffStaffId
           );
         }
-        
         setClasses(availableClasses);
         if (availableClasses.length > 0 && !selectedClass) {
-          setSelectedClass(availableClasses[0].id);
+          setSelectedClass(availableClasses[0].class);
+          setSelectedSection(availableClasses[0].section || '');
         }
       }
     } catch (err) {
@@ -148,12 +168,19 @@ export default function MarkAttendancePage({
         class: selectedClass, 
         section: selectedSection 
       });
+      if (currentAcademicYear) {
+        params.set('academic_year', currentAcademicYear);
+      }
       
       const response = await fetch(`/api/students?${params}`);
       const result = await response.json();
       
       if (response.ok && result.data) {
-        const sortedStudents = result.data.sort((a: Student, b: Student) => {
+        let list = result.data as Student[];
+        if (currentAcademicYear) {
+          list = list.filter((s: Student) => (s.academic_year ?? '') === currentAcademicYear);
+        }
+        const sortedStudents = list.sort((a: Student, b: Student) => {
           const aRoll = parseInt(a.roll_number || '999');
           const bRoll = parseInt(b.roll_number || '999');
           return aRoll - bRoll;
@@ -173,6 +200,21 @@ export default function MarkAttendancePage({
       setLoading(false);
     }
   };
+
+  const classesForCurrentYear = currentAcademicYear
+    ? classes.filter((c) => (c.academic_year ?? '') === currentAcademicYear)
+    : classes;
+
+  useEffect(() => {
+    if (classesForCurrentYear.length === 0) return;
+    const exists = classesForCurrentYear.some(
+      (c) => c.class === selectedClass && (c.section ?? '') === selectedSection
+    );
+    if ((selectedClass || selectedSection) && !exists) {
+      setSelectedClass(classesForCurrentYear[0].class);
+      setSelectedSection(classesForCurrentYear[0].section || '');
+    }
+  }, [currentAcademicYear, classesForCurrentYear.length]);
 
   const fetchExistingAttendance = async () => {
     if (!selectedClass || !selectedSection || !selectedDate) return;
@@ -344,6 +386,11 @@ export default function MarkAttendancePage({
 
       {/* Filters */}
       <Card>
+        {currentAcademicYear && (
+          <p className="text-sm text-gray-600 mb-3">
+            Academic year: <span className="font-semibold">{currentAcademicYear}</span> — only classes and students of this year are shown.
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-4 mb-4">
           <div className="flex items-center gap-2">
             <Filter className="text-gray-400" size={20} />
@@ -357,7 +404,7 @@ export default function MarkAttendancePage({
               className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
             >
               <option value="">Select Class</option>
-              {Array.from(new Set(classes.map(c => c.class))).sort().map((cls) => (
+              {Array.from(new Set(classesForCurrentYear.map(c => c.class))).sort().map((cls) => (
                 <option key={cls} value={cls}>{cls}</option>
               ))}
             </select>
@@ -372,7 +419,7 @@ export default function MarkAttendancePage({
               disabled={!selectedClass}
             >
               <option value="">Select Section</option>
-              {classes
+              {classesForCurrentYear
                 .filter(c => c.class === selectedClass)
                 .map((cls) => (
                   <option key={cls.id} value={cls.section}>

@@ -46,15 +46,28 @@ export async function GET(request: NextRequest) {
       classesQuery = classesQuery.eq('academic_year', academicYearFilter);
     }
 
-    const { data: classes, error: classesError } = await classesQuery
+    const { data: classesRaw, error: classesError } = await classesQuery
       .order('class', { ascending: true })
-      .order('section', { ascending: true });
+      .order('section', { ascending: true })
+      .order('academic_year', { ascending: false });
 
     if (classesError) {
       return NextResponse.json(
         { error: 'Failed to fetch classes', details: classesError.message },
         { status: 500 }
       );
+    }
+
+    // When no academic year filter: one row per (class, section) — keep the latest academic_year only
+    let classes: typeof classesRaw = classesRaw || [];
+    if (!academicYearFilter && classes.length > 0) {
+      const seen = new Set<string>();
+      classes = classes.filter((cls) => {
+        const key = `${(cls.class ?? '').toString().toLowerCase()}-${(cls.section ?? '').toString().toLowerCase()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     }
 
     // Get current academic year start date (assuming academic year starts in April)
@@ -103,12 +116,11 @@ export async function GET(request: NextRequest) {
           .ilike('class', escapeIlike(cls.class ?? ''))
           .ilike('section', escapeIlike(cls.section ?? ''));
 
-        // Include students where academic_year matches, or student's is null/empty (for students added without academic_year)
+        // Only include students whose academic_year matches this class's academic_year (selected year only)
         const classYear = (cls.academic_year || '').toString().trim();
         const allStudents = (allStudentsRaw || []).filter((s) => {
           const studentYear = (s.academic_year || '').toString().trim();
-          if (!studentYear) return true; // Student has no academic_year - include
-          if (!classYear) return true; // Class has no academic_year - include
+          if (!classYear) return true; // Class has no year - include all matched by class/section
           return studentYear === classYear;
         });
 

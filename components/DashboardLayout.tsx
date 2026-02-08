@@ -655,6 +655,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [isDragEnabled, setIsDragEnabled] = useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
+  const [sidebarSchoolLogo, setSidebarSchoolLogo] = useState<string | null>(null);
   // Extract school code from pathname
   const schoolCode = pathname.split('/')[2] || '';
 
@@ -662,6 +663,17 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     // Check if drag mode is enabled from localStorage
     const dragEnabled = localStorage.getItem(`drag-enabled-${schoolCode}`);
     setIsDragEnabled(dragEnabled === 'true');
+  }, [schoolCode]);
+
+  useEffect(() => {
+    if (!schoolCode) return;
+    fetch(`/api/schools/info?school_code=${encodeURIComponent(schoolCode)}`)
+      .then((res) => res.json())
+      .then((result) => {
+        if (result.data?.logo_url) setSidebarSchoolLogo(result.data.logo_url);
+        else setSidebarSchoolLogo(null);
+      })
+      .catch(() => setSidebarSchoolLogo(null));
   }, [schoolCode]);
 
   // Get user info from session storage
@@ -1941,6 +1953,27 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                 }}
               >
                 <nav className={`py-3 ${sidebarCollapsed ? 'px-2' : 'px-1.5'} space-y-1.5 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`}>
+                  {/* School logo + name above search */}
+                  {!sidebarCollapsed && (schoolName || sidebarSchoolLogo) && (
+                    <div className="px-2 pb-3 flex items-center gap-2 border-b border-slate-600/40 mb-2">
+                      <div className="w-14 h-14 rounded-lg bg-white shrink-0 flex items-center justify-center overflow-hidden p-0.5 border border-slate-500/30">
+                        {sidebarSchoolLogo ? (
+                          <img
+                            src={sidebarSchoolLogo}
+                            alt=""
+                            className="w-full h-full rounded-md object-cover"
+                          />
+                        ) : (
+                          <span className="text-slate-700 text-lg font-bold">
+                            {(schoolName || 'S').charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-white font-medium text-sm truncate" title={schoolName || ''}>
+                        {schoolName || 'School'}
+                      </span>
+                    </div>
+                  )}
                   {/* Sidebar search – filter modules */}
                   {!sidebarCollapsed && (
                     <div className="px-2 pb-2">

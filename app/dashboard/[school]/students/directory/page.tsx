@@ -16,7 +16,9 @@ import {
   GraduationCap,
   Eye,
   ChevronRight,
-  Calendar
+  Calendar,
+  UserX,
+  UserCheck
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
@@ -154,17 +156,39 @@ export default function StudentDirectoryPage({
     );
   }
 
+  const handleToggleStatus = async (e: React.MouseEvent, studentId: string, currentStatus: string) => {
+    e.stopPropagation();
+    const newStatus = getString(currentStatus) === 'active' ? 'deactivated' : 'active';
+    if (!confirm(`Are you sure you want to ${newStatus === 'active' ? 'activate' : 'deactivate'} this student?`)) return;
+    try {
+      const res = await fetch(`/api/students/${studentId}?school_code=${schoolCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (res.ok && data.data) {
+        fetchStudents();
+      } else {
+        alert(data.error || 'Failed to update student status');
+      }
+    } catch (err) {
+      console.error('Error updating status:', err);
+      alert('Failed to update student status');
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Header - compact */}
+      {/* Header - year and Grid on left, Export on right */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-blue-900 mb-0.5">
-            Student Directory
-          </h1>
-          <p className="text-gray-600 text-sm">Manage and view all students in your school</p>
-        </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div>
+            <h1 className="text-xl font-bold text-blue-900 mb-0.5">
+              Student Directory
+            </h1>
+            <p className="text-gray-600 text-sm">Manage and view all students in your school</p>
+          </div>
           <div className="flex items-center gap-2">
             <Calendar size={16} className="text-blue-800" />
             <select
@@ -186,11 +210,11 @@ export default function StudentDirectoryPage({
           >
             {viewMode === 'grid' ? 'List View' : 'Grid View'}
           </Button>
-          <Button size="sm" className="bg-blue-800 hover:bg-blue-900 text-white">
-            <Download size={16} className="mr-1.5" />
-            Export
-          </Button>
         </div>
+        <Button size="sm" className="bg-blue-800 hover:bg-blue-900 text-white">
+          <Download size={16} className="mr-1.5" />
+          Export
+        </Button>
       </div>
 
       {/* Status Tabs */}
@@ -345,16 +369,37 @@ export default function StudentDirectoryPage({
                       return status ? status.toUpperCase() : 'ACTIVE';
                     })()}
                   </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleStudentClick(student.id!);
-                    }}
-                    className="px-4 py-1.5 bg-blue-800 text-white rounded-lg hover:bg-blue-900 transition-colors text-sm font-medium flex items-center gap-1"
-                  >
-                    <Eye size={14} />
-                    View
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStudentClick(student.id!);
+                      }}
+                      className="px-4 py-1.5 bg-blue-800 text-white rounded-lg hover:bg-blue-900 transition-colors text-sm font-medium flex items-center gap-1"
+                    >
+                      <Eye size={14} />
+                      View
+                    </button>
+                    {getString(student.status) === 'active' ? (
+                      <button
+                        onClick={(e) => handleToggleStatus(e, student.id!, getString(student.status))}
+                        className="p-1.5 text-amber-700 hover:bg-amber-100 rounded-lg"
+                        title="Deactivate"
+                      >
+                        <UserX size={16} />
+                      </button>
+                    ) : (
+                      (getString(student.status) === 'deactivated' || getString(student.status) === 'inactive') && (
+                        <button
+                          onClick={(e) => handleToggleStatus(e, student.id!, getString(student.status))}
+                          className="p-1.5 text-green-700 hover:bg-green-100 rounded-lg"
+                          title="Activate"
+                        >
+                          <UserCheck size={16} />
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
               </Card>
             </motion.div>
@@ -450,13 +495,32 @@ export default function StudentDirectoryPage({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              router.push(`/dashboard/${schoolCode}/students/edit/${student.id}`);
+                              router.push(`/dashboard/${schoolCode}/students/${student.id}/edit`);
                             }}
                             className="p-1.5 text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
                             title="Edit"
                           >
                             <Edit size={16} />
                           </button>
+                          {getString(student.status) === 'active' ? (
+                            <button
+                              onClick={(e) => handleToggleStatus(e, student.id!, getString(student.status))}
+                              className="p-1.5 text-amber-700 hover:bg-amber-100 rounded-lg transition-colors"
+                              title="Deactivate"
+                            >
+                              <UserX size={16} />
+                            </button>
+                          ) : (
+                            (getString(student.status) === 'deactivated' || getString(student.status) === 'inactive') && (
+                              <button
+                                onClick={(e) => handleToggleStatus(e, student.id!, getString(student.status))}
+                                className="p-1.5 text-green-700 hover:bg-green-100 rounded-lg transition-colors"
+                                title="Activate"
+                              >
+                                <UserCheck size={16} />
+                              </button>
+                            )
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -534,7 +534,7 @@ export default function StaffAttendancePage({
           <Button
             onClick={handleSave}
             disabled={saving || filteredStaff.length === 0}
-            className="bg-orange-600 hover:bg-orange-700"
+            className="bg-green-600 hover:bg-green-900"
           >
             {saving ? (
               <>
