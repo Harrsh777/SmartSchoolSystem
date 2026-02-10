@@ -117,7 +117,7 @@ export default function PromotionEnginePage({ params }: { params: Promise<{ scho
     const sections = Array.from(new Set(classes.filter((c) => c.class === selectedClass).map((c) => c.section).filter(Boolean))).sort();
     setSectionOptions(sections);
     if (!sections.includes(selectedSection)) setSelectedSection('');
-  }, [selectedClass, classes]);
+  }, [selectedClass, selectedSection, classes]);
 
   const loadStudents = async () => {
     if (!schoolCode || !currentYear || !selectedClass) {

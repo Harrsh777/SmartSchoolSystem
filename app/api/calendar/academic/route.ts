@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     if (includeEvents) {
       let eventsQuery = supabase
         .from('events')
-        .select('id,event_date,title,event_type,description')
+        .select('id,event_date,title,event_type,description,color')
         .eq('school_code', schoolCode)
         .eq('is_active', true);
 
@@ -43,6 +43,40 @@ export async function GET(request: NextRequest) {
         // Continue even if events fetch fails, try academic_calendar
       } else {
         events = eventsData || [];
+      }
+    }
+
+    // Fetch examinations and expand to one entry per day (start_date to end_date)
+    const yearStart = academicYear ? `${academicYear}-01-01` : '';
+    const yearEnd = academicYear ? `${academicYear}-12-31` : '';
+    const examEntries: Array<{ event_date: string; title: string; event_type: string; source: string; exam_id?: string; [key: string]: unknown }> = [];
+    if (schoolCode) {
+      let examQuery = supabase
+        .from('examinations')
+        .select('id, exam_name, start_date, end_date')
+        .eq('school_code', schoolCode);
+      if (yearStart && yearEnd) {
+        examQuery = examQuery.lte('start_date', yearEnd).gte('end_date', yearStart);
+      }
+      const { data: examinations, error: examError } = await examQuery;
+      if (!examError && examinations) {
+        for (const exam of examinations) {
+          const name = (exam.exam_name || 'Examination') as string;
+          const start = exam.start_date ? new Date(String(exam.start_date).split('T')[0]) : null;
+          const end = exam.end_date ? new Date(String(exam.end_date).split('T')[0]) : null;
+          if (!start || !end) continue;
+          for (let d = new Date(start.getTime()); d <= end; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split('T')[0];
+            if (academicYear && (dateStr < yearStart || dateStr > yearEnd)) continue;
+            examEntries.push({
+              event_date: dateStr,
+              title: name,
+              event_type: 'examination',
+              source: 'examinations',
+              exam_id: exam.id,
+            });
+          }
+        }
       }
     }
 
@@ -73,8 +107,14 @@ export async function GET(request: NextRequest) {
         title: event.title,
         event_type: event.event_type || 'event',
         description: event.description,
+        color: event.color ?? undefined,
         academic_year: event.event_date ? new Date(String(event.event_date)).getFullYear().toString() : null,
         source: 'events',
+      })),
+      ...examEntries.map((e) => ({
+        ...e,
+        id: e.exam_id ? `exam-${e.exam_id}-${e.event_date}` : undefined,
+        academic_year: academicYear ?? undefined,
       })),
       ...(academicCalendar || []).map((entry: { [key: string]: unknown }) => ({
         ...entry,

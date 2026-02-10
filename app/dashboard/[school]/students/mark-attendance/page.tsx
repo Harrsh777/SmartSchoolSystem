@@ -214,7 +214,7 @@ export default function MarkAttendancePage({
       setSelectedClass(classesForCurrentYear[0].class);
       setSelectedSection(classesForCurrentYear[0].section || '');
     }
-  }, [currentAcademicYear, classesForCurrentYear.length]);
+  }, [currentAcademicYear, classesForCurrentYear, selectedClass, selectedSection]);
 
   const fetchExistingAttendance = async () => {
     if (!selectedClass || !selectedSection || !selectedDate) return;

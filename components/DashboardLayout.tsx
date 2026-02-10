@@ -4,6 +4,7 @@ import { ReactNode, useState, useEffect, useMemo } from 'react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import MenuSkeletonLoader from '@/components/MenuSkeletonLoader';
 import Link from 'next/link';
+import NextImage from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
   Home, 
@@ -1956,12 +1957,14 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                   {/* School logo + name above search */}
                   {!sidebarCollapsed && (schoolName || sidebarSchoolLogo) && (
                     <div className="px-2 pb-3 flex items-center gap-2 border-b border-slate-600/40 mb-2">
-                      <div className="w-14 h-14 rounded-lg bg-white shrink-0 flex items-center justify-center overflow-hidden p-0.5 border border-slate-500/30">
+                      <div className="w-14 h-14 rounded-lg bg-white shrink-0 flex items-center justify-center overflow-hidden p-0.5 border border-slate-500/30 relative">
                         {sidebarSchoolLogo ? (
-                          <img
+                          <NextImage
                             src={sidebarSchoolLogo}
                             alt=""
-                            className="w-full h-full rounded-md object-cover"
+                            fill
+                            className="rounded-md object-cover"
+                            sizes="56px"
                           />
                         ) : (
                           <span className="text-slate-700 text-lg font-bold">

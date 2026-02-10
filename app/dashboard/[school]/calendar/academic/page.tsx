@@ -128,29 +128,29 @@ export default function AcademicCalendarPage({
     });
   };
 
-  const getDaysInMonth = (month: number, year: number): Date[] => {
+  const getDaysInMonth = (month: number, year: number): (Date | null)[] => {
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    const days: Date[] = [];
-    
-    // Add days from previous month to fill the first week
+    const days: (Date | null)[] = [];
+
+    // Add days from previous month to align first day of month with weekday
     const startDay = firstDay.getDay();
     for (let i = startDay - 1; i >= 0; i--) {
       const date = new Date(year, month, -i);
       days.push(date);
     }
-    
-    // Add all days of the current month
+
+    // Add all days of the current month only
     for (let day = 1; day <= lastDay.getDate(); day++) {
       days.push(new Date(year, month, day));
     }
-    
-    // Add days from next month to fill the last week
-    const remainingDays = 42 - days.length; // 6 weeks * 7 days
-    for (let day = 1; day <= remainingDays; day++) {
-      days.push(new Date(year, month + 1, day));
+
+    // Fill remaining cells with null so only one month is visible (no next month dates)
+    const totalCells = 42; // 6 rows * 7 days
+    while (days.length < totalCells) {
+      days.push(null);
     }
-    
+
     return days;
   };
 
@@ -159,6 +159,7 @@ export default function AcademicCalendarPage({
       case 'holiday':
         return 'bg-red-100 text-red-800 border-red-200';
       case 'exam':
+      case 'examination':
         return 'bg-orange-100 text-orange-800 border-orange-200';
       case 'event':
         return 'bg-blue-100 text-blue-800 border-blue-200';
@@ -169,6 +170,19 @@ export default function AcademicCalendarPage({
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200';
     }
+  };
+
+  const getEventStyle = (event: { event_type?: string; color?: string }): { className?: string; style?: React.CSSProperties } => {
+    if (event.color && /^#([0-9A-Fa-f]{3}){1,2}$/.test(event.color)) {
+      return {
+        style: {
+          backgroundColor: `${event.color}20`,
+          color: event.color,
+          borderColor: event.color,
+        },
+      };
+    }
+    return { className: getEventTypeColor(event.event_type) };
   };
 
   const formatDate = (dateStr: string) => {
@@ -249,23 +263,8 @@ export default function AcademicCalendarPage({
               <option key={year} value={year}>{year}</option>
             ))}
           </select>
-          <Button
-            variant="outline"
-            onClick={fetchCalendar}
-            className="border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
-            disabled={loading}
-          >
-            <RefreshCw size={18} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/dashboard/${schoolCode}/calendar/events`)}
-            className="border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
-          >
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+        
+         
         </div>
       </motion.div>
 
@@ -292,7 +291,7 @@ export default function AcademicCalendarPage({
             </div>
             <Button
               onClick={handleToday}
-              className="bg-white text-[#1e3a8a] hover:bg-gray-100 font-semibold"
+              className="bg-blue-900 text-[#00000]  font-semibold"
             >
               Today
             </Button>
@@ -333,10 +332,11 @@ export default function AcademicCalendarPage({
             {/* Calendar Days */}
             <div className="grid grid-cols-7 gap-2">
               {days.map((date, index) => {
-                const events = getEventsForDate(date);
-                const isCurrent = isCurrentMonth(date);
-                const isTodayDate = isToday(date);
-                const isSelected = selectedDate && 
+                const isEmptyCell = date === null;
+                const events = isEmptyCell ? [] : getEventsForDate(date);
+                const isCurrent = !isEmptyCell && isCurrentMonth(date);
+                const isTodayDate = !isEmptyCell && isToday(date);
+                const isSelected = !isEmptyCell && selectedDate &&
                   date.getDate() === selectedDate.getDate() &&
                   date.getMonth() === selectedDate.getMonth() &&
                   date.getFullYear() === selectedDate.getFullYear();
@@ -353,35 +353,39 @@ export default function AcademicCalendarPage({
                       }
                     }}
                     className={`
-                      min-h-[100px] p-2 rounded-lg border-2 transition-all cursor-pointer
+                      min-h-[100px] p-2 rounded-lg border-2 transition-all
+                      ${isEmptyCell ? 'bg-gray-50/50 border-gray-100 cursor-default' : 'cursor-pointer'}
                       ${isCurrent 
                         ? 'bg-white border-gray-200 hover:border-[#1e3a8a] hover:shadow-md' 
-                        : 'bg-gray-50 border-gray-100 opacity-50'
+                        : !isEmptyCell ? 'bg-gray-50 border-gray-100 opacity-50' : ''
                       }
                       ${isTodayDate ? 'ring-2 ring-[#1e3a8a] ring-offset-2' : ''}
                       ${isSelected ? 'border-[#1e3a8a] bg-blue-50' : ''}
                     `}
                   >
-                    <div className={`
-                      text-sm font-semibold mb-1
-                      ${isCurrent ? 'text-gray-900' : 'text-gray-400'}
-                      ${isTodayDate ? 'text-[#1e3a8a]' : ''}
-                    `}>
-                      {date.getDate()}
-                    </div>
+                    {!isEmptyCell && (
+                      <div className={`
+                        text-sm font-semibold mb-1
+                        ${isCurrent ? 'text-gray-900' : 'text-gray-400'}
+                        ${isTodayDate ? 'text-[#1e3a8a]' : ''}
+                      `}>
+                        {date.getDate()}
+                      </div>
+                    )}
                     <div className="space-y-1">
-                      {events.slice(0, 2).map((event, eventIndex) => (
-                        <div
-                          key={eventIndex}
-                          className={`
-                            text-xs px-1.5 py-0.5 rounded border truncate
-                            ${getEventTypeColor(event.event_type)}
-                          `}
-                          title={event.title || 'Event'}
-                        >
-                          {event.title || 'Event'}
-                        </div>
-                      ))}
+                      {events.slice(0, 2).map((event, eventIndex) => {
+                        const styleOrClass = getEventStyle(event);
+                        return (
+                          <div
+                            key={eventIndex}
+                            className={`text-xs px-1.5 py-0.5 rounded border truncate ${styleOrClass.className ?? ''}`}
+                            style={styleOrClass.style}
+                            title={event.title || 'Event'}
+                          >
+                            {event.title || 'Event'}
+                          </div>
+                        );
+                      })}
                       {events.length > 2 && (
                         <div className="text-xs text-gray-500 font-medium">
                           +{events.length - 2} more

@@ -18,6 +18,7 @@ interface Event {
   applicable_for: 'all' | 'students' | 'staff' | 'specific_class';
   applicable_classes: string[] | null;
   is_active: boolean;
+  color?: string | null;
 }
 
 export default function EventsPage({
@@ -171,7 +172,7 @@ export default function EventsPage({
           <Button
             variant="outline"
             onClick={handleDownloadTemplate}
-            className="border-[#1E3A8A] text-[#1E3A8A] hover:bg-blue-50"
+            className="border-[#1E3A8A] text-[#1E3A8A] hover:bg-blue-800"
           >
             <Download size={18} className="mr-2" />
             Download Template
@@ -193,7 +194,7 @@ export default function EventsPage({
               router.push(`/dashboard/${schoolCode}/calendar/academic`);
               setTimeout(() => window.dispatchEvent(new Event('calendar-refresh')), 100);
             }}
-            className="border-gray-300 text-gray-700 hover:bg-gray-50"
+            className="border-gray-300 text-gray-700 hover:bg-blue-800"
           >
             <ArrowLeft size={18} className="mr-2" />
             Back to Calendar
@@ -315,6 +316,7 @@ function EventModal({
     event_type: event?.event_type || 'event' as 'event' | 'holiday',
     applicable_for: event?.applicable_for || 'all' as 'all' | 'students' | 'staff' | 'specific_class',
     applicable_classes: event?.applicable_classes || [],
+    color: event?.color || '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -344,6 +346,7 @@ function EventModal({
           school_code: schoolCode,
           ...formData,
           applicable_classes: formData.applicable_for === 'specific_class' ? formData.applicable_classes : null,
+          color: formData.color || undefined,
         }),
       });
 
@@ -420,6 +423,7 @@ function EventModal({
                 >
                   <option value="event">Event</option>
                   <option value="holiday">Holiday</option>
+                  <option value="holiday">Others</option>
                 </select>
               </div>
             </div>
@@ -447,6 +451,35 @@ function EventModal({
                 placeholder="Enter event description..."
                 rows={4}
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Color (for Academic Calendar)
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                {['', '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'].map((hex) => (
+                  <button
+                    key={hex || 'none'}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, color: hex }))}
+                    className={`w-8 h-8 rounded-lg border-2 transition-all ${
+                      (formData.color || '') === hex ? 'border-gray-900 ring-2 ring-offset-2 ring-gray-400' : 'border-gray-200 hover:border-gray-400'
+                    } ${hex ? '' : 'bg-gray-100 flex items-center justify-center text-xs text-gray-500'}`}
+                    style={hex ? { backgroundColor: hex } : undefined}
+                    title={hex ? hex : 'Default (no color)'}
+                  >
+                    {!hex && '—'}
+                  </button>
+                ))}
+                <input
+                  type="color"
+                  value={formData.color && /^#([0-9A-Fa-f]{3}){1,2}$/.test(formData.color) ? formData.color : '#3B82F6'}
+                  onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
+                  className="w-8 h-8 rounded cursor-pointer border border-gray-300"
+                  title="Custom color"
+                />
+              </div>
             </div>
 
             <div>

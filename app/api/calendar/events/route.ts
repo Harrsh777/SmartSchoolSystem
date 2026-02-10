@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
       event_type,
       applicable_for,
       applicable_classes,
+      color,
     } = body;
 
     if (!school_code || !event_date || !title || !event_type || !applicable_for) {
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
         event_type: event_type,
         applicable_for: applicable_for,
         applicable_classes: applicable_for === 'specific_class' ? applicable_classes : null,
+        color: color && /^#([0-9A-Fa-f]{3}){1,2}$/.test(color) ? color : null,
       }])
       .select()
       .single();

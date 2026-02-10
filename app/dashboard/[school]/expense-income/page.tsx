@@ -1833,7 +1833,7 @@ function ReportsTab({
   );
 }
 
-function getFinanceOverviewReceiptHtml(data: OverviewData, financialYearName: string | undefined) {
+function getFinanceOverviewReceiptHtml(_data: OverviewData, _financialYearName: string | undefined) {
   throw new Error('Function not implemented.');
 }
 
