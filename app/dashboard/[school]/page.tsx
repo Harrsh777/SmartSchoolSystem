@@ -742,6 +742,7 @@ export default function DashboardPage({
         { label: 'Modify Classes', path: '/classes/modify', icon: BookOpen },
       ]},
       { label: 'Timetable', path: '/timetable', icon: CalendarDays, color: '#F97316', subItems: [
+        { label: 'Timetable Builder', path: '/timetable', icon: CalendarDays },
         { label: 'Class Timetable', path: '/timetable/class', icon: CalendarDays },
         { label: 'Teacher Timetable', path: '/timetable/teacher', icon: CalendarDays },
         { label: 'Group Wise Timetable', path: '/timetable/group-wise', icon: CalendarDays },

@@ -26,6 +26,7 @@ import {
   FileText,
   Car
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface Visitor {
   id: string;
@@ -79,7 +80,12 @@ export default function VisitorManagementPage({
   const [searchPersonQuery, setSearchPersonQuery] = useState('');
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const [filteredPeople, setFilteredPeople] = useState<Array<Staff | Student>>([]);
-  
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportFromDate, setReportFromDate] = useState('');
+  const [reportToDate, setReportToDate] = useState('');
+  const [reportLoading, setReportLoading] = useState(false);
+  const [selectedVisitorForView, setSelectedVisitorForView] = useState<Visitor | null>(null);
+
   const [formData, setFormData] = useState({
     visitor_name: '',
     phone_number: '',
@@ -201,6 +207,13 @@ export default function VisitorManagementPage({
     if (!formData.visitor_name || !formData.purpose_of_visit || !formData.person_to_meet) {
       alert('Please fill in all required fields');
       return;
+    }
+    if (formData.phone_number) {
+      const digitsOnly = formData.phone_number.replace(/\D/g, '');
+      if (digitsOnly.length !== 10) {
+        alert('Phone number must be exactly 10 digits.');
+        return;
+      }
     }
 
     // Get current staff from session storage
@@ -362,6 +375,63 @@ export default function VisitorManagementPage({
     }
   };
 
+  const handleDownloadReport = async () => {
+    if (!reportFromDate || !reportToDate) {
+      alert('Please select both From and To dates.');
+      return;
+    }
+    if (new Date(reportFromDate) > new Date(reportToDate)) {
+      alert('From date must be before or equal to To date.');
+      return;
+    }
+    setReportLoading(true);
+    try {
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        start_date: reportFromDate,
+        end_date: reportToDate,
+        page: '1',
+        limit: '10000',
+      });
+      const response = await fetch(`/api/visitors?${params}`);
+      const result = await response.json();
+      if (!response.ok) {
+        alert(result.error || 'Failed to fetch visitors for report.');
+        return;
+      }
+      const data = Array.isArray(result.data) ? result.data : [];
+      const rows = (data as Visitor[]).map((v) => ({
+        'Visitor Name': v.visitor_name,
+        'Phone': v.phone_number ?? '',
+        'Email': v.email ?? '',
+        'Purpose of Visit': v.purpose_of_visit,
+        'Person to Meet': v.person_to_meet,
+        'Date': formatDateForExcel(v.visit_date),
+        'Visit Date': v.visit_date,
+        'Time In': v.time_in,
+        'Time Out': v.time_out ?? '',
+        'Status': v.status,
+        'ID Proof Type': v.id_proof_type ?? '',
+        'ID Proof Number': v.id_proof_number ?? '',
+        'Vehicle Number': v.vehicle_number ?? '',
+        'Remarks': v.remarks ?? '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Visitors');
+      const filename = `visitor-report-${reportFromDate}-to-${reportToDate}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      setShowReportModal(false);
+      setReportFromDate('');
+      setReportToDate('');
+    } catch (err) {
+      console.error('Error downloading report:', err);
+      alert('Failed to download report. Please try again.');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig = {
       IN: { text: 'IN', color: 'bg-green-100 text-green-800 border-green-200' },
@@ -386,6 +456,49 @@ export default function VisitorManagementPage({
       year: 'numeric',
     });
     return time ? `${formattedDate}, ${time}` : formattedDate;
+  };
+
+  const formatDateOnly = (date?: string) => {
+    if (!date) return '-';
+    const d = new Date(date);
+    return d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
+
+  const formatDateForExcel = (date?: string) => {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
+
+  const handleDownloadSingle = (visitor: Visitor) => {
+    const row = {
+      'Visitor Name': visitor.visitor_name,
+      'Phone': visitor.phone_number ?? '',
+      'Email': visitor.email ?? '',
+      'Purpose of Visit': visitor.purpose_of_visit,
+      'Person to Meet': visitor.person_to_meet,
+      'Date': formatDateForExcel(visitor.visit_date),
+      'Visit Date': visitor.visit_date,
+      'Time In': visitor.time_in,
+      'Time Out': visitor.time_out ?? '',
+      'Status': visitor.status,
+      'ID Proof Type': visitor.id_proof_type ?? '',
+      'ID Proof Number': visitor.id_proof_number ?? '',
+      'Vehicle Number': visitor.vehicle_number ?? '',
+      'Remarks': visitor.remarks ?? '',
+    };
+    const ws = XLSX.utils.json_to_sheet([row]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Visitor');
+    XLSX.writeFile(wb, `visitor-${visitor.visitor_name.replace(/\s+/g, '-')}-${visitor.visit_date}.xlsx`);
   };
 
   const totalPages = Math.ceil(totalVisitors / itemsPerPage);
@@ -450,16 +563,18 @@ export default function VisitorManagementPage({
             </Button>
             <Button
               variant="outline"
+              onClick={() => setShowReportModal(true)}
+              className="flex items-center gap-2"
+            >
+              <Download size={18} />
+              Report
+            </Button>
+            <Button
+              variant="outline"
               onClick={fetchVisitors}
               className="rounded-full p-2"
             >
               <RefreshCw size={18} />
-            </Button>
-            <Button
-              variant="outline"
-              className="rounded-full p-2"
-            >
-              <Settings size={18} />
             </Button>
           </div>
         </div>
@@ -491,6 +606,9 @@ export default function VisitorManagementPage({
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Person to Meet
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    Date
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Visit Date & Time
@@ -539,6 +657,9 @@ export default function VisitorManagementPage({
                       {visitor.person_to_meet}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                      {formatDateOnly(visitor.visit_date)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                       {formatDateTime(visitor.visit_date, visitor.time_in)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -563,15 +684,29 @@ export default function VisitorManagementPage({
                       <div className="flex items-center gap-2">
                         {visitor.time_out ? (
                           <>
-                            <button className="text-[#1E3A8A] hover:text-[#1E40AF]">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedVisitorForView(visitor)}
+                              className="p-2 text-[#1E3A8A] hover:bg-blue-50 rounded-lg transition-colors"
+                              title="View details"
+                            >
                               <Eye size={18} />
                             </button>
-                            <button className="text-gray-600 hover:text-gray-800">
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadSingle(visitor)}
+                              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Download as Excel"
+                            >
                               <Download size={18} />
                             </button>
                           </>
                         ) : (
-                          <button className="text-gray-600 hover:text-gray-800">
+                          <button
+                            type="button"
+                            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Edit (coming soon)"
+                          >
                             <Edit size={18} />
                           </button>
                         )}
@@ -659,8 +794,12 @@ export default function VisitorManagementPage({
                       <Input
                         type="tel"
                         value={formData.phone_number}
-                        onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                        placeholder="Enter phone number"
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setFormData({ ...formData, phone_number: value });
+                        }}
+                        placeholder="10 digits only"
+                        maxLength={10}
                       />
                     </div>
                     <div>
@@ -887,6 +1026,181 @@ export default function VisitorManagementPage({
                 </Button>
               </div>
             </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Download Report Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md bg-white rounded-lg shadow-xl p-6"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Download size={24} className="text-[#1E3A8A]" />
+                Download Visitor Report
+              </h2>
+              <button
+                onClick={() => !reportLoading && setShowReportModal(false)}
+                className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Select date range to export visitor entries as Excel.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">From Date</label>
+                <Input
+                  type="date"
+                  value={reportFromDate}
+                  onChange={(e) => setReportFromDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">To Date</label>
+                <Input
+                  type="date"
+                  value={reportToDate}
+                  onChange={(e) => setReportToDate(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowReportModal(false)}
+                disabled={reportLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleDownloadReport}
+                disabled={reportLoading}
+                className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E40AF] hover:to-[#2563EB] text-white"
+              >
+                {reportLoading ? 'Generating...' : 'Download Excel'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* View Visitor Details Modal */}
+      {selectedVisitorForView && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-lg bg-white rounded-lg shadow-xl overflow-hidden"
+          >
+            <div className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] text-white px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold">Visitor Details</h2>
+              <button
+                type="button"
+                onClick={() => setSelectedVisitorForView(null)}
+                className="text-white/90 hover:text-white p-1"
+                aria-label="Close"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Visitor Name</p>
+                  <p className="text-gray-900 font-medium">{selectedVisitorForView.visitor_name}</p>
+                </div>
+                {(selectedVisitorForView.phone_number || selectedVisitorForView.email) && (
+                  <div className="grid grid-cols-2 gap-4">
+                    {selectedVisitorForView.phone_number && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase">Phone</p>
+                        <p className="text-gray-900">{selectedVisitorForView.phone_number}</p>
+                      </div>
+                    )}
+                    {selectedVisitorForView.email && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase">Email</p>
+                        <p className="text-gray-900">{selectedVisitorForView.email}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Purpose of Visit</p>
+                  <p className="text-gray-900">{selectedVisitorForView.purpose_of_visit}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Person to Meet</p>
+                  <p className="text-gray-900">{selectedVisitorForView.person_to_meet}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase">Date</p>
+                    <p className="text-gray-900">{formatDateOnly(selectedVisitorForView.visit_date)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase">Time In</p>
+                    <p className="text-gray-900">{selectedVisitorForView.time_in}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase">Time Out</p>
+                    <p className="text-gray-900">{selectedVisitorForView.time_out ?? '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase">Status</p>
+                    <p className="text-gray-900">{selectedVisitorForView.status}</p>
+                  </div>
+                </div>
+                {(selectedVisitorForView.id_proof_type || selectedVisitorForView.id_proof_number) && (
+                  <div className="grid grid-cols-2 gap-4">
+                    {selectedVisitorForView.id_proof_type && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase">ID Proof Type</p>
+                        <p className="text-gray-900">{selectedVisitorForView.id_proof_type}</p>
+                      </div>
+                    )}
+                    {selectedVisitorForView.id_proof_number && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase">ID Proof Number</p>
+                        <p className="text-gray-900">{selectedVisitorForView.id_proof_number}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {selectedVisitorForView.vehicle_number && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase">Vehicle Number</p>
+                    <p className="text-gray-900">{selectedVisitorForView.vehicle_number}</p>
+                  </div>
+                )}
+                {selectedVisitorForView.remarks && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase">Remarks</p>
+                    <p className="text-gray-900">{selectedVisitorForView.remarks}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => handleDownloadSingle(selectedVisitorForView)}
+              >
+                <Download size={16} className="mr-2" />
+                Download Excel
+              </Button>
+              <Button onClick={() => setSelectedVisitorForView(null)}>Close</Button>
+            </div>
           </motion.div>
         </div>
       )}

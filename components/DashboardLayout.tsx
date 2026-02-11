@@ -1236,6 +1236,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     
     // Timetable
     { label: 'Timetable', path: '/timetable', category: 'Timetable', icon: CalendarDays },
+    { label: 'Timetable Builder', path: '/timetable', category: 'Timetable', icon: CalendarDays, parent: 'Timetable' },
     { label: 'Class Timetable', path: '/timetable/class', category: 'Timetable', icon: CalendarDays, parent: 'Timetable' },
     { label: 'Teacher Timetable', path: '/timetable/teacher', category: 'Timetable', icon: CalendarDays, parent: 'Timetable' },
     { label: 'Group Wise Timetable', path: '/timetable/group-wise', category: 'Timetable', icon: CalendarDays, parent: 'Timetable' },

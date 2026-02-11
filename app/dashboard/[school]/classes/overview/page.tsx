@@ -133,8 +133,13 @@ export default function ClassOverviewPage({
     fetchClassOverview();
   };
 
-  const handleViewTimetable = (classId: string) => {
-    router.push(`/dashboard/${schoolCode}/timetable/class?class_id=${classId}`);
+  const handleViewTimetable = (classItem: ClassOverviewData) => {
+    const params = new URLSearchParams({
+      class_id: classItem.id,
+      class: classItem.class,
+      section: classItem.section,
+    });
+    router.push(`/dashboard/${schoolCode}/timetable/class?${params.toString()}`);
   };
 
   const handleAssignSubjects = (classItem: ClassOverviewData) => {
@@ -565,7 +570,7 @@ export default function ClassOverviewPage({
                       <td className="px-2 py-2.5 whitespace-nowrap text-center">
                         {classItem.has_timetable ? (
                           <button
-                            onClick={() => handleViewTimetable(classItem.id)}
+                            onClick={() => handleViewTimetable(classItem)}
                             className="text-xs text-[#2F6FED] hover:text-[#1e3a8a] font-medium flex items-center justify-center gap-0.5 transition-colors"
                           >
                             <Eye size={12} />

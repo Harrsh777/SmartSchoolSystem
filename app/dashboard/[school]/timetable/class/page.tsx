@@ -1,7 +1,7 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { use, useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   DndContext,
   DragOverlay,
@@ -143,6 +143,8 @@ export default function ClassTimetablePage({
   const [selectedSlot, setSelectedSlot] = useState<{ day: string; periodOrder: number } | null>(null);
   const [savingAll, setSavingAll] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const appliedInitialClassRef = useRef(false);
+  const searchParams = useSearchParams();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -179,6 +181,42 @@ export default function ClassTimetablePage({
       setSelectedClass(null);
     }
   }, [selectedClassName, selectedSection, classes]);
+
+  // Auto-select class/section from URL when coming from Class Overview (View timetable)
+  useEffect(() => {
+    if (appliedInitialClassRef.current) return;
+    const classId = searchParams.get('class_id');
+    const urlClass = searchParams.get('class');
+    const urlSection = searchParams.get('section');
+    if (!classId && !(urlClass && urlSection)) return;
+
+    const trySelect = (classList: ClassData[]) => {
+      let cls: ClassData | undefined;
+      if (classId) cls = classList.find(c => c.id === classId);
+      if (!cls && urlClass && urlSection) cls = classList.find(c => c.class === urlClass && c.section === urlSection);
+      if (cls) {
+        appliedInitialClassRef.current = true;
+        setSelectedClassName(cls.class);
+        setSelectedSection(cls.section);
+        return true;
+      }
+      return false;
+    };
+
+    if (classes.length > 0) {
+      if (trySelect(classes)) return;
+      // Class not in current list (e.g. different period group) - fetch all classes so we can show the requested one
+      fetch(`/api/classes?school_code=${schoolCode}`)
+        .then(res => res.json())
+        .then(result => {
+          if (result.data && result.data.length > 0 && !appliedInitialClassRef.current) {
+            const allClasses = result.data as ClassData[];
+            if (trySelect(allClasses)) setClasses(allClasses);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [classes, schoolCode, searchParams]);
 
   // Fetch subjects when period group is selected (even without class)
   useEffect(() => {

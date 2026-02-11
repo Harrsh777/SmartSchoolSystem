@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { X, Clock, Plus, Trash2, ArrowRight, ArrowLeft, Check } from 'lucide-react';
+import { X, Clock, Plus, Trash2, ArrowRight, ArrowLeft, Check, Edit, List } from 'lucide-react';
 
 interface Period {
   id: string;
@@ -55,18 +55,120 @@ export default function GroupWiseTimetablePage({
   // Step 3: Upload/Review
   const [groupId, setGroupId] = useState<string | null>(null);
 
+  // List vs form view: when opening page show all period groups; Add new / Edit open the form
+  const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [periodGroupsList, setPeriodGroupsList] = useState<Array<{
+    id: string;
+    group_name: string;
+    is_active?: boolean;
+    class_start_time?: string;
+    number_of_periods?: number;
+    selected_days?: string[];
+    periods?: unknown[];
+  }>>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  const fetchPeriodGroupsList = async () => {
+    try {
+      setListLoading(true);
+      const res = await fetch(`/api/timetable/period-groups?school_code=${schoolCode}`);
+      const data = await res.json();
+      if (res.ok && data.data) setPeriodGroupsList(data.data);
+      else setPeriodGroupsList([]);
+    } catch (err) {
+      console.error('Error fetching period groups:', err);
+      setPeriodGroupsList([]);
+    } finally {
+      setListLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === 'list') fetchPeriodGroupsList();
+  }, [schoolCode, viewMode]);
+
+  // Load group data when opening form in edit mode
+  useEffect(() => {
+    if (viewMode !== 'form' || !editingGroupId) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [groupRes, classesRes] = await Promise.all([
+          fetch(`/api/timetable/period-groups/${editingGroupId}?school_code=${schoolCode}`),
+          fetch(`/api/timetable/period-groups/classes?school_code=${schoolCode}&group_id=${editingGroupId}`),
+        ]);
+        const groupData = await groupRes.json();
+        const classesData = await classesRes.json();
+        if (cancelled) return;
+        if (groupRes.ok && groupData.data) {
+          const g = groupData.data;
+          setGroupId(g.id);
+          setGroupName(g.group_name || '');
+          setIsActive(g.is_active !== false);
+          setClassStartTime(g.class_start_time || '08:30');
+          setNumberOfPeriods(g.number_of_periods || 3);
+          setTimezone(g.timezone || 'Asia/Kolkata');
+          setSelectedDays(Array.isArray(g.selected_days) ? g.selected_days : allDays);
+          const rawPeriods = g.periods || [];
+          let breakAfter: number | null = null;
+          let breakDur = 10;
+          let breakNm = 'Break';
+          let periodCount = 0;
+          const mappedPeriods: Period[] = rawPeriods.map((p: { period_name?: string; period_duration_minutes?: number; period_start_time?: string; period_end_time?: string; is_break?: boolean; break_name?: string }, i: number) => {
+            if (p.is_break) {
+              breakAfter = periodCount;
+              breakDur = p.period_duration_minutes || 10;
+              breakNm = p.break_name || 'Break';
+            } else {
+              periodCount += 1;
+            }
+            return {
+              id: `period-${(p as { id?: string }).id || p.period_start_time || i}`,
+              periodName: p.period_name || `Period ${i + 1}`,
+              duration: p.period_duration_minutes || 45,
+              startTime: p.period_start_time || '',
+              endTime: p.period_end_time || '',
+              isBreak: p.is_break || false,
+              breakName: p.break_name,
+            };
+          });
+          setBreakAfterPeriod(breakAfter);
+          setBreakDuration(breakDur);
+          setBreakName(breakNm);
+          const finalPeriods = mappedPeriods.length ? mappedPeriods : [{ id: 'period-1', periodName: 'Period 1', duration: 45, startTime: '08:30 AM', endTime: '09:15 AM', isBreak: false }];
+          setPeriods(finalPeriods);
+          setNumberOfPeriods(finalPeriods.filter(p => !p.isBreak).length);
+        }
+        if (classesRes.ok && classesData.data && Array.isArray(classesData.data)) {
+          const assigned: SelectedClass[] = classesData.data
+            .map((a: { class?: { id: string; class: string; section: string } }) => a.class)
+            .filter(Boolean)
+            .map((c: { id: string; class: string; section: string }) => ({ classId: c.id, className: c.class, section: c.section }));
+          setSelectedClasses(assigned);
+        }
+      } catch (err) {
+        console.error('Error loading group for edit:', err);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, editingGroupId, schoolCode]);
 
   useEffect(() => {
     fetchClasses();
-    if (currentStep === 1) {
+    if (currentStep === 1 && !editingGroupId) {
       calculatePeriods();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode, currentStep, classStartTime, numberOfPeriods, breakAfterPeriod, breakDuration]);
 
   useEffect(() => {
-    if (currentStep === 1) {
+    if (currentStep === 1 && !editingGroupId) {
       calculatePeriods();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -272,6 +374,19 @@ export default function GroupWiseTimetablePage({
     setSelectedSection('');
   };
 
+  const handleToggleClass = (cls: { id: string; class: string; section: string }) => {
+    const isSelected = selectedClasses.some(sc => sc.classId === cls.id);
+    if (isSelected) {
+      setSelectedClasses(prev => prev.filter(sc => sc.classId !== cls.id));
+    } else {
+      setSelectedClasses(prev => [...prev, {
+        classId: cls.id,
+        className: cls.class,
+        section: cls.section,
+      }]);
+    }
+  };
+
   const handleRemoveClass = (classId: string) => {
     setSelectedClasses(prev => prev.filter(sc => sc.classId !== classId));
   };
@@ -292,29 +407,49 @@ export default function GroupWiseTimetablePage({
 
     setLoading(true);
     try {
-      // Save period group
-      const response = await fetch('/api/timetable/period-groups', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          school_code: schoolCode,
-          group_name: groupName,
-          is_active: isActive,
-          class_start_time: classStartTime,
-          number_of_periods: periods.filter(p => !p.isBreak).length,
-          timezone: timezone,
-          selected_days: selectedDays,
-          periods: periods,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (response.ok && result.data) {
-        setGroupId(result.data.group_id);
-        setCurrentStep(2);
+      if (editingGroupId) {
+        const response = await fetch(`/api/timetable/period-groups/${editingGroupId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            school_code: schoolCode,
+            group_name: groupName,
+            is_active: isActive,
+            class_start_time: classStartTime,
+            number_of_periods: periods.filter(p => !p.isBreak).length,
+            timezone: timezone,
+            selected_days: selectedDays,
+            periods: periods,
+          }),
+        });
+        const result = await response.json();
+        if (response.ok) {
+          setCurrentStep(2);
+        } else {
+          alert(result.error || 'Failed to update period details');
+        }
       } else {
-        alert(result.error || 'Failed to save period details');
+        const response = await fetch('/api/timetable/period-groups', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            school_code: schoolCode,
+            group_name: groupName,
+            is_active: isActive,
+            class_start_time: classStartTime,
+            number_of_periods: periods.filter(p => !p.isBreak).length,
+            timezone: timezone,
+            selected_days: selectedDays,
+            periods: periods,
+          }),
+        });
+        const result = await response.json();
+        if (response.ok && result.data) {
+          setGroupId(result.data.group_id);
+          setCurrentStep(2);
+        } else {
+          alert(result.error || 'Failed to save period details');
+        }
       }
     } catch (error) {
       console.error('Error saving period details:', error);
@@ -366,7 +501,6 @@ export default function GroupWiseTimetablePage({
 
     setSaving(true);
     try {
-      // Mark as complete/active
       const response = await fetch(`/api/timetable/period-groups/${groupId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -379,8 +513,12 @@ export default function GroupWiseTimetablePage({
       const result = await response.json();
 
       if (response.ok) {
-        alert('Group-wise timetable created successfully!');
-        router.push(`/dashboard/${schoolCode}/timetable/class`);
+        alert(editingGroupId ? 'Period group updated successfully!' : 'Group-wise timetable created successfully!');
+        setViewMode('list');
+        setEditingGroupId(null);
+        setGroupId(null);
+        setCurrentStep(1);
+        resetFormState();
       } else {
         alert(result.error || 'Failed to complete timetable');
       }
@@ -392,21 +530,182 @@ export default function GroupWiseTimetablePage({
     }
   };
 
+  const resetFormState = () => {
+    setGroupName(new Date().getFullYear().toString());
+    setIsActive(true);
+    setClassStartTime('08:30');
+    setNumberOfPeriods(3);
+    setTimezone('Asia/Kolkata');
+    setSelectedDays([...allDays]);
+    setPeriods([]);
+    setBreakAfterPeriod(null);
+    setBreakDuration(10);
+    setBreakName('Break');
+    setSelectedClasses([]);
+    setSelectedClassId('');
+    setSelectedSection('');
+    setGroupId(null);
+    setCurrentStep(1);
+  };
+
+  const handleAddNew = () => {
+    setEditingGroupId(null);
+    resetFormState();
+    setGroupId(null);
+    setViewMode('form');
+  };
+
+  const handleEdit = (id: string) => {
+    setEditingGroupId(id);
+    setCurrentStep(1);
+    setViewMode('form');
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this period group? This will remove all periods and class assignments for this group.')) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/timetable/period-groups/${id}?school_code=${schoolCode}`, { method: 'DELETE' });
+      if (res.ok) {
+        setPeriodGroupsList(prev => prev.filter(g => g.id !== id));
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete period group');
+      }
+    } catch (err) {
+      console.error('Error deleting period group:', err);
+      alert('Failed to delete period group.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleCancelForm = () => {
+    setViewMode('list');
+    setEditingGroupId(null);
+    setCurrentStep(1);
+    resetFormState();
+  };
+
   const uniqueSections = selectedClassId
     ? Array.from(new Set(classes.filter(c => c.id === selectedClassId).map(c => c.section)))
     : [];
 
+  // List view: all period groups with Edit / Delete
+  if (viewMode === 'list') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-black mb-2">Group Wise Timetable</h1>
+            <p className="text-gray-600">Set up period durations and assign to classes</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleAddNew}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              <Plus size={18} className="mr-2" />
+              Add new
+            </Button>
+            <button
+              onClick={() => router.push(`/dashboard/${schoolCode}/timetable/class`)}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+              aria-label="Back"
+            >
+              <X size={24} />
+            </button>
+          </div>
+        </div>
+
+        <Card>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <List size={20} />
+            Period groups
+          </h2>
+          {listLoading ? (
+            <div className="py-12 text-center text-gray-500">Loading period groups...</div>
+          ) : periodGroupsList.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-gray-600 mb-4">No period groups yet.</p>
+              <Button onClick={handleAddNew} className="bg-orange-500 hover:bg-orange-600 text-white">
+                <Plus size={18} className="mr-2" />
+                Add new period group
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Group name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Start time</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Periods</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Days</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {periodGroupsList.map((g) => (
+                    <tr key={g.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900">{g.group_name}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${g.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {g.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{g.class_start_time || '-'}</td>
+                      <td className="px-4 py-3 text-gray-600">{g.number_of_periods ?? (g.periods?.length ?? 0)}</td>
+                      <td className="px-4 py-3 text-gray-600">{Array.isArray(g.selected_days) ? g.selected_days.join(', ') : '-'}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(g.id)}
+                            className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                          >
+                            <Edit size={16} className="mr-1" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(g.id)}
+                            disabled={deletingId === g.id}
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                          >
+                            {deletingId === g.id ? 'Deleting...' : <><Trash2 size={16} className="mr-1" /> Delete</>}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
+  // Form view: Create or Edit (same 3-step structure)
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-black mb-2">Create Group Wise Timetable</h1>
+          <h1 className="text-3xl font-bold text-black mb-2">
+            {editingGroupId ? 'Edit' : 'Create'} Group Wise Timetable
+          </h1>
           <p className="text-gray-600">Set up period durations and assign to classes</p>
         </div>
         <button
-          onClick={() => router.push(`/dashboard/${schoolCode}/timetable/class`)}
+          onClick={handleCancelForm}
           className="p-2 hover:bg-gray-100 rounded-lg"
+          aria-label="Cancel"
         >
           <X size={24} />
         </button>
@@ -778,6 +1077,35 @@ export default function GroupWiseTimetablePage({
                 ADD
               </Button>
             </div>
+
+            {/* All Classes & Sections - click to add/remove */}
+            {classes.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">All Classes & Sections — click to add or remove</h3>
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-[280px] overflow-y-auto">
+                  <div className="flex flex-wrap gap-2">
+                    {classes.map((cls) => {
+                      const isSelected = selectedClasses.some(sc => sc.classId === cls.id);
+                      return (
+                        <button
+                          key={cls.id}
+                          type="button"
+                          onClick={() => handleToggleClass(cls)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border-2 ${
+                            isSelected
+                              ? 'bg-orange-500 text-white border-orange-600 hover:bg-orange-600'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-orange-400 hover:bg-orange-50'
+                          }`}
+                        >
+                          Class {cls.class} - Section {cls.section}
+                          {isSelected && ' ✓'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Selected Classes */}
             {selectedClasses.length > 0 && (

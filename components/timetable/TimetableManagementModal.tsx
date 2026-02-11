@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, BookOpen, UserCheck, ExternalLink } from 'lucide-react';
+import { X, Calendar, BookOpen, UserCheck, ExternalLink, LayoutGrid } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface TimetableManagementModalProps {
@@ -11,6 +11,7 @@ interface TimetableManagementModalProps {
 }
 
 const menuItems = [
+  { id: 'builder', label: 'Timetable Builder', icon: LayoutGrid, path: '/timetable' },
   { id: 'group-wise', label: 'Group-wise Timetable', icon: Calendar, path: '/timetable/group-wise', highlight: true },
   { id: 'class', label: 'Class Time Table', icon: BookOpen, path: '/timetable/class' },
   { id: 'teacher', label: 'Teacher Time Table', icon: UserCheck, path: '/timetable/teacher' },

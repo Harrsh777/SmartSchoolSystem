@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
+import { use, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
@@ -25,7 +25,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Plus, X, Check, Loader2, GripVertical, BookOpen, Download, UserCheck } from 'lucide-react';
+import { ArrowLeft, Plus, X, Check, Loader2, GripVertical, BookOpen, Download, UserCheck, Search } from 'lucide-react';
 
 interface Subject {
   id: string;
@@ -210,6 +210,10 @@ export default function TimetablePage({
   }
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [showClassSelector, setShowClassSelector] = useState(true);
+  const [filterClass, setFilterClass] = useState('');
+  const [filterSection, setFilterSection] = useState('');
+  const [filterAcademicYear, setFilterAcademicYear] = useState('');
+  const [classSearchQuery, setClassSearchQuery] = useState('');
   const [selectedSlot, setSelectedSlot] = useState<{ day: string; period: number; subjectId: string } | null>(null);
   const [availableTeachers, setAvailableTeachers] = useState<Array<{ id: string; full_name: string; staff_id: string }>>([]);
   const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
@@ -221,6 +225,28 @@ export default function TimetablePage({
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
   };
+
+  const uniqueClasses = useMemo(() => Array.from(new Set(classes.map(c => getString(c.class))).values()).filter(Boolean).sort(), [classes]);
+  const uniqueSections = useMemo(() => Array.from(new Set(classes.map(c => getString(c.section))).values()).filter(Boolean).sort(), [classes]);
+  const uniqueAcademicYears = useMemo(() => Array.from(new Set(classes.map(c => getString(c.academic_year))).values()).filter(Boolean).sort((a, b) => b.localeCompare(a)), [classes]);
+
+  const filteredClasses = useMemo(() => {
+    return classes.filter((cls) => {
+      if (filterClass && getString(cls.class) !== filterClass) return false;
+      if (filterSection && getString(cls.section) !== filterSection) return false;
+      if (filterAcademicYear && getString(cls.academic_year) !== filterAcademicYear) return false;
+      if (classSearchQuery.trim()) {
+        const q = classSearchQuery.toLowerCase().trim();
+        const classSec = `${getString(cls.class)}-${getString(cls.section)}`.toLowerCase();
+        const year = getString(cls.academic_year).toLowerCase();
+        const teacherName = (cls.class_teacher && typeof cls.class_teacher === 'object' && 'full_name' in cls.class_teacher)
+          ? getString((cls.class_teacher as { full_name?: string }).full_name).toLowerCase()
+          : '';
+        if (!classSec.includes(q) && !year.includes(q) && !teacherName.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [classes, filterClass, filterSection, filterAcademicYear, classSearchQuery]);
 
   // Helper to safely get number value
   const getNumber = (value: unknown): number => {
@@ -697,9 +723,9 @@ export default function TimetablePage({
 
   if (showClassSelector) {
     return (
-      <div className="space-y-8 pb-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <div className="w-full min-w-0 max-w-full overflow-x-hidden space-y-6 pb-8">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
             <Button
               variant="outline"
               onClick={() => router.push(`/dashboard/${schoolCode}`)}
@@ -707,20 +733,64 @@ export default function TimetablePage({
               <ArrowLeft size={18} className="mr-2" />
               Back
             </Button>
-            <div>
-              <h1 className="text-3xl font-bold text-black mb-2">Timetable Builder</h1>
-              <p className="text-gray-600">Select a class to create or edit its timetable</p>
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-black mt-2 mb-1">Timetable Builder</h1>
+            <p className="text-gray-600 text-sm sm:text-base">Select a class to create or edit its timetable</p>
           </div>
         </div>
 
-        <Card>
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-black mb-2 flex items-center gap-2">
-              <BookOpen size={24} />
+        <Card className="min-w-0">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-black mb-2 flex items-center gap-2">
+              <BookOpen size={22} />
               Select Class
             </h2>
-            <p className="text-gray-600">Choose which class timetable you want to create or edit</p>
+            <p className="text-gray-600 text-sm mb-4">Choose which class timetable you want to create or edit</p>
+
+            {/* Filters and search */}
+            {classes.length > 0 && (
+              <div className="flex flex-wrap gap-3 mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="relative flex-1 min-w-[180px] max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <Input
+                    type="text"
+                    placeholder="Search class, section, year, teacher..."
+                    value={classSearchQuery}
+                    onChange={(e) => setClassSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <select
+                  value={filterClass}
+                  onChange={(e) => setFilterClass(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[100px] bg-white"
+                >
+                  <option value="">All classes</option>
+                  {uniqueClasses.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <select
+                  value={filterSection}
+                  onChange={(e) => setFilterSection(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[100px] bg-white"
+                >
+                  <option value="">All sections</option>
+                  {uniqueSections.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <select
+                  value={filterAcademicYear}
+                  onChange={(e) => setFilterAcademicYear(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[100px] bg-white"
+                >
+                  <option value="">All years</option>
+                  {uniqueAcademicYears.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {classes.length === 0 ? (
@@ -730,21 +800,26 @@ export default function TimetablePage({
                 Create Class
               </Button>
             </div>
+          ) : filteredClasses.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <p>No classes match the current filters. Try changing filters or search.</p>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {classes.map((cls) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 min-w-0">
+              {filteredClasses.map((cls) => (
                 <motion.button
                   key={cls.id}
+                  type="button"
                   onClick={() => handleClassSelect(cls)}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="p-6 border-2 border-gray-200 rounded-lg hover:border-black hover:bg-gray-50 transition-all text-left"
+                  className="p-4 border-2 border-gray-200 rounded-lg hover:border-black hover:bg-gray-50 transition-all text-left min-w-0"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xl font-bold text-black">
+                    <h3 className="text-lg font-bold text-black truncate">
                       {getString(cls.class)}-{getString(cls.section)}
                     </h3>
-                    <BookOpen className="text-gray-400" size={20} />
+                    <BookOpen className="text-gray-400 shrink-0" size={20} />
                   </div>
                   <p className="text-sm text-gray-600 mb-1">Academic Year: {getString(cls.academic_year)}</p>
                   <p className="text-sm text-gray-600">Students: {getNumber(cls.student_count)}</p>
@@ -754,7 +829,7 @@ export default function TimetablePage({
                       const teacherName = getString(classTeacher.full_name);
                       if (teacherName) {
                         return (
-                          <p className="text-sm text-gray-600 mt-2">
+                          <p className="text-sm text-gray-600 mt-2 truncate" title={teacherName}>
                             Class Teacher: {teacherName}
                           </p>
                         );
@@ -773,7 +848,7 @@ export default function TimetablePage({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="min-w-0 max-w-full flex items-center justify-center min-h-[50vh]">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-black mx-auto mb-4" />
           <p className="text-gray-600">Loading timetable...</p>
@@ -783,10 +858,10 @@ export default function TimetablePage({
   }
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="w-full min-w-0 max-w-full overflow-x-hidden space-y-6 pb-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
           <Button
             variant="outline"
             onClick={() => router.push(`/dashboard/${schoolCode}`)}
@@ -794,14 +869,13 @@ export default function TimetablePage({
             <ArrowLeft size={18} className="mr-2" />
             Back
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-black mb-2">
-              Timetable Builder - {selectedClass?.class}-{selectedClass?.section}
-            </h1>
-            <p className="text-gray-600">Drag and drop subjects to build your class timetable</p>
-            <p className="text-sm text-gray-500 mt-1">Academic Year: {selectedClass?.academic_year}</p>
-          </div>
-          <div className="flex gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-black mt-2 mb-1 truncate">
+            Timetable Builder - {selectedClass?.class}-{selectedClass?.section}
+          </h1>
+          <p className="text-gray-600 text-sm">Drag and drop subjects to build your class timetable</p>
+          <p className="text-sm text-gray-500 mt-1">Academic Year: {selectedClass?.academic_year}</p>
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
             <Button
               variant="outline"
               onClick={() => setShowClassSelector(true)}
@@ -842,7 +916,6 @@ export default function TimetablePage({
                 {isClassTeacherTimetable ? 'Class Timetable' : 'Class Teacher Timetable'}
               </Button>
             )}
-          </div>
         </div>
       </div>
 
@@ -893,7 +966,7 @@ export default function TimetablePage({
         onDragEnd={handleDragEnd}
       >
         {/* Subjects Bar */}
-        <Card className="sticky top-4 z-10 mb-6">
+        <Card className="sticky top-4 z-10 mb-6 min-w-0 overflow-hidden">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-black">Subjects</h2>
             <Button
@@ -963,10 +1036,10 @@ export default function TimetablePage({
         </Card>
 
         {/* Timetable Grid */}
-        <Card>
-          <div className="overflow-x-auto">
-            <div className="inline-block min-w-full">
-              <table className="w-full border-collapse">
+        <Card className="min-w-0 overflow-hidden">
+          <div className="overflow-x-auto -mx-1">
+            <div className="inline-block min-w-full align-middle">
+              <table className="w-full border-collapse min-w-[600px]">
                 <thead>
                   <tr>
                     <th className="sticky left-0 z-20 bg-gradient-to-br from-indigo-50 to-purple-50 border-r-2 border-b-2 border-indigo-300 p-3 text-left font-bold text-indigo-900 min-w-[120px] shadow-sm">

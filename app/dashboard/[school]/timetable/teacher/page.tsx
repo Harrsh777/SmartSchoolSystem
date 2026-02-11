@@ -83,15 +83,8 @@ export default function TeacherTimetablePage({
       const result = await response.json();
       
       if (response.ok && result.data) {
-        // Filter to show only teaching staff
-        const teachingStaff = result.data.filter(
-          (s: Staff) =>
-            s.role?.toLowerCase().includes('teacher') ||
-            s.role?.toLowerCase().includes('principal') ||
-            s.role?.toLowerCase().includes('head') ||
-            s.role?.toLowerCase().includes('vice')
-        );
-        setTeachers(teachingStaff);
+        // Show all staff so every teacher can be selected for timetable view
+        setTeachers(result.data);
       }
     } catch (error) {
       console.error('Error fetching teachers:', error);
@@ -306,15 +299,18 @@ export default function TeacherTimetablePage({
               </div>
             </div>
             <div className="text-sm text-gray-600">
-              {filteredTeachers.length} teacher{filteredTeachers.length !== 1 ? 's' : ''} found
+              {filteredTeachers.length} teacher{filteredTeachers.length !== 1 ? 's' : ''}
             </div>
           </div>
 
-          {searchQuery && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto">
-              {filteredTeachers.map((teacher) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto">
+            {filteredTeachers.length === 0 ? (
+              <p className="col-span-full text-center text-gray-500 py-6">No teachers found.</p>
+            ) : (
+              filteredTeachers.map((teacher) => (
                 <button
                   key={teacher.id}
+                  type="button"
                   onClick={() => setSelectedTeacher(teacher)}
                   className={`p-3 rounded-lg border-2 text-left transition-all ${
                     selectedTeacher?.id === teacher.id
@@ -323,11 +319,11 @@ export default function TeacherTimetablePage({
                   }`}
                 >
                   <p className="font-semibold text-gray-900">{teacher.full_name}</p>
-                  <p className="text-sm text-gray-600">{teacher.staff_id} • {teacher.role}</p>
+                  <p className="text-sm text-gray-600">{teacher.staff_id} • {teacher.role || 'Staff'}</p>
                 </button>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
       </Card>
 

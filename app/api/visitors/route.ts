@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
     const schoolCode = searchParams.get('school_code');
     const search = searchParams.get('search');
     const status = searchParams.get('status');
+    const start_date = searchParams.get('start_date');
+    const end_date = searchParams.get('end_date');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const offset = (page - 1) * limit;
@@ -41,6 +43,13 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       query = query.eq('status', status);
+    }
+
+    if (start_date) {
+      query = query.gte('visit_date', start_date);
+    }
+    if (end_date) {
+      query = query.lte('visit_date', end_date);
     }
 
     const { data: visitors, error, count } = await query.range(offset, offset + limit - 1);
