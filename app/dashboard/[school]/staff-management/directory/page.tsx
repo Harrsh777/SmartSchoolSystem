@@ -373,6 +373,15 @@ export default function StaffDirectoryPage({
                     <Filter size={14} />
                   </button>
                 </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold">
+                  <button
+                    onClick={() => handleSort('role')}
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  >
+                    Role
+                    <Filter size={14} />
+                  </button>
+                </th>
                 <th className="px-4 py-4 text-left text-sm font-semibold">Designation</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold">Qualification</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold">Department</th>
@@ -415,11 +424,13 @@ export default function StaffDirectoryPage({
                             <p className="font-semibold text-gray-900 group-hover:text-[#1e3a8a] transition-colors">
                               {getString(member.full_name)}
                             </p>
-                            {!!member.role && (
-                              <p className="text-xs text-gray-500">{getString(member.role)}</p>
-                            )}
                           </div>
                         </div>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 text-[#1e3a8a] font-medium">
+                          {getString(member.role) || <span className="text-gray-400">-</span>}
+                        </span>
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600">
                         {getString(member.designation) || <span className="text-gray-400">-</span>}
@@ -525,7 +536,7 @@ export default function StaffDirectoryPage({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="px-4 py-4">
+                    <td colSpan={8} className="px-4 py-4">
                       <EmptyState
                         icon={Users}
                         title="No staff found"

@@ -254,7 +254,7 @@ export default function StudentDirectoryPage({
             >
               <option value="">All Classes</option>
               {uniqueClasses.map(cls => (
-                <option key={cls} value={cls}>Class {cls}</option>
+                <option key={cls} value={cls}>{cls}</option>
               ))}
             </select>
           </div>

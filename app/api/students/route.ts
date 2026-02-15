@@ -54,19 +54,21 @@ export async function GET(request: NextRequest) {
       .select(studentFields)
       .eq('school_code', schoolCode);
 
-    // Apply filters - use flexible class matching (NUR vs NUR. etc.)
+    // Apply filters - case-insensitive class/section so "CLASS-1" matches "Class-1" in DB
+    function escapeIlike(value: string): string {
+      return String(value ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/%/g, '\\%')
+        .replace(/_/g, '\\_');
+    }
     if (classFilter) {
       const trimmed = String(classFilter).trim();
-      const withoutPeriod = trimmed.replace(/\.+$/, '');
-      const classVariants = [...new Set([classFilter, trimmed, withoutPeriod].filter(Boolean))];
-      if (classVariants.length === 1) {
-        query = query.eq('class', classVariants[0]);
-      } else {
-        query = query.in('class', classVariants);
-      }
+      const escaped = escapeIlike(trimmed);
+      query = query.ilike('class', escaped);
     }
-    if (sectionFilter) {
-      query = query.eq('section', sectionFilter || '');
+    if (sectionFilter !== null && sectionFilter !== undefined) {
+      const sectionVal = String(sectionFilter ?? '').trim();
+      query = query.ilike('section', escapeIlike(sectionVal));
     }
     if (academicYearFilter) {
       // Include students with matching academic_year OR null (students added without year)

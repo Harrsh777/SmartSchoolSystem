@@ -82,10 +82,12 @@ export async function GET(request: NextRequest) {
     });
 
     if (classParam?.trim()) {
-      formattedData = formattedData.filter((row) => row.class === classParam.trim());
+      const classLower = classParam.trim().toLowerCase();
+      formattedData = formattedData.filter((row) => (row.class ?? '').toLowerCase() === classLower);
     }
     if (sectionParam?.trim()) {
-      formattedData = formattedData.filter((row) => row.section === sectionParam.trim());
+      const sectionLower = sectionParam.trim().toLowerCase();
+      formattedData = formattedData.filter((row) => (row.section ?? '').toLowerCase() === sectionLower);
     }
 
     return NextResponse.json({ data: formattedData });

@@ -12,7 +12,6 @@ import {
   Search, 
   Plus, 
   RefreshCw, 
-  Settings, 
   Eye, 
   Edit, 
   Download,

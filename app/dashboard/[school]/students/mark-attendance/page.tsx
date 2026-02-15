@@ -178,7 +178,10 @@ export default function MarkAttendancePage({
       if (response.ok && result.data) {
         let list = result.data as Student[];
         if (currentAcademicYear) {
-          list = list.filter((s: Student) => (s.academic_year ?? '') === currentAcademicYear);
+          list = list.filter((s: Student) => {
+            const sy = (s.academic_year ?? '').toString().trim();
+            return sy === currentAcademicYear || sy === '';
+          });
         }
         const sortedStudents = list.sort((a: Student, b: Student) => {
           const aRoll = parseInt(a.roll_number || '999');
@@ -207,10 +210,14 @@ export default function MarkAttendancePage({
 
   useEffect(() => {
     if (classesForCurrentYear.length === 0) return;
-    const exists = classesForCurrentYear.some(
+    const pairExists = selectedClass && selectedSection && classesForCurrentYear.some(
       (c) => c.class === selectedClass && (c.section ?? '') === selectedSection
     );
-    if ((selectedClass || selectedSection) && !exists) {
+    const classExists = selectedClass && classesForCurrentYear.some((c) => c.class === selectedClass);
+    if (selectedClass && !classExists) {
+      setSelectedClass(classesForCurrentYear[0].class);
+      setSelectedSection(classesForCurrentYear[0].section || '');
+    } else if (selectedClass && selectedSection && !pairExists) {
       setSelectedClass(classesForCurrentYear[0].class);
       setSelectedSection(classesForCurrentYear[0].section || '');
     }
@@ -375,13 +382,7 @@ export default function MarkAttendancePage({
             {isAdmin ? 'Mark attendance for any class' : 'Mark attendance for your assigned classes'}
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => router.push(`/dashboard/${schoolCode}/students/directory`)}
-        >
-          <ArrowLeft size={18} className="mr-2" />
-          Back
-        </Button>
+      
       </motion.div>
 
       {/* Filters */}
