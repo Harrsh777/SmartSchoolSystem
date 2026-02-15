@@ -43,13 +43,6 @@ import {
   UsersRound,
   CreditCard,
   AlertCircle as AlertCircleIcon,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  CalendarOff,
-  CircleDashed,
-  GraduationCap,
-  Briefcase,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { AcceptedSchool } from '@/lib/supabase';
@@ -2026,60 +2019,60 @@ export default function DashboardPage({
             )}
             </div>
 
-          {/* Attendance Section - Today's statistics */}
-          <div className="bg-[#FFFFFF] rounded-xl border border-[#E5E7EB] p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#2F6FED] to-[#1e3a8a] flex items-center justify-center shadow-sm">
-                  <CalendarDays className="text-white" size={20} />
-                </div>
-                <div>
-                  <h4 className="text-base font-semibold text-[#0F172A]">Today&apos;s attendance</h4>
-                  <p className="text-xs text-[#64748B]">
-                    {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-                  </p>
-                </div>
-              </div>
+          {/* Attendance Section */}
+          <div className="bg-[#FFFFFF] rounded-lg border border-[#E5E7EB] p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-semibold text-[#0F172A]">Attendance</h4>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => fetchAdministrativeData()}
-                  className="p-2 rounded-lg hover:bg-[#F1F5F9] transition-colors text-[#64748B] hover:text-[#0F172A]"
+                  className="p-1 rounded-full hover:bg-[#F1F5F9] transition-colors"
                   aria-label="Refresh"
                 >
-                  <RefreshCw size={18} strokeWidth={2} />
+                  <RefreshCw className="text-[#64748B]" size={14} strokeWidth={2} />
                 </button>
                 <button
                   onClick={() => router.push(`/dashboard/${schoolCode}/attendance/staff`)}
-                  className="px-4 py-2 bg-[#F97316] text-white rounded-lg text-sm font-medium hover:bg-[#EA580C] transition-colors shadow-sm flex items-center gap-2"
+                  className="px-3 py-1.5 bg-[#F97316] text-white rounded text-xs font-medium hover:bg-[#F97316]/90 transition-colors"
                 >
-                  <UserCheck size={16} />
-                  Mark / Approve
+                  ATTENDANCE APPROVAL
                 </button>
-              </div>
-            </div>
+          </div>
+        </div>
 
             {loadingAdministrative ? (
-              <div className="h-64 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#2F6FED] border-t-transparent" />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                {/* Student Attendance Card */}
-                <div
-                  onClick={() => router.push(`/dashboard/${schoolCode}/students/attendance`)}
-                  className="rounded-xl border border-[#E5E7EB] bg-gradient-to-b from-[#FAFBFC] to-white p-4 hover:border-[#2F6FED]/40 hover:shadow-md transition-all cursor-pointer group"
-                >
-                  <div className="flex items-center justify-between mb-4">
+          <div className="space-y-4 py-6">
+                <p className="text-sm text-[#64748B] text-center">Loading attendance…</p>
+                <div className="w-full h-1.5 bg-[#E5E7EB] rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[#2F6FED] min-w-[40%]"
+                    style={{
+                      animation: 'loading-bar 1.2s ease-in-out infinite',
+                    }}
+                  />
+                </div>
+                <div className="flex justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#E5E7EB] border-t-[#2F6FED]" />
+                </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+                {/* Student Attendance Overview */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-lg bg-[#22C55E]/10 flex items-center justify-center group-hover:bg-[#22C55E]/20 transition-colors">
-                        <GraduationCap className="text-[#16A34A]" size={18} />
-                      </div>
-                      <span className="text-sm font-semibold text-[#0F172A]">Students</span>
+                      <h5 className="text-xs font-semibold text-[#0F172A]">Student Attendance Overview</h5>
+                      <ChevronRight className="text-[#64748B]" size={14} />
                     </div>
-                    <span className="text-xs text-[#64748B] flex items-center gap-1">
-                      Detailed view <ChevronRight size={14} />
-                    </span>
+                    <button
+                      onClick={() => router.push(`/dashboard/${schoolCode}/students/attendance`)}
+                      className="px-2 py-1 text-xs font-medium text-[#0F172A] hover:bg-[#F1F5F9] rounded transition-colors"
+                    >
+                      DETAILED VIEW
+                    </button>
                   </div>
+                  
+                  {/* Summary Bar - proportional to counts */}
                   {(() => {
                     const s = administrativeData?.attendance?.students;
                     const total = s?.total ?? 0;
@@ -2088,75 +2081,84 @@ export default function DashboardPage({
                     const halfday = s?.halfday ?? 0;
                     const leave = (s?.leave ?? 0) + (s?.dutyLeave ?? 0);
                     const notMarked = s?.notMarked ?? 0;
-                    const marked = total ? total - notMarked : 0;
-                    const pct = (n: number) => total ? Math.max(0, (n / total) * 100) : 0;
+                    const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
                     return (
-                      <>
-                        <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-[#E5E7EB] mb-4">
-                          {present > 0 && <div className="bg-[#22C55E] rounded-l-full" style={{ width: `${pct(present)}%` }} title="Present" />}
-                          {absent > 0 && <div className="bg-[#EF4444]" style={{ width: `${pct(absent)}%` }} title="Absent" />}
-                          {(halfday + leave) > 0 && <div className="bg-[#F59E0B]" style={{ width: `${pct(halfday + leave)}%` }} title="Half day / Leave" />}
-                          {notMarked > 0 && <div className="bg-[#94A3B8] rounded-r-full" style={{ width: `${pct(notMarked)}%` }} title="Not marked" />}
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                          <div className="flex items-center gap-2 rounded-lg bg-[#ECFDF5] px-2.5 py-2">
-                            <CheckCircle2 className="text-[#16A34A] shrink-0" size={16} />
-                            <div className="min-w-0">
-                              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Present</p>
-                              <p className="text-sm font-bold text-[#0F172A]">{present}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 rounded-lg bg-[#FEF2F2] px-2.5 py-2">
-                            <XCircle className="text-[#DC2626] shrink-0" size={16} />
-                            <div className="min-w-0">
-                              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Absent</p>
-                              <p className="text-sm font-bold text-[#0F172A]">{absent}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 rounded-lg bg-[#FFFBEB] px-2.5 py-2">
-                            <Clock className="text-[#D97706] shrink-0" size={16} />
-                            <div className="min-w-0">
-                              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Half / Leave</p>
-                              <p className="text-sm font-bold text-[#0F172A]">{halfday + leave}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 rounded-lg bg-[#F1F5F9] px-2.5 py-2 col-span-2 sm:col-span-3">
-                            <CircleDashed className="text-[#64748B] shrink-0" size={16} />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Not marked</p>
-                              <p className="text-sm font-bold text-[#0F172A]">
-                                {notMarked}
-                                {total > 0 && <span className="text-[#64748B] font-normal ml-1">({((notMarked / total) * 100).toFixed(1)}%)</span>}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        {total > 0 && (
-                          <p className="text-xs text-[#64748B] mt-3 pt-3 border-t border-[#E5E7EB]">
-                            {marked} of {total} marked
-                          </p>
-                        )}
-                      </>
+                      <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-[#E5E7EB] mb-3">
+                        {present > 0 && <div className="bg-[#22C55E] min-w-0 shrink-0" style={{ width: `${pct(present)}%` }} title="Present" />}
+                        {absent > 0 && <div className="bg-[#EF4444] min-w-0 shrink-0" style={{ width: `${pct(absent)}%` }} title="Absent" />}
+                        {(halfday + leave) > 0 && <div className="bg-[#F59E0B] min-w-0 shrink-0" style={{ width: `${pct(halfday + leave)}%` }} title="Half day / Leave" />}
+                        {notMarked > 0 && <div className="bg-[#94A3B8] min-w-0 shrink-0" style={{ width: `${pct(notMarked)}%` }} title="Not marked" />}
+                      </div>
                     );
                   })()}
+                  
+                  {/* Status List */}
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#22C55E]"></div>
+                        <span className="text-[#0F172A]">PRESENT:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.students?.present ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
+                        <span className="text-[#0F172A]">ABSENT:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.students?.absent ?? 0}
+                      </span>
+                  </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#F97316]"></div>
+                        <span className="text-[#0F172A]">HALFDAY:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.students?.halfday ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#F97316]"></div>
+                        <span className="text-[#0F172A]">LEAVE:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.students?.leave ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
+                        <span className="text-[#0F172A]">DUTY LEAVE:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.students?.dutyLeave ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#64748B]"></div>
+                        <span className="text-[#0F172A]">NOT MARKED:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.students?.notMarked ?? 0} ({administrativeData?.attendance?.students?.total ? ((administrativeData.attendance.students.notMarked / administrativeData.attendance.students.total) * 100).toFixed(1) : '0.0'}%)
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Staff Attendance Card */}
-                <div
-                  onClick={() => router.push(`/dashboard/${schoolCode}/attendance/staff`)}
-                  className="rounded-xl border border-[#E5E7EB] bg-gradient-to-b from-[#FAFBFC] to-white p-4 hover:border-[#2F6FED]/40 hover:shadow-md transition-all cursor-pointer group"
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-lg bg-[#2F6FED]/10 flex items-center justify-center group-hover:bg-[#2F6FED]/20 transition-colors">
-                        <Briefcase className="text-[#2F6FED]" size={18} />
-                      </div>
-                      <span className="text-sm font-semibold text-[#0F172A]">Staff</span>
-                    </div>
-                    <span className="text-xs text-[#64748B] flex items-center gap-1">
-                      Mark attendance <ChevronRight size={14} />
-                    </span>
+                {/* Staff Attendance Overview */}
+                <div className="pt-4 border-t border-[#E5E7EB]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <h5 className="text-xs font-semibold text-[#0F172A]">Staff Attendance Overview</h5>
+                    <ChevronRight className="text-[#64748B]" size={14} />
                   </div>
+                  
+                  {/* Summary Bar - proportional to counts */}
                   {(() => {
                     const st = administrativeData?.attendance?.staff;
                     const total = st?.total ?? 0;
@@ -2165,60 +2167,77 @@ export default function DashboardPage({
                     const halfday = st?.halfday ?? 0;
                     const leave = (st?.leave ?? 0) + (st?.customLeaves ?? 0);
                     const notMarked = st?.notMarked ?? 0;
-                    const marked = total ? total - notMarked : 0;
-                    const pct = (n: number) => total ? Math.max(0, (n / total) * 100) : 0;
+                    const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
                     return (
-                      <>
-                        <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-[#E5E7EB] mb-4">
-                          {present > 0 && <div className="bg-[#22C55E] rounded-l-full" style={{ width: `${pct(present)}%` }} title="Present" />}
-                          {absent > 0 && <div className="bg-[#EF4444]" style={{ width: `${pct(absent)}%` }} title="Absent" />}
-                          {(halfday + leave) > 0 && <div className="bg-[#F59E0B]" style={{ width: `${pct(halfday + leave)}%` }} title="Leave" />}
-                          {notMarked > 0 && <div className="bg-[#94A3B8] rounded-r-full" style={{ width: `${pct(notMarked)}%` }} title="Not marked" />}
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                          <div className="flex items-center gap-2 rounded-lg bg-[#ECFDF5] px-2.5 py-2">
-                            <CheckCircle2 className="text-[#16A34A] shrink-0" size={16} />
-                            <div className="min-w-0">
-                              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Present</p>
-                              <p className="text-sm font-bold text-[#0F172A]">{present}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 rounded-lg bg-[#FEF2F2] px-2.5 py-2">
-                            <XCircle className="text-[#DC2626] shrink-0" size={16} />
-                            <div className="min-w-0">
-                              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Absent</p>
-                              <p className="text-sm font-bold text-[#0F172A]">{absent}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 rounded-lg bg-[#FFFBEB] px-2.5 py-2">
-                            <CalendarOff className="text-[#D97706] shrink-0" size={16} />
-                            <div className="min-w-0">
-                              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Leave</p>
-                              <p className="text-sm font-bold text-[#0F172A]">{halfday + leave}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 rounded-lg bg-[#F1F5F9] px-2.5 py-2 col-span-2 sm:col-span-3">
-                            <CircleDashed className="text-[#64748B] shrink-0" size={16} />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[10px] text-[#64748B] uppercase tracking-wide">Not marked</p>
-                              <p className="text-sm font-bold text-[#0F172A]">
-                                {notMarked}
-                                {total > 0 && <span className="text-[#64748B] font-normal ml-1">({((notMarked / total) * 100).toFixed(1)}%)</span>}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        {total > 0 && (
-                          <p className="text-xs text-[#64748B] mt-3 pt-3 border-t border-[#E5E7EB]">
-                            {marked} of {total} marked
-                          </p>
-                        )}
-                      </>
+                      <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-[#E5E7EB] mb-3">
+                        {present > 0 && <div className="bg-[#22C55E] min-w-0 shrink-0" style={{ width: `${pct(present)}%` }} title="Present" />}
+                        {absent > 0 && <div className="bg-[#EF4444] min-w-0 shrink-0" style={{ width: `${pct(absent)}%` }} title="Absent" />}
+                        {(halfday + leave) > 0 && <div className="bg-[#F59E0B] min-w-0 shrink-0" style={{ width: `${pct(halfday + leave)}%` }} title="Leave" />}
+                        {notMarked > 0 && <div className="bg-[#94A3B8] min-w-0 shrink-0" style={{ width: `${pct(notMarked)}%` }} title="Not marked" />}
+                      </div>
                     );
                   })()}
+                  
+                  {/* Status List */}
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#22C55E]"></div>
+                        <span className="text-[#0F172A]">PRESENT:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.staff?.present ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
+                        <span className="text-[#0F172A]">ABSENT:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.staff?.absent ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#F97316]"></div>
+                        <span className="text-[#0F172A]">HALFDAY:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.staff?.halfday ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#F97316]"></div>
+                        <span className="text-[#0F172A]">LEAVE:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.staff?.leave ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#EF4444]"></div>
+                        <span className="text-[#0F172A]">CUSTOM LEAVES:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.staff?.customLeaves ?? 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#64748B]"></div>
+                        <span className="text-[#0F172A]">NOT MARKED:</span>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">
+                        {administrativeData?.attendance?.staff?.notMarked ?? 0} ({administrativeData?.attendance?.staff?.total ? ((administrativeData.attendance.staff.notMarked / administrativeData.attendance.staff.total) * 100).toFixed(1) : '0.0'}%)
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+          </div>
+        )}
           </div>
 
           {/* Event Calendar Section */}

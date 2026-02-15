@@ -204,3 +204,10 @@
     display: none;
   }
 }
+
+/* Indeterminate loading bar for dashboard attendance section */
+@keyframes loading-bar {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(250%); }
+  100% { transform: translateX(-100%); }
+}
