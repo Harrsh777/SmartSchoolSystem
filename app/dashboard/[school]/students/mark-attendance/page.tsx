@@ -238,10 +238,14 @@ export default function MarkAttendancePage({
 
       if (response.ok && result.data) {
         const existingAttendance: Record<string, AttendanceStatus> = {};
-        result.data.forEach((record: { student_id: string; status: string }) => {
-          // Map 'late' to 'present' since Late option has been removed
-          existingAttendance[record.student_id] =
-            record.status === 'late' ? 'present' : (record.status as AttendanceStatus);
+        result.data.forEach((record: { student_id: string; status: string; notes?: string; remarks?: string }) => {
+          // Map 'late' to 'present'; map leave+notes 'Holiday' back to holiday
+          const notesOrRemarks = (record.notes || record.remarks || '').trim();
+          const isHoliday = (record.status === 'leave' || record.status === 'holiday') && notesOrRemarks === 'Holiday';
+          let status: AttendanceStatus = record.status === 'late' ? 'present' : (record.status as AttendanceStatus);
+          if (isHoliday || record.status === 'holiday') status = 'holiday';
+          if (status !== 'present' && status !== 'absent' && status !== 'holiday') status = 'present';
+          existingAttendance[record.student_id] = status;
         });
         setAttendance(prev => ({ ...prev, ...existingAttendance }));
       }
@@ -336,7 +340,9 @@ export default function MarkAttendancePage({
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
       } else {
-        setError(result.error || 'Failed to save attendance');
+        const msg = result.error || 'Failed to save attendance';
+        const details = result.details ? ` (${result.details})` : '';
+        setError(msg + details);
       }
     } catch (err) {
       console.error('Error saving attendance:', err);
@@ -382,7 +388,6 @@ export default function MarkAttendancePage({
             {isAdmin ? 'Mark attendance for any class' : 'Mark attendance for your assigned classes'}
           </p>
         </div>
-      
       </motion.div>
 
       {/* Filters */}

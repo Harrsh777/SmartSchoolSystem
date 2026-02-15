@@ -109,7 +109,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare attendance records for insertion
+    // If status is 'holiday', store as 'leave' with notes 'Holiday' (DB may not allow 'holiday' in status CHECK)
+    const VALID_STATUSES = ['present', 'absent', 'holiday', 'leave', 'half_day', 'halfday', 'late'];
     const recordsToInsert = attendance_records.map((record: AttendanceRecord) => {
+      const rawStatus = (record.status || 'present').toLowerCase();
+      const isHoliday = rawStatus === 'holiday';
+      const status = isHoliday ? 'leave' : (VALID_STATUSES.includes(rawStatus) ? rawStatus : 'present');
       const baseRecord: {
         school_id: string;
         school_code: string;
@@ -124,15 +129,10 @@ export async function POST(request: NextRequest) {
         class_id: class_id,
         student_id: record.student_id,
         attendance_date: attendance_date,
-        status: record.status, // 'present', 'absent', or 'late'
+        status,
         marked_by: marked_by,
       };
-      
-      // Only include notes if it exists in the record
-      if (record.notes !== undefined && record.notes !== null) {
-        baseRecord.notes = record.notes;
-      }
-      
+      if (!isHoliday && record.notes !== undefined && record.notes !== null) baseRecord.notes = record.notes;
       return baseRecord;
     });
 

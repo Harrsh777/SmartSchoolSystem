@@ -69,22 +69,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare attendance records for upsert
-    // Note: student_attendance table may not have remarks column - only include standard columns
+    // If status is 'holiday', store as 'leave' with notes 'Holiday' (DB may not allow 'holiday' in status CHECK)
     interface AttendanceRecord {
       student_id?: string;
       status?: string;
       [key: string]: unknown;
     }
 
-    const recordsToUpsert = attendance_records.map((record: AttendanceRecord) => ({
-      school_id: schoolData.id,
-      school_code: school_code,
-      class_id: class_id,
-      student_id: record.student_id,
-      attendance_date: attendance_date,
-      status: record.status || 'present',
-      marked_by: marked_by,
-    }));
+    const VALID_STATUSES = ['present', 'absent', 'holiday', 'leave', 'half_day', 'halfday', 'late'];
+    const recordsToUpsert = attendance_records.map((record: AttendanceRecord) => {
+      const rawStatus = (record.status || 'present').toLowerCase();
+      const isHoliday = rawStatus === 'holiday';
+      // Store holiday as 'leave' so DB accepts it (status CHECK may not include 'holiday')
+      const status = isHoliday ? 'leave' : (VALID_STATUSES.includes(rawStatus) ? rawStatus : 'present');
+      return {
+        school_id: schoolData.id,
+        school_code: school_code,
+        class_id: class_id,
+        student_id: record.student_id,
+        attendance_date: attendance_date,
+        status,
+        marked_by: marked_by,
+      };
+    });
 
     // Upsert attendance records (update if exists, insert if new)
     const { data: savedAttendance, error: upsertError } = await supabase
