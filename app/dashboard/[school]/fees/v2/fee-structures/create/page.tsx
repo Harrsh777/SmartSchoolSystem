@@ -48,9 +48,11 @@ export default function CreateFeeStructurePage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  // Step 1: Scope
-  const [selectedClasses, setSelectedClasses] = useState<Set<string>>(new Set());
-  const [selectedSections, setSelectedSections] = useState<Set<string>>(new Set());
+  // Step 1: Scope - Class → Section mapping (each class has its own list of sections)
+  const [classSectionMap, setClassSectionMap] = useState<Array<{ class: string; sections: string[] }>>([]);
+  const [addClassValue, setAddClassValue] = useState('');
+  const [classSearchQuery, setClassSearchQuery] = useState('');
+  const [expandedClassRows, setExpandedClassRows] = useState<Set<string>>(new Set());
   const [academicYear, setAcademicYear] = useState('');
   const [classes, setClasses] = useState<Class[]>([]);
   const [feeHeads, setFeeHeads] = useState<FeeHead[]>([]);
@@ -60,8 +62,16 @@ export default function CreateFeeStructurePage({
   const [endMonth, setEndMonth] = useState(3); // March (next year)
   const [frequency, setFrequency] = useState('monthly');
   
-  // Step 3: Fee Composition
+  // Step 3: Fee Composition - yearly: single; monthly: by month; quarterly: by Q1–Q4
   const [selectedFeeHeads, setSelectedFeeHeads] = useState<Record<string, number>>({});
+  const [selectedFeeHeadsByMonth, setSelectedFeeHeadsByMonth] = useState<Record<string, Record<string, number>>>({});
+  const [selectedFeeHeadsByQuarter, setSelectedFeeHeadsByQuarter] = useState<Record<string, Record<string, number>>>({
+    Q1: {},
+    Q2: {},
+    Q3: {},
+    Q4: {},
+  });
+  const [activeCompositionTab, setActiveCompositionTab] = useState<string>(''); // month number or Q1–Q4
   
   // Step 4: Late Fee Rules
   const [lateFeeType, setLateFeeType] = useState('');
@@ -70,6 +80,17 @@ export default function CreateFeeStructurePage({
   
   // Step 5: Review
   const [structureName, setStructureName] = useState('');
+
+  useEffect(() => {
+    if (step === 3) {
+      if (frequency === 'monthly') {
+        const months = getMonthsInRange();
+        if (months.length > 0) setActiveCompositionTab((prev) => prev || String(months[0].value));
+      } else if (frequency === 'quarterly') {
+        setActiveCompositionTab((prev) => prev || 'Q1');
+      }
+    }
+  }, [step, frequency, startMonth, endMonth]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -94,82 +115,129 @@ export default function CreateFeeStructurePage({
     fetchData();
   }, [schoolCode]);
 
-  // Auto-generate structure name
+  // Auto-generate structure name from classSectionMap
   useEffect(() => {
-    if (selectedClasses.size > 0 && frequency && startMonth && endMonth) {
+    if (classSectionMap.length > 0 && frequency && startMonth && endMonth) {
       const startMonthName = MONTHS.find(m => m.value === startMonth)?.label || '';
       const endMonthName = MONTHS.find(m => m.value === endMonth)?.label || '';
-      const classNames = Array.from(selectedClasses).join(', ');
-      const sectionText = selectedSections.size > 0 ? ` (${Array.from(selectedSections).join(', ')})` : '';
-      setStructureName(`${classNames}${sectionText} ${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Fee ${startMonthName}-${endMonthName}`);
+      const classNames = classSectionMap.map((e) => e.class).join(', ');
+      const sectionSummary = classSectionMap
+        .map((e) => (e.sections.length === 0 ? 'all' : `(${e.sections.join(', ')})`))
+        .join(' ');
+      setStructureName(`${classNames} ${sectionSummary} ${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Fee ${startMonthName}-${endMonthName}`);
     }
-  }, [selectedClasses, selectedSections, frequency, startMonth, endMonth]);
+  }, [classSectionMap, frequency, startMonth, endMonth]);
 
-  // Get unique class names
-  const uniqueClassNames = Array.from(new Set(classes.map(c => c.class))).sort();
-  
-  // Get unique sections for selected classes
-  const availableSections = Array.from(new Set(
-    classes
-      .filter(c => selectedClasses.size === 0 || selectedClasses.has(c.class))
-      .map(c => c.section)
-      .filter(Boolean)
-  )).sort();
+  const uniqueClassNames = Array.from(new Set(classes.map((c) => c.class))).sort();
 
-  const handleToggleClass = (className: string) => {
-    const newSelected = new Set(selectedClasses);
-    if (newSelected.has(className)) {
-      newSelected.delete(className);
-      // Remove sections that belong only to this class
-      const remainingClasses = Array.from(newSelected);
-      const sectionsInRemainingClasses = new Set(
-        classes
-          .filter(c => remainingClasses.includes(c.class))
-          .map(c => c.section)
-          .filter(Boolean)
-      );
-      setSelectedSections(prev => {
-        const newSections = new Set(prev);
-        Array.from(prev).forEach(section => {
-          if (!sectionsInRemainingClasses.has(section)) {
-            newSections.delete(section);
-          }
-        });
-        return newSections;
-      });
-    } else {
-      newSelected.add(className);
-    }
-    setSelectedClasses(newSelected);
+  const sectionsForClass = (className: string) =>
+    Array.from(new Set(classes.filter((c) => c.class === className).map((c) => c.section).filter(Boolean))).sort();
+
+  const classesAlreadyAdded = classSectionMap.map((e) => e.class);
+  const availableToAdd = uniqueClassNames.filter((c) => !classesAlreadyAdded.includes(c));
+  const filteredAvailableToAdd = classSearchQuery.trim()
+    ? availableToAdd.filter((c) => c.toLowerCase().includes(classSearchQuery.toLowerCase()))
+    : availableToAdd;
+
+  const toggleClassRowExpanded = (className: string) => {
+    setExpandedClassRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(className)) next.delete(className);
+      else next.add(className);
+      return next;
+    });
   };
 
-  const handleToggleSection = (section: string) => {
-    const newSelected = new Set(selectedSections);
-    if (newSelected.has(section)) {
-      newSelected.delete(section);
-    } else {
-      newSelected.add(section);
+  const hasCompositionData = () => {
+    if (frequency === 'yearly') return Object.keys(selectedFeeHeads).length > 0 && Object.values(selectedFeeHeads).some((a) => a > 0);
+    if (frequency === 'quarterly') return QUARTERS.some((q) => Object.keys(selectedFeeHeadsByQuarter[q.id] || {}).length > 0);
+    if (frequency === 'monthly') return Object.keys(selectedFeeHeadsByMonth).length > 0;
+    return false;
+  };
+
+  const handleFrequencyChange = (newFrequency: string) => {
+    if (step === 3 && hasCompositionData() && newFrequency !== frequency) {
+      if (!confirm('Changing frequency will reset entered fee data (amounts per month/quarter/year). Continue?')) return;
+      setSelectedFeeHeads({});
+      setSelectedFeeHeadsByMonth({});
+      setSelectedFeeHeadsByQuarter({ Q1: {}, Q2: {}, Q3: {}, Q4: {} });
+      setActiveCompositionTab('');
     }
-    setSelectedSections(newSelected);
+    setFrequency(newFrequency);
+  };
+
+  const handleAddClass = (className: string) => {
+    if (!className || classesAlreadyAdded.includes(className)) return;
+    setClassSectionMap((prev) => [...prev, { class: className, sections: [] }]);
+    setAddClassValue('');
+  };
+
+  const handleRemoveClass = (className: string) => {
+    setClassSectionMap((prev) => prev.filter((e) => e.class !== className));
+  };
+
+  const handleToggleSection = (className: string, section: string) => {
+    setClassSectionMap((prev) =>
+      prev.map((e) => {
+        if (e.class !== className) return e;
+        const has = e.sections.includes(section);
+        return {
+          ...e,
+          sections: has ? e.sections.filter((s) => s !== section) : [...e.sections, section].sort(),
+        };
+      })
+    );
+  };
+
+  const handleSelectAllSections = (className: string) => {
+    const all = sectionsForClass(className);
+    setClassSectionMap((prev) =>
+      prev.map((e) => (e.class === className ? { ...e, sections: all } : e))
+    );
+  };
+
+  const handleClearSections = (className: string) => {
+    setClassSectionMap((prev) =>
+      prev.map((e) => (e.class === className ? { ...e, sections: [] } : e))
+    );
   };
 
   const handleNext = () => {
     setError('');
     
     if (step === 1) {
-      if (selectedClasses.size === 0) {
-        setError('Please select at least one class');
+      if (classSectionMap.length === 0) {
+        setError('Please add at least one class');
         return;
       }
     } else if (step === 3) {
-      if (Object.keys(selectedFeeHeads).length === 0) {
-        setError('Please select at least one fee head');
-        return;
-      }
-      const hasZeroAmount = Object.values(selectedFeeHeads).some(amt => amt <= 0);
-      if (hasZeroAmount) {
-        setError('All fee head amounts must be greater than 0');
-        return;
+      if (frequency === 'yearly') {
+        if (Object.keys(selectedFeeHeads).length === 0) {
+          setError('Please select at least one fee head and enter amounts');
+          return;
+        }
+        const hasZeroAmount = Object.values(selectedFeeHeads).some((amt) => amt <= 0);
+        if (hasZeroAmount) {
+          setError('All fee head amounts must be greater than 0');
+          return;
+        }
+      } else if (frequency === 'quarterly') {
+        for (const q of QUARTERS) {
+          const amts = selectedFeeHeadsByQuarter[q.id] || {};
+          if (Object.keys(amts).length === 0 || Object.values(amts).some((a) => a <= 0)) {
+            setError(`Please enter fee amounts for ${q.id}`);
+            return;
+          }
+        }
+      } else if (frequency === 'monthly') {
+        const months = getMonthsInRange();
+        for (const mo of months) {
+          const amts = selectedFeeHeadsByMonth[String(mo.value)] || {};
+          if (Object.keys(amts).length === 0 || Object.values(amts).some((a) => a <= 0)) {
+            setError(`Please enter fee amounts for ${mo.label}`);
+            return;
+          }
+        }
       }
     }
     
@@ -187,8 +255,8 @@ export default function CreateFeeStructurePage({
       return;
     }
 
-    if (selectedClasses.size === 0) {
-      setError('Please select at least one class');
+    if (classSectionMap.length === 0) {
+      setError('Please add at least one class');
       return;
     }
 
@@ -201,47 +269,69 @@ export default function CreateFeeStructurePage({
         amount,
       }));
 
-      // Generate all class/section combinations
-      const combinations: { class_name: string; section: string | null }[] = [];
-      
-      if (selectedSections.size === 0) {
-        // If no sections selected, create structures for each class with null section (all sections)
-        selectedClasses.forEach(className => {
-          combinations.push({ class_name: className, section: null });
+      const baseCombinations: { class_name: string; section: string | null }[] = [];
+      classSectionMap.forEach(({ class: className, sections }) => {
+        if (sections.length === 0) {
+          baseCombinations.push({ class_name: className, section: null });
+        } else {
+          sections.forEach((section) => {
+            baseCombinations.push({ class_name: className, section });
+          });
+        }
+      });
+
+      type CreatePayload = { class_name: string; section: string | null; name: string; items: { fee_head_id: string; amount: number }[] };
+      const toCreate: CreatePayload[] = [];
+
+      if (frequency === 'yearly') {
+        const items = Object.entries(selectedFeeHeads).map(([fee_head_id, amount]) => ({ fee_head_id, amount }));
+        baseCombinations.forEach(({ class_name, section }) => {
+          const nameSuffix = section ? ` - ${section}` : '';
+          toCreate.push({
+            class_name,
+            section,
+            name: `${structureName}${nameSuffix}`.trim(),
+            items,
+          });
         });
-      } else {
-        // Create structures for each valid class/section combination
-        selectedClasses.forEach(className => {
-          const sectionsForClass = new Set(
-            classes
-              .filter(c => c.class === className)
-              .map(c => c.section)
-              .filter(Boolean)
-          );
-          
-          // Find sections that are both selected AND exist for this class
-          const relevantSections = Array.from(selectedSections).filter(section =>
-            sectionsForClass.has(section)
-          );
-          
-          if (relevantSections.length > 0) {
-            // Create one structure per relevant section for this class
-            relevantSections.forEach(section => {
-              combinations.push({ class_name: className, section });
+      } else if (frequency === 'quarterly') {
+        QUARTERS.forEach((q) => {
+          const items = Object.entries(selectedFeeHeadsByQuarter[q.id] || {}).map(([fee_head_id, amount]) => ({
+            fee_head_id,
+            amount,
+          }));
+          baseCombinations.forEach(({ class_name, section }) => {
+            const nameSuffix = section ? ` - ${section}` : '';
+            toCreate.push({
+              class_name,
+              section,
+              name: `${structureName} ${q.id}${nameSuffix}`.trim(),
+              items,
             });
-          } else {
-            // If no selected sections match this class, create structure for all sections (null)
-            combinations.push({ class_name: className, section: null });
-          }
+          });
+        });
+      } else if (frequency === 'monthly') {
+        const months = getMonthsInRange();
+        months.forEach((mo) => {
+          const key = String(mo.value);
+          const items = Object.entries(selectedFeeHeadsByMonth[key] || {}).map(([fee_head_id, amount]) => ({
+            fee_head_id,
+            amount,
+          }));
+          baseCombinations.forEach(({ class_name, section }) => {
+            const nameSuffix = section ? ` - ${section}` : '';
+            toCreate.push({
+              class_name,
+              section,
+              name: `${structureName} - ${mo.label}${nameSuffix}`.trim(),
+              items,
+            });
+          });
         });
       }
 
-      // Create all fee structures
-      const createPromises = combinations.map(({ class_name, section }) => {
-        const nameSuffix = section ? ` - ${section}` : '';
-        const structureNameWithSuffix = `${structureName}${nameSuffix}`;
-        
-        return fetch('/api/v2/fees/fee-structures', {
+      const createPromises = toCreate.map(({ class_name, section, name: structureNameWithSuffix, items: itemsPayload }) =>
+        fetch('/api/v2/fees/fee-structures', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -249,7 +339,7 @@ export default function CreateFeeStructurePage({
           },
           body: JSON.stringify({
             school_code: schoolCode,
-            name: structureNameWithSuffix.trim(),
+            name: structureNameWithSuffix,
             class_name,
             section,
             academic_year: academicYear || null,
@@ -259,10 +349,10 @@ export default function CreateFeeStructurePage({
             late_fee_type: lateFeeType || null,
             late_fee_value: lateFeeValue ? parseFloat(lateFeeValue) : 0,
             grace_period_days: gracePeriodDays,
-            items,
+            items: itemsPayload,
           }),
-        });
-      });
+        })
+      );
 
       const responses = await Promise.all(createPromises);
       const results = await Promise.all(responses.map(r => r.json()));
@@ -284,6 +374,45 @@ export default function CreateFeeStructurePage({
 
   const getTotalAmount = () => {
     return Object.values(selectedFeeHeads).reduce((sum, amt) => sum + amt, 0);
+  };
+
+  const getMonthsInRange = () => {
+    const list: { value: number; label: string }[] = [];
+    let m = startMonth;
+    const end = endMonth;
+    do {
+      list.push({ value: m, label: MONTHS.find((x) => x.value === m)?.label || `Month ${m}` });
+      m = m >= 12 ? 1 : m + 1;
+    } while (m !== (end >= 12 ? 1 : end + 1));
+    return list;
+  };
+
+  const QUARTERS = [
+    { id: 'Q1', label: 'Q1 (Apr–Jun)' },
+    { id: 'Q2', label: 'Q2 (Jul–Sep)' },
+    { id: 'Q3', label: 'Q3 (Oct–Dec)' },
+    { id: 'Q4', label: 'Q4 (Jan–Mar)' },
+  ];
+
+  const getAmountsForFrequency = (): Record<string, number> => {
+    if (frequency === 'yearly') return selectedFeeHeads;
+    if (frequency === 'quarterly' && activeCompositionTab && selectedFeeHeadsByQuarter[activeCompositionTab])
+      return selectedFeeHeadsByQuarter[activeCompositionTab];
+    if (frequency === 'monthly' && activeCompositionTab && selectedFeeHeadsByMonth[activeCompositionTab])
+      return selectedFeeHeadsByMonth[activeCompositionTab];
+    return selectedFeeHeads;
+  };
+
+  const applySameFeesToAllQuarters = () => {
+    const source = activeCompositionTab && selectedFeeHeadsByQuarter[activeCompositionTab]
+      ? { ...selectedFeeHeadsByQuarter[activeCompositionTab] }
+      : selectedFeeHeads;
+    setSelectedFeeHeadsByQuarter({
+      Q1: { ...source },
+      Q2: { ...source },
+      Q3: { ...source },
+      Q4: { ...source },
+    });
   };
 
   const stepTitles = [
@@ -368,77 +497,141 @@ export default function CreateFeeStructurePage({
           transition={{ duration: 0.2 }}
         >
           <Card>
-            {/* Step 1: Scope */}
+            {/* Step 1: Scope - Class → Section mapping */}
             {step === 1 && (
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <Settings size={24} className="text-indigo-600" />
                   Step 1: Scope
                 </h2>
+                <p className="text-sm text-gray-600">
+                  Add classes and select which sections to include for each. Leave sections unselected to apply to all sections of that class.
+                </p>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Classes * ({selectedClasses.size} selected)
-                  </label>
-                  <div className="border border-gray-300 rounded-lg p-4 max-h-64 overflow-y-auto bg-white">
-                    {uniqueClassNames.length === 0 ? (
-                      <p className="text-sm text-gray-500 text-center py-4">No classes available</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {uniqueClassNames.map((className) => (
-                          <label
-                            key={className}
-                            className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                <div className="space-y-4">
+                  <div className="font-medium text-gray-700">Selected Classes & Sections</div>
+                  {classSectionMap.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-2">No classes added yet. Use &quot;Add class&quot; below.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {classSectionMap.map((entry) => {
+                        const sections = sectionsForClass(entry.class);
+                        const isExpanded = expandedClassRows.has(entry.class);
+                        return (
+                          <div
+                            key={entry.class}
+                            className="border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden"
                           >
-                            <input
-                              type="checkbox"
-                              checked={selectedClasses.has(className)}
-                              onChange={() => handleToggleClass(className)}
-                              className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                            />
-                            <span className="text-sm font-medium text-gray-900">{className}</span>
-                          </label>
+                            <div
+                              className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-100/80"
+                              onClick={() => toggleClassRowExpanded(entry.class)}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-indigo-600 font-medium select-none">
+                                  {isExpanded ? '▼' : '▶'}
+                                </span>
+                                <span className="font-semibold text-gray-900">Class {entry.class}</span>
+                                {entry.sections.length > 0 && (
+                                  <span className="text-xs text-gray-500">
+                                    ({entry.sections.length} section{entry.sections.length !== 1 ? 's' : ''} selected)
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectAllSections(entry.class)}
+                                  className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                                >
+                                  All
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleClearSections(entry.class)}
+                                  className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                >
+                                  Clear
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveClass(entry.class)}
+                                  className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                            {isExpanded && (
+                              <div className="px-3 pb-3 pt-0 border-t border-gray-200" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {sections.length === 0 ? (
+                                    <span className="text-sm text-gray-500">No sections in this class</span>
+                                  ) : (
+                                    sections.map((section) => (
+                                      <label
+                                        key={section}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={entry.sections.includes(section)}
+                                          onChange={() => handleToggleSection(entry.class, section)}
+                                          className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                                        />
+                                        <span className="text-sm font-medium text-gray-900">{section}</span>
+                                      </label>
+                                    ))
+                                  )}
+                                </div>
+                                {entry.sections.length > 0 && (
+                                  <p className="text-xs text-gray-500 mt-2">
+                                    Leave all unchecked to apply to all sections of this class.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">+ Add another class</label>
+                    <Input
+                      placeholder="Search classes..."
+                      value={classSearchQuery}
+                      onChange={(e) => setClassSearchQuery(e.target.value)}
+                      className="mb-2"
+                    />
+                    <div className="flex gap-2">
+                      <select
+                        value={addClassValue}
+                        onChange={(e) => setAddClassValue(e.target.value)}
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="">Select class...</option>
+                        {filteredAvailableToAdd.map((c) => (
+                          <option key={c} value={c}>{c}</option>
                         ))}
-                      </div>
+                      </select>
+                      <Button
+                        type="button"
+                        onClick={() => addClassValue && handleAddClass(addClassValue)}
+                        disabled={!addClassValue}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                      >
+                        Add class
+                      </Button>
+                    </div>
+                    {classSearchQuery.trim() && filteredAvailableToAdd.length === 0 && (
+                      <p className="text-xs text-gray-500 mt-1">No classes match &quot;{classSearchQuery}&quot;</p>
+                    )}
+                    {availableToAdd.length === 0 && uniqueClassNames.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">All classes have been added.</p>
                     )}
                   </div>
-                  <p className="mt-2 text-xs text-gray-500">
-                    Select one or more classes. Leave sections unselected to apply to all sections.
-                  </p>
                 </div>
-
-                {selectedClasses.size > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
-                      Sections (Optional) ({selectedSections.size} selected)
-                    </label>
-                    <div className="border border-gray-300 rounded-lg p-4 max-h-64 overflow-y-auto bg-white">
-                      {availableSections.length === 0 ? (
-                        <p className="text-sm text-gray-500 text-center py-4">No sections available</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {availableSections.map((section) => (
-                            <label
-                              key={section}
-                              className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedSections.has(section)}
-                                onChange={() => handleToggleSection(section)}
-                                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                              />
-                              <span className="text-sm font-medium text-gray-900">{section}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <p className="mt-2 text-xs text-gray-500">
-                      Select specific sections or leave unselected to apply to all sections of selected classes.
-                    </p>
-                  </div>
-                )}
 
                 <Input
                   label="Academic Year (Optional)"
@@ -493,7 +686,7 @@ export default function CreateFeeStructurePage({
                   <label className="block text-sm font-medium text-gray-700 mb-2">Frequency *</label>
                   <select
                     value={frequency}
-                    onChange={(e) => setFrequency(e.target.value)}
+                    onChange={(e) => handleFrequencyChange(e.target.value)}
                     className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="monthly">Monthly</option>
@@ -504,7 +697,7 @@ export default function CreateFeeStructurePage({
               </div>
             )}
 
-            {/* Step 3: Fee Composition */}
+            {/* Step 3: Fee Composition - yearly single, monthly per month, quarterly per Q1–Q4 */}
             {step === 3 && (
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -512,46 +705,184 @@ export default function CreateFeeStructurePage({
                   Step 3: Fee Composition
                 </h2>
 
-                <div className="space-y-3">
-                  {feeHeads.map((head) => (
-                    <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-gray-900">{head.name}</span>
-                          {head.is_optional && (
-                            <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">Optional</span>
-                          )}
+                {frequency === 'yearly' && (
+                  <>
+                    <div className="space-y-3">
+                      {feeHeads.map((head) => (
+                        <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-900">{head.name}</span>
+                              {head.is_optional && (
+                                <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">Optional</span>
+                              )}
+                            </div>
+                            {head.description && (
+                              <p className="text-sm text-gray-600 mt-1">{head.description}</p>
+                            )}
+                          </div>
+                          <div className="w-48">
+                            <Input
+                              type="number"
+                              placeholder="Amount"
+                              value={selectedFeeHeads[head.id] || ''}
+                              onChange={(e) => {
+                                const amt = parseFloat(e.target.value) || 0;
+                                setSelectedFeeHeads({ ...selectedFeeHeads, [head.id]: amt });
+                              }}
+                              min="0"
+                              step="0.01"
+                            />
+                          </div>
                         </div>
-                        {head.description && (
-                          <p className="text-sm text-gray-600 mt-1">{head.description}</p>
-                        )}
-                      </div>
-                      <div className="w-48">
-                        <Input
-                          type="number"
-                          placeholder="Amount"
-                          value={selectedFeeHeads[head.id] || ''}
-                          onChange={(e) => {
-                            const amt = parseFloat(e.target.value) || 0;
-                            setSelectedFeeHeads({
-                              ...selectedFeeHeads,
-                              [head.id]: amt,
-                            });
-                          }}
-                          min="0"
-                          step="0.01"
-                        />
+                      ))}
+                    </div>
+                    <div className="mt-6 p-4 bg-indigo-50 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-gray-900">Total Amount:</span>
+                        <span className="text-2xl font-bold text-indigo-600">₹{getTotalAmount().toFixed(2)}</span>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
 
-                <div className="mt-6 p-4 bg-indigo-50 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-gray-900">Total Amount:</span>
-                    <span className="text-2xl font-bold text-indigo-600">₹{getTotalAmount().toFixed(2)}</span>
-                  </div>
-                </div>
+                {frequency === 'monthly' && (
+                  <>
+                    <p className="text-sm text-gray-600">Enter fee amounts for each month in your duration.</p>
+                    <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
+                      {getMonthsInRange().map((mo) => {
+                        const key = String(mo.value);
+                        const isActive = activeCompositionTab === key;
+                        const amts = selectedFeeHeadsByMonth[key] || {};
+                        const total = Object.values(amts).reduce((s, a) => s + a, 0);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setActiveCompositionTab(key)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              isActive ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {mo.label} {total > 0 && `(₹${total.toFixed(0)})`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {activeCompositionTab && (
+                      <div className="space-y-3 mt-4">
+                        {feeHeads.map((head) => (
+                          <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
+                            <div className="flex-1">
+                              <span className="font-semibold text-gray-900">{head.name}</span>
+                            </div>
+                            <div className="w-48">
+                              <Input
+                                type="number"
+                                placeholder="Amount"
+                                value={selectedFeeHeadsByMonth[activeCompositionTab]?.[head.id] ?? ''}
+                                onChange={(e) => {
+                                  const amt = parseFloat(e.target.value) || 0;
+                                  setSelectedFeeHeadsByMonth((prev) => ({
+                                    ...prev,
+                                    [activeCompositionTab]: {
+                                      ...(prev[activeCompositionTab] || {}),
+                                      [head.id]: amt,
+                                    },
+                                  }));
+                                }}
+                                min="0"
+                                step="0.01"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        <div className="p-4 bg-indigo-50 rounded-lg">
+                          <span className="font-bold text-gray-900">Total for this month: </span>
+                          <span className="text-xl font-bold text-indigo-600">
+                            ₹
+                            {Object.values(selectedFeeHeadsByMonth[activeCompositionTab] || {}).reduce(
+                              (s, a) => s + a,
+                              0
+                            ).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {frequency === 'quarterly' && (
+                  <>
+                    <p className="text-sm text-gray-600">Enter fee amounts for each quarter. Use &quot;Apply same to all quarters&quot; to copy current quarter to others.</p>
+                    <div className="flex gap-2 flex-wrap border-b border-gray-200 pb-2">
+                      {QUARTERS.map((q) => {
+                        const isActive = activeCompositionTab === q.id;
+                        const amts = selectedFeeHeadsByQuarter[q.id] || {};
+                        const total = Object.values(amts).reduce((s, a) => s + a, 0);
+                        return (
+                          <button
+                            key={q.id}
+                            type="button"
+                            onClick={() => setActiveCompositionTab(q.id)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              isActive ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {q.label} {total > 0 && `(₹${total.toFixed(0)})`}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={applySameFeesToAllQuarters}
+                        className="ml-auto px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-800 hover:bg-green-200"
+                      >
+                        Apply same fees to all quarters
+                      </button>
+                    </div>
+                    {activeCompositionTab && (
+                      <div className="space-y-3 mt-4">
+                        {feeHeads.map((head) => (
+                          <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
+                            <div className="flex-1">
+                              <span className="font-semibold text-gray-900">{head.name}</span>
+                            </div>
+                            <div className="w-48">
+                              <Input
+                                type="number"
+                                placeholder="Amount"
+                                value={selectedFeeHeadsByQuarter[activeCompositionTab]?.[head.id] ?? ''}
+                                onChange={(e) => {
+                                  const amt = parseFloat(e.target.value) || 0;
+                                  setSelectedFeeHeadsByQuarter((prev) => ({
+                                    ...prev,
+                                    [activeCompositionTab]: {
+                                      ...(prev[activeCompositionTab] || {}),
+                                      [head.id]: amt,
+                                    },
+                                  }));
+                                }}
+                                min="0"
+                                step="0.01"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        <div className="p-4 bg-indigo-50 rounded-lg">
+                          <span className="font-bold text-gray-900">Total for this quarter: </span>
+                          <span className="text-xl font-bold text-indigo-600">
+                            ₹
+                            {Object.values(selectedFeeHeadsByQuarter[activeCompositionTab] || {}).reduce(
+                              (s, a) => s + a,
+                              0
+                            ).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
@@ -619,17 +950,19 @@ export default function CreateFeeStructurePage({
 
                 <div className="mt-6 space-y-4 p-4 bg-gray-50 rounded-lg">
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-sm text-gray-600">Classes ({selectedClasses.size}):</span>
-                      <p className="font-semibold text-gray-900">
-                        {selectedClasses.size > 0 ? Array.from(selectedClasses).join(', ') : 'None selected'}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-sm text-gray-600">Sections ({selectedSections.size}):</span>
-                      <p className="font-semibold text-gray-900">
-                        {selectedSections.size > 0 ? Array.from(selectedSections).join(', ') : 'All Sections'}
-                      </p>
+                    <div className="col-span-2">
+                      <span className="text-sm text-gray-600">Classes & Sections:</span>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {classSectionMap.length === 0 ? (
+                          <p className="font-semibold text-gray-900">None selected</p>
+                        ) : (
+                          classSectionMap.map((e) => (
+                            <span key={e.class} className="px-2 py-1 bg-white border border-gray-200 rounded text-sm font-medium">
+                              {e.class}: {e.sections.length === 0 ? 'All sections' : e.sections.join(', ')}
+                            </span>
+                          ))
+                        )}
+                      </div>
                     </div>
                     <div>
                       <span className="text-sm text-gray-600">Frequency:</span>
@@ -643,7 +976,18 @@ export default function CreateFeeStructurePage({
                     </div>
                     <div>
                       <span className="text-sm text-gray-600">Total Amount:</span>
-                      <p className="font-semibold text-indigo-600">₹{getTotalAmount().toFixed(2)}</p>
+                      <p className="font-semibold text-indigo-600">
+                        {frequency === 'yearly' && `₹${getTotalAmount().toFixed(2)}`}
+                        {frequency === 'quarterly' &&
+                          `Per quarter: ₹${Object.values(selectedFeeHeadsByQuarter.Q1 || {}).reduce((s, a) => s + a, 0).toFixed(2)}`}
+                        {frequency === 'monthly' &&
+                          (() => {
+                            const months = getMonthsInRange();
+                            const first = months[0];
+                            const amts = first ? selectedFeeHeadsByMonth[String(first.value)] || {} : {};
+                            return `Per month (e.g. ${first?.label}): ₹${Object.values(amts).reduce((s, a) => s + a, 0).toFixed(2)}`;
+                          })()}
+                      </p>
                     </div>
                     {academicYear && (
                       <div>

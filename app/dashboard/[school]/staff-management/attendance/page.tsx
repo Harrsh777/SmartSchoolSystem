@@ -5,10 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, Filter, Search, Save, CalendarOff, Users } from 'lucide-react';
+import { Calendar, CheckCircle, Filter, Search, Save, CalendarOff, Users, Edit3 } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
 
 type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'leave' | 'holiday';
+type AttendanceState = 'NOT_MARKED' | 'IN_PROGRESS' | 'SAVED';
 
 interface Staff {
   id: string;
@@ -39,8 +40,8 @@ export default function StaffAttendancePage({
   const [showPunch, setShowPunch] = useState(false);
   const [, setSaveSuccess] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [isMarked, setIsMarked] = useState(false);
+  const [attendanceState, setAttendanceState] = useState<AttendanceState>('NOT_MARKED');
+  const [lastMarkedInfo, setLastMarkedInfo] = useState<{ at: string; by: string } | null>(null);
 
   useEffect(() => {
     fetchStaff();
@@ -78,57 +79,81 @@ export default function StaffAttendancePage({
       const result = await response.json();
 
       if (response.ok && result.data) {
-        const existingAttendance: Record<string, AttendanceStatus> = {};
-        const existingCheckIn: Record<string, string> = {};
-        const existingCheckOut: Record<string, string> = {};
-        const existingRemarks: Record<string, string> = {};
+        if (result.data.length === 0) {
+          setAttendance({});
+          setCheckInTimes({});
+          setCheckOutTimes({});
+          setRemarks({});
+          setAttendanceState('NOT_MARKED');
+          setLastMarkedInfo(null);
+        } else {
+          const existingAttendance: Record<string, AttendanceStatus> = {};
+          const existingCheckIn: Record<string, string> = {};
+          const existingCheckOut: Record<string, string> = {};
+          const existingRemarks: Record<string, string> = {};
 
-        interface StaffAttendanceRecord {
-          staff_id: string;
-          status: string;
-          check_in_time?: string | null;
-          check_out_time?: string | null;
-          remarks?: string | null;
-          [key: string]: unknown;
+          interface StaffAttendanceRecord {
+            staff_id: string;
+            status: string;
+            check_in_time?: string | null;
+            check_out_time?: string | null;
+            remarks?: string | null;
+            [key: string]: unknown;
+          }
+          result.data.forEach((record: StaffAttendanceRecord) => {
+            const staffUuid = record.staff_id;
+            const status = (record.status === 'late' ? 'present' : record.status) as AttendanceStatus;
+            existingAttendance[staffUuid] = status;
+            if (record.check_in_time) existingCheckIn[staffUuid] = record.check_in_time;
+            if (record.check_out_time) existingCheckOut[staffUuid] = record.check_out_time;
+            if (record.remarks) existingRemarks[staffUuid] = record.remarks;
+          });
+
+          setAttendance(existingAttendance);
+          setCheckInTimes(existingCheckIn);
+          setCheckOutTimes(existingCheckOut);
+          setRemarks(existingRemarks);
+          setAttendanceState('SAVED');
+          const meta = result.meta as { last_marked_at?: string; marked_by_name?: string } | null;
+          if (meta?.last_marked_at) {
+            const at = new Date(meta.last_marked_at);
+            setLastMarkedInfo({
+              at: at.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+              by: meta.marked_by_name || 'Staff',
+            });
+          } else {
+            setLastMarkedInfo(null);
+          }
         }
-        result.data.forEach((record: StaffAttendanceRecord) => {
-          // staff_id in attendance table is UUID (staff.id); map 'late' to 'present' since Late was removed
-          const staffUuid = record.staff_id;
-          const status = (record.status === 'late' ? 'present' : record.status) as AttendanceStatus;
-          existingAttendance[staffUuid] = status;
-          if (record.check_in_time) {
-            existingCheckIn[staffUuid] = record.check_in_time;
-          }
-          if (record.check_out_time) {
-            existingCheckOut[staffUuid] = record.check_out_time;
-          }
-          if (record.remarks) {
-            existingRemarks[staffUuid] = record.remarks;
-          }
-        });
-
-        setAttendance(existingAttendance);
-        setCheckInTimes(existingCheckIn);
-        setCheckOutTimes(existingCheckOut);
-        setRemarks(existingRemarks);
-        setIsMarked(result.data.length > 0);
+      } else {
+        setAttendance({});
+        setAttendanceState('NOT_MARKED');
+        setLastMarkedInfo(null);
       }
     } catch (err) {
       console.error('Error fetching existing attendance:', err);
+      setAttendance({});
+      setAttendanceState('NOT_MARKED');
     }
   };
 
   const handleStatusChange = (staffId: string, status: AttendanceStatus) => {
+    setAttendanceState('IN_PROGRESS');
     setAttendance(prev => ({ ...prev, [staffId]: status }));
   };
 
   const handleBulkAction = (status: AttendanceStatus) => {
+    setAttendanceState('IN_PROGRESS');
     const filteredStaff = getFilteredStaff();
     const bulkAttendance: Record<string, AttendanceStatus> = {};
     filteredStaff.forEach((member) => {
       bulkAttendance[member.id] = status;
     });
     setAttendance(prev => ({ ...prev, ...bulkAttendance }));
+  };
+
+  const handleEditAttendance = () => {
+    setAttendanceState('IN_PROGRESS');
   };
 
   const handleSave = async () => {
@@ -170,10 +195,10 @@ export default function StaffAttendancePage({
       const result = await response.json();
 
       if (response.ok) {
-        setIsMarked(true);
+        setAttendanceState('SAVED');
         setSaveSuccess(true);
         setToast({
-          message: `Attendance saved successfully for ${new Date(selectedDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
+          message: 'Attendance saved successfully.',
           type: 'success',
         });
         setTimeout(() => setSaveSuccess(false), 3000);
@@ -326,7 +351,7 @@ export default function StaffAttendancePage({
 
       {/* Date Selection and Stats */}
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Calendar className="text-gray-400" size={20} />
@@ -340,6 +365,41 @@ export default function StaffAttendancePage({
             </div>
           </div>
         </div>
+
+        {/* Attendance status badge and message */}
+        {staff.length > 0 && (
+          <div className="mb-4 space-y-2">
+            {attendanceState === 'NOT_MARKED' && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <span className="inline-block w-3 h-3 rounded-full bg-amber-500" aria-hidden />
+                <span className="font-medium text-amber-800">Not Marked</span>
+                <p className="text-sm text-amber-700 mt-1 w-full">Today&apos;s attendance has not been marked.</p>
+              </div>
+            )}
+            {attendanceState === 'SAVED' && (
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 rounded-full bg-emerald-500" aria-hidden />
+                  <span className="font-medium text-emerald-800">Saved</span>
+                  {lastMarkedInfo && (
+                    <span className="text-sm text-emerald-700">
+                      Last marked at {lastMarkedInfo.at} by {lastMarkedInfo.by}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEditAttendance}
+                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-100"
+                >
+                  <Edit3 size={16} className="mr-2" />
+                  Edit Attendance
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Statistics */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -418,6 +478,7 @@ export default function StaffAttendancePage({
               size="sm"
               onClick={() => handleBulkAction('present')}
               className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+              disabled={attendanceState === 'SAVED'}
             >
               Mark All Present
             </Button>
@@ -426,6 +487,7 @@ export default function StaffAttendancePage({
               size="sm"
               onClick={() => handleBulkAction('absent')}
               className="bg-red-50 hover:bg-red-100 text-red-700 border-red-300"
+              disabled={attendanceState === 'SAVED'}
             >
               Mark All Absent
             </Button>
@@ -479,11 +541,12 @@ export default function StaffAttendancePage({
                           {(['present', 'absent', 'half_day', 'leave', 'holiday'] as AttendanceStatus[]).map((status) => (
                             <button
                               key={status}
-                              onClick={() => handleStatusChange(member.id, status)}
+                              onClick={() => attendanceState !== 'SAVED' && handleStatusChange(member.id, status)}
+                              disabled={attendanceState === 'SAVED'}
                               className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                                 currentStatus === status
                                   ? getStatusColor(status)
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                  : attendanceState === 'SAVED' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                               }`}
                             >
                               {status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -497,18 +560,18 @@ export default function StaffAttendancePage({
                             <Input
                               type="time"
                               value={checkInTimes[member.id] || ''}
-                              onChange={(e) => setCheckInTimes(prev => ({ ...prev, [member.id]: e.target.value }))}
+                              onChange={(e) => { setAttendanceState('IN_PROGRESS'); setCheckInTimes(prev => ({ ...prev, [member.id]: e.target.value })); }}
                               className="w-32"
-                              disabled={currentStatus === 'absent' || currentStatus === 'leave' || currentStatus === 'holiday'}
+                              disabled={attendanceState === 'SAVED' || currentStatus === 'absent' || currentStatus === 'leave' || currentStatus === 'holiday'}
                             />
                           </td>
                           <td className="px-4 py-3 text-sm">
                             <Input
                               type="time"
                               value={checkOutTimes[member.id] || ''}
-                              onChange={(e) => setCheckOutTimes(prev => ({ ...prev, [member.id]: e.target.value }))}
+                              onChange={(e) => { setAttendanceState('IN_PROGRESS'); setCheckOutTimes(prev => ({ ...prev, [member.id]: e.target.value })); }}
                               className="w-32"
-                              disabled={currentStatus === 'absent' || currentStatus === 'leave' || currentStatus === 'holiday'}
+                              disabled={attendanceState === 'SAVED' || currentStatus === 'absent' || currentStatus === 'leave' || currentStatus === 'holiday'}
                             />
                           </td>
                         </>
@@ -518,8 +581,9 @@ export default function StaffAttendancePage({
                           type="text"
                           placeholder="Remarks..."
                           value={remarks[member.id] || ''}
-                          onChange={(e) => setRemarks(prev => ({ ...prev, [member.id]: e.target.value }))}
+                          onChange={(e) => { setAttendanceState('IN_PROGRESS'); setRemarks(prev => ({ ...prev, [member.id]: e.target.value })); }}
                           className="w-48"
+                          disabled={attendanceState === 'SAVED'}
                         />
                       </td>
                     </tr>
@@ -533,8 +597,12 @@ export default function StaffAttendancePage({
         <div className="mt-6 flex justify-end">
           <Button
             onClick={handleSave}
-            disabled={saving || filteredStaff.length === 0}
-            className="bg-green-600 hover:bg-green-900"
+            disabled={saving || filteredStaff.length === 0 || attendanceState !== 'IN_PROGRESS'}
+            className={
+              attendanceState === 'IN_PROGRESS'
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }
           >
             {saving ? (
               <>
@@ -544,7 +612,7 @@ export default function StaffAttendancePage({
             ) : (
               <>
                 <Save size={18} className="mr-2" />
-                Save Attendance
+                {attendanceState === 'SAVED' ? 'Saved' : 'Save Attendance'}
               </>
             )}
           </Button>

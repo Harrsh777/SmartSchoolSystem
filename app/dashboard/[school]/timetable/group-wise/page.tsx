@@ -38,6 +38,7 @@ export default function GroupWiseTimetablePage({
   const [groupName, setGroupName] = useState(new Date().getFullYear().toString());
   const [isActive, setIsActive] = useState(true);
   const [classStartTime, setClassStartTime] = useState('08:30');
+  const [defaultPeriodDuration, setDefaultPeriodDuration] = useState(45);
   const [numberOfPeriods, setNumberOfPeriods] = useState(3);
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [selectedDays, setSelectedDays] = useState<string[]>(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']);
@@ -139,6 +140,8 @@ export default function GroupWiseTimetablePage({
           setBreakAfterPeriod(breakAfter);
           setBreakDuration(breakDur);
           setBreakName(breakNm);
+          const firstPeriodDur = rawPeriods.find((p: { is_break?: boolean }) => !p.is_break)?.period_duration_minutes ?? 45;
+          setDefaultPeriodDuration(firstPeriodDur);
           const finalPeriods = mappedPeriods.length ? mappedPeriods : [{ id: 'period-1', periodName: 'Period 1', duration: 45, startTime: '08:30 AM', endTime: '09:15 AM', isBreak: false }];
           setPeriods(finalPeriods);
           setNumberOfPeriods(finalPeriods.filter(p => !p.isBreak).length);
@@ -165,14 +168,14 @@ export default function GroupWiseTimetablePage({
       calculatePeriods();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode, currentStep, classStartTime, numberOfPeriods, breakAfterPeriod, breakDuration]);
+  }, [schoolCode, currentStep, classStartTime, numberOfPeriods, breakAfterPeriod, breakDuration, defaultPeriodDuration]);
 
   useEffect(() => {
     if (currentStep === 1 && !editingGroupId) {
       calculatePeriods();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classStartTime, numberOfPeriods, breakAfterPeriod, breakDuration, breakName]);
+  }, [classStartTime, numberOfPeriods, breakAfterPeriod, breakDuration, breakName, defaultPeriodDuration]);
 
   const fetchClasses = async () => {
     try {
@@ -192,12 +195,11 @@ export default function GroupWiseTimetablePage({
     let currentTime = new Date();
     currentTime.setHours(startHour, startMinute, 0, 0);
 
+    const periodDuration = Math.max(5, Math.min(120, defaultPeriodDuration));
+
     for (let i = 1; i <= numberOfPeriods; i++) {
       const periodStart = new Date(currentTime);
       const periodEnd = new Date(currentTime);
-      
-      // Default period duration (45 minutes)
-      const periodDuration = 45;
       periodEnd.setMinutes(periodEnd.getMinutes() + periodDuration);
 
       const period: Period = {
@@ -277,7 +279,7 @@ export default function GroupWiseTimetablePage({
             const newStart = parseTimeToDate(prevPeriod.startTime);
             newStart.setMinutes(newStart.getMinutes() + duration);
             const newEnd = new Date(newStart);
-            newEnd.setMinutes(newEnd.getMinutes() + (p.isBreak ? breakDuration : 45));
+            newEnd.setMinutes(newEnd.getMinutes() + (p.isBreak ? breakDuration : defaultPeriodDuration));
             return {
               ...p,
               startTime: formatTime(newStart),
@@ -322,12 +324,13 @@ export default function GroupWiseTimetablePage({
     const lastEnd = parseTimeToDate(lastPeriod.endTime);
     const newStart = new Date(lastEnd);
     const newEnd = new Date(newStart);
-    newEnd.setMinutes(newEnd.getMinutes() + 45);
+    const dur = Math.max(5, Math.min(120, defaultPeriodDuration));
+    newEnd.setMinutes(newEnd.getMinutes() + dur);
 
     const newPeriod: Period = {
       id: `period-${Date.now()}`,
       periodName: `Period ${periods.filter(p => !p.isBreak).length + 1}`,
-      duration: 45,
+      duration: dur,
       startTime: formatTime(newStart),
       endTime: formatTime(newEnd),
       isBreak: false,
@@ -534,6 +537,7 @@ export default function GroupWiseTimetablePage({
     setGroupName(new Date().getFullYear().toString());
     setIsActive(true);
     setClassStartTime('08:30');
+    setDefaultPeriodDuration(45);
     setNumberOfPeriods(3);
     setTimezone('Asia/Kolkata');
     setSelectedDays([...allDays]);
@@ -816,6 +820,22 @@ export default function GroupWiseTimetablePage({
                       className="pl-10"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Period duration (minutes) <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={defaultPeriodDuration}
+                    onChange={(e) => setDefaultPeriodDuration(Number(e.target.value))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    {[30, 35, 40, 45, 50, 55, 60].map((m) => (
+                      <option key={m} value={m}>{m} mins</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Default for all periods below. You can still edit each period&apos;s duration.</p>
                 </div>
 
                 <div>

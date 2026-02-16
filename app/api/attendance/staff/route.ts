@@ -76,7 +76,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data: attendance || [] }, { status: 200 });
+    let meta: { last_marked_at?: string; marked_by_name?: string } | null = null;
+    if (attendance && attendance.length > 0) {
+      const first = attendance[0] as { created_at?: string; updated_at?: string; marked_by?: string; marked_by_staff?: { full_name?: string } | null };
+      const lastMarkedAt = first.updated_at || first.created_at;
+      if (lastMarkedAt) {
+        meta = {
+          last_marked_at: lastMarkedAt,
+          marked_by_name: (first.marked_by_staff as { full_name?: string } | null)?.full_name || 'Staff',
+        };
+      }
+    }
+
+    return NextResponse.json({ data: attendance || [], meta }, { status: 200 });
   } catch (error) {
     console.error('Error fetching staff attendance:', error);
     return NextResponse.json(

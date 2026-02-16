@@ -1,12 +1,12 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
+import { use, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, Clock, Users, IndianRupee, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, Clock, Users, IndianRupee, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
 
 const MONTHS = [
   { value: 1, label: 'January' },
@@ -220,10 +220,47 @@ export default function FeeStructuresPage({
     return MONTHS.find(m => m.value === monthNumber)?.label || `Month ${monthNumber}`;
   };
 
-  const filteredStructures = structures.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.class_name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Base name for grouping: remove trailing " - A", " - B" etc. so multi-class structures group as one
+  const getBaseName = (name: string) => {
+    return name.replace(/\s*-\s*[A-Z]\s*$/i, '').trim() || name;
+  };
+
+  const getGroupKey = (s: FeeStructure) => {
+    const base = getBaseName(s.name);
+    return `${base}|${s.start_month}|${s.end_month}|${s.frequency}`;
+  };
+
+  // Group structures so one logical structure (same name base + period + frequency) appears once
+  const structureGroups = useMemo(() => {
+    const map = new Map<string, FeeStructure[]>();
+    structures.forEach((s) => {
+      const key = getGroupKey(s);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(s);
+    });
+    return Array.from(map.entries()).map(([key, list]) => ({
+      key,
+      displayName: getBaseName(list[0].name),
+      structures: list.sort((a, b) =>
+        a.class_name.localeCompare(b.class_name) || (a.section || '').localeCompare(b.section || '')
+      ),
+    }));
+  }, [structures]);
+
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  const filteredGroups = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return structureGroups.filter(
+      (g) =>
+        g.displayName.toLowerCase().includes(q) ||
+        g.structures.some(
+          (s) =>
+            s.class_name.toLowerCase().includes(q) ||
+            (s.section || '').toLowerCase().includes(q)
+        )
+    );
+  }, [structureGroups, searchQuery]);
 
   if (loading) {
     return (
@@ -307,180 +344,191 @@ export default function FeeStructuresPage({
         </div>
       </Card>
 
-      {/* Structures List */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredStructures.length === 0 ? (
-          <div className="lg:col-span-2">
-            <Card>
-              <div className="text-center py-12 text-gray-500">
-                {searchQuery ? 'No structures found matching your search' : 'No fee structures created yet'}
-              </div>
-            </Card>
-          </div>
+      {/* Structures List - collapsed by default, expand on click; one card per logical structure (no repeats) */}
+      <div className="space-y-3">
+        {filteredGroups.length === 0 ? (
+          <Card>
+            <div className="text-center py-12 text-gray-500">
+              {searchQuery ? 'No structures found matching your search' : 'No fee structures created yet'}
+            </div>
+          </Card>
         ) : (
-          filteredStructures.map((structure) => (
-            <motion.div
-              key={structure.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <Card className={`h-full border-2 transition-all ${structure.is_active ? 'border-green-200 bg-green-50/30' : 'border-gray-200'}`}>
-                <div className="flex flex-col h-full">
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-4 pb-4 border-b border-gray-200">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">{structure.name}</h3>
-                      {structure.is_active ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                          <CheckCircle size={12} />
-                          Active
-                        </span>
+          filteredGroups.map((group) => {
+            const isExpanded = expandedKey === group.key;
+            const first = group.structures[0];
+            const activeCount = group.structures.filter((s) => s.is_active).length;
+            const totalAmount = getTotalAmount(first);
+
+            return (
+              <motion.div
+                key={group.key}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <Card
+                  className={`border-2 transition-all cursor-pointer select-none ${
+                    activeCount > 0 ? 'border-green-200 hover:border-green-300' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => setExpandedKey(isExpanded ? null : group.key)}
+                >
+                  <div className="flex items-center justify-between gap-4 py-1">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {isExpanded ? (
+                        <ChevronDown size={20} className="text-gray-500 flex-shrink-0" />
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
-                          <XCircle size={12} />
-                          Inactive
-                        </span>
+                        <ChevronRight size={20} className="text-gray-500 flex-shrink-0" />
                       )}
-                    </div>
-                  </div>
-
-                  {/* Key Information */}
-                  <div className="space-y-3 mb-4 flex-1">
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="flex items-center gap-2 text-gray-600 min-w-[80px]">
-                        <Users size={16} className="text-indigo-500" />
-                        <span className="font-medium">Class:</span>
-                      </div>
-                      <span className="font-semibold text-gray-900">
-                        {structure.class_name}
-                        {structure.section && <span className="text-indigo-600"> - {structure.section}</span>}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="flex items-center gap-2 text-gray-600 min-w-[80px]">
-                        <Clock size={16} className="text-purple-500" />
-                        <span className="font-medium">Frequency:</span>
-                      </div>
-                      <span className="font-semibold text-gray-900 capitalize">{structure.frequency}</span>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="flex items-center gap-2 text-gray-600 min-w-[80px]">
-                        <Calendar size={16} className="text-blue-500" />
-                        <span className="font-medium">Period:</span>
-                      </div>
-                      <span className="font-semibold text-gray-900">
-                        {getMonthName(structure.start_month)} - {getMonthName(structure.end_month)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-sm pt-2 border-t border-gray-200">
-                      <div className="flex items-center gap-2 text-gray-600 min-w-[80px]">
-                        <IndianRupee size={16} className="text-green-600" />
-                        <span className="font-medium">Total:</span>
-                      </div>
-                      <span className="text-xl font-bold text-indigo-600">
-                        ₹{getTotalAmount(structure).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Fee Composition */}
-                  {structure.items && structure.items.length > 0 && (
-                    <div className="mb-4 p-4 bg-white border border-gray-200 rounded-lg">
-                      <div className="flex items-center gap-2 mb-3">
-                        <TrendingUp size={16} className="text-indigo-600" />
-                        <p className="text-sm font-semibold text-gray-900">Fee Composition</p>
-                      </div>
-                      <div className="grid grid-cols-1 gap-2">
-                        {structure.items.map((item) => (
-                          <div
-                            key={item.id}
-                            className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
-                          >
-                            <span className="text-sm font-medium text-gray-700">
-                              {item.fee_head?.name || 'Unknown'}
+                      <div className="min-w-0">
+                        <h3 className="text-base font-bold text-gray-900 truncate">{group.displayName}</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {group.structures.length} class{group.structures.length !== 1 ? 'es' : ''} •{' '}
+                          {getMonthName(first.start_month)} – {getMonthName(first.end_month)} • {first.frequency}
+                          {activeCount > 0 && (
+                            <span className="ml-2 inline-flex items-center gap-1 text-green-600">
+                              <CheckCircle size={12} />
+                              Active
                             </span>
-                            <span className="text-sm font-bold text-indigo-600">
-                              ₹{item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Late Fee Info */}
-                  {structure.late_fee_type && (
-                    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <div className="text-xs font-semibold text-amber-900 mb-1">Late Fee Policy</div>
-                      <div className="text-sm text-amber-800">
-                        <span className="font-medium capitalize">{structure.late_fee_type}</span>
-                        {' - ₹'}{structure.late_fee_value.toLocaleString('en-IN')}
-                        {structure.late_fee_type === 'per_day' && '/day'}
-                        {structure.grace_period_days > 0 && (
-                          <span className="ml-2 text-amber-700">• {structure.grace_period_days} days grace period</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="flex flex-col gap-2 pt-4 border-t border-gray-200">
-                    {!structure.is_active ? (
-                      <Button
-                        onClick={() => handleActivate(structure.id)}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white"
-                        size="sm"
-                      >
-                        <Power size={16} className="mr-2" />
-                        Activate Structure
-                      </Button>
-                    ) : (
-                      <>
-                        <Button
-                          onClick={() => handleGenerateFees(structure.id)}
-                          disabled={generating === structure.id}
-                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
-                          size="sm"
-                        >
-                          {generating === structure.id ? (
-                            <>
-                              <Loader2 size={16} className="mr-2 animate-spin" />
-                              Generating Fees...
-                            </>
-                          ) : (
-                            <>
-                              <Calendar size={16} className="mr-2" />
-                              Generate Student Fees
-                            </>
                           )}
-                        </Button>
-                        <Button
-                          onClick={() => handleDeactivate(structure.id)}
-                          className="w-full bg-red-600 hover:bg-red-700 text-white"
-                          size="sm"
-                        >
-                          <PowerOff size={16} className="mr-2" />
-                          Deactivate Structure
-                        </Button>
-                      </>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures/${structure.id}`)}
-                      className="w-full"
-                    >
-                      <Edit2 size={16} className="mr-2" />
-                      View / Edit Details
-                    </Button>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0 text-right">
+                      <span className="text-sm font-bold text-indigo-600">
+                        ₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </Card>
-            </motion.div>
-          ))
+
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="pt-4 mt-4 border-t border-gray-200 space-y-4">
+                          {group.structures.map((structure) => (
+                            <div
+                              key={structure.id}
+                              className="p-4 rounded-lg bg-gray-50 border border-gray-200"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="font-semibold text-gray-900">
+                                    {structure.class_name}
+                                    {structure.section && (
+                                      <span className="text-indigo-600"> - {structure.section}</span>
+                                    )}
+                                  </span>
+                                  {structure.is_active ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                                      <CheckCircle size={10} /> Active
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
+                                      <XCircle size={10} /> Inactive
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {!structure.is_active ? (
+                                    <Button
+                                      onClick={() => handleActivate(structure.id)}
+                                      className="bg-green-600 hover:bg-green-700 text-white text-xs py-1.5 px-2"
+                                      size="sm"
+                                    >
+                                      <Power size={14} className="mr-1" />
+                                      Activate
+                                    </Button>
+                                  ) : (
+                                    <>
+                                      <Button
+                                        onClick={() => handleGenerateFees(structure.id)}
+                                        disabled={generating === structure.id}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs py-1.5 px-2"
+                                        size="sm"
+                                      >
+                                        {generating === structure.id ? (
+                                          <Loader2 size={14} className="animate-spin" />
+                                        ) : (
+                                          <>
+                                            <Calendar size={14} className="mr-1" />
+                                            Generate Fees
+                                          </>
+                                        )}
+                                      </Button>
+                                      <Button
+                                        onClick={() => handleDeactivate(structure.id)}
+                                        className="bg-red-600 hover:bg-red-700 text-white text-xs py-1.5 px-2"
+                                        size="sm"
+                                      >
+                                        <PowerOff size={14} className="mr-1" />
+                                        Deactivate
+                                      </Button>
+                                    </>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures/${structure.id}`)}
+                                    className="text-xs py-1.5 px-2"
+                                  >
+                                    <Edit2 size={14} className="mr-1" />
+                                    View / Edit
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {structure.items && structure.items.length > 0 && (
+                                <div className="mb-2">
+                                  <p className="text-xs font-semibold text-gray-700 mb-1">Fee Composition</p>
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                                    {structure.items.map((item) => (
+                                      <span key={item.id}>
+                                        {item.fee_head?.name || 'Unknown'}: ₹
+                                        {item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {structure.late_fee_type && (
+                                <p className="text-xs text-amber-800">
+                                  Late: {structure.late_fee_type} – ₹{structure.late_fee_value}
+                                  {structure.late_fee_type === 'per_day' && '/day'}
+                                  {structure.grace_period_days > 0 && ` • ${structure.grace_period_days} days grace`}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+
+                          {first.items && first.items.length > 0 && group.structures.length > 1 && (
+                            <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                              <div className="flex items-center gap-2 mb-2">
+                                <TrendingUp size={14} className="text-indigo-600" />
+                                <p className="text-sm font-semibold text-gray-900">Fee Composition (same for all)</p>
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-700">
+                                {first.items.map((item) => (
+                                  <span key={item.id}>
+                                    {item.fee_head?.name}: ₹
+                                    {item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </Card>
+              </motion.div>
+            );
+          })
         )}
       </div>
     </div>

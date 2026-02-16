@@ -48,6 +48,7 @@ export default function TeacherDashboard() {
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [showAddTodo, setShowAddTodo] = useState(false);
   const [assignedSubjects, setAssignedSubjects] = useState<Array<{ id: string; name: string; color: string }>>([]);
+  const [myClassStudents, setMyClassStudents] = useState<Student[]>([]);
   interface EventNotification {
     id: string;
     event: {
@@ -125,9 +126,14 @@ export default function TeacherDashboard() {
         const validClasses = classesData.filter((cls: Class | null) => cls && cls.class && cls.section);
         
         if (validClasses.length > 0) {
-          // Set first class as assigned (for backward compatibility with dashboard)
-          setAssignedClass(validClasses[0]);
+          const firstClass = validClasses[0] as Class;
+          setAssignedClass(firstClass);
+          fetchMyClassStudents(schoolCode, firstClass);
+        } else {
+          setMyClassStudents([]);
         }
+      } else {
+        setMyClassStudents([]);
       }
 
       // Fetch teacher's personal attendance statistics
@@ -431,6 +437,27 @@ export default function TeacherDashboard() {
     }
   };
 
+  const fetchMyClassStudents = async (schoolCode: string, cls: Class) => {
+    try {
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        class: getString(cls.class),
+        status: 'active',
+      });
+      if (cls.section) params.append('section', getString(cls.section));
+      if (cls.academic_year) params.append('academic_year', getString(cls.academic_year));
+      const response = await fetch(`/api/students?${params.toString()}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setMyClassStudents(result.data);
+      } else {
+        setMyClassStudents([]);
+      }
+    } catch {
+      setMyClassStudents([]);
+    }
+  };
+
   const fetchStudentLeaveRequests = async (schoolCode: string, className: string, section: string) => {
     try {
       const response = await fetch(`/api/leave/student-requests?school_code=${schoolCode}&status=pending`);
@@ -475,12 +502,6 @@ export default function TeacherDashboard() {
 
   // If assigned class exists, show home page with class students
   if (assignedClass) {
-    const classStudents = students.filter(
-      (s) => s.class === assignedClass.class && 
-             s.section === assignedClass.section &&
-             s.academic_year === assignedClass.academic_year
-    );
-
     return (
       <div className="min-h-screen bg-background space-y-8 p-6">
         {/* Welcome Section */}
@@ -541,28 +562,51 @@ export default function TeacherDashboard() {
           transition={{ delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
         >
-          {/* Total Students Card - Blue */}
+          {/* Total Students & Students in My Class Card - Blue */}
           <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative">
-            <div className="absolute top-4 right-4">
+            <div className="absolute top-4 right-4 flex gap-1">
               <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-medium">
-                {classStudents.length > 0 ? '+' : '0'} Students
+                Total {students.length}
+              </span>
+              <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full font-medium">
+                My Class {myClassStudents.length}
               </span>
             </div>
-            <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start justify-between mb-3">
               <div className="flex-1">
                 <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center mb-3">
                   <Users className="text-blue-600" size={24} />
                 </div>
                 <p className="text-sm text-muted-foreground mb-1">Total Students</p>
-                <h3 className="text-3xl font-bold text-foreground">{classStudents.length}</h3>
+                <h3 className="text-3xl font-bold text-foreground">{students.length}</h3>
               </div>
             </div>
-            {/* Progress Bar */}
-            <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min((classStudents.length / 100) * 100, 100)}%` }}
-              />
+            <div className="border-t border-input pt-3 mt-3">
+              <p className="text-sm text-muted-foreground mb-1">Students in My Class</p>
+              <p className="text-2xl font-bold text-foreground mb-2">{myClassStudents.length}</p>
+              <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
+                {myClassStudents.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No students in your class yet.</p>
+                ) : (
+                  myClassStudents.map((s) => {
+                    const name = getString(s.student_name) || getString(s.first_name) || '—';
+                    return (
+                      <div key={s.id} className="text-sm text-foreground truncate" title={name}>
+                        {name}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              {myClassStudents.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => router.push('/teacher/dashboard/my-class')}
+                  className="text-primary text-xs font-medium mt-2 flex items-center gap-1 hover:underline"
+                >
+                  View all in My Class
+                </button>
+              )}
             </div>
           </div>
 
@@ -830,7 +874,7 @@ export default function TeacherDashboard() {
               <div className="flex items-center gap-2 mb-4">
                 {/* Avatar cluster - showing first letters of student names from assigned class */}
                 <div className="flex -space-x-2">
-                  {classStudents.slice(0, 3).map((student, idx) => {
+                  {myClassStudents.slice(0, 3).map((student, idx) => {
                     const studentName = getString(student.student_name) || getString(student.first_name) || 'A';
                     const initial = studentName.charAt(0).toUpperCase();
                     return (
@@ -843,12 +887,12 @@ export default function TeacherDashboard() {
                       </div>
                     );
                   })}
-                  {classStudents.length > 3 && (
+                  {myClassStudents.length > 3 && (
                     <div className="w-8 h-8 rounded-full bg-white/20 border-2 border-primary flex items-center justify-center text-xs text-white/60">
-                      +{classStudents.length - 3}
+                      +{myClassStudents.length - 3}
                     </div>
                   )}
-                  {classStudents.length === 0 && (
+                  {myClassStudents.length === 0 && (
                     <>
                       <div className="w-8 h-8 rounded-full bg-white/20 border-2 border-primary flex items-center justify-center text-xs font-medium">
                         A

@@ -6,9 +6,10 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, AlertCircle, Save, ArrowLeft, Users, Filter, CalendarOff } from 'lucide-react';
+import { Calendar, CheckCircle, AlertCircle, Save, ArrowLeft, Users, Filter, CalendarOff, Edit3 } from 'lucide-react';
 
 type AttendanceStatus = 'present' | 'absent' | 'holiday';
+type AttendanceState = 'NOT_MARKED' | 'IN_PROGRESS' | 'SAVED';
 
 interface Student {
   id: string;
@@ -48,6 +49,8 @@ export default function MarkAttendancePage({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentAcademicYear, setCurrentAcademicYear] = useState<string>('');
+  const [attendanceState, setAttendanceState] = useState<AttendanceState>('NOT_MARKED');
+  const [lastMarkedInfo, setLastMarkedInfo] = useState<{ at: string; by: string } | null>(null);
 
   useEffect(() => {
     const loadAcademicYear = async () => {
@@ -189,12 +192,7 @@ export default function MarkAttendancePage({
           return aRoll - bRoll;
         });
         setStudents(sortedStudents);
-        // Initialize attendance state
-        const initialAttendance: Record<string, AttendanceStatus> = {};
-        sortedStudents.forEach((student: Student) => {
-          initialAttendance[student.id] = 'present'; // Default to present
-        });
-        setAttendance(initialAttendance);
+        // Attendance is set by fetchExistingAttendance (same effect); do not default to present
       }
     } catch (err) {
       console.error('Error fetching students:', err);
@@ -227,7 +225,6 @@ export default function MarkAttendancePage({
     if (!selectedClass || !selectedSection || !selectedDate) return;
 
     try {
-      // Find the class ID based on class and section
       const classData = classes.find(c => c.class === selectedClass && c.section === selectedSection);
       if (!classData) return;
 
@@ -237,33 +234,61 @@ export default function MarkAttendancePage({
       const result = await response.json();
 
       if (response.ok && result.data) {
-        const existingAttendance: Record<string, AttendanceStatus> = {};
-        result.data.forEach((record: { student_id: string; status: string; notes?: string; remarks?: string }) => {
-          // Map 'late' to 'present'; map leave+notes 'Holiday' back to holiday
-          const notesOrRemarks = (record.notes || record.remarks || '').trim();
-          const isHoliday = (record.status === 'leave' || record.status === 'holiday') && notesOrRemarks === 'Holiday';
-          let status: AttendanceStatus = record.status === 'late' ? 'present' : (record.status as AttendanceStatus);
-          if (isHoliday || record.status === 'holiday') status = 'holiday';
-          if (status !== 'present' && status !== 'absent' && status !== 'holiday') status = 'present';
-          existingAttendance[record.student_id] = status;
-        });
-        setAttendance(prev => ({ ...prev, ...existingAttendance }));
+        if (result.data.length === 0) {
+          setAttendance({});
+          setAttendanceState('NOT_MARKED');
+          setLastMarkedInfo(null);
+        } else {
+          const existingAttendance: Record<string, AttendanceStatus> = {};
+          result.data.forEach((record: { student_id: string; status: string; notes?: string; remarks?: string }) => {
+            const notesOrRemarks = (record.notes || record.remarks || '').trim();
+            const isHoliday = (record.status === 'leave' || record.status === 'holiday') && notesOrRemarks === 'Holiday';
+            let status: AttendanceStatus = record.status === 'late' ? 'present' : (record.status as AttendanceStatus);
+            if (isHoliday || record.status === 'holiday') status = 'holiday';
+            if (status !== 'present' && status !== 'absent' && status !== 'holiday') status = 'present';
+            existingAttendance[record.student_id] = status;
+          });
+          setAttendance(existingAttendance);
+          setAttendanceState('SAVED');
+          const meta = result.meta as { last_marked_at?: string; marked_by_name?: string } | null;
+          if (meta?.last_marked_at) {
+            const at = new Date(meta.last_marked_at);
+            setLastMarkedInfo({
+              at: at.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+              by: meta.marked_by_name || 'Staff',
+            });
+          } else {
+            setLastMarkedInfo(null);
+          }
+        }
+      } else {
+        setAttendance({});
+        setAttendanceState('NOT_MARKED');
+        setLastMarkedInfo(null);
       }
     } catch (err) {
       console.error('Error fetching existing attendance:', err);
+      setAttendance({});
+      setAttendanceState('NOT_MARKED');
     }
   };
 
   const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
+    setAttendanceState('IN_PROGRESS');
     setAttendance(prev => ({ ...prev, [studentId]: status }));
   };
 
   const handleBulkAction = (status: AttendanceStatus) => {
+    setAttendanceState('IN_PROGRESS');
     const bulkAttendance: Record<string, AttendanceStatus> = {};
     students.forEach((student) => {
       bulkAttendance[student.id] = status;
     });
     setAttendance(prev => ({ ...prev, ...bulkAttendance }));
+  };
+
+  const handleEditAttendance = () => {
+    setAttendanceState('IN_PROGRESS');
   };
 
   const handleSave = async () => {
@@ -318,7 +343,7 @@ export default function MarkAttendancePage({
 
       const attendanceRecords = students.map((student) => ({
         student_id: student.id,
-        status: attendance[student.id] || 'present',
+        status: attendance[student.id] || 'absent',
       }));
 
       const endpoint = isAdmin ? '/api/attendance/admin-mark' : '/api/attendance/mark';
@@ -338,7 +363,9 @@ export default function MarkAttendancePage({
 
       if (response.ok) {
         setSaveSuccess(true);
+        setAttendanceState('SAVED');
         setTimeout(() => setSaveSuccess(false), 3000);
+        fetchExistingAttendance();
       } else {
         const msg = result.error || 'Failed to save attendance';
         const details = result.details ? ` (${result.details})` : '';
@@ -448,6 +475,41 @@ export default function MarkAttendancePage({
           </div>
         </div>
 
+        {/* Attendance status badge and message */}
+        {selectedClass && selectedSection && students.length > 0 && (
+          <div className="mb-4 pt-4 border-t border-gray-200 space-y-2">
+            {attendanceState === 'NOT_MARKED' && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <span className="inline-block w-3 h-3 rounded-full bg-amber-500" aria-hidden />
+                <span className="font-medium text-amber-800">Not Marked</span>
+                <p className="text-sm text-amber-700 mt-1 w-full">Today&apos;s attendance has not been marked.</p>
+              </div>
+            )}
+            {attendanceState === 'SAVED' && (
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 rounded-full bg-emerald-500" aria-hidden />
+                  <span className="font-medium text-emerald-800">Saved</span>
+                  {lastMarkedInfo && (
+                    <span className="text-sm text-emerald-700">
+                      Last marked at {lastMarkedInfo.at} by {lastMarkedInfo.by}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEditAttendance}
+                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-100"
+                >
+                  <Edit3 size={16} className="mr-2" />
+                  Edit Attendance
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Attendance Summary Stats */}
         {selectedClass && selectedSection && students.length > 0 && (
           <div className="grid grid-cols-4 gap-4 mb-4 pt-4 border-t border-gray-200">
@@ -518,6 +580,7 @@ export default function MarkAttendancePage({
                 size="sm"
                 onClick={() => handleBulkAction('present')}
                 className="border-green-300 text-green-600 hover:bg-green-50"
+                disabled={attendanceState === 'SAVED'}
               >
                 Mark All Present
               </Button>
@@ -526,6 +589,7 @@ export default function MarkAttendancePage({
                 size="sm"
                 onClick={() => handleBulkAction('absent')}
                 className="border-red-300 text-red-600 hover:bg-red-50"
+                disabled={attendanceState === 'SAVED'}
               >
                 Mark All Absent
               </Button>
@@ -534,6 +598,7 @@ export default function MarkAttendancePage({
                 size="sm"
                 onClick={() => handleBulkAction('holiday')}
                 className="border-blue-300 text-blue-600 hover:bg-blue-50"
+                disabled={attendanceState === 'SAVED'}
               >
                 <CalendarOff size={16} className="mr-2" />
                 Mark Holiday
@@ -562,31 +627,34 @@ export default function MarkAttendancePage({
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => handleStatusChange(student.id, 'present')}
+                          onClick={() => attendanceState !== 'SAVED' && handleStatusChange(student.id, 'present')}
+                          disabled={attendanceState === 'SAVED'}
                           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                             attendance[student.id] === 'present'
                               ? 'bg-green-500 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-green-100'
+                              : attendanceState === 'SAVED' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-green-100'
                           }`}
                         >
                           Present
                         </button>
                         <button
-                          onClick={() => handleStatusChange(student.id, 'absent')}
+                          onClick={() => attendanceState !== 'SAVED' && handleStatusChange(student.id, 'absent')}
+                          disabled={attendanceState === 'SAVED'}
                           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                             attendance[student.id] === 'absent'
                               ? 'bg-red-500 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-red-100'
+                              : attendanceState === 'SAVED' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-red-100'
                           }`}
                         >
                           Absent
                         </button>
                         <button
-                          onClick={() => handleStatusChange(student.id, 'holiday')}
+                          onClick={() => attendanceState !== 'SAVED' && handleStatusChange(student.id, 'holiday')}
+                          disabled={attendanceState === 'SAVED'}
                           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                             attendance[student.id] === 'holiday'
                               ? 'bg-blue-500 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-blue-100'
+                              : attendanceState === 'SAVED' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-blue-100'
                           }`}
                         >
                           Holiday
@@ -602,11 +670,15 @@ export default function MarkAttendancePage({
           <div className="mt-6 flex justify-end">
             <Button
               onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2"
+              disabled={saving || attendanceState !== 'IN_PROGRESS'}
+              className={`flex items-center gap-2 ${
+                attendanceState === 'IN_PROGRESS'
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
             >
               <Save size={18} />
-              {saving ? 'Saving...' : 'Save Attendance'}
+              {saving ? 'Saving...' : attendanceState === 'SAVED' ? 'Saved' : 'Save Attendance'}
             </Button>
           </div>
         </Card>

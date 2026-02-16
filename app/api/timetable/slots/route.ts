@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
+const MIN_PERIOD = 1;
+const MAX_PERIOD = 20;
+const PERIODS = Array.from({ length: MAX_PERIOD - MIN_PERIOD + 1 }, (_, i) => i + MIN_PERIOD);
 
 // Get timetable slots
 export async function GET(request: NextRequest) {
@@ -218,10 +220,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate period (only if using old period system)
-    if (!period_order && !PERIODS.includes(period)) {
+    // Validate period / period_order range (1–20; DB may have stricter constraint – run timetable_slots_period_check_fix.sql if needed)
+    const orderNum = period_order != null ? Number(period_order) : (period != null ? parseInt(String(period), 10) : NaN);
+    if (!Number.isNaN(orderNum) && (orderNum < MIN_PERIOD || orderNum > MAX_PERIOD)) {
       return NextResponse.json(
-        { error: `Period must be between 1 and 8` },
+        { error: `Period must be between ${MIN_PERIOD} and ${MAX_PERIOD}` },
+        { status: 400 }
+      );
+    }
+    if (!period_order && period != null && (Number.isNaN(parseInt(String(period), 10)) || parseInt(String(period), 10) < MIN_PERIOD || parseInt(String(period), 10) > MAX_PERIOD)) {
+      return NextResponse.json(
+        { error: `Period must be between ${MIN_PERIOD} and ${MAX_PERIOD}` },
         { status: 400 }
       );
     }

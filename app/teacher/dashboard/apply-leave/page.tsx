@@ -20,8 +20,10 @@ interface LeaveType {
   id: string;
   abbreviation: string;
   name: string;
-  is_active: boolean;
+  is_active?: boolean;
   max_days?: number;
+  max_days_per_month?: number;
+  staff_type?: string;
 }
 
 export default function ApplyLeavePage() {
@@ -46,19 +48,23 @@ export default function ApplyLeavePage() {
     if (storedTeacher) {
       const teacherData = JSON.parse(storedTeacher);
       setTeacher(teacherData);
-      fetchLeaveTypes(teacherData.school_code);
+      // Normalize school_code to uppercase to match DB (leave types are stored with uppercase)
+      const code = String(teacherData.school_code || '').trim().toUpperCase();
+      if (code) fetchLeaveTypes(code);
     }
   }, []);
 
   const fetchLeaveTypes = async (schoolCode: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/leave/types?school_code=${schoolCode}`);
+      const params = new URLSearchParams({ school_code: schoolCode });
+      // Don't filter by staff_type so staff see all types for their school (admin can restrict via staff_type in Leave Basics if needed)
+      const response = await fetch(`/api/leave/types?${params.toString()}`);
       const result = await response.json();
 
       if (response.ok && result.data) {
-        // Filter only active leave types
-        const activeTypes = result.data.filter((type: LeaveType) => type.is_active);
+        // Show all types except those explicitly inactive (treat missing is_active as active)
+        const activeTypes = result.data.filter((type: LeaveType) => type.is_active !== false);
         setLeaveTypes(activeTypes);
       }
     } catch (err) {
@@ -98,11 +104,12 @@ export default function ApplyLeavePage() {
       return;
     }
 
-    // Validate max days if leave type has a limit
-    if (selectedLeaveType?.max_days) {
+    // Validate max days if leave type has a limit (per month)
+    const maxDays = selectedLeaveType?.max_days ?? selectedLeaveType?.max_days_per_month;
+    if (maxDays != null && maxDays > 0) {
       const totalDays = calculateDays();
-      if (totalDays > selectedLeaveType.max_days) {
-        setErrorMessage(`Leave duration (${totalDays} days) exceeds maximum allowed (${selectedLeaveType.max_days} days) for this leave type`);
+      if (totalDays > maxDays) {
+        setErrorMessage(`Leave duration (${totalDays} days) exceeds maximum allowed (${maxDays} days) for this leave type`);
         setShowError(true);
         return;
       }
@@ -331,8 +338,10 @@ export default function ApplyLeavePage() {
                         <span className="font-bold text-[#1e3a8a]">{leaveType.abbreviation}</span>
                         <span className="font-semibold text-[#0F172A]">{leaveType.name}</span>
                       </div>
-                      {leaveType.max_days && (
-                        <p className="text-xs text-[#64748B] mt-1">Max: {leaveType.max_days} days</p>
+                      {(leaveType.max_days != null || leaveType.max_days_per_month != null) && (
+                        <p className="text-xs text-[#64748B] mt-1">
+                          Max: {leaveType.max_days ?? leaveType.max_days_per_month} days per month
+                        </p>
                       )}
                     </div>
                   </label>
@@ -385,11 +394,14 @@ export default function ApplyLeavePage() {
                   {calculateDays()} {calculateDays() === 1 ? 'Day' : 'Days'}
                 </span>
               </div>
-              {selectedLeaveType?.max_days && calculateDays() > selectedLeaveType.max_days && (
-                <p className="text-sm text-red-600 mt-2">
-                  ⚠️ This exceeds the maximum allowed days ({selectedLeaveType.max_days} days) for this leave type.
-                </p>
-              )}
+              {(() => {
+                const maxD = selectedLeaveType?.max_days ?? selectedLeaveType?.max_days_per_month;
+                return maxD != null && maxD > 0 && calculateDays() > maxD ? (
+                  <p className="text-sm text-red-600 mt-2">
+                    ⚠️ This exceeds the maximum allowed days ({maxD} days) for this leave type.
+                  </p>
+                ) : null;
+              })()}
             </div>
           )}
 

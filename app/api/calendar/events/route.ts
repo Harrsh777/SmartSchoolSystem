@@ -1,13 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-// Create event
+function getDateRange(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const d = new Date(start);
+  while (d <= end) {
+    dates.push(d.toISOString().split('T')[0]);
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
+// Create event(s) — supports single day (event_date) or multi-day (start_date + end_date, date only)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
       school_code,
       event_date,
+      start_date,
+      end_date,
       title,
       description,
       event_type,
@@ -16,14 +30,33 @@ export async function POST(request: NextRequest) {
       color,
     } = body;
 
-    if (!school_code || !event_date || !title || !event_type || !applicable_for) {
+    const singleDate = event_date || start_date;
+    const rangeEnd = end_date || start_date || event_date;
+
+    if (!school_code || !title || !event_type || !applicable_for) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: school_code, title, event_type, applicable_for' },
+        { status: 400 }
+      );
+    }
+    if (!singleDate) {
+      return NextResponse.json(
+        { error: 'Provide either event_date or start_date (and optionally end_date for multi-day)' },
         { status: 400 }
       );
     }
 
-    // Get school ID
+    const startStr = singleDate.split('T')[0];
+    const endStr = rangeEnd.split('T')[0];
+    if (endStr < startStr) {
+      return NextResponse.json(
+        { error: 'End date must be on or after start date' },
+        { status: 400 }
+      );
+    }
+
+    const datesToInsert = getDateRange(startStr, endStr);
+
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
       .select('id')
@@ -37,35 +70,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create event
-    const { data: event, error: eventError } = await supabase
-      .from('events')
-      .insert([{
-        school_id: schoolData.id,
-        school_code: school_code,
-        event_date: event_date,
-        title: title,
-        description: description || null,
-        event_type: event_type,
-        applicable_for: applicable_for,
-        applicable_classes: applicable_for === 'specific_class' ? applicable_classes : null,
-        color: color && /^#([0-9A-Fa-f]{3}){1,2}$/.test(color) ? color : null,
-      }])
-      .select()
-      .single();
+    const rows = datesToInsert.map((event_date_val) => ({
+      school_id: schoolData.id,
+      school_code: school_code,
+      event_date: event_date_val,
+      title,
+      description: description || null,
+      event_type,
+      applicable_for,
+      applicable_classes: applicable_for === 'specific_class' ? applicable_classes : null,
+      color: color && /^#([0-9A-Fa-f]{3}){1,2}$/.test(color) ? color : null,
+    }));
 
-    if (eventError || !event) {
-      console.error('Error creating event:', eventError);
+    const { data: inserted, error: eventError } = await supabase
+      .from('events')
+      .insert(rows)
+      .select();
+
+    if (eventError || !inserted?.length) {
+      console.error('Error creating event(s):', eventError);
       return NextResponse.json(
-        { error: 'Failed to create event', details: eventError?.message },
+        { error: 'Failed to create event(s)', details: (eventError as Error)?.message },
         { status: 500 }
       );
     }
 
-    // Create notifications for all applicable users
-    await createEventNotifications(event.id, schoolData.id, school_code, applicable_for, applicable_classes);
+    for (const event of inserted) {
+      await createEventNotifications(event.id, schoolData.id, school_code, applicable_for, applicable_classes);
+    }
 
-    return NextResponse.json({ data: event }, { status: 201 });
+    return NextResponse.json(
+      { data: inserted.length === 1 ? inserted[0] : inserted, created_count: inserted.length },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error creating event:', error);
     return NextResponse.json(

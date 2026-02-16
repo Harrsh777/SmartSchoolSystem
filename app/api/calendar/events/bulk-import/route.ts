@@ -27,10 +27,22 @@ function parseDate(value: unknown): string | null {
   return null;
 }
 
+function getDateRange(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const d = new Date(start);
+  while (d <= end) {
+    dates.push(d.toISOString().split('T')[0]);
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
 /**
  * POST /api/calendar/events/bulk-import
  * Body: FormData with file (Excel) and school_code
- * Excel columns: "Event Name" (or "Name"), "Date" (YYYY-MM-DD or DD/MM/YYYY)
+ * Excel columns: "Event Name" (or "Name"), "Start Date" or "Date", optional "End Date" for multi-day (date only)
  * Validates each row and creates events (event_type: event, applicable_for: all)
  */
 export async function POST(request: NextRequest) {
@@ -71,12 +83,13 @@ export async function POST(request: NextRequest) {
     }
 
     const headerRow = rows[0] as string[];
-    const nameCol = headerRow.findIndex((h) => /event\s*name|name/i.test(String(h).trim()));
-    const dateCol = headerRow.findIndex((h) => /date/i.test(String(h).trim()));
+    const nameCol = headerRow.findIndex((h) => /event\s*name|name|title/i.test(String(h).trim()));
+    const startCol = headerRow.findIndex((h) => /start\s*date|date/i.test(String(h).trim()));
+    const endCol = headerRow.findIndex((h) => /end\s*date/i.test(String(h).trim()));
 
-    if (nameCol === -1 || dateCol === -1) {
+    if (nameCol === -1 || startCol === -1) {
       return NextResponse.json(
-        { error: 'Excel must have columns "Event Name" (or "Name") and "Date". Download the template and use the same headers.' },
+        { error: 'Excel must have "Event Name" (or "Name") and "Start Date" (or "Date"). Download the template for the correct format.' },
         { status: 400 }
       );
     }
@@ -100,32 +113,33 @@ export async function POST(request: NextRequest) {
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i] as unknown[];
       const nameVal = row[nameCol];
-      const dateVal = row[dateCol];
+      const startVal = row[startCol];
+      const endVal = endCol >= 0 ? row[endCol] : null;
       const title = typeof nameVal === 'string' ? nameVal.trim() : String(nameVal ?? '').trim();
-      const dateStr = parseDate(dateVal);
+      const startStr = parseDate(startVal);
+      const endStr = parseDate(endVal) || startStr;
 
       if (!title) {
         errors.push(`Row ${i + 1}: Event name is empty. Skipped.`);
         continue;
       }
-      if (!dateStr) {
-        errors.push(`Row ${i + 1}: Invalid or missing date for "${title}". Use YYYY-MM-DD or DD/MM/YYYY.`);
+      if (!startStr) {
+        errors.push(`Row ${i + 1}: Invalid or missing start date for "${title}". Use YYYY-MM-DD or DD/MM/YYYY.`);
         continue;
       }
-      const date = new Date(dateStr);
-      if (Number.isNaN(date.getTime())) {
-        errors.push(`Row ${i + 1}: Invalid date "${dateStr}" for "${title}".`);
-        continue;
-      }
+      const finalEnd = endStr && endStr >= startStr ? endStr : startStr;
+      const dates = getDateRange(startStr, finalEnd);
 
-      toInsert.push({
-        school_id: schoolData.id,
-        school_code: schoolCode.trim(),
-        event_date: dateStr,
-        title,
-        event_type: 'event',
-        applicable_for: 'all',
-      });
+      for (const event_date of dates) {
+        toInsert.push({
+          school_id: schoolData.id,
+          school_code: schoolCode.trim(),
+          event_date,
+          title,
+          event_type: 'event',
+          applicable_for: 'all',
+        });
+      }
     }
 
     if (toInsert.length === 0) {

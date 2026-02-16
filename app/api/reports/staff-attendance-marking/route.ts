@@ -2,9 +2,44 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
 
+/** Map status to single-letter code for grid: P=Present, A=Absent, L=Leave, H=Half day, -=not marked */
+function statusToLetter(status: string | null | undefined): string {
+  if (!status) return '-';
+  const s = status.toLowerCase();
+  if (s === 'present') return 'P';
+  if (s === 'absent') return 'A';
+  if (s === 'leave') return 'L';
+  if (s === 'half_day' || s === 'halfday') return 'H';
+  if (s === 'late') return 'P'; // treat late as present in report
+  if (s === 'holiday') return 'L'; // or use a different code if needed
+  return '-';
+}
+
+/** Format date as DD-MM-YYYY for column header */
+function formatDateHeader(dateStr: string): string {
+  const d = new Date(dateStr);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+/** Get all dates between start and end (inclusive), as YYYY-MM-DD */
+function getDateRange(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const d = new Date(start);
+  while (d <= end) {
+    dates.push(d.toISOString().split('T')[0]);
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
 /**
  * GET /api/reports/staff-attendance-marking
- * Generate Excel report for staff attendance marking
+ * Generate Excel report: grid format (Name, Emp.Code, Designation, one column per date with P/A/L/H/-, then PresentDa, AbsentDay, HalfDayDa, LeaveDays)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -12,8 +47,7 @@ export async function GET(request: NextRequest) {
     const schoolCode = searchParams.get('school_code');
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
-    const period = searchParams.get('period') || '30';
-    const staffIdsParam = searchParams.get('staff_ids'); // optional comma-separated UUIDs
+    const staffIdsParam = searchParams.get('staff_ids');
 
     if (!schoolCode || !startDate || !endDate) {
       return NextResponse.json(
@@ -26,7 +60,6 @@ export async function GET(request: NextRequest) {
       ? staffIdsParam.split(',').map((id) => id.trim()).filter(Boolean)
       : null;
 
-    // Get school information
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
       .select('school_name, school_code')
@@ -40,7 +73,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch staff (all or filtered by staff_ids)
     let staffQuery = supabase
       .from('staff')
       .select('id, staff_id, full_name, role, department')
@@ -60,14 +92,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch attendance records
     const { data: attendanceData, error: attendanceError } = await supabase
       .from('staff_attendance')
       .select('staff_id, attendance_date, status')
       .eq('school_code', schoolCode)
       .gte('attendance_date', startDate)
-      .lte('attendance_date', endDate)
-      .order('attendance_date', { ascending: true });
+      .lte('attendance_date', endDate);
 
     if (attendanceError) {
       return NextResponse.json(
@@ -76,111 +106,84 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const staffMap = new Map((staffData || []).map((s) => [s.id, s]));
     const attendanceList = attendanceData || [];
+    const dateRange = getDateRange(startDate, endDate);
 
-    // Detailed rows: one per staff per date (Teacher Name, Date, Status), sorted by date then name
-    const sortedDetailed = [...attendanceList]
-      .sort((a, b) => {
-        if (a.attendance_date !== b.attendance_date) return a.attendance_date.localeCompare(b.attendance_date);
-        const nameA = staffMap.get(a.staff_id)?.full_name || '';
-        const nameB = staffMap.get(b.staff_id)?.full_name || '';
-        return nameA.localeCompare(nameB);
-      })
-      .map((record: { staff_id: string; attendance_date: string; status: string }) => {
-        const staff = staffMap.get(record.staff_id);
-        const dateStr = record.attendance_date?.split('T')[0] || record.attendance_date;
-        const formattedDate = dateStr ? new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
-        const statusLabel = (record.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-        return {
-          'Staff ID': staff?.staff_id || '',
-          'Teacher Name': staff?.full_name || '',
-          'Role': staff?.role || '',
-          'Department': staff?.department || '',
-          'Date': formattedDate,
-          'Status': statusLabel,
-        };
+    // Map: staff_id -> date (YYYY-MM-DD) -> status
+    const byStaffByDate = new Map<string, Map<string, string>>();
+    attendanceList.forEach((record: { staff_id: string; attendance_date: string; status: string }) => {
+      const dateStr = record.attendance_date?.split('T')[0] || record.attendance_date;
+      if (!byStaffByDate.has(record.staff_id)) {
+        byStaffByDate.set(record.staff_id, new Map());
+      }
+      byStaffByDate.get(record.staff_id)!.set(dateStr, record.status);
+    });
+
+    // Build grid: one row per staff
+    // Header: Name, Emp.Code, Designatic, ...date columns..., PresentDa, AbsentDay, HalfDayDa, LeaveDays
+    const headerRow: (string | number)[] = [
+      'Name',
+      'Emp.Code',
+      'Designatic',
+      ...dateRange.map((d) => formatDateHeader(d)),
+      'PresentDa',
+      'AbsentDay',
+      'HalfDayDa',
+      'LeaveDays',
+    ];
+
+    const dataRows: (string | number)[][] = (staffData || []).map((staff: { id: string; staff_id?: string; full_name?: string; role?: string; department?: string }) => {
+      const dateMap = byStaffByDate.get(staff.id) || new Map();
+      let present = 0;
+      let absent = 0;
+      let halfDay = 0;
+      let leave = 0;
+
+      const dateLetters = dateRange.map((d) => {
+        const status = dateMap.get(d);
+        const letter = statusToLetter(status);
+        if (letter === 'P') present++;
+        else if (letter === 'A') absent++;
+        else if (letter === 'H') halfDay++;
+        else if (letter === 'L') leave++;
+        return letter;
       });
 
-    // Summary per staff (for summary sheet)
-    const staffSummaries = (staffData || []).map((staff) => {
-      const staffAttendance = attendanceList.filter((record: { staff_id: string }) => record.staff_id === staff.id);
-      const present = staffAttendance.filter((r: { status: string }) => r.status === 'present').length;
-      const absent = staffAttendance.filter((r: { status: string }) => r.status === 'absent').length;
-      const late = staffAttendance.filter((r: { status: string }) => r.status === 'late').length;
-      const halfDay = staffAttendance.filter((r: { status: string }) => r.status === 'half_day').length;
-      const leave = staffAttendance.filter((r: { status: string }) => r.status === 'leave').length;
-      const totalDays = staffAttendance.length;
-      const attendancePercentage = totalDays > 0 ? (present / totalDays) * 100 : 0;
-      return {
-        'Staff ID': staff.staff_id || '',
-        'Full Name': staff.full_name || '',
-        'Role': staff.role || '',
-        'Department': staff.department || '',
-        'Present': present,
-        'Absent': absent,
-        'Late': late,
-        'Half Day': halfDay,
-        'Leave': leave,
-        'Total Days': totalDays,
-        'Attendance %': Math.round(attendancePercentage * 100) / 100,
-      };
+      const designation = [staff.role, staff.department].filter(Boolean).join(' - ') || '-';
+
+      return [
+        staff.full_name || '',
+        staff.staff_id || '',
+        designation,
+        ...dateLetters,
+        present,
+        absent,
+        halfDay,
+        leave,
+      ];
     });
-    staffSummaries.sort((a, b) => (b['Attendance %'] as number) - (a['Attendance %'] as number));
 
-    // Create workbook
+    const aoa = [headerRow, ...dataRows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    const colWidths = [
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 18 },
+      ...dateRange.map(() => ({ wch: 5 })),
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+    ];
+    ws['!cols'] = colWidths;
+
     const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Staff Attendance');
 
-    // Sheet 1: Detailed Attendance (teacher name, date, status - one row per day per staff)
-    const detailHeaderRows = [
-      [schoolData.school_name || 'School Name'],
-      ['Staff Attendance Report – Detailed (Name, Date, Status)'],
-      [`Date Range: ${new Date(startDate).toLocaleDateString('en-GB')} - ${new Date(endDate).toLocaleDateString('en-GB')}`],
-      [],
-      ['Staff ID', 'Teacher Name', 'Role', 'Department', 'Date', 'Status'],
-    ];
-    const detailDataRows = sortedDetailed.map((row) => [
-      row['Staff ID'],
-      row['Teacher Name'],
-      row['Role'],
-      row['Department'],
-      row['Date'],
-      row['Status'],
-    ]);
-    const detailedWs = XLSX.utils.aoa_to_sheet([...detailHeaderRows, ...detailDataRows]);
-    detailedWs['!cols'] = [
-      { wch: 12 },
-      { wch: 28 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 14 },
-      { wch: 12 },
-    ];
-    XLSX.utils.book_append_sheet(wb, detailedWs, 'Detailed Attendance');
-
-    // Sheet 2: Summary (totals per staff)
-    const summaryWs = XLSX.utils.json_to_sheet(staffSummaries);
-    summaryWs['!cols'] = [
-      { wch: 12 },
-      { wch: 25 },
-      { wch: 20 },
-      { wch: 20 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 12 },
-      { wch: 15 },
-    ];
-    XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
-
-    // Generate Excel file buffer
     const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `staff_attendance_marking_report_${schoolCode}_${startDate}_to_${endDate}.xlsx`;
 
-    // Return Excel file
-    const filename = `staff_attendance_report_${schoolCode}_${period}days_${new Date().toISOString().split('T')[0]}.xlsx`;
-    
     return new NextResponse(excelBuffer, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

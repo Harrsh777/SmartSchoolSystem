@@ -92,6 +92,8 @@ export default function StudentAttendanceReportPage({
   const [downloadTo, setDownloadTo] = useState(defaultRange.to);
   const [downloadClass, setDownloadClass] = useState('');
   const [downloadSection, setDownloadSection] = useState('');
+  const [downloadMultiSelection, setDownloadMultiSelection] = useState<Record<string, boolean>>({});
+  const [useMultiDownload, setUseMultiDownload] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
@@ -100,6 +102,18 @@ export default function StudentAttendanceReportPage({
     if (!selectedClass) return [];
     return Array.from(new Set(classes.filter((c) => c.class === selectedClass).map((c) => c.section))).sort();
   }, [classes, selectedClass]);
+
+  const classSectionOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return classes
+      .map((c) => ({ class: c.class, section: c.section, key: `${c.class}-${c.section}` }))
+      .filter((c) => {
+        if (seen.has(c.key)) return false;
+        seen.add(c.key);
+        return true;
+      })
+      .sort((a, b) => a.class.localeCompare(b.class) || a.section.localeCompare(b.section));
+  }, [classes]);
 
   const fetchClasses = useCallback(async () => {
     try {
@@ -173,6 +187,12 @@ export default function StudentAttendanceReportPage({
     });
   }, [reportRows]);
 
+  const escapeCsv = (val: unknown) => {
+    const s = String(val ?? '');
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
   const handleDownload = async () => {
     setDownloadError('');
     if (!downloadFrom || !downloadTo) {
@@ -183,8 +203,48 @@ export default function StudentAttendanceReportPage({
       setDownloadError('From date must be before or equal to To date.');
       return;
     }
+
+    const multiSelected = useMultiDownload && classSectionOptions.filter((o) => downloadMultiSelection[o.key]).length > 0;
+    if (multiSelected) {
+      const selected = classSectionOptions.filter((o) => downloadMultiSelection[o.key]);
+      setDownloading(true);
+      try {
+        const headers = ['Class', 'Section', 'Date', 'Student Name', 'Admission No', 'Status', 'Marked By'];
+        const allRows: string[] = [headers.join(',')];
+        for (const { class: cls, section } of selected) {
+          const params = new URLSearchParams({
+            school_code: schoolCode,
+            from_date: downloadFrom,
+            to_date: downloadTo,
+            class: cls,
+            section,
+          });
+          const res = await fetch(`/api/students/attendance-report?${params}`);
+          const result = await res.json();
+          if (!res.ok) continue;
+          const data = (result.data || []) as AttendanceRow[];
+          data.forEach((row) => {
+            allRows.push([cls, section, row.attendance_date, row.student_name, row.admission_no, row.status, row.marked_by_name || 'N/A'].map(escapeCsv).join(','));
+          });
+        }
+        const csv = allRows.join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `student_attendance_multiple_${downloadFrom}_to_${downloadTo}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        setShowDownloadModal(false);
+      } catch {
+        setDownloadError('Failed to download. Please try again.');
+      } finally {
+        setDownloading(false);
+      }
+      return;
+    }
+
     if (!downloadClass || !downloadSection) {
-      setDownloadError('Please select Class and Section.');
+      setDownloadError('Please select Class and Section, or enable "Multiple classes" and select at least one.');
       return;
     }
 
@@ -205,11 +265,6 @@ export default function StudentAttendanceReportPage({
       }
       const data = (result.data || []) as AttendanceRow[];
       const headers = ['Date', 'Student Name', 'Admission No', 'Class', 'Section', 'Status', 'Marked By'];
-      const escapeCsv = (val: unknown) => {
-        const s = String(val ?? '');
-        if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
-        return s;
-      };
       const lines = [headers.join(','), ...data.map((row) => [row.attendance_date, row.student_name, row.admission_no, row.class, row.section, row.status, row.marked_by_name || 'N/A'].map(escapeCsv).join(','))];
       const csv = lines.join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -381,7 +436,7 @@ export default function StudentAttendanceReportPage({
                 <X size={20} />
               </button>
             </div>
-            <p className="text-sm text-gray-500 mb-4">Select date range, class and section to download the student attendance report (CSV).</p>
+            <p className="text-sm text-gray-500 mb-4">Select date range and either one class or multiple classes to download the student attendance report (CSV).</p>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -393,39 +448,113 @@ export default function StudentAttendanceReportPage({
                   <Input type="date" value={downloadTo} onChange={(e) => setDownloadTo(e.target.value)} />
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
-                <select
-                  value={downloadClass}
-                  onChange={(e) => { setDownloadClass(e.target.value); setDownloadSection(''); }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">Select class</option>
-                  {classList.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Report type</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={!useMultiDownload}
+                      onChange={() => setUseMultiDownload(false)}
+                      className="w-4 h-4 text-indigo-600"
+                    />
+                    <span>Single class</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={useMultiDownload}
+                      onChange={() => setUseMultiDownload(true)}
+                      className="w-4 h-4 text-indigo-600"
+                    />
+                    <span>Multiple classes</span>
+                  </label>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
-                <select
-                  value={downloadSection}
-                  onChange={(e) => setDownloadSection(e.target.value)}
-                  disabled={!downloadClass}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-                >
-                  <option value="">Select section</option>
-                  {downloadClass ? Array.from(new Set(classes.filter((c) => c.class === downloadClass).map((c) => c.section))).sort().map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  )) : null}
-                </select>
-              </div>
+
+              {!useMultiDownload ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                    <select
+                      value={downloadClass}
+                      onChange={(e) => { setDownloadClass(e.target.value); setDownloadSection(''); }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select class</option>
+                      {classList.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
+                    <select
+                      value={downloadSection}
+                      onChange={(e) => setDownloadSection(e.target.value)}
+                      disabled={!downloadClass}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    >
+                      <option value="">Select section</option>
+                      {downloadClass ? Array.from(new Set(classes.filter((c) => c.class === downloadClass).map((c) => c.section))).sort().map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      )) : null}
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Select classes to include</label>
+                  <div className="flex gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setDownloadMultiSelection(classSectionOptions.reduce((acc, o) => ({ ...acc, [o.key]: true }), {}))}
+                      className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDownloadMultiSelection({})}
+                      className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                  <div className="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto space-y-1">
+                    {classSectionOptions.map((o) => (
+                      <label key={o.key} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={!!downloadMultiSelection[o.key]}
+                          onChange={(e) => setDownloadMultiSelection((prev) => ({ ...prev, [o.key]: e.target.checked }))}
+                          className="w-4 h-4 text-indigo-600 rounded"
+                        />
+                        <span className="text-sm">{o.class} - {o.section}</span>
+                      </label>
+                    ))}
+                    {classSectionOptions.length === 0 && (
+                      <p className="text-sm text-gray-500">No classes available. Add classes first.</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">One combined CSV with Class and Section columns will be downloaded.</p>
+                </div>
+              )}
             </div>
             {downloadError && <p className="mt-2 text-sm text-red-600">{downloadError}</p>}
             <div className="flex justify-end gap-3 mt-6">
               <Button variant="outline" onClick={() => setShowDownloadModal(false)} disabled={downloading}>Cancel</Button>
-              <Button onClick={handleDownload} disabled={downloading || !downloadFrom || !downloadTo || !downloadClass || !downloadSection} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                {downloading ? 'Downloading...' : 'Download CSV'}
+              <Button
+                onClick={handleDownload}
+                disabled={downloading || !downloadFrom || !downloadTo || (
+                  useMultiDownload
+                    ? classSectionOptions.every((o) => !downloadMultiSelection[o.key])
+                    : !downloadClass || !downloadSection
+                )}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {downloading ? 'Downloading...' : useMultiDownload ? 'Download combined CSV' : 'Download CSV'}
               </Button>
             </div>
           </motion.div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -21,6 +21,12 @@ interface Event {
   color?: string | null;
 }
 
+interface GroupedEvent extends Event {
+  start_date: string;
+  end_date: string;
+  ids: string[];
+}
+
 export default function EventsPage({
   params,
 }: {
@@ -28,6 +34,7 @@ export default function EventsPage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
+
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -45,13 +52,13 @@ export default function EventsPage({
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/calendar/events?school_code=${schoolCode}`);
-      const result = await response.json();
-      if (response.ok && result.data) {
-        setEvents(result.data);
+      const res = await fetch(`/api/calendar/events?school_code=${schoolCode}`);
+      const json = await res.json();
+      if (res.ok && json.data) {
+        setEvents(json.data);
       }
-    } catch (err) {
-      console.error('Error fetching events:', err);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -59,48 +66,80 @@ export default function EventsPage({
 
   const fetchClasses = async () => {
     try {
-      const response = await fetch(`/api/classes?school_code=${schoolCode}`);
-      const result = await response.json();
-      if (response.ok && result.data) {
-        interface ClassData {
-          class?: string;
-          [key: string]: unknown;
-        }
-        const uniqueClasses: string[] = Array.from(new Set(result.data.map((c: ClassData) => c.class).filter((cls: string | undefined): cls is string => Boolean(cls))));
-        setClasses(uniqueClasses.sort());
+      const res = await fetch(`/api/classes?school_code=${schoolCode}`);
+      const json = await res.json();
+      if (res.ok && json.data) {
+        const unique: string[] = Array.from(
+          new Set(json.data.map((c: any) => c.class).filter(Boolean))
+        );
+        setClasses(unique.sort());
       }
-    } catch (err) {
-      console.error('Error fetching classes:', err);
+    } catch (e) {
+      console.error(e);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this event?')) {
-      return;
+  const groupedEvents: GroupedEvent[] = useMemo(() => {
+    const map = new Map<string, GroupedEvent>();
+
+    for (const e of events) {
+      const key = [
+        e.title,
+        e.event_type,
+        e.applicable_for,
+        JSON.stringify(e.applicable_classes ?? []),
+        e.description ?? '',
+        e.color ?? '',
+      ].join('|');
+
+      if (!map.has(key)) {
+        map.set(key, {
+          ...e,
+          start_date: e.event_date,
+          end_date: e.event_date,
+          ids: [e.id],
+        });
+      } else {
+        const item = map.get(key)!;
+        item.ids.push(e.id);
+        if (e.event_date < item.start_date) item.start_date = e.event_date;
+        if (e.event_date > item.end_date) item.end_date = e.event_date;
+      }
     }
+
+    return Array.from(map.values()).sort(
+      (a, b) => a.start_date.localeCompare(b.start_date)
+    );
+  }, [events]);
+
+  const handleDelete = async (ids: string[]) => {
+    if (!confirm('Are you sure you want to delete this event?')) return;
 
     try {
-      const response = await fetch(`/api/calendar/events/${id}?school_code=${schoolCode}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        fetchEvents();
-      } else {
-        const result = await response.json();
-        alert(result.error || 'Failed to delete event');
-      }
-    } catch (error) {
-      console.error('Error deleting event:', error);
-      alert('Failed to delete event. Please try again.');
+      await Promise.all(
+        ids.map(id =>
+          fetch(`/api/calendar/events/${id}?school_code=${schoolCode}`, {
+            method: 'DELETE',
+          })
+        )
+      );
+      fetchEvents();
+    } catch (e) {
+      alert('Failed to delete event');
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+
+  const renderDate = (e: GroupedEvent) =>
+    e.start_date === e.end_date
+      ? formatDate(e.start_date)
+      : `${formatDate(e.start_date)} – ${formatDate(e.end_date)}`;
 
   const handleDownloadTemplate = () => {
     window.open('/api/calendar/events/template', '_blank');
@@ -109,30 +148,29 @@ export default function EventsPage({
   const handleBulkImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    setImportMessage(null);
     if (!file) return;
-    const formData = new FormData();
-    formData.set('file', file);
-    formData.set('school_code', schoolCode);
+
     setImporting(true);
+    setImportMessage(null);
+
+    const fd = new FormData();
+    fd.set('file', file);
+    fd.set('school_code', schoolCode);
+
     try {
       const res = await fetch('/api/calendar/events/bulk-import', {
         method: 'POST',
-        body: formData,
+        body: fd,
       });
-      const result = await res.json();
-      if (res.ok && result.data) {
-        const { created, errors } = result.data;
-        let msg = result.message || `Imported ${created} event(s).`;
-        if (errors?.length) msg += ` ${errors.length} row(s) skipped (see console).`;
-        setImportMessage({ type: 'success', text: msg });
+      const json = await res.json();
+      if (res.ok) {
+        setImportMessage({ type: 'success', text: json.message });
         fetchEvents();
-        setTimeout(() => setImportMessage(null), 6000);
       } else {
-        setImportMessage({ type: 'error', text: result.error || 'Import failed.' });
+        setImportMessage({ type: 'error', text: json.error });
       }
     } catch {
-      setImportMessage({ type: 'error', text: 'Failed to import. Please try again.' });
+      setImportMessage({ type: 'error', text: 'Import failed' });
     } finally {
       setImporting(false);
     }
@@ -140,159 +178,97 @@ export default function EventsPage({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+      <div className="flex justify-center py-12">
+        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-black" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6 pb-12">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1E3A8A] to-[#2F6FED] flex items-center justify-center">
-              <Calendar size={28} className="text-white" />
-            </div>
-            Events & Holidays
-          </h1>
-          <p className="text-gray-600">Manage school events and holidays</p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Button
-            onClick={() => {
-              setEditingEvent(null);
-              setShowAddModal(true);
-            }}
-            className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E40AF] hover:to-[#2563EB] text-white"
-          >
-            <Plus size={18} className="mr-2" />
-            Add Event
+      <div className="flex justify-between flex-wrap gap-4">
+        <h1 className="text-3xl font-bold flex items-center gap-3">
+          <Calendar /> Events & Holidays
+        </h1>
+
+        <div className="flex gap-3 flex-wrap">
+          <Button onClick={() => { setEditingEvent(null); setShowAddModal(true); }}>
+            <Plus size={16} /> Add Event
           </Button>
-          <Button
-            variant="outline"
-            onClick={handleDownloadTemplate}
-            className="border-[#1E3A8A] text-[#1E3A8A] hover:bg-blue-800"
-          >
-            <Download size={18} className="mr-2" />
-            Download Template
+
+          <Button variant="outline" onClick={handleDownloadTemplate}>
+            <Download size={16} /> Template
           </Button>
-          <label className="cursor-pointer inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-[#1E3A8A] text-[#1E3A8A] hover:bg-blue-50 font-medium text-sm">
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              className="hidden"
-              onChange={handleBulkImportFile}
-              disabled={importing}
-            />
-            <Upload size={18} />
-            {importing ? 'Importing...' : 'Bulk Import'}
+
+          <label className="border px-4 py-2 rounded cursor-pointer">
+            <input type="file" hidden onChange={handleBulkImportFile} />
+            <Upload size={16} /> {importing ? 'Importing…' : 'Bulk Import'}
           </label>
-          <Button
-            variant="outline"
-            onClick={() => {
-              router.push(`/dashboard/${schoolCode}/calendar/academic`);
-              setTimeout(() => window.dispatchEvent(new Event('calendar-refresh')), 100);
-            }}
-            className="border-gray-300 text-gray-700 hover:bg-blue-800"
-          >
-            <ArrowLeft size={18} className="mr-2" />
-            Back to Calendar
-          </Button>
+
+        
         </div>
       </div>
 
       {importMessage && (
-        <div
-          className={`rounded-lg border px-4 py-3 ${
-            importMessage.type === 'success'
-              ? 'bg-green-50 border-green-200 text-green-800'
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}
-        >
+        <div className={`p-3 rounded ${
+          importMessage.type === 'success' ? 'bg-green-100' : 'bg-red-100'
+        }`}>
           {importMessage.text}
         </div>
       )}
 
-      <Card className="overflow-hidden p-0 border border-gray-200 shadow-lg">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] text-white">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Title</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Type</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Applicable For</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Description</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Action</th>
+      <Card className="p-0 overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-blue-900 text-white">
+            <tr>
+              <th className="p-3 text-left">Date</th>
+              <th className="p-3 text-left">Title</th>
+              <th className="p-3 text-left">Type</th>
+              <th className="p-3 text-left">Applicable For</th>
+              <th className="p-3 text-left">Description</th>
+              <th className="p-3 text-left">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groupedEvents.map(e => (
+              <tr key={e.start_date + e.title} className="border-t">
+                <td className="p-3">{renderDate(e)}</td>
+                <td className="p-3 font-medium">{e.title}</td>
+                <td className="p-3 capitalize">{e.event_type}</td>
+                <td className="p-3">
+                  {e.applicable_for === 'specific_class'
+                    ? e.applicable_classes?.join(', ')
+                    : e.applicable_for.toUpperCase()}
+                </td>
+                <td className="p-3">{e.description || '—'}</td>
+                <td className="p-3 flex gap-2">
+                  <button onClick={() => { setEditingEvent(e); setShowAddModal(true); }}>
+                    <Edit size={16} />
+                  </button>
+                  <button onClick={() => handleDelete(e.ids)}>
+                    <Trash2 size={16} className="text-red-600" />
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {events.length > 0 ? (
-                events.map((event) => (
-                  <tr key={event.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-700">{formatDate(event.event_date)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{event.title}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700 capitalize">{event.event_type}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {event.applicable_for === 'specific_class' && event.applicable_classes
-                        ? event.applicable_classes.join(', ')
-                        : event.applicable_for.replace('_', ' ').toUpperCase()}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">
-                      {event.description || 'N/A'}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setEditingEvent(event);
-                            setShowAddModal(true);
-                          }}
-                          className="p-2 text-[#1E3A8A] hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(event.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                    No events found. Click &quot;Add Event&quot; to create one.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </Card>
 
-      {/* Add/Edit Modal */}
       {showAddModal && (
         <EventModal
           schoolCode={schoolCode}
           event={editingEvent}
           classes={classes}
-          onClose={() => {
-            setShowAddModal(false);
-            setEditingEvent(null);
-          }}
+          onClose={() => { setShowAddModal(false); setEditingEvent(null); }}
           onSuccess={fetchEvents}
         />
       )}
     </div>
   );
 }
+
+/* -------- MODAL UNCHANGED -------- */
 
 // Event Modal Component
 function EventModal({
@@ -310,7 +286,8 @@ function EventModal({
 }) {
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
-    event_date: event?.event_date || '',
+    start_date: event?.event_date?.toString().split('T')[0] || '',
+    end_date: event?.event_date?.toString().split('T')[0] || '',
     title: event?.title || '',
     description: event?.description || '',
     event_type: event?.event_type || 'event' as 'event' | 'holiday',
@@ -321,9 +298,14 @@ function EventModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.event_date || !formData.title) {
-      alert('Please fill in all required fields');
+
+    if (!formData.start_date || !formData.title) {
+      alert('Please fill in Start date and Title');
+      return;
+    }
+    const end = formData.end_date || formData.start_date;
+    if (end < formData.start_date) {
+      alert('End date must be on or after start date');
       return;
     }
 
@@ -334,31 +316,54 @@ function EventModal({
 
     setSaving(true);
     try {
-      const url = event
-        ? `/api/calendar/events/${event.id}`
-        : '/api/calendar/events';
-      const method = event ? 'PATCH' : 'POST';
-
-      const response = await fetch(url, {
-        method: method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          school_code: schoolCode,
-          ...formData,
-          applicable_classes: formData.applicable_for === 'specific_class' ? formData.applicable_classes : null,
-          color: formData.color || undefined,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        onSuccess();
-        onClose();
-        // Show success message
-        alert(`Event ${event ? 'updated' : 'created'} successfully! It will now be visible in the Academic Calendar.`);
+      if (event) {
+        const response = await fetch(`/api/calendar/events/${event.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            school_code: schoolCode,
+            event_date: formData.start_date,
+            title: formData.title,
+            description: formData.description,
+            event_type: formData.event_type,
+            applicable_for: formData.applicable_for,
+            applicable_classes: formData.applicable_for === 'specific_class' ? formData.applicable_classes : null,
+            color: formData.color || undefined,
+          }),
+        });
+        const result = await response.json();
+        if (response.ok) {
+          onSuccess();
+          onClose();
+          alert('Event updated successfully! It will now be visible in the Academic Calendar.');
+        } else {
+          alert(result.error || 'Failed to update event');
+        }
       } else {
-        alert(result.error || `Failed to ${event ? 'update' : 'create'} event`);
+        const response = await fetch('/api/calendar/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            school_code: schoolCode,
+            start_date: formData.start_date,
+            end_date: end,
+            title: formData.title,
+            description: formData.description,
+            event_type: formData.event_type,
+            applicable_for: formData.applicable_for,
+            applicable_classes: formData.applicable_for === 'specific_class' ? formData.applicable_classes : null,
+            color: formData.color || undefined,
+          }),
+        });
+        const result = await response.json();
+        if (response.ok) {
+          onSuccess();
+          onClose();
+          const count = result.created_count ?? 1;
+          alert(`Event${count > 1 ? ` (${count} days)` : ''} created successfully! It will now be visible in the Academic Calendar.`);
+        } else {
+          alert(result.error || 'Failed to create event');
+        }
       }
     } catch (error) {
       console.error('Error saving event:', error);
@@ -401,16 +406,31 @@ function EventModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Date <span className="text-red-500">*</span>
+                  Start date <span className="text-red-500">*</span>
                 </label>
                 <Input
                   type="date"
-                  value={formData.event_date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, event_date: e.target.value }))}
+                  value={formData.start_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value, end_date: prev.end_date || e.target.value }))}
                   required
                 />
+                <p className="text-xs text-gray-500 mt-1">Date only (no time)</p>
               </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  End date
+                </label>
+                <Input
+                  type="date"
+                  value={formData.end_date}
+                  min={formData.start_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
+                />
+                <p className="text-xs text-gray-500 mt-1">Same as start for one day; e.g. 20–23 for multi-day</p>
+              </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Type <span className="text-red-500">*</span>

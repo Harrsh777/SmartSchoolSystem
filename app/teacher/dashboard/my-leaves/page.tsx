@@ -45,20 +45,37 @@ interface LeaveRequest {
   rejected_reason?: string;
 }
 
+/** Count days in [start, end] that fall in the given month (1-indexed). */
+function countDaysInMonth(startStr: string, endStr: string, year: number, month: number): number {
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0);
+  const from = start < monthStart ? monthStart : start;
+  const to = end > monthEnd ? monthEnd : end;
+  if (from > to) return 0;
+  return Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+}
+
 function computeLeaveBalances(leaveTypes: LeaveType[], leaves: LeaveRequest[]): LeaveBalance[] {
-  const approvedByType = new Map<string, number>();
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  // Used days **this month** per leave type (by abbreviation)
+  const usedThisMonthByType = new Map<string, number>();
   for (const leave of leaves) {
-    if (leave.status !== 'approved') continue;
+    if (leave.status !== 'approved' || !leave.leave_start_date || !leave.leave_end_date) continue;
     const key = leave.leave_type;
-    approvedByType.set(key, (approvedByType.get(key) ?? 0) + (leave.total_days ?? 0));
+    const days = countDaysInMonth(leave.leave_start_date, leave.leave_end_date, year, month);
+    usedThisMonthByType.set(key, (usedThisMonthByType.get(key) ?? 0) + days);
   }
-  // Dedupe leave types by abbreviation (same type may exist for different academic years)
+  // Dedupe leave types by abbreviation
   const typeByAbbr = new Map<string, LeaveType>();
   for (const lt of leaveTypes) {
     if (!typeByAbbr.has(lt.abbreviation)) typeByAbbr.set(lt.abbreviation, lt);
   }
   return Array.from(typeByAbbr.entries()).map(([abbr, lt]) => {
-    const used_days = approvedByType.get(abbr) ?? 0;
+    const used_days = usedThisMonthByType.get(abbr) ?? 0;
     const remaining_days = lt.max_days == null ? null : Math.max(0, lt.max_days - used_days);
     return {
       abbreviation: lt.abbreviation,
@@ -266,13 +283,13 @@ export default function MyLeavesPage() {
                     {bal.max_days != null ? (
                       <>
                         <span className="font-medium text-[#2F6FED]">{bal.remaining_days ?? 0}</span>
-                        <span> of {bal.max_days} days remaining</span>
+                        <span> of {bal.max_days} days remaining (this month)</span>
                         {bal.used_days > 0 && (
-                          <span className="block text-xs mt-1">Used: {bal.used_days} days</span>
+                          <span className="block text-xs mt-1">Used this month: {bal.used_days} days</span>
                         )}
                       </>
                     ) : (
-                      <span>Unlimited (used: {bal.used_days} days)</span>
+                      <span>Unlimited (used this month: {bal.used_days} days)</span>
                     )}
                   </div>
                 </div>

@@ -1294,8 +1294,9 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     // Leave Management
     { label: 'Leave Management', path: '/leave', category: 'Leave Management', icon: CalendarDays },
     { label: 'Leave Dashboard', path: '/leave/dashboard', category: 'Leave Management', icon: CalendarDays, parent: 'Leave Management' },
-    { label: 'Student Leave', path: '/leave/student-leave', category: 'Leave Management', icon: Users, parent: 'Leave Management' },
-    { label: 'Staff Leave', path: '/leave/staff-leave', category: 'Leave Management', icon: User, parent: 'Leave Management' },
+    { label: 'Staff Leave Management', path: '/leave/staff-leave-management', category: 'Leave Management', icon: User, parent: 'Leave Management' },
+    { label: 'Student Leave Approval', path: '/leave/student-leave', category: 'Leave Management', icon: Users, parent: 'Leave Management' },
+    { label: 'Staff Leave Approval', path: '/leave/staff-leave', category: 'Leave Management', icon: User, parent: 'Leave Management' },
     { label: 'Leave Basics', path: '/leave/basics', category: 'Leave Management', icon: CalendarDays, parent: 'Leave Management' },
     
     // Communication

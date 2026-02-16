@@ -9,7 +9,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { abbreviation, name, max_days, carry_forward, is_active } = body;
+    const { abbreviation, name, max_days_per_month, max_days, carry_forward, is_active } = body;
 
     interface LeaveTypeUpdateData {
       abbreviation?: string;
@@ -22,7 +22,8 @@ export async function PATCH(
     const updateData: LeaveTypeUpdateData = {};
     if (abbreviation !== undefined) updateData.abbreviation = abbreviation.toUpperCase();
     if (name !== undefined) updateData.name = name;
-    if (max_days !== undefined) updateData.max_days = max_days ? parseInt(max_days) : null;
+    const limitSource = max_days_per_month ?? max_days;
+    if (limitSource !== undefined) updateData.max_days = limitSource !== '' && limitSource != null ? parseInt(String(limitSource)) : null;
     if (carry_forward !== undefined) updateData.carry_forward = carry_forward;
     if (is_active !== undefined) updateData.is_active = is_active;
 

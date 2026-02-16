@@ -6,28 +6,30 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const schoolCode = searchParams.get('school_code');
-    const academicYear = searchParams.get('academic_year');
     const staffType = searchParams.get('staff_type');
 
     if (!schoolCode) {
       return NextResponse.json({ error: 'School code is required' }, { status: 400 });
     }
 
+    // Normalize to uppercase so Leave Basics (path) and teacher apply-leave (session) both match DB
+    const normalizedCode = String(schoolCode).trim().toUpperCase();
+
     const supabase = getServiceRoleClient();
     let query = supabase
       .from('leave_types')
       .select('*')
-      .eq('school_code', schoolCode);
-
-    if (academicYear) {
-      query = query.eq('academic_year', academicYear);
-    }
+      .eq('school_code', normalizedCode);
 
     if (staffType && staffType !== 'All') {
       query = query.or(`staff_type.eq.${staffType},staff_type.eq.All`);
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
+    const { data: rawData, error } = await query.order('created_at', { ascending: false });
+    const data = (rawData || []).map((row: { max_days?: number; max_days_per_month?: number }) => ({
+      ...row,
+      max_days_per_month: row.max_days_per_month ?? row.max_days,
+    }));
 
     if (error) {
       console.error('Error fetching leave types:', error);
@@ -51,7 +53,7 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    return NextResponse.json({ data: data || [] });
+    return NextResponse.json({ data });
   } catch (error) {
     console.error('Error in GET /api/leave/types:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -62,17 +64,17 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, abbreviation, name, max_days, carry_forward, is_active, academic_year, staff_type } = body;
+    const { school_code, abbreviation, name, max_days_per_month, max_days, carry_forward, is_active, staff_type, academic_year: bodyAcademicYear } = body;
 
-    if (!school_code || !abbreviation || !name || !academic_year) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    if (!school_code || !abbreviation || !name) {
+      return NextResponse.json({ error: 'Missing required fields: school_code, abbreviation, name' }, { status: 400 });
     }
 
-    // Get school ID
+    // Get school ID and optional current_academic_year
     const supabase = getServiceRoleClient();
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
-      .select('id')
+      .select('id, current_academic_year')
       .eq('school_code', school_code)
       .single();
 
@@ -80,28 +82,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'School not found' }, { status: 404 });
     }
 
-    // Validate max_days if provided
+    // max_days_per_month (or max_days) stored as max_days in DB for backward compatibility
+    const limitSource = max_days_per_month ?? max_days;
     let maxDaysValue: number | null = null;
-    if (max_days) {
-      const parsed = parseInt(String(max_days));
+    if (limitSource != null && limitSource !== '') {
+      const parsed = parseInt(String(limitSource));
       if (!isNaN(parsed) && parsed > 0) {
         maxDaysValue = parsed;
       }
     }
 
+    // academic_year is NOT NULL in leave_types; use body, school's current year, or default
+    const academicYear =
+      (typeof bodyAcademicYear === 'string' && bodyAcademicYear.trim()) ||
+      (schoolData as { current_academic_year?: string } | null)?.current_academic_year ||
+      `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+
+    const insertPayload: Record<string, unknown> = {
+      school_id: schoolData.id,
+      school_code: school_code.toUpperCase(),
+      abbreviation: abbreviation.toUpperCase().trim(),
+      name: name.trim(),
+      max_days: maxDaysValue,
+      carry_forward: carry_forward === true || carry_forward === 'true',
+      is_active: is_active !== false && is_active !== 'false',
+      staff_type: (staff_type || 'All').trim(),
+      academic_year: academicYear,
+    };
+
     const { data, error } = await supabase
       .from('leave_types')
-      .insert({
-        school_id: schoolData.id,
-        school_code: school_code.toUpperCase(),
-        abbreviation: abbreviation.toUpperCase().trim(),
-        name: name.trim(),
-        max_days: maxDaysValue,
-        carry_forward: carry_forward === true || carry_forward === 'true',
-        is_active: is_active !== false && is_active !== 'false',
-        academic_year: academic_year.trim(),
-        staff_type: (staff_type || 'All').trim(),
-      })
+      .insert(insertPayload)
       .select()
       .single();
 

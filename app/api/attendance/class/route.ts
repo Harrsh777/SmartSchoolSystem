@@ -38,8 +38,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // If we have attendance records, try to enrich with student info (optional)
     let attendance = attendanceData;
+    let meta: { last_marked_at?: string; marked_by_name?: string } | undefined;
     if (attendance && attendance.length > 0) {
       try {
         const studentIds = [...new Set(attendance.map((a: { student_id: string }) => a.student_id).filter(Boolean))];
@@ -48,8 +48,6 @@ export async function GET(request: NextRequest) {
             .from('students')
             .select('id, admission_no, student_name, first_name, last_name, class, section')
             .in('id', studentIds);
-          
-          // Map student data to attendance records
           if (studentsData) {
             const studentsMap = new Map(studentsData.map((s: { id: string }) => [s.id, s]));
             attendance = attendance.map((record: { student_id: string; [key: string]: unknown }) => ({
@@ -58,13 +56,27 @@ export async function GET(request: NextRequest) {
             }));
           }
         }
+        const first = attendanceData![0] as { created_at?: string; updated_at?: string; marked_by?: string };
+        const lastMarkedAt = first.updated_at || first.created_at;
+        if (lastMarkedAt && first.marked_by) {
+          const { data: staffData } = await supabase
+            .from('staff')
+            .select('full_name')
+            .eq('id', first.marked_by)
+            .single();
+          meta = {
+            last_marked_at: lastMarkedAt,
+            marked_by_name: (staffData as { full_name?: string } | null)?.full_name || 'Staff',
+          };
+        } else if (lastMarkedAt) {
+          meta = { last_marked_at: lastMarkedAt, marked_by_name: 'Staff' };
+        }
       } catch (err) {
-        // If student lookup fails, continue with attendance data without student info
         console.warn('Error enriching attendance with student data:', err);
       }
     }
 
-    return NextResponse.json({ data: attendance || [] }, { status: 200 });
+    return NextResponse.json({ data: attendance || [], meta: meta ?? null }, { status: 200 });
   } catch (error) {
     console.error('Error fetching class attendance:', error);
     return NextResponse.json(

@@ -24,8 +24,8 @@ interface LeaveType {
   name: string;
   is_active: boolean;
   max_days?: number;
+  max_days_per_month?: number;
   carry_forward?: boolean;
-  academic_year: string;
   staff_type?: string;
 }
 
@@ -38,30 +38,23 @@ export default function LeaveBasicsPage({
   const router = useRouter();
   const [, setLoading] = useState(false);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
-  const [academicYear, setAcademicYear] = useState('');
-  const [staffType, setStaffType] = useState('Teaching');
+  const [staffType, setStaffType] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     abbreviation: '',
     name: '',
-    max_days: '',
+    max_days_per_month: '',
     carry_forward: false,
     is_active: true,
   });
 
-  // Academic years
-  const academicYears = [
-    'Apr 2024 - Mar 2025',
-    'Apr 2025 - Mar 2026',
-    'Apr 2026 - Mar 2027',
-  ];
   const staffTypes = ['Teaching', 'Non-Teaching', 'All'];
 
   useEffect(() => {
     fetchLeaveTypes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [academicYear, staffType, schoolCode]);
+  }, [staffType, schoolCode]);
 
   const fetchLeaveTypes = async () => {
     try {
@@ -69,10 +62,7 @@ export default function LeaveBasicsPage({
       const params = new URLSearchParams({
         school_code: schoolCode,
       });
-      if (academicYear) {
-        params.append('academic_year', academicYear);
-      }
-      if (staffType) {
+      if (staffType && staffType !== 'All') {
         params.append('staff_type', staffType);
       }
 
@@ -99,12 +89,13 @@ export default function LeaveBasicsPage({
   };
 
   const handleOpenModal = (leaveType?: LeaveType) => {
+    const perMonth = leaveType?.max_days_per_month ?? leaveType?.max_days;
     if (leaveType) {
       setEditingId(leaveType.id);
       setFormData({
         abbreviation: leaveType.abbreviation,
         name: leaveType.name,
-        max_days: leaveType.max_days?.toString() || '',
+        max_days_per_month: perMonth?.toString() || '',
         carry_forward: leaveType.carry_forward || false,
         is_active: leaveType.is_active,
       });
@@ -113,7 +104,7 @@ export default function LeaveBasicsPage({
       setFormData({
         abbreviation: '',
         name: '',
-        max_days: '',
+        max_days_per_month: '',
         carry_forward: false,
         is_active: true,
       });
@@ -142,7 +133,7 @@ export default function LeaveBasicsPage({
           body: JSON.stringify({
             abbreviation: formData.abbreviation,
             name: formData.name,
-            max_days: formData.max_days,
+            max_days_per_month: formData.max_days_per_month,
             carry_forward: formData.carry_forward,
             is_active: formData.is_active,
           }),
@@ -164,10 +155,9 @@ export default function LeaveBasicsPage({
             school_code: schoolCode,
             abbreviation: formData.abbreviation,
             name: formData.name,
-            max_days: formData.max_days,
+            max_days_per_month: formData.max_days_per_month,
             carry_forward: formData.carry_forward,
             is_active: formData.is_active,
-            academic_year: academicYear || 'Apr 2025 - Mar 2026',
             staff_type: staffType || 'All',
           }),
         });
@@ -282,20 +272,6 @@ export default function LeaveBasicsPage({
           <div className="flex items-center gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Academic Year
-              </label>
-              <select
-                value={academicYear}
-                onChange={(e) => setAcademicYear(e.target.value)}
-                className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
-              >
-                {academicYears.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Staff Type
               </label>
               <select
@@ -360,8 +336,8 @@ export default function LeaveBasicsPage({
                 </div>
                 <div className="flex-1">
                   <h4 className="text-base font-bold text-gray-900">{leaveType.name}</h4>
-                  {leaveType.max_days && (
-                    <p className="text-sm text-gray-600">Max Days: {leaveType.max_days}</p>
+                  {(leaveType.max_days_per_month ?? leaveType.max_days) != null && (
+                    <p className="text-sm text-gray-600">Max per month: {(leaveType.max_days_per_month ?? leaveType.max_days)} days</p>
                   )}
                 </div>
                 <div className="flex items-center gap-3">
@@ -465,12 +441,13 @@ export default function LeaveBasicsPage({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Max Days (Optional)
+                    Maximum leave per month (days, optional)
                   </label>
                   <Input
                     type="number"
-                    value={formData.max_days}
-                    onChange={(e) => setFormData({ ...formData, max_days: e.target.value })}
+                    min={1}
+                    value={formData.max_days_per_month}
+                    onChange={(e) => setFormData({ ...formData, max_days_per_month: e.target.value })}
                     placeholder="Leave empty for unlimited"
                     className="w-full"
                   />
