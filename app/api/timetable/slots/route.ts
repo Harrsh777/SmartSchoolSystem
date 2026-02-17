@@ -561,6 +561,18 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (insertError) {
+        // Check constraint violation: DB may only allow periods 1–7; run timetable_slots_period_check_fix.sql to allow 1–20
+        if (insertError.code === '23514' && (insertError.message?.includes('period') || insertError.message?.includes('period_check'))) {
+          return NextResponse.json(
+            {
+              error: 'Timetable period not allowed by database. The database currently only allows periods 1–7. To use period 8 and above, run the SQL fix in your Supabase SQL editor: open the file timetable_slots_period_check_fix.sql in the project root (school folder), copy its contents, and execute them in Supabase → SQL Editor.',
+              details: insertError.message,
+              code: insertError.code,
+              hint: insertError.hint,
+            },
+            { status: 400 }
+          );
+        }
         // If it's a unique constraint violation, try to find and update the existing slot
         if (insertError.code === '23505') {
           console.warn('Unique constraint violation, attempting to find and update existing slot:', insertError);
