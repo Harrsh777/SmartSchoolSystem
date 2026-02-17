@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, AlertCircle, Save, ArrowLeft, Users, Filter, CalendarOff, Edit3 } from 'lucide-react';
+import { Calendar, CheckCircle, AlertCircle, Save, Users, Filter, Edit3 } from 'lucide-react';
 
 type AttendanceStatus = 'present' | 'absent' | 'leave';
 type AttendanceState = 'NOT_MARKED' | 'IN_PROGRESS' | 'SAVED';
@@ -34,7 +34,7 @@ export default function MarkAttendancePage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
-  const router = useRouter();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [classes, setClasses] = useState<Class[]>([]);

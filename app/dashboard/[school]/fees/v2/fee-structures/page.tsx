@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, Clock, Users, IndianRupee, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
 
 const MONTHS = [
   { value: 1, label: 'January' },

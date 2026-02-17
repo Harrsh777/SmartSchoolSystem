@@ -253,7 +253,7 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
           subject_name: subj.name || subj.subject_name,
         }));
         if (allowedSubjectIds && allowedSubjectIds.length > 0) {
-          mappedSubjects = mappedSubjects.filter((s) => allowedSubjectIds.includes(s.id));
+          mappedSubjects = mappedSubjects.filter((s: { id: string }) => allowedSubjectIds.includes(s.id));
         }
         setSubjects(mappedSubjects);
         // Clear selected subject if it's not in the new list
