@@ -45,18 +45,30 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build students query
+    const classLabel = String(classData.class ?? '').trim();
+    if (!classLabel) {
+      return NextResponse.json(
+        { error: 'Class has no class label' },
+        { status: 400 }
+      );
+    }
+
+    // Build students query – use ilike so "CLASS-1" / "class-1" match; include students with null academic_year
+    const sectionFilter = section || classData.section;
+    const yearFilter = academicYear || classData.academic_year || '';
+
     let studentsQuery = supabase
       .from('students')
       .select('id, student_name, admission_no, roll_number, class, section')
       .eq('school_code', schoolCode)
-      .eq('class', classData.class)
-      .eq('academic_year', academicYear || classData.academic_year);
+      .ilike('class', classLabel);
 
-    // Filter by section if provided (from class or query param)
-    const sectionFilter = section || classData.section;
     if (sectionFilter) {
-      studentsQuery = studentsQuery.eq('section', sectionFilter);
+      studentsQuery = studentsQuery.ilike('section', String(sectionFilter).trim());
+    }
+
+    if (yearFilter) {
+      studentsQuery = studentsQuery.or(`academic_year.eq.${yearFilter},academic_year.is.null`);
     }
 
     const { data: students, error: studentsError } = await studentsQuery

@@ -1081,7 +1081,9 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-    sessionStorage.clear();
+    sessionStorage.removeItem('school');
+    sessionStorage.removeItem('admin_authenticated');
+    sessionStorage.removeItem('staff');
     localStorage.removeItem('dashboard_language'); // Optional: keep language preference
     router.push('/login');
   };

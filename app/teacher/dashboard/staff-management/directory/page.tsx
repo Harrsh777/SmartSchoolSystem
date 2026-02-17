@@ -15,8 +15,7 @@ import {
   Phone,
   ArrowLeft,
   CheckCircle2,
-  Loader2,
-  Eye
+  Loader2,  
 } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
 import { getString } from '@/lib/type-utils';
@@ -254,7 +253,7 @@ export default function StaffDirectoryPage() {
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Department</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Contact</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Actions</th>
+               
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -321,13 +320,7 @@ export default function StaffDirectoryPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleStaffClick(member.id)}
-                            className="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
-                            title="View Details"
-                          >
-                            <Eye size={16} />
-                          </button>
+                        
                         </div>
                       </td>
                     </tr>

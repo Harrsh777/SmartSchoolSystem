@@ -49,6 +49,7 @@ export default function TeacherDashboard() {
   const [showAddTodo, setShowAddTodo] = useState(false);
   const [assignedSubjects, setAssignedSubjects] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [myClassStudents, setMyClassStudents] = useState<Student[]>([]);
+  const [assignedClassesFromTimetable, setAssignedClassesFromTimetable] = useState<Array<{ class: string; section: string; academic_year?: string }>>([]);
   interface EventNotification {
     id: string;
     event: {
@@ -167,15 +168,44 @@ export default function TeacherDashboard() {
         }
       }
 
-      // Fetch daily agenda
+      // Fetch daily agenda and timetable-based assigned classes (for all teachers, not just class teachers)
       if (teacherId) {
         fetchDailyAgenda(schoolCode, teacherId);
         fetchGradeDistribution(schoolCode, teacherId);
         fetchTodos(schoolCode, teacherId);
         fetchAssignedSubjects(schoolCode, teacherId);
+        fetchAssignedClassesFromTimetable(schoolCode, teacherId);
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
+    }
+  };
+
+  const fetchAssignedClassesFromTimetable = async (schoolCode: string, teacherId: string) => {
+    try {
+      const res = await fetch(`/api/timetable/slots?school_code=${encodeURIComponent(schoolCode)}&teacher_id=${encodeURIComponent(teacherId)}`);
+      const result = await res.json();
+      if (!res.ok || !result.data) {
+        setAssignedClassesFromTimetable([]);
+        return;
+      }
+      const slots = result.data as Array<{ class_reference?: { class: string; section: string; academic_year?: string } | null }>;
+      const seen = new Set<string>();
+      const classes: Array<{ class: string; section: string; academic_year?: string }> = [];
+      slots.forEach((slot) => {
+        const ref = slot.class_reference;
+        if (ref && ref.class != null && ref.section != null) {
+          const key = `${ref.class}-${ref.section}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            classes.push({ class: ref.class, section: ref.section, academic_year: ref.academic_year });
+          }
+        }
+      });
+      classes.sort((a, b) => a.class.localeCompare(b.class) || a.section.localeCompare(b.section));
+      setAssignedClassesFromTimetable(classes);
+    } catch {
+      setAssignedClassesFromTimetable([]);
     }
   };
 
@@ -555,58 +585,70 @@ export default function TeacherDashboard() {
           </div>
         </motion.div>
 
-        {/* Stat Cards */}
+        {/* Stat Cards - Students (All + My Class in one box), then Pending Leave etc. */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
         >
-          {/* Total Students & Students in My Class Card - Blue */}
-          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative">
-            <div className="absolute top-4 right-4 flex gap-1">
-              <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-medium">
-                Total {students.length}
-              </span>
-              <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full font-medium">
-                My Class {myClassStudents.length}
-              </span>
+          {/* Students: All (School) + My Class in one card */}
+          <div className="bg-card rounded-lg p-6 shadow-sm border border-input">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                <Users className="text-blue-600" size={24} />
+              </div>
+              <span className="text-sm font-medium text-foreground">Students</span>
             </div>
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center mb-3">
-                  <Users className="text-blue-600" size={24} />
+            <div className="space-y-4">
+              <div
+                className="flex items-center justify-between rounded-lg border border-input/60 bg-muted/30 px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => router.push('/teacher/dashboard/students')}
+                onKeyDown={(e) => e.key === 'Enter' && router.push('/teacher/dashboard/students')}
+                role="button"
+                tabIndex={0}
+              >
+                <div>
+                  <p className="text-sm text-muted-foreground">All Students (School)</p>
+                  <p className="text-xl font-bold text-foreground">{students.length}</p>
                 </div>
-                <p className="text-sm text-muted-foreground mb-1">Total Students</p>
-                <h3 className="text-3xl font-bold text-foreground">{students.length}</h3>
+                <p className="text-xs text-primary font-medium shrink-0">View all students →</p>
               </div>
-            </div>
-            <div className="border-t border-input pt-3 mt-3">
-              <p className="text-sm text-muted-foreground mb-1">Students in My Class</p>
-              <p className="text-2xl font-bold text-foreground mb-2">{myClassStudents.length}</p>
-              <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
-                {myClassStudents.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No students in your class yet.</p>
-                ) : (
-                  myClassStudents.map((s) => {
-                    const name = getString(s.student_name) || getString(s.first_name) || '—';
-                    return (
-                      <div key={s.id} className="text-sm text-foreground truncate" title={name}>
-                        {name}
+              <div
+                className={`rounded-lg border px-3 py-2 ${assignedClass ? 'border-input/60 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors' : 'border-input/40 bg-muted/20 opacity-80'}`}
+                onClick={assignedClass ? () => router.push('/teacher/dashboard/my-class') : undefined}
+                onKeyDown={assignedClass ? (e) => e.key === 'Enter' && router.push('/teacher/dashboard/my-class') : undefined}
+                role={assignedClass ? 'button' : undefined}
+                tabIndex={assignedClass ? 0 : undefined}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-muted-foreground">Students in My Class</p>
+                    <p className="text-xl font-bold text-foreground">{myClassStudents.length}</p>
+                    {myClassStudents.length === 0 && assignedClass && (
+                      <p className="text-xs text-muted-foreground mt-0.5">No students in your class yet.</p>
+                    )}
+                    {myClassStudents.length > 0 && (
+                      <div className="max-h-16 overflow-y-auto space-y-0.5 pr-1 mt-1">
+                        {myClassStudents.slice(0, 3).map((s) => {
+                          const name = getString(s.student_name) || getString(s.first_name) || '—';
+                          return (
+                            <div key={s.id} className="text-xs text-foreground truncate" title={name}>
+                              {name}
+                            </div>
+                          );
+                        })}
+                        {myClassStudents.length > 3 && (
+                          <p className="text-xs text-muted-foreground">+{myClassStudents.length - 3} more</p>
+                        )}
                       </div>
-                    );
-                  })
-                )}
+                    )}
+                  </div>
+                  {assignedClass && (
+                    <p className="text-xs text-primary font-medium shrink-0">View all in My Class →</p>
+                  )}
+                </div>
               </div>
-              {myClassStudents.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => router.push('/teacher/dashboard/my-class')}
-                  className="text-primary text-xs font-medium mt-2 flex items-center gap-1 hover:underline"
-                >
-                  View all in My Class
-                </button>
-              )}
             </div>
           </div>
 
@@ -703,7 +745,7 @@ export default function TeacherDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8"
+          className={`grid gap-4 mb-8 ${assignedClass ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}
         >
           <button
             onClick={() => router.push('/teacher/dashboard/attendance')}
@@ -726,6 +768,15 @@ export default function TeacherDashboard() {
             <Users size={20} />
             All Students
           </button>
+          {assignedClass && (
+            <button
+              onClick={() => router.push('/teacher/dashboard/my-class')}
+              className="bg-card text-foreground py-3 px-6 rounded-lg font-medium hover:bg-muted border border-input flex items-center justify-center gap-2 transition-colors"
+            >
+              <UserCheck size={20} />
+              My Class
+            </button>
+          )}
         </motion.div>
 
         {/* My Timetable Section - 2/3 + 1/3 Layout */}
@@ -1548,18 +1599,69 @@ export default function TeacherDashboard() {
         </Button>
       </motion.div>
 
-      {/* No Class Assigned Message */}
+      {/* My Timetable - shown for all teachers (including non-class teachers) */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+      >
+        <div className="lg:col-span-2 bg-card rounded-lg shadow-sm border border-input p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-foreground">My Timetable</h2>
+              <p className="text-sm text-muted-foreground">Weekly schedule view</p>
+            </div>
+          </div>
+          {teacher && getString(teacher.school_code) && getString(teacher.id) ? (
+            <TeacherTimetableView
+              schoolCode={getString(teacher.school_code)}
+              teacherId={getString(teacher.id)}
+            />
+          ) : (
+            <div className="text-center py-12">
+              <Calendar className="mx-auto text-muted-foreground mb-4" size={48} />
+              <p className="text-muted-foreground">No timetable available</p>
+            </div>
+          )}
+        </div>
+
+        {/* Assigned classes from timetable */}
+        <div className="space-y-6">
+          <div className="bg-card rounded-lg shadow-sm border border-input p-6">
+            <h3 className="font-bold text-foreground mb-3 flex items-center gap-2">
+              <CalendarDays size={20} />
+              Classes you teach
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">Classes assigned to you in the timetable</p>
+            {assignedClassesFromTimetable.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No classes assigned in timetable yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {assignedClassesFromTimetable.map((c, idx) => (
+                  <li key={`${c.class}-${c.section}-${idx}`} className="text-sm font-medium text-foreground">
+                    {c.class}-{c.section}
+                    {c.academic_year && <span className="text-muted-foreground ml-1">({c.academic_year})</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* No Class Teacher Message - only inform, don't hide timetable */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
       >
         <Card className="glass-card soft-shadow">
-          <div className="text-center py-12">
-            <UserCheck className="mx-auto text-muted-foreground mb-4" size={48} />
-            <h3 className="text-xl font-serif font-bold text-foreground mb-2">No Class Assigned</h3>
-            <p className="text-muted-foreground mb-4">
-              You are not assigned as a class teacher. Please contact the principal to be assigned to a class.
+          <div className="text-center py-8">
+            <UserCheck className="mx-auto text-muted-foreground mb-3" size={40} />
+            <h3 className="text-lg font-serif font-bold text-foreground mb-1">Not a class teacher</h3>
+            <p className="text-sm text-muted-foreground">
+              You are not assigned as a class teacher. Contact the principal if you need class teacher access (e.g. My Class, Mark Attendance).
             </p>
           </div>
         </Card>

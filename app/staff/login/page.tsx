@@ -84,6 +84,7 @@ export default function StaffLoginPage() {
       if (loggedIn) {
         sessionStorage.setItem('teacher', JSON.stringify(result.teacher));
         sessionStorage.setItem('role', 'teacher');
+        sessionStorage.setItem('teacher_authenticated', '1');
         
         if (rememberMe) {
           localStorage.setItem('rememberStaff', 'true');

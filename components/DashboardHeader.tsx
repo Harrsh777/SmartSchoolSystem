@@ -27,9 +27,15 @@ export default function DashboardHeader({
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-    sessionStorage.removeItem('student');
-    sessionStorage.removeItem('teacher');
-    sessionStorage.removeItem('school');
+    if (role === 'principal') {
+      sessionStorage.removeItem('school');
+      sessionStorage.removeItem('admin_authenticated');
+    } else if (role === 'teacher') {
+      sessionStorage.removeItem('teacher');
+      sessionStorage.removeItem('teacher_authenticated');
+    } else if (role === 'student') {
+      sessionStorage.removeItem('student');
+    }
     sessionStorage.removeItem('role');
     router.push('/login');
   };

@@ -18,11 +18,12 @@ export default function SchoolDashboardLayout({
   const router = useRouter();
   const [schoolName, setSchoolName] = useState('School Dashboard');
 
-  // Logout handler for 401 responses only (no inactivity timeout)
+  // Logout handler for 401 responses only – clear only admin session so teacher tab is unaffected
   useEffect(() => {
     const logout = () => {
       fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-      sessionStorage.clear();
+      sessionStorage.removeItem('school');
+      sessionStorage.removeItem('admin_authenticated');
       router.push('/login');
     };
     setLogoutHandler(logout);
@@ -30,6 +31,15 @@ export default function SchoolDashboardLayout({
     return () => {
       removeApiInterceptor();
     };
+  }, [router]);
+
+  // Require admin session for dashboard (so teacher-only session in another tab doesn't grant access)
+  useEffect(() => {
+    const storedSchool = sessionStorage.getItem('school');
+    if (!storedSchool) {
+      router.push('/login');
+      return;
+    }
   }, [router]);
 
   useEffect(() => {

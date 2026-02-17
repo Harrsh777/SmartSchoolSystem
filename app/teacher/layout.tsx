@@ -129,10 +129,12 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     }>;
   }>>([]);
 
-  // Logout handler for 401 responses only (no inactivity timeout)
+  // Logout handler for 401 responses only – clear only teacher session so admin tab is unaffected
   useEffect(() => {
     const logout = () => {
       fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+      sessionStorage.removeItem('teacher');
+      sessionStorage.removeItem('teacher_authenticated');
       router.push('/login');
     };
     setLogoutHandler(logout);
@@ -182,11 +184,12 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       return;
     }
 
-    // Check if teacher is logged in
+    // Check if teacher is logged in (teacher_authenticated allows teacher to stay logged in when admin logs in another tab)
     const storedTeacher = sessionStorage.getItem('teacher');
     const role = sessionStorage.getItem('role');
+    const teacherAuthenticated = sessionStorage.getItem('teacher_authenticated');
 
-    if (!storedTeacher || role !== 'teacher') {
+    if (!storedTeacher || (teacherAuthenticated !== '1' && role !== 'teacher')) {
       router.push('/login');
       return;
     }
@@ -915,7 +918,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                       onClick={async () => {
                         await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
                         sessionStorage.removeItem('teacher');
-                        sessionStorage.removeItem('role');
+                        sessionStorage.removeItem('teacher_authenticated');
                         router.push('/login');
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-[#DBEAFE] rounded-lg flex items-center gap-2"

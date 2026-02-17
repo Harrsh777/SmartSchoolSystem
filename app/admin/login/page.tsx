@@ -66,6 +66,7 @@ export default function AdminLoginPage() {
       if (loggedIn) {
         sessionStorage.setItem('school', JSON.stringify(result.school));
         sessionStorage.setItem('role', 'admin');
+        sessionStorage.setItem('admin_authenticated', '1');
         router.push(`/dashboard/${result.school.school_code}`);
       } else {
         setError(result.error || 'Invalid credentials. Please try again.');

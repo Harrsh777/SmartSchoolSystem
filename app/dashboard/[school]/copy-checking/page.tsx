@@ -60,9 +60,13 @@ interface AcademicYear {
 interface CopyCheckingPageProps {
   /** When set (e.g. by teacher dashboard wrapper), used instead of route params */
   schoolCodeOverride?: string;
+  /** When set (e.g. teacher dashboard), only these class IDs are shown in the class list */
+  allowedClassIds?: string[];
+  /** When set (e.g. subject teacher), only these subject IDs are shown; empty/unset = all subjects for selected class */
+  allowedSubjectIds?: string[];
 }
 
-export default function CopyCheckingPage({ schoolCodeOverride }: CopyCheckingPageProps = {}) {
+export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, allowedSubjectIds }: CopyCheckingPageProps = {}) {
   const params = useParams();
   const schoolCode = schoolCodeOverride ?? (params?.school as string) ?? '';
   const router = useRouter();
@@ -97,25 +101,50 @@ export default function CopyCheckingPage({ schoolCodeOverride }: CopyCheckingPag
   useEffect(() => {
     fetchClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolCode, allowedClassIds]);
+
+  // Load all academic years for the school (from classes + students tables) so dropdown shows every year
+  useEffect(() => {
+    if (!schoolCode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/classes/academic-years?school_code=${encodeURIComponent(schoolCode)}`);
+        const json = await res.json();
+        if (cancelled) return;
+        if (res.ok && Array.isArray(json.data) && json.data.length > 0) {
+          const list: AcademicYear[] = json.data.map((year: string) => ({
+            id: year,
+            year_name: year,
+            start_date: '',
+            end_date: '',
+            is_current: false,
+          }));
+          setAcademicYears(list);
+          if (!selectedAcademicYear) setSelectedAcademicYear(list[0].id);
+        }
+      } catch {
+        if (cancelled) return;
+      }
+    })();
+    return () => { cancelled = true; };
   }, [schoolCode]);
 
+  // Fallback: when academic-years API didn't populate years, derive from classes once they load
   useEffect(() => {
-    // Extract unique academic years from classes
-    if (classes.length > 0) {
-      const uniqueYears: string[] = Array.from(new Set(classes.map(c => c.academic_year).filter((year): year is string => Boolean(year)))).sort().reverse();
-      const academicYearsData: AcademicYear[] = uniqueYears.map(year => ({
-        id: year,
-        year_name: year,
-        start_date: '',
-        end_date: '',
-        is_current: false,
-      }));
-      setAcademicYears(academicYearsData);
-      if (uniqueYears.length > 0 && !selectedAcademicYear) {
-        setSelectedAcademicYear(uniqueYears[0]);
-      }
-    }
-  }, [classes, selectedAcademicYear]);
+    if (classes.length === 0 || academicYears.length > 0) return;
+    const uniqueYears: string[] = Array.from(new Set(classes.map(c => c.academic_year).filter((year): year is string => Boolean(year)))).sort().reverse();
+    if (uniqueYears.length === 0) return;
+    const academicYearsData: AcademicYear[] = uniqueYears.map(year => ({
+      id: year,
+      year_name: year,
+      start_date: '',
+      end_date: '',
+      is_current: false,
+    }));
+    setAcademicYears(academicYearsData);
+    if (!selectedAcademicYear) setSelectedAcademicYear(uniqueYears[0]);
+  }, [classes, academicYears.length, selectedAcademicYear]);
 
   const updateSections = useCallback(() => {
     if (selectedClassName) {
@@ -136,10 +165,11 @@ export default function CopyCheckingPage({ schoolCodeOverride }: CopyCheckingPag
 
   useEffect(() => {
     if (selectedClassName) {
-      // Find the first matching class ID for the selected class name
+      // Find class ID matching class name + section (if selected) + academic year so API gets correct class_id
       const matchingClass = classes.find(
-        c => c.class === selectedClassName && 
-        (!selectedAcademicYear || c.academic_year === selectedAcademicYear)
+        c => c.class === selectedClassName &&
+        (!selectedAcademicYear || c.academic_year === selectedAcademicYear) &&
+        (!selectedSection || (c.section && c.section === selectedSection))
       );
       if (matchingClass) {
         setSelectedClassId(matchingClass.id);
@@ -154,7 +184,7 @@ export default function CopyCheckingPage({ schoolCodeOverride }: CopyCheckingPag
       setSubjects([]);
       setSelectedSubjectId('');
     }
-  }, [selectedClassName, classes, selectedAcademicYear, updateSections]);
+  }, [selectedClassName, selectedSection, classes, selectedAcademicYear, updateSections]);
 
   useEffect(() => {
     if (selectedClassId) {
@@ -186,7 +216,12 @@ export default function CopyCheckingPage({ schoolCodeOverride }: CopyCheckingPag
       const response = await fetch(`/api/classes?school_code=${schoolCode}`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setClasses(result.data);
+        let list = result.data as Class[];
+        if (allowedClassIds && allowedClassIds.length > 0) {
+          const allowedSet = new Set(allowedClassIds.map((id) => String(id).trim()));
+          list = list.filter((c) => c?.id != null && allowedSet.has(String(c.id).trim()));
+        }
+        setClasses(list);
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
@@ -213,10 +248,13 @@ export default function CopyCheckingPage({ schoolCodeOverride }: CopyCheckingPag
       }
 
       if (response.ok && result.data) {
-        const mappedSubjects = result.data.map((subj: SubjectApiData) => ({
+        let mappedSubjects = result.data.map((subj: SubjectApiData) => ({
           id: subj.id,
           subject_name: subj.name || subj.subject_name,
         }));
+        if (allowedSubjectIds && allowedSubjectIds.length > 0) {
+          mappedSubjects = mappedSubjects.filter((s) => allowedSubjectIds.includes(s.id));
+        }
         setSubjects(mappedSubjects);
         // Clear selected subject if it's not in the new list
         if (selectedSubjectId && !mappedSubjects.find((s: Subject) => s.id === selectedSubjectId)) {
@@ -231,7 +269,7 @@ export default function CopyCheckingPage({ schoolCodeOverride }: CopyCheckingPag
       setSubjects([]);
       setSelectedSubjectId('');
     }
-  }, [schoolCode, selectedClassId, selectedSubjectId]);
+  }, [schoolCode, selectedClassId, selectedSubjectId, allowedSubjectIds]);
 
   const fetchStatsForOtherType = async () => {
     if (!selectedClassId || !selectedSubjectId || !selectedDate || !selectedAcademicYear) return;

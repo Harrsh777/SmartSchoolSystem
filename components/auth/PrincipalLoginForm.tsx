@@ -59,9 +59,10 @@ export default function PrincipalLoginForm() {
       const result = await response.json();
 
       if (response.ok && result.success) {
-        // Store session data
+        // Store session data (admin_authenticated lets admin stay logged in when teacher logs in another tab)
         sessionStorage.setItem('school', JSON.stringify(result.school));
         sessionStorage.setItem('role', 'principal');
+        sessionStorage.setItem('admin_authenticated', '1');
         
         // Store remember me preference
         if (rememberMe) {
