@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
 
-/** Map status to single-letter code for grid: P=Present, A=Absent, L=Leave, H=Half day, -=not marked */
+/** Map status to code for grid: P=Present, A=Absent, L=Leave, H=Holiday, HD=Half day, -=not marked */
 function statusToLetter(status: string | null | undefined): string {
   if (!status) return '-';
   const s = status.toLowerCase();
   if (s === 'present') return 'P';
   if (s === 'absent') return 'A';
   if (s === 'leave') return 'L';
-  if (s === 'half_day' || s === 'halfday') return 'H';
-  if (s === 'late') return 'P'; // treat late as present in report
-  if (s === 'holiday') return 'L'; // or use a different code if needed
+  if (s === 'holiday') return 'H';
+  if (s === 'half_day' || s === 'halfday') return 'HD';
+  if (s === 'late') return 'P';
   return '-';
 }
 
@@ -120,13 +120,13 @@ export async function GET(request: NextRequest) {
     });
 
     // Build grid: one row per staff
-    // Header: Name, Emp.Code, Designatic, ...date columns..., PresentDa, AbsentDay, HalfDayDa, LeaveDays
+    // Header: Name, Emp.Code, Designation, ...date columns..., PresentDay, AbsentDay, HalfDayDa, LeaveDays
     const headerRow: (string | number)[] = [
       'Name',
       'Emp.Code',
-      'Designatic',
+      'Designation',
       ...dateRange.map((d) => formatDateHeader(d)),
-      'PresentDa',
+      'PresentDay',
       'AbsentDay',
       'HalfDayDa',
       'LeaveDays',
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
         const letter = statusToLetter(status);
         if (letter === 'P') present++;
         else if (letter === 'A') absent++;
-        else if (letter === 'H') halfDay++;
+        else if (letter === 'HD') halfDay++;
         else if (letter === 'L') leave++;
         return letter;
       });
@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
       { wch: 22 },
       { wch: 12 },
       { wch: 18 },
-      ...dateRange.map(() => ({ wch: 5 })),
+      ...dateRange.map(() => ({ wch: 6 })),
       { wch: 10 },
       { wch: 10 },
       { wch: 10 },

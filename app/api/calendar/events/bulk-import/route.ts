@@ -42,8 +42,7 @@ function getDateRange(startDate: string, endDate: string): string[] {
 /**
  * POST /api/calendar/events/bulk-import
  * Body: FormData with file (Excel) and school_code
- * Excel columns: "Event Name" (or "Name"), "Start Date" or "Date", optional "End Date" for multi-day (date only)
- * Validates each row and creates events (event_type: event, applicable_for: all)
+ * Excel columns: "Event Name" (or "Name"), "Start Date" or "Date", optional "End Date", optional "Type" (event/holiday), optional "Applicable For" (ALL/students/staff/specific_class or comma-separated classes), optional "Description"
  */
 export async function POST(request: NextRequest) {
   try {
@@ -86,6 +85,9 @@ export async function POST(request: NextRequest) {
     const nameCol = headerRow.findIndex((h) => /event\s*name|name|title/i.test(String(h).trim()));
     const startCol = headerRow.findIndex((h) => /start\s*date|date/i.test(String(h).trim()));
     const endCol = headerRow.findIndex((h) => /end\s*date/i.test(String(h).trim()));
+    const typeCol = headerRow.findIndex((h) => /^type$/i.test(String(h).trim()));
+    const applicableCol = headerRow.findIndex((h) => /applicable\s*for/i.test(String(h).trim()));
+    const descCol = headerRow.findIndex((h) => /description/i.test(String(h).trim()));
 
     if (nameCol === -1 || startCol === -1) {
       return NextResponse.json(
@@ -107,7 +109,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const toInsert: { school_id: string; school_code: string; event_date: string; title: string; event_type: string; applicable_for: string }[] = [];
+    const VALID_TYPES = ['event', 'holiday'];
+    const toInsert: { school_id: string; school_code: string; event_date: string; title: string; event_type: string; applicable_for: string; applicable_classes: string[] | null; description: string | null }[] = [];
     const errors: string[] = [];
 
     for (let i = 1; i < rows.length; i++) {
@@ -115,6 +118,10 @@ export async function POST(request: NextRequest) {
       const nameVal = row[nameCol];
       const startVal = row[startCol];
       const endVal = endCol >= 0 ? row[endCol] : null;
+      const typeVal = typeCol >= 0 ? row[typeCol] : null;
+      const applicableVal = applicableCol >= 0 ? row[applicableCol] : null;
+      const descVal = descCol >= 0 ? row[descCol] : null;
+
       const title = typeof nameVal === 'string' ? nameVal.trim() : String(nameVal ?? '').trim();
       const startStr = parseDate(startVal);
       const endStr = parseDate(endVal) || startStr;
@@ -127,6 +134,29 @@ export async function POST(request: NextRequest) {
         errors.push(`Row ${i + 1}: Invalid or missing start date for "${title}". Use YYYY-MM-DD or DD/MM/YYYY.`);
         continue;
       }
+
+      let eventType = 'event';
+      if (typeVal != null && String(typeVal).trim()) {
+        const t = String(typeVal).trim().toLowerCase();
+        eventType = VALID_TYPES.includes(t) ? t : 'event';
+      }
+
+      let applicableFor = 'all';
+      let applicableClasses: string[] | null = null;
+      if (applicableVal != null && String(applicableVal).trim()) {
+        const a = String(applicableVal).trim();
+        const aLower = a.toLowerCase();
+        if (aLower === 'all') applicableFor = 'all';
+        else if (aLower === 'students') applicableFor = 'students';
+        else if (aLower === 'staff') applicableFor = 'staff';
+        else if (aLower === 'specific_class' || /^\d|,/.test(a)) {
+          applicableFor = 'specific_class';
+          applicableClasses = a.split(/[,;]/).map((c) => c.trim()).filter(Boolean);
+        } else applicableFor = 'all';
+      }
+
+      const description = descVal != null && String(descVal).trim() ? String(descVal).trim() : null;
+
       const finalEnd = endStr && endStr >= startStr ? endStr : startStr;
       const dates = getDateRange(startStr, finalEnd);
 
@@ -136,8 +166,10 @@ export async function POST(request: NextRequest) {
           school_code: schoolCode.trim(),
           event_date,
           title,
-          event_type: 'event',
-          applicable_for: 'all',
+          event_type: eventType,
+          applicable_for: applicableFor,
+          applicable_classes: applicableClasses,
+          description,
         });
       }
     }
@@ -151,15 +183,15 @@ export async function POST(request: NextRequest) {
 
     const { data: inserted, error: insertError } = await supabase
       .from('events')
-      .insert(toInsert.map(({ school_id, school_code, event_date, title, event_type, applicable_for }) => ({
+      .insert(toInsert.map(({ school_id, school_code, event_date, title, event_type, applicable_for, applicable_classes, description }) => ({
         school_id,
         school_code,
         event_date,
         title,
-        description: null,
+        description: description ?? null,
         event_type,
         applicable_for,
-        applicable_classes: null,
+        applicable_classes: applicable_classes ?? null,
       })))
       .select('id');
 

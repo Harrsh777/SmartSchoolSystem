@@ -187,12 +187,6 @@ export default function StudentAttendanceReportPage({
     });
   }, [reportRows]);
 
-  const escapeCsv = (val: unknown) => {
-    const s = String(val ?? '');
-    if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-
   const handleDownload = async () => {
     setDownloadError('');
     if (!downloadFrom || !downloadTo) {
@@ -209,9 +203,8 @@ export default function StudentAttendanceReportPage({
       const selected = classSectionOptions.filter((o) => downloadMultiSelection[o.key]);
       setDownloading(true);
       try {
-        const headers = ['Class', 'Section', 'Date', 'Student Name', 'Admission No', 'Status', 'Marked By'];
-        const allRows: string[] = [headers.join(',')];
-        for (const { class: cls, section } of selected) {
+        for (let i = 0; i < selected.length; i++) {
+          const { class: cls, section } = selected[i];
           const params = new URLSearchParams({
             school_code: schoolCode,
             from_date: downloadFrom,
@@ -219,21 +212,23 @@ export default function StudentAttendanceReportPage({
             class: cls,
             section,
           });
-          const res = await fetch(`/api/students/attendance-report?${params}`);
-          const result = await res.json();
-          if (!res.ok) continue;
-          const data = (result.data || []) as AttendanceRow[];
-          data.forEach((row) => {
-            allRows.push([cls, section, row.attendance_date, row.student_name, row.admission_no, row.status, row.marked_by_name || 'N/A'].map(escapeCsv).join(','));
-          });
+          const res = await fetch(`/api/reports/student-attendance-marking?${params}`);
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            setDownloadError(err.error || `Failed to download ${cls}-${section}.`);
+            continue;
+          }
+          const blob = await res.blob();
+          const disposition = res.headers.get('Content-Disposition');
+          const match = disposition?.match(/filename="?([^";]+)"?/);
+          const filename = match ? match[1] : `student_attendance_${cls}_${section}_${downloadFrom}_to_${downloadTo}.xlsx`;
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(a.href);
+          if (i < selected.length - 1) await new Promise((r) => setTimeout(r, 400));
         }
-        const csv = allRows.join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `student_attendance_multiple_${downloadFrom}_to_${downloadTo}.csv`;
-        a.click();
-        URL.revokeObjectURL(a.href);
         setShowDownloadModal(false);
       } catch {
         setDownloadError('Failed to download. Please try again.');
@@ -257,20 +252,19 @@ export default function StudentAttendanceReportPage({
         class: downloadClass,
         section: downloadSection,
       });
-      const res = await fetch(`/api/students/attendance-report?${params}`);
-      const result = await res.json();
+      const res = await fetch(`/api/reports/student-attendance-marking?${params}`);
       if (!res.ok) {
-        setDownloadError(result.error || 'Failed to fetch report.');
+        const err = await res.json().catch(() => ({}));
+        setDownloadError(err.error || 'Failed to fetch report.');
         return;
       }
-      const data = (result.data || []) as AttendanceRow[];
-      const headers = ['Date', 'Student Name', 'Admission No', 'Class', 'Section', 'Status', 'Marked By'];
-      const lines = [headers.join(','), ...data.map((row) => [row.attendance_date, row.student_name, row.admission_no, row.class, row.section, row.status, row.marked_by_name || 'N/A'].map(escapeCsv).join(','))];
-      const csv = lines.join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition');
+      const match = disposition?.match(/filename="?([^";]+)"?/);
+      const filename = match ? match[1] : `student_attendance_${downloadClass}_${downloadSection}_${downloadFrom}_to_${downloadTo}.xlsx`;
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `student_attendance_${downloadClass}_${downloadSection}_${downloadFrom}_to_${downloadTo}.csv`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(a.href);
       setShowDownloadModal(false);
@@ -436,7 +430,7 @@ export default function StudentAttendanceReportPage({
                 <X size={20} />
               </button>
             </div>
-            <p className="text-sm text-gray-500 mb-4">Select date range and either one class or multiple classes to download the student attendance report (CSV).</p>
+            <p className="text-sm text-gray-500 mb-4">Download Excel report with daily columns (P/A/L/H/HD/-) and summary counts. Select date range and one or more classes.</p>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -538,7 +532,7 @@ export default function StudentAttendanceReportPage({
                       <p className="text-sm text-gray-500">No classes available. Add classes first.</p>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">One combined CSV with Class and Section columns will be downloaded.</p>
+                  <p className="text-xs text-gray-500 mt-1">One Excel file per class will be downloaded (same grid format for each).</p>
                 </div>
               )}
             </div>
@@ -554,7 +548,7 @@ export default function StudentAttendanceReportPage({
                 )}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
               >
-                {downloading ? 'Downloading...' : useMultiDownload ? 'Download combined CSV' : 'Download CSV'}
+                {downloading ? 'Downloading...' : useMultiDownload ? 'Download Excel (one per class)' : 'Download Excel'}
               </Button>
             </div>
           </motion.div>

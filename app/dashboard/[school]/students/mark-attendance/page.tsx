@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { Calendar, CheckCircle, AlertCircle, Save, ArrowLeft, Users, Filter, CalendarOff, Edit3 } from 'lucide-react';
 
-type AttendanceStatus = 'present' | 'absent' | 'holiday';
+type AttendanceStatus = 'present' | 'absent' | 'leave';
 type AttendanceState = 'NOT_MARKED' | 'IN_PROGRESS' | 'SAVED';
 
 interface Student {
@@ -242,10 +242,10 @@ export default function MarkAttendancePage({
           const existingAttendance: Record<string, AttendanceStatus> = {};
           result.data.forEach((record: { student_id: string; status: string; notes?: string; remarks?: string }) => {
             const notesOrRemarks = (record.notes || record.remarks || '').trim();
-            const isHoliday = (record.status === 'leave' || record.status === 'holiday') && notesOrRemarks === 'Holiday';
+            const isLeave = record.status === 'leave' || record.status === 'holiday' || (notesOrRemarks === 'Leave' && (record.status === 'leave' || record.status === 'holiday'));
             let status: AttendanceStatus = record.status === 'late' ? 'present' : (record.status as AttendanceStatus);
-            if (isHoliday || record.status === 'holiday') status = 'holiday';
-            if (status !== 'present' && status !== 'absent' && status !== 'holiday') status = 'present';
+            if (isLeave || record.status === 'holiday') status = 'leave';
+            if (status !== 'present' && status !== 'absent' && status !== 'leave') status = 'present';
             existingAttendance[record.student_id] = status;
           });
           setAttendance(existingAttendance);
@@ -533,9 +533,9 @@ export default function MarkAttendancePage({
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">
-                {Object.values(attendance).filter(s => s === 'holiday').length}
+                {Object.values(attendance).filter(s => s === 'leave').length}
               </div>
-              <div className="text-xs text-gray-500">Holiday</div>
+              <div className="text-xs text-gray-500">Leave</div>
             </div>
           </div>
         )}
@@ -593,16 +593,7 @@ export default function MarkAttendancePage({
               >
                 Mark All Absent
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleBulkAction('holiday')}
-                className="border-blue-300 text-blue-600 hover:bg-blue-50"
-                disabled={attendanceState === 'SAVED'}
-              >
-                <CalendarOff size={16} className="mr-2" />
-                Mark Holiday
-              </Button>
+            
             </div>
           </div>
 
@@ -649,15 +640,15 @@ export default function MarkAttendancePage({
                           Absent
                         </button>
                         <button
-                          onClick={() => attendanceState !== 'SAVED' && handleStatusChange(student.id, 'holiday')}
+                          onClick={() => attendanceState !== 'SAVED' && handleStatusChange(student.id, 'leave')}
                           disabled={attendanceState === 'SAVED'}
                           className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                            attendance[student.id] === 'holiday'
+                            attendance[student.id] === 'leave'
                               ? 'bg-blue-500 text-white'
                               : attendanceState === 'SAVED' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-blue-100'
                           }`}
                         >
-                          Holiday
+                          Leave
                         </button>
                       </div>
                     </td>
