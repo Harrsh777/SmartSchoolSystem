@@ -56,18 +56,7 @@ export default function StudentLoginPage() {
         result = {};
       }
       const loggedIn = response.ok && result.success;
-      // Always record login attempt (so audit works even if JSON or redirect fails)
-      await fetch('/api/auth/log-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: result.student?.id ?? null,
-          name: result.student?.student_name ?? formData.admission_no ?? 'Unknown',
-          role: 'Student',
-          loginType: 'student',
-          status: loggedIn ? 'success' : 'failed',
-        }),
-      }).catch(() => {});
+      // Login is already logged server-side by student login API; no frontend log-login to avoid duplicates.
       if (loggedIn) {
         sessionStorage.setItem('student', JSON.stringify(result.student));
         sessionStorage.setItem('role', 'student');
@@ -77,17 +66,6 @@ export default function StudentLoginPage() {
       }
     } catch {
       setError('An error occurred.');
-      // Log failed attempt when request threw
-      await fetch('/api/auth/log-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.admission_no || 'Unknown',
-          role: 'Student',
-          loginType: 'student',
-          status: 'failed',
-        }),
-      }).catch(() => {});
     } finally {
       setLoading(false);
     }

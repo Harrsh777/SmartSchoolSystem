@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { hashPassword } from '@/lib/password-generator';
 import bcrypt from 'bcryptjs';
+import { logAudit } from '@/lib/audit-logger';
 
 /**
  * Change password for a staff member
@@ -85,6 +86,17 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    logAudit(request, {
+      userId: staffData.id,
+      userName: (staffData as { full_name?: string }).full_name ?? staffData.staff_id ?? 'Staff',
+      role: 'Staff',
+      actionType: 'PASSWORD_CHANGED',
+      entityType: 'USER',
+      entityId: staffData.id,
+      severity: 'CRITICAL',
+      metadata: {},
+    });
 
     return NextResponse.json({
       success: true,

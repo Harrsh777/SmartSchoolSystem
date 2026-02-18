@@ -145,13 +145,7 @@ export default function ManageCertificatesPage({
           </h1>
           <p className="text-gray-600">View and manage all issued certificates</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => router.push(`/dashboard/${schoolCode}`)}
-        >
-          <ArrowLeft size={18} className="mr-2" />
-          Back
-        </Button>
+       
       </div>
 
       {/* Stats Cards */}

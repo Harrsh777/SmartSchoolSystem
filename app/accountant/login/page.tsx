@@ -34,17 +34,7 @@ export default function AccountantLoginPage() {
       const result = await response.json();
 
       const loggedIn = response.ok && result.data;
-      await fetch('/api/auth/log-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: result.data?.staff?.id ?? null,
-          name: result.data?.staff?.full_name ?? formData.staff_id ?? 'Unknown',
-          role: 'Accountant',
-          loginType: 'accountant',
-          status: loggedIn ? 'success' : 'failed',
-        }),
-      }).catch(() => {});
+      // Login is already logged server-side by /api/auth/accountant/login; no frontend log-login to avoid duplicates.
 
       if (loggedIn) {
         sessionStorage.setItem('accountant', JSON.stringify(result.data.staff));

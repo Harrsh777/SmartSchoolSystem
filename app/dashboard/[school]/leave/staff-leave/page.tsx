@@ -243,14 +243,7 @@ export default function StaffLeavePage({
               <RefreshCw size={18} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.push(`/dashboard/${schoolCode}/leave`)}
-              className="border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 shadow-sm"
-            >
-              <ArrowLeft size={18} className="mr-2" />
-              Back
-            </Button>
+           
           </div>
         </div>
       </motion.div>

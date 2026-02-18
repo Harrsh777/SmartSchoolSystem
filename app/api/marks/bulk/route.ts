@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { logAudit } from '@/lib/audit-logger';
 
 /**
  * Bulk insert/update marks for multiple students
@@ -105,6 +106,17 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    logAudit(request, {
+      userId: entered_by,
+      userName: 'Staff',
+      role: 'Teacher',
+      actionType: 'MARKS_UPDATED',
+      entityType: 'EXAM',
+      entityId: exam_id,
+      severity: 'CRITICAL',
+      metadata: { exam_id, class_id, count: validMarks.length },
+    });
 
     return NextResponse.json({
       data: savedMarks,

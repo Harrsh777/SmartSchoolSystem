@@ -232,9 +232,7 @@ export default function PromotionEnginePage({ params }: { params: Promise<{ scho
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 mb-4">
-        <Link href={base} className="p-1.5 rounded-lg hover:bg-[#F1F5F9] text-[#64748B]">
-          <ArrowLeft size={18} />
-        </Link>
+       
         <h1 className="text-lg font-semibold text-[#0F172A]">Promotion Engine</h1>
       </div>
 

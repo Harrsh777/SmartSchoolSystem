@@ -490,12 +490,7 @@ export default function AcademicCalendarPage({
                       {getEventsForDate(selectedDate).length} event{getEventsForDate(selectedDate).length !== 1 ? 's' : ''}
                     </p>
                   </div>
-                  <button
-                    onClick={() => setSelectedDate(null)}
-                    className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-                  >
-                    <ArrowLeft size={20} />
-                  </button>
+               
                 </div>
               </div>
 

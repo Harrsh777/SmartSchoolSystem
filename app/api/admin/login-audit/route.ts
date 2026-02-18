@@ -94,30 +94,69 @@ export async function GET(request: NextRequest) {
     // Aggregate stats for charts (last 30 days by default for list view)
     const statsFrom = dateFrom || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const statsTo = dateTo || new Date().toISOString().slice(0, 10);
+    const statsEnd = statsTo.length <= 10 ? `${statsTo}T23:59:59.999Z` : statsTo;
     const statsQuery = supabase
       .from('login_audit_log')
-      .select('login_at, role, status')
+      .select('login_at, role, status, ip_address')
       .gte('login_at', statsFrom)
-      .lte('login_at', statsTo.length <= 10 ? `${statsTo}T23:59:59.999Z` : statsTo);
+      .lte('login_at', statsEnd);
     const { data: statsRows } = await statsQuery;
     const byDate: Record<string, { success: number; failed: number }> = {};
     const byRole: Record<string, { success: number; failed: number }> = {};
-    (statsRows || []).forEach((r: { login_at?: string; role?: string; status?: string }) => {
+    const byHour: Record<number, { success: number; failed: number }> = {};
+    const ipFailures: Record<string, { failed: number; total: number }> = {};
+    const now = Date.now();
+    const last24hStart = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    let last24hSuccess = 0;
+    let last24hFailed = 0;
+    (statsRows || []).forEach((r: { login_at?: string; role?: string; status?: string; ip_address?: string | null }) => {
       const day = (r.login_at || '').slice(0, 10);
       const ro = (r.role || 'Unknown');
       const ok = (r.status || '').toLowerCase() === 'success';
+      const ip = (r.ip_address || '').trim() || null;
       if (day) {
         if (!byDate[day]) byDate[day] = { success: 0, failed: 0 };
         if (ok) byDate[day].success += 1; else byDate[day].failed += 1;
       }
       if (!byRole[ro]) byRole[ro] = { success: 0, failed: 0 };
       if (ok) byRole[ro].success += 1; else byRole[ro].failed += 1;
+      const hour = r.login_at ? new Date(r.login_at).getUTCHours() : 0;
+      if (!byHour[hour]) byHour[hour] = { success: 0, failed: 0 };
+      if (ok) {
+        byHour[hour].success += 1;
+      } else {
+        byHour[hour].failed += 1;
+      }
+      if (r.login_at && r.login_at >= last24hStart) {
+        if (ok) {
+          last24hSuccess += 1;
+        } else {
+          last24hFailed += 1;
+        }
+      }
+      if (ip) {
+        if (!ipFailures[ip]) ipFailures[ip] = { failed: 0, total: 0 };
+        ipFailures[ip].total += 1;
+        if (!ok) ipFailures[ip].failed += 1;
+      }
     });
     const timeSeries = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, v]) => ({ date, success: v.success, failed: v.failed, total: v.success + v.failed }));
     const roleBreakdown = Object.entries(byRole).map((entry) => {
       const [role, v] = entry;
       return { role, success: v.success, failed: v.failed, total: v.success + v.failed };
     });
+    const last24h = { success: last24hSuccess, failed: last24hFailed };
+    const topIpsByFailures = Object.entries(ipFailures)
+      .filter(([, v]) => v.failed > 0)
+      .sort((a, b) => b[1].failed - a[1].failed)
+      .slice(0, 10)
+      .map(([ip, v]) => ({ ip, failed: v.failed, total: v.total }));
+    const loginsByHour = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      success: byHour[h]?.success ?? 0,
+      failed: byHour[h]?.failed ?? 0,
+      total: (byHour[h]?.success ?? 0) + (byHour[h]?.failed ?? 0),
+    }));
 
     return NextResponse.json({
       data: rows || [],
@@ -127,7 +166,7 @@ export async function GET(request: NextRequest) {
         total: count ?? 0,
         totalPages: Math.ceil((count ?? 0) / limit),
       },
-      stats: { timeSeries, roleBreakdown },
+      stats: { timeSeries, roleBreakdown, last24h, topIpsByFailures, loginsByHour },
     });
   } catch (err) {
     console.error('Login audit fetch error:', err);

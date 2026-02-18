@@ -61,6 +61,8 @@ import {
   getGradeColor,
   getPassStatusColor,
 } from '@/lib/grade-calculator';
+import { parseUserAgentSummary } from '@/lib/parse-user-agent';
+import { getActionLabel, getEntityTypeLabel } from '@/lib/audit-labels';
 
 /** Parse response body as JSON without throwing on non-JSON (e.g. "Internal Server Error"). */
 async function safeParseJson(response: Response): Promise<Record<string, unknown> & { data?: unknown }> {
@@ -933,7 +935,13 @@ export default function AdminDashboard() {
     status: string;
   }>>([]);
   const [loginAuditPagination, setLoginAuditPagination] = useState<{ page: number; limit: number; total: number; totalPages: number } | null>(null);
-  const [loginAuditStats, setLoginAuditStats] = useState<{ timeSeries: Array<{ date: string; success: number; failed: number; total: number }>; roleBreakdown: Array<{ role: string; success: number; failed: number; total: number }> } | null>(null);
+  const [loginAuditStats, setLoginAuditStats] = useState<{
+    timeSeries: Array<{ date: string; success: number; failed: number; total: number }>;
+    roleBreakdown: Array<{ role: string; success: number; failed: number; total: number }>;
+    last24h?: { success: number; failed: number };
+    topIpsByFailures?: Array<{ ip: string; failed: number; total: number }>;
+    loginsByHour?: Array<{ hour: number; success: number; failed: number; total: number }>;
+  } | null>(null);
   const [loadingLoginAudit, setLoadingLoginAudit] = useState(false);
   const [loginAuditPage, setLoginAuditPage] = useState(1);
   const [loginAuditRole, setLoginAuditRole] = useState('all');
@@ -942,6 +950,28 @@ export default function AdminDashboard() {
   const [loginAuditDateTo, setLoginAuditDateTo] = useState('');
   const [loginAuditIp, setLoginAuditIp] = useState('');
   const [loginAuditTableMissing, setLoginAuditTableMissing] = useState(false);
+  const [loginAuditCollapseDuplicates, setLoginAuditCollapseDuplicates] = useState(true);
+  const [loginAuditExpandedGroups, setLoginAuditExpandedGroups] = useState<Set<string>>(new Set());
+  const [securityAuditTab, setSecurityAuditTab] = useState<'login' | 'critical' | 'medium'>('critical');
+  const [actionAuditData, setActionAuditData] = useState<Array<{
+    id: string; user_id: string | null; user_name: string; role: string; action_type: string; entity_type: string;
+    entity_id: string | null; severity: string; ip_address: string | null; device_summary: string | null;
+    metadata: Record<string, unknown> | null; created_at: string;
+  }>>([]);
+  const [actionAuditPagination, setActionAuditPagination] = useState<{ page: number; limit: number; total: number; totalPages: number } | null>(null);
+  const [loadingActionAudit, setLoadingActionAudit] = useState(false);
+  const [actionAuditTableMissing, setActionAuditTableMissing] = useState(false);
+  const [actionAuditPage, setActionAuditPage] = useState(1);
+  const [actionAuditDateFrom, setActionAuditDateFrom] = useState('');
+  const [actionAuditDateTo, setActionAuditDateTo] = useState('');
+  const [actionAuditRole, setActionAuditRole] = useState('all');
+  const [actionAuditModule, setActionAuditModule] = useState('all');
+  const [actionAuditActionType, setActionAuditActionType] = useState('all');
+  const [actionAuditUserSearch, setActionAuditUserSearch] = useState('');
+  const [actionAuditDetailsRow, setActionAuditDetailsRow] = useState<{
+    id: string; user_name: string; role: string; action_type: string; entity_type: string; entity_id: string | null;
+    severity: string; metadata: Record<string, unknown> | null; created_at: string;
+  } | null>(null);
   
   // Sidebar dropdown state
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['core', 'management']));
@@ -1018,13 +1048,15 @@ export default function AdminDashboard() {
       fetchAnalytics();
     } else if (viewMode === 'users') {
       fetchUsers();
-    } else if (viewMode === 'login-audit') {
+    } else if (viewMode === 'login-audit' && securityAuditTab === 'login') {
       fetchLoginAudit();
+    } else if (viewMode === 'login-audit' && (securityAuditTab === 'critical' || securityAuditTab === 'medium')) {
+      fetchActionAudit();
     } else if (viewMode === 'demo-query') {
       fetchDemoRequests();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode]);
+  }, [viewMode, securityAuditTab]);
 
   useEffect(() => {
     if (viewMode === 'analytics') {
@@ -1041,11 +1073,18 @@ export default function AdminDashboard() {
   }, [usersPage, usersRoleFilter, usersStatusFilter, usersSearch, usersSchoolFilter, viewMode]);
 
   useEffect(() => {
-    if (viewMode === 'login-audit') {
+    if (viewMode === 'login-audit' && securityAuditTab === 'login') {
       fetchLoginAudit();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loginAuditPage, loginAuditRole, loginAuditStatus, loginAuditDateFrom, loginAuditDateTo, loginAuditIp, viewMode]);
+  }, [loginAuditPage, loginAuditRole, loginAuditStatus, loginAuditDateFrom, loginAuditDateTo, loginAuditIp, viewMode, securityAuditTab]);
+
+  useEffect(() => {
+    if (viewMode === 'login-audit' && (securityAuditTab === 'critical' || securityAuditTab === 'medium')) {
+      fetchActionAudit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, securityAuditTab, actionAuditPage, actionAuditDateFrom, actionAuditDateTo, actionAuditRole, actionAuditModule, actionAuditActionType, actionAuditUserSearch]);
 
   const fetchAllSchools = async () => {
     try {
@@ -1459,6 +1498,40 @@ export default function AdminDashboard() {
       setLoginAuditTableMissing(false);
     } finally {
       setLoadingLoginAudit(false);
+    }
+  };
+
+  const fetchActionAudit = async () => {
+    try {
+      setLoadingActionAudit(true);
+      const params = new URLSearchParams();
+      params.append('page', actionAuditPage.toString());
+      params.append('limit', '25');
+      if (securityAuditTab === 'critical') params.append('severity', 'CRITICAL');
+      else if (securityAuditTab === 'medium') params.append('severity', 'MEDIUM');
+      if (actionAuditDateFrom) params.append('dateFrom', actionAuditDateFrom);
+      if (actionAuditDateTo) params.append('dateTo', actionAuditDateTo);
+      if (actionAuditRole !== 'all') params.append('role', actionAuditRole);
+      if (actionAuditModule !== 'all') params.append('module', actionAuditModule);
+      if (actionAuditActionType !== 'all') params.append('actionType', actionAuditActionType);
+      if (actionAuditUserSearch.trim()) params.append('user', actionAuditUserSearch.trim());
+      const response = await fetch(`/api/admin/audit-logs?${params.toString()}`);
+      const result = await response.json();
+      if (response.ok) {
+        setActionAuditData(Array.isArray(result.data) ? result.data : []);
+        setActionAuditPagination(result.pagination ?? null);
+        setActionAuditTableMissing(Boolean(result.tableMissing));
+      } else {
+        setActionAuditData([]);
+        setActionAuditPagination(null);
+        setActionAuditTableMissing(false);
+      }
+    } catch {
+      setActionAuditData([]);
+      setActionAuditPagination(null);
+      setActionAuditTableMissing(false);
+    } finally {
+      setLoadingActionAudit(false);
     }
   };
 
@@ -2177,7 +2250,7 @@ export default function AdminDashboard() {
                           { id: 'analytics', label: 'Analytics', icon: Activity, color: 'from-purple-500 to-pink-500' },
                           { id: 'users', label: 'Users', icon: UserCheck, color: 'from-indigo-500 to-blue-500' },
                           { id: 'demo-query', label: 'Demo Query', icon: ClipboardList, color: 'from-amber-500 to-orange-500' },
-                          { id: 'login-audit', label: 'Login Audit', icon: LogIn, color: 'from-rose-500 to-red-500' },
+                          { id: 'login-audit', label: 'Security & Audit', icon: LogIn, color: 'from-rose-500 to-red-500' },
                         ].map((item) => {
                           const Icon = item.icon;
                           const active = viewMode === item.id;
@@ -3195,20 +3268,49 @@ export default function AdminDashboard() {
             >
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Login Audit</h2>
-                  <p className="text-gray-600 dark:text-gray-400">Who logged in, when, from where, and success or failed attempts.</p>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Security & Action Audit</h2>
+                  <p className="text-gray-600 dark:text-gray-400">Login activity and critical state-changing actions only. No navigation or read-only views.</p>
                 </div>
-                <Button
-                  onClick={exportLoginAuditCsv}
-                  variant="secondary"
-                  className="inline-flex items-center gap-2"
-                >
-                  <Download size={18} />
-                  Export CSV
-                </Button>
+                {securityAuditTab === 'login' && (
+                  <Button
+                    onClick={exportLoginAuditCsv}
+                    variant="secondary"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <Download size={18} />
+                    Export CSV
+                  </Button>
+                )}
               </div>
 
-              {/* Filters */}
+              {/* Tabs: Login Activity | Critical Actions (default) | Medium Actions */}
+              <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
+                <button
+                  type="button"
+                  onClick={() => setSecurityAuditTab('critical')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${securityAuditTab === 'critical' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                >
+                  Critical Actions
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSecurityAuditTab('medium')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${securityAuditTab === 'medium' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                >
+                  Medium Actions
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSecurityAuditTab('login')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${securityAuditTab === 'login' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                >
+                  Login Activity
+                </button>
+              </div>
+
+              {securityAuditTab === 'login' && (
+                <>
+              {/* Filters - Login */}
               <Card className="p-4">
                 <div className="flex flex-wrap items-end gap-3">
                   <div>
@@ -3219,6 +3321,7 @@ export default function AdminDashboard() {
                       className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm min-w-[140px]"
                     >
                       <option value="all">All</option>
+                      <option value="Super Admin">Super Admin</option>
                       <option value="School Admin">School Admin</option>
                       <option value="Teacher">Teacher</option>
                       <option value="Student">Student</option>
@@ -3265,45 +3368,107 @@ export default function AdminDashboard() {
                       className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm min-w-[140px]"
                     />
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={loginAuditCollapseDuplicates}
+                      onChange={(e) => setLoginAuditCollapseDuplicates(e.target.checked)}
+                      className="rounded border-gray-300 dark:border-gray-600"
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Collapse duplicates</span>
+                  </label>
                 </div>
               </Card>
 
               {/* Charts */}
-              {loginAuditStats && (loginAuditStats.timeSeries.length > 0 || loginAuditStats.roleBreakdown.length > 0) && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {loginAuditStats.timeSeries.length > 0 && (
+              {loginAuditStats && (
+                <div className="space-y-6">
+                  {/* Last 24h + Top IPs by failures */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {(loginAuditStats.last24h && (loginAuditStats.last24h.success > 0 || loginAuditStats.last24h.failed > 0)) && (
+                      <Card className="p-4">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Last 24h</h3>
+                        <div className="flex gap-4">
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-emerald-500" />
+                            <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{loginAuditStats.last24h.success}</span>
+                            <span className="text-xs text-gray-500">Success</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-red-500" />
+                            <span className="text-lg font-bold text-red-600 dark:text-red-400">{loginAuditStats.last24h.failed}</span>
+                            <span className="text-xs text-gray-500">Failed</span>
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+                    {loginAuditStats.topIpsByFailures && loginAuditStats.topIpsByFailures.length > 0 && (
+                      <Card className="p-4 md:col-span-1 lg:col-span-3">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Top IPs by failed attempts</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {loginAuditStats.topIpsByFailures.slice(0, 5).map(({ ip, failed }) => (
+                            <span key={ip} className="inline-flex items-center px-2 py-1 rounded bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 text-xs font-mono">
+                              {ip} <span className="ml-1 font-semibold">×{failed}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {loginAuditStats.timeSeries.length > 0 && (
+                      <Card className="p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Logins over time</h3>
+                        <ResponsiveContainer width="100%" height={260}>
+                          <BarChart data={loginAuditStats.timeSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                            <XAxis dataKey="date" tick={{ fontSize: 11 }} className="text-gray-600" />
+                            <YAxis tick={{ fontSize: 11 }} />
+                            <Tooltip
+                              contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                              labelFormatter={(v) => `Date: ${v}`}
+                              formatter={(value: number | undefined, name: string | undefined) => [value ?? 0, name === 'success' ? 'Success' : name === 'failed' ? 'Failed' : 'Total']}
+                            />
+                            <Bar dataKey="success" fill="#10b981" name="Success" radius={[4, 4, 0, 0]} stackId="a" />
+                            <Bar dataKey="failed" fill="#ef4444" name="Failed" radius={[4, 4, 0, 0]} stackId="a" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </Card>
+                    )}
+                    {loginAuditStats.roleBreakdown.length > 0 && (
+                      <Card className="p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">By role</h3>
+                        <ResponsiveContainer width="100%" height={260}>
+                          <BarChart data={loginAuditStats.roleBreakdown} layout="vertical" margin={{ top: 8, right: 8, left: 60, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                            <XAxis type="number" tick={{ fontSize: 11 }} />
+                            <YAxis type="category" dataKey="role" width={80} tick={{ fontSize: 11 }} />
+                            <Tooltip
+                              contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                              formatter={(value: number | undefined, name: string | undefined) => [value ?? 0, name === 'success' ? 'Success' : name === 'failed' ? 'Failed' : 'Total']}
+                            />
+                            <Bar dataKey="success" fill="#10b981" name="Success" radius={[0, 4, 4, 0]} stackId="a" />
+                            <Bar dataKey="failed" fill="#ef4444" name="Failed" radius={[0, 4, 4, 0]} stackId="a" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </Card>
+                    )}
+                  </div>
+                  {loginAuditStats.loginsByHour && loginAuditStats.loginsByHour.some((h) => h.total > 0) && (
                     <Card className="p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Logins over time</h3>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Logins by hour (UTC)</h3>
                       <ResponsiveContainer width="100%" height={260}>
-                        <BarChart data={loginAuditStats.timeSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                        <BarChart data={loginAuditStats.loginsByHour} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                          <XAxis dataKey="date" tick={{ fontSize: 11 }} className="text-gray-600" />
+                          <XAxis dataKey="hour" tick={{ fontSize: 11 }} tickFormatter={(h) => `${h}:00`} />
                           <YAxis tick={{ fontSize: 11 }} />
                           <Tooltip
                             contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
-                            labelFormatter={(v) => `Date: ${v}`}
+                            labelFormatter={(h) => `Hour ${h}:00`}
                             formatter={(value: number | undefined, name: string | undefined) => [value ?? 0, name === 'success' ? 'Success' : name === 'failed' ? 'Failed' : 'Total']}
                           />
                           <Bar dataKey="success" fill="#10b981" name="Success" radius={[4, 4, 0, 0]} stackId="a" />
                           <Bar dataKey="failed" fill="#ef4444" name="Failed" radius={[4, 4, 0, 0]} stackId="a" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </Card>
-                  )}
-                  {loginAuditStats.roleBreakdown.length > 0 && (
-                    <Card className="p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">By role</h3>
-                      <ResponsiveContainer width="100%" height={260}>
-                        <BarChart data={loginAuditStats.roleBreakdown} layout="vertical" margin={{ top: 8, right: 8, left: 60, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                          <XAxis type="number" tick={{ fontSize: 11 }} />
-                          <YAxis type="category" dataKey="role" width={80} tick={{ fontSize: 11 }} />
-                          <Tooltip
-                            contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
-                            formatter={(value: number | undefined, name: string | undefined) => [value ?? 0, name === 'success' ? 'Success' : name === 'failed' ? 'Failed' : 'Total']}
-                          />
-                          <Bar dataKey="success" fill="#10b981" name="Success" radius={[0, 4, 4, 0]} stackId="a" />
-                          <Bar dataKey="failed" fill="#ef4444" name="Failed" radius={[0, 4, 4, 0]} stackId="a" />
                         </BarChart>
                       </ResponsiveContainer>
                     </Card>
@@ -3400,26 +3565,109 @@ CREATE INDEX IF NOT EXISTS idx_login_audit_ip ON login_audit_log(ip_address);`;
                             <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">IP</th>
                             <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Device</th>
                             <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</th>
+                            <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Flags</th>
                             <th className="pb-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Time</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                          {loginAuditData.map((row) => (
-                            <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                              <td className="py-3 pr-4 font-medium text-gray-900 dark:text-white">{row.name || '—'}</td>
-                              <td className="py-3 pr-4 text-gray-700 dark:text-gray-300">{row.role || '—'}</td>
-                              <td className="py-3 pr-4 text-gray-700 dark:text-gray-300 font-mono text-sm">{row.ip_address || '—'}</td>
-                              <td className="py-3 pr-4 text-gray-600 dark:text-gray-400 text-sm max-w-[220px] truncate" title={row.user_agent || ''}>{row.user_agent ? (row.user_agent.length > 50 ? row.user_agent.slice(0, 50) + '…' : row.user_agent) : '—'}</td>
-                              <td className="py-3 pr-4">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${row.status === 'success' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'}`}>
-                                  {row.status === 'success' ? 'Success' : 'Failed'}
-                                </span>
-                              </td>
-                              <td className="py-3 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">
-                                {row.login_at ? new Date(row.login_at).toLocaleString() : '—'}
-                              </td>
-                            </tr>
-                          ))}
+                          {(() => {
+                            const topIpsSet = new Set((loginAuditStats?.topIpsByFailures ?? []).filter((x) => x.failed >= 3).map((x) => x.ip));
+                            const ipFailCount = (loginAuditStats?.topIpsByFailures ?? []).reduce<Record<string, number>>((acc, { ip, failed }) => {
+                              acc[ip] = failed;
+                              return acc;
+                            }, {});
+                            type Row = typeof loginAuditData[0];
+                            const getGroupKey = (r: Row) => `${r.name ?? ''}|${r.ip_address ?? ''}|${r.status}|${(r.login_at || '').slice(0, 10)}`;
+                            const rows = loginAuditCollapseDuplicates
+                              ? (() => {
+                                  const groups = new Map<string, Row[]>();
+                                  loginAuditData.forEach((r) => {
+                                    const k = getGroupKey(r);
+                                    if (!groups.has(k)) groups.set(k, []);
+                                    groups.get(k)!.push(r);
+                                  });
+                                  return Array.from(groups.entries()).map(([key, arr]) => ({ key, rows: arr }));
+                                })()
+                              : loginAuditData.map((r) => ({ key: r.id, rows: [r] }));
+                            return rows.flatMap(({ key, rows: groupRows }) => {
+                              const row = groupRows[0];
+                              const count = groupRows.length;
+                              const isExpanded = loginAuditExpandedGroups.has(key);
+                              const showExpand = loginAuditCollapseDuplicates && count > 1;
+                              const flagFailed = row.status === 'failed' && row.ip_address && ipFailCount[row.ip_address] >= 3
+                                ? `${ipFailCount[row.ip_address]} failed attempts`
+                                : null;
+                              const mainRow = (
+                                <tr key={key}>
+                                  <td className="py-3 pr-4 font-medium text-gray-900 dark:text-white">
+                                    {row.name || '—'}
+                                    {showExpand && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setLoginAuditExpandedGroups((s) => {
+                                          const next = new Set(s);
+                                          if (next.has(key)) next.delete(key); else next.add(key);
+                                          return next;
+                                        })}
+                                        className="ml-1 text-xs text-primary hover:underline"
+                                      >
+                                        {isExpanded ? '−' : `×${count}`}
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td className="py-3 pr-4 text-gray-700 dark:text-gray-300">{row.role || '—'}</td>
+                                  <td className="py-3 pr-4 text-gray-700 dark:text-gray-300 font-mono text-sm">{row.ip_address || '—'}</td>
+                                  <td className="py-3 pr-4 text-gray-600 dark:text-gray-400 text-sm max-w-[200px]" title={row.user_agent || undefined}>
+                                    {parseUserAgentSummary(row.user_agent)}
+                                  </td>
+                                  <td className="py-3 pr-4">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                      row.status === 'success'
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                        : topIpsSet.has(row.ip_address ?? '')
+                                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                          : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                                    }`}>
+                                      {row.status === 'success' ? 'Success' : count > 1 ? `Failed ×${count}` : 'Failed'}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 pr-4">
+                                    {flagFailed ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title={`Same IP: ${flagFailed}`}>
+                                        {flagFailed}
+                                      </span>
+                                    ) : (
+                                      '—'
+                                    )}
+                                  </td>
+                                  <td className="py-3 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">
+                                    {row.login_at ? new Date(row.login_at).toLocaleString() : '—'}
+                                    {count > 1 && !isExpanded && (
+                                      <span className="text-gray-400 ml-1">–{groupRows.length} events</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                              const expandedRows = loginAuditCollapseDuplicates && isExpanded && groupRows.length > 1
+                                ? groupRows.slice(1).map((r) => (
+                                    <tr key={`${key}-${r.id}`} className="bg-gray-50/50 dark:bg-gray-800/30">
+                                      <td className="py-2 pr-4 pl-8 text-gray-600 dark:text-gray-400 text-sm">{r.name || '—'}</td>
+                                      <td className="py-2 pr-4 text-gray-600 dark:text-gray-400 text-sm">{r.role || '—'}</td>
+                                      <td className="py-2 pr-4 font-mono text-xs text-gray-600 dark:text-gray-400">{r.ip_address || '—'}</td>
+                                      <td className="py-2 pr-4 text-xs text-gray-500 dark:text-gray-500" title={r.user_agent || undefined}>{parseUserAgentSummary(r.user_agent)}</td>
+                                      <td className="py-2 pr-4">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${r.status === 'success' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'}`}>
+                                          {r.status === 'success' ? 'Success' : 'Failed'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2 pr-4">—</td>
+                                      <td className="py-2 text-gray-500 dark:text-gray-500 text-sm">{r.login_at ? new Date(r.login_at).toLocaleString() : '—'}</td>
+                                    </tr>
+                                  ))
+                                : [];
+                              return [mainRow, ...expandedRows];
+                            });
+                          })()}
                         </tbody>
                       </table>
                     </div>
@@ -3451,6 +3699,137 @@ CREATE INDEX IF NOT EXISTS idx_login_audit_ip ON login_audit_log(ip_address);`;
                   </>
                 )}
               </Card>
+                </>
+              )}
+
+              {(securityAuditTab === 'critical' || securityAuditTab === 'medium') && (
+                <>
+                  <Card className="p-4">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Date from</label>
+                        <input type="date" value={actionAuditDateFrom} onChange={(e) => { setActionAuditDateFrom(e.target.value); setActionAuditPage(1); }} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Date to</label>
+                        <input type="date" value={actionAuditDateTo} onChange={(e) => { setActionAuditDateTo(e.target.value); setActionAuditPage(1); }} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Role</label>
+                        <select value={actionAuditRole} onChange={(e) => { setActionAuditRole(e.target.value); setActionAuditPage(1); }} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm min-w-[140px]">
+                          <option value="all">All</option>
+                          <option value="Super Admin">Super Admin</option>
+                          <option value="School Admin">School Admin</option>
+                          <option value="Teacher">Teacher</option>
+                          <option value="Student">Student</option>
+                          <option value="Accountant">Accountant</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Module</label>
+                        <input type="text" placeholder="Entity type" value={actionAuditModule === 'all' ? '' : actionAuditModule} onChange={(e) => { setActionAuditModule(e.target.value || 'all'); setActionAuditPage(1); }} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm min-w-[120px]" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Action type</label>
+                        <input type="text" placeholder="Action type" value={actionAuditActionType === 'all' ? '' : actionAuditActionType} onChange={(e) => { setActionAuditActionType(e.target.value || 'all'); setActionAuditPage(1); }} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm min-w-[120px]" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">User</label>
+                        <input type="text" placeholder="Search user" value={actionAuditUserSearch} onChange={(e) => { setActionAuditUserSearch(e.target.value); setActionAuditPage(1); }} className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 text-sm min-w-[140px]" />
+                      </div>
+                      <Button variant="secondary" size="sm" onClick={() => fetchActionAudit()}>
+                        <RefreshCw size={16} className="mr-2" />
+                        Refresh
+                      </Button>
+                    </div>
+                  </Card>
+                  <Card className="p-6 overflow-hidden">
+                    {loadingActionAudit ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin text-[#5A7A95] dark:text-[#6B9BB8]" />
+                      </div>
+                    ) : actionAuditTableMissing ? (
+                      <div className="text-center py-12">
+                        <p className="text-gray-500 dark:text-gray-400 mb-2">Audit logs table not found.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Run the SQL in <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">docs/AUDIT_LOGS_SCHEMA.md</code> in Supabase SQL Editor.</p>
+                      </div>
+                    ) : actionAuditData.length === 0 ? (
+                      <div className="text-center py-12">
+                        <p className="text-gray-500 dark:text-gray-400">No {securityAuditTab === 'critical' ? 'critical' : 'medium'} actions recorded yet.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">State-changing actions (creates, updates, approvals, payments) will appear here.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left">
+                            <thead>
+                              <tr className="border-b border-gray-200 dark:border-gray-700">
+                                <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Time</th>
+                                <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">User</th>
+                                <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Action</th>
+                                <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Module</th>
+                                <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Target</th>
+                                <th className="pb-3 pr-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Severity</th>
+                                <th className="pb-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide"></th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                              {actionAuditData.map((row) => (
+                                <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                  <td className="py-3 pr-4 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">{row.created_at ? new Date(row.created_at).toLocaleString() : '—'}</td>
+                                  <td className="py-3 pr-4">
+                                    <span className="font-medium text-gray-900 dark:text-white">{row.user_name || '—'}</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 block">{row.role || '—'}</span>
+                                  </td>
+                                  <td className="py-3 pr-4 text-gray-900 dark:text-white text-sm">{getActionLabel(row.action_type, row.entity_type, row.metadata)}</td>
+                                  <td className="py-3 pr-4 text-gray-600 dark:text-gray-400 text-sm">{getEntityTypeLabel(row.entity_type)}</td>
+                                  <td className="py-3 pr-4 text-gray-600 dark:text-gray-400 text-sm font-mono">{row.entity_id ? (row.entity_id.length > 12 ? row.entity_id.slice(0, 8) + '…' : row.entity_id) : '—'}</td>
+                                  <td className="py-3 pr-4">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${row.severity === 'CRITICAL' ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                                      {row.severity === 'CRITICAL' ? 'Critical' : 'Medium'}
+                                    </span>
+                                  </td>
+                                  <td className="py-3">
+                                    <button type="button" onClick={() => setActionAuditDetailsRow(row)} className="text-xs text-primary hover:underline">View details</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {actionAuditPagination && actionAuditPagination.totalPages > 1 && (
+                          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Page {actionAuditPagination.page} of {actionAuditPagination.totalPages} ({actionAuditPagination.total} total)</p>
+                            <div className="flex gap-2">
+                              <Button variant="secondary" size="sm" disabled={actionAuditPagination.page <= 1} onClick={() => setActionAuditPage((p) => Math.max(1, p - 1))}>Previous</Button>
+                              <Button variant="secondary" size="sm" disabled={actionAuditPagination.page >= actionAuditPagination.totalPages} onClick={() => setActionAuditPage((p) => p + 1)}>Next</Button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </Card>
+                  {actionAuditDetailsRow && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50" onClick={() => setActionAuditDetailsRow(null)}>
+                      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Audit details</h3>
+                        <dl className="space-y-2 text-sm">
+                          <div><dt className="text-gray-500 dark:text-gray-400">Time</dt><dd className="text-gray-900 dark:text-white">{actionAuditDetailsRow.created_at ? new Date(actionAuditDetailsRow.created_at).toLocaleString() : '—'}</dd></div>
+                          <div><dt className="text-gray-500 dark:text-gray-400">User</dt><dd className="text-gray-900 dark:text-white">{actionAuditDetailsRow.user_name} ({actionAuditDetailsRow.role})</dd></div>
+                          <div><dt className="text-gray-500 dark:text-gray-400">Action</dt><dd className="text-gray-900 dark:text-white">{getActionLabel(actionAuditDetailsRow.action_type, actionAuditDetailsRow.entity_type, actionAuditDetailsRow.metadata)}</dd></div>
+                          <div><dt className="text-gray-500 dark:text-gray-400">Module</dt><dd className="text-gray-900 dark:text-white">{getEntityTypeLabel(actionAuditDetailsRow.entity_type)}</dd></div>
+                          <div><dt className="text-gray-500 dark:text-gray-400">Entity ID</dt><dd className="font-mono text-gray-900 dark:text-white">{actionAuditDetailsRow.entity_id || '—'}</dd></div>
+                          <div><dt className="text-gray-500 dark:text-gray-400">Severity</dt><dd><span className={actionAuditDetailsRow.severity === 'CRITICAL' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}>{actionAuditDetailsRow.severity}</span></dd></div>
+                          {actionAuditDetailsRow.metadata && Object.keys(actionAuditDetailsRow.metadata).length > 0 && (
+                            <div><dt className="text-gray-500 dark:text-gray-400 mb-1">Metadata</dt><dd className="bg-gray-50 dark:bg-gray-900 rounded p-3 font-mono text-xs overflow-x-auto"><pre>{JSON.stringify(actionAuditDetailsRow.metadata, null, 2)}</pre></dd></div>
+                          )}
+                        </dl>
+                        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setActionAuditDetailsRow(null)}>Close</Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </motion.div>
           )}
 

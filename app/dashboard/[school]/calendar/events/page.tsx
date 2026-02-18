@@ -7,7 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import { ArrowLeft, Plus, Edit, Trash2, Calendar, X, Download, Upload } from 'lucide-react';
+import {  Plus, Edit, Trash2, Calendar, X, Download, Upload } from 'lucide-react';
 
 interface Event {
   id: string;

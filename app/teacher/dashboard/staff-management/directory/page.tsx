@@ -135,12 +135,6 @@ export default function StaffDirectoryPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleStaffClick = (staffId: string | undefined) => {
-    if (staffId && teacher?.school_code) {
-      router.push(`/dashboard/${teacher.school_code}/staff/${staffId}/view`);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">

@@ -69,17 +69,7 @@ export default function StaffLoginPage() {
       const result = await response.json();
 
       const loggedIn = response.ok && result.success;
-      await fetch('/api/auth/log-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: result.teacher?.id ?? null,
-          name: result.teacher?.full_name ?? formData.staff_id ?? 'Unknown',
-          role: 'Teacher',
-          loginType: 'teacher',
-          status: loggedIn ? 'success' : 'failed',
-        }),
-      }).catch(() => {});
+      // Login is already logged server-side by /api/auth/teacher/login; no frontend log-login to avoid duplicates.
 
       if (loggedIn) {
         sessionStorage.setItem('teacher', JSON.stringify(result.teacher));

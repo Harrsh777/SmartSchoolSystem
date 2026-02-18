@@ -38,7 +38,6 @@ export async function POST(request: NextRequest) {
       ip_address: ipAddress?.slice(0, 100) ?? null,
       user_agent: (userAgent && userAgent.slice(0, 1000)) || null,
       status,
-      // Let DB set login_at default so we avoid any timezone/format issues
     };
 
     const client = (() => {
@@ -48,6 +47,27 @@ export async function POST(request: NextRequest) {
         return supabase;
       }
     })();
+
+    // Dedupe: same user+ip+status within 2s (avoids double log when API already logged)
+    const since = new Date(Date.now() - 2000).toISOString();
+    let dedupeQuery = client
+      .from('login_audit_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', status)
+      .gte('login_at', since)
+      .limit(1);
+    if (row.ip_address != null && row.ip_address !== '') {
+      dedupeQuery = dedupeQuery.eq('ip_address', row.ip_address);
+    }
+    if (userId) {
+      dedupeQuery = dedupeQuery.eq('user_id', userId);
+    } else {
+      dedupeQuery = dedupeQuery.eq('name', name);
+    }
+    const dedupeRes = await dedupeQuery;
+    if (dedupeRes.count != null && dedupeRes.count > 0) {
+      return NextResponse.json({ ok: true, skipped: 'duplicate' });
+    }
 
     const { data, error } = await client.from('login_audit_log').insert(row).select('id').maybeSingle();
     if (error) {

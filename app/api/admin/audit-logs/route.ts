@@ -1,70 +1,81 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 
-// GET - Fetch audit logs
+export interface AuditLogRow {
+  id: string;
+  user_id: string | null;
+  user_name: string;
+  role: string;
+  action_type: string;
+  entity_type: string;
+  entity_id: string | null;
+  severity: string;
+  ip_address: string | null;
+  device_summary: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const schoolCode = searchParams.get('school_code');
-    const action = searchParams.get('action');
-    const startDate = searchParams.get('start_date');
-    const endDate = searchParams.get('end_date');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '25', 10)));
+    const role = searchParams.get('role')?.trim() || undefined;
+    const severity = searchParams.get('severity')?.trim() || undefined;
+    const entityType = searchParams.get('module')?.trim() || searchParams.get('entityType')?.trim() || undefined;
+    const actionType = searchParams.get('actionType')?.trim() || undefined;
+    const userSearch = searchParams.get('user')?.trim() || undefined;
+    const dateFrom = searchParams.get('dateFrom')?.trim() || undefined;
+    const dateTo = searchParams.get('dateTo')?.trim() || undefined;
 
     const supabase = getServiceRoleClient();
 
-    // Check if audit_logs table exists, if not return empty
     let query = supabase
       .from('audit_logs')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
+      .select('id, user_id, user_name, role, action_type, entity_type, entity_id, severity, ip_address, device_summary, metadata, created_at', { count: 'exact' })
+      .order('created_at', { ascending: false });
 
-    if (schoolCode) {
-      query = query.eq('school_code', schoolCode);
-    }
-    if (action) {
-      query = query.eq('action', action);
-    }
-    if (startDate) {
-      query = query.gte('created_at', startDate);
-    }
-    if (endDate) {
-      query = query.lte('created_at', endDate);
+    if (role) query = query.eq('role', role);
+    if (severity) query = query.eq('severity', severity);
+    if (entityType) query = query.eq('entity_type', entityType);
+    if (actionType) query = query.eq('action_type', actionType);
+    if (userSearch) query = query.ilike('user_name', `%${userSearch}%`);
+    if (dateFrom) query = query.gte('created_at', dateFrom);
+    if (dateTo) {
+      const end = dateTo.length <= 10 ? `${dateTo}T23:59:59.999Z` : dateTo;
+      query = query.lte('created_at', end);
     }
 
-    const { data: logs, count, error } = await query;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    const { data: rows, count, error } = await query.range(from, to);
 
     if (error) {
-      // Table might not exist, return empty array
-      if (error.code === '42P01') {
+      if ((error as { code?: string }).code === '42P01') {
         return NextResponse.json({
           data: [],
-          pagination: {
-            page,
-            limit,
-            total: 0,
-            totalPages: 0,
-          },
+          pagination: { page, limit, total: 0, totalPages: 0 },
+          tableMissing: true,
         });
       }
       throw error;
     }
 
     return NextResponse.json({
-      data: logs || [],
+      data: rows || [],
       pagination: {
         page,
         limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit),
+        total: count ?? 0,
+        totalPages: Math.ceil((count ?? 0) / limit),
       },
+      tableMissing: false,
     });
-  } catch (error) {
-    console.error('Error fetching audit logs:', error);
+  } catch (err) {
+    console.error('Audit logs fetch error:', err);
     return NextResponse.json(
-      { error: 'Failed to fetch audit logs', details: (error as Error).message },
+      { error: 'Failed to fetch audit logs', details: (err as Error).message },
       { status: 500 }
     );
   }
