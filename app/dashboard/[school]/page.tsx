@@ -1409,7 +1409,8 @@ export default function DashboardPage({
                               initial={{ width: 0 }}
                               animate={{ width: `${femalePercent}%` }}
                               transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
-                              className="bg-[#4A707A] dark:bg-[#5A879A] h-full flex items-center justify-center"
+                              className="bg-[#EC4899] dark:bg-[#F472B6] h-full flex items-center justify-center"
+
                             >
                               <span className="text-[10px] text-white font-semibold px-1">
                                 {femalePercent.toFixed(1)}%
