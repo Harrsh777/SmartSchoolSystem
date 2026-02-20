@@ -18,6 +18,7 @@ import {
   FileText,
   CheckSquare,
   Square,
+  IndianRupee,
 } from 'lucide-react';
 
 interface Student {
@@ -308,7 +309,7 @@ export default function FeeStatementsPage({
       >
         <div>
           <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-            <Receipt className="text-[#2F6FED]" size={32} />
+            <IndianRupee className="text-[#2F6FED]" size={32} />
             Student Fee Statements
           </h1>
           <p className="text-gray-600">View individual student fee history and pending amounts</p>
