@@ -14,6 +14,15 @@ const PUBLIC_PATHS = [
   '/auth',
 ];
 
+/** CORS: allow Expo web (localhost) and production app origin when calling /api/* */
+const CORS_ALLOWED_ORIGINS = [
+  'http://localhost:8081',      // Expo web dev
+  'http://localhost:19006',     // Expo web alternate
+  'http://127.0.0.1:8081',
+  'http://127.0.0.1:19006',
+  // Add your production app domain when you deploy (e.g. https://your-app.vercel.app)
+];
+
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
 }
@@ -22,10 +31,40 @@ function isApiOrStatic(pathname: string): boolean {
   return pathname.startsWith('/api') || pathname.startsWith('/_next') || pathname.includes('.');
 }
 
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const allowOrigin = origin && CORS_ALLOWED_ORIGINS.includes(origin)
+    ? origin
+    : CORS_ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Session-Token',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (isApiOrStatic(pathname)) {
+  // CORS for /api/* (Expo web at localhost:8081 → Vercel API)
+  if (pathname.startsWith('/api')) {
+    const origin = request.headers.get('origin') ?? null;
+
+    if (request.method === 'OPTIONS') {
+      return new NextResponse(null, {
+        status: 204,
+        headers: getCorsHeaders(origin),
+      });
+    }
+
+    const response = NextResponse.next();
+    Object.entries(getCorsHeaders(origin)).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+    return response;
+  }
+
+  if (pathname.startsWith('/_next') || pathname.includes('.')) {
     return NextResponse.next();
   }
 

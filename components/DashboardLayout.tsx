@@ -44,7 +44,6 @@ import {
   ClipboardList,
   BarChart3,
   Tag,
-  Receipt,
   CreditCard,
   ArrowLeft,
   Download,
