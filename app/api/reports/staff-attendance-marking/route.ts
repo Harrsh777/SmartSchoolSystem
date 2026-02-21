@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
     const staffIdsParam = searchParams.get('staff_ids');
+    const departmentParam = searchParams.get('department');
 
     if (!schoolCode || !startDate || !endDate) {
       return NextResponse.json(
@@ -81,6 +82,10 @@ export async function GET(request: NextRequest) {
 
     if (filterStaffIds && filterStaffIds.length > 0) {
       staffQuery = staffQuery.in('id', filterStaffIds);
+    }
+    if (departmentParam?.trim()) {
+      const dept = departmentParam.trim();
+      staffQuery = staffQuery.ilike('department', dept.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_'));
     }
 
     const { data: staffData, error: staffError } = await staffQuery;

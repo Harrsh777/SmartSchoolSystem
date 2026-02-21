@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Loader2, AlertTriangle, CheckCircle, ArrowLeft, Users, Save } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle, Users, Save } from 'lucide-react';
 
 interface AcademicYearRow {
   id: string;

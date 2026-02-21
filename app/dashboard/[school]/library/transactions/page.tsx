@@ -109,6 +109,18 @@ export default function LibraryTransactionsPage({
   const [endDate, setEndDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Issue tab: student filters (class & section)
+  const [classFilter, setClassFilter] = useState('');
+  const [sectionFilterStudent, setSectionFilterStudent] = useState('');
+  const [staffSearch, setStaffSearch] = useState('');
+  // Issue tab: book filters
+  const [bookSectionFilter, setBookSectionFilter] = useState('');
+  const [bookTypeFilter, setBookTypeFilter] = useState('');
+  const [bookSearch, setBookSearch] = useState('');
+  const [classes, setClasses] = useState<Array<{ class: string; section: string; academic_year: string | null }>>([]);
+  const [librarySections, setLibrarySections] = useState<Array<{ id: string; name: string }>>([]);
+  const [libraryMaterialTypes, setLibraryMaterialTypes] = useState<Array<{ id: string; name: string }>>([]);
+
   const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true);
@@ -137,7 +149,12 @@ export default function LibraryTransactionsPage({
 
   const fetchAvailableBooks = useCallback(async () => {
     try {
-      const response = await fetch(`/api/library/books?school_code=${schoolCode}`);
+      const params = new URLSearchParams();
+      params.append('school_code', schoolCode);
+      if (bookSectionFilter) params.append('section_id', bookSectionFilter);
+      if (bookTypeFilter) params.append('material_type_id', bookTypeFilter);
+      if (bookSearch) params.append('search', bookSearch);
+      const response = await fetch(`/api/library/books?${params.toString()}`);
       const result = await response.json();
       if (response.ok && result.data) {
         const allBooks = result.data as Array<{ id: string; title: string; author: string | null; available_copies: number; copies?: Array<{ id: string; accession_number: string; status: string }> }>;
@@ -149,11 +166,16 @@ export default function LibraryTransactionsPage({
     } catch (err) {
       console.error('Error fetching books:', err);
     }
-  }, [schoolCode]);
+  }, [schoolCode, bookSectionFilter, bookTypeFilter, bookSearch]);
 
   const fetchStudents = useCallback(async () => {
     try {
-      const response = await fetch(`/api/students?school_code=${schoolCode}&status=active`);
+      const params = new URLSearchParams();
+      params.append('school_code', schoolCode);
+      params.append('status', 'active');
+      if (classFilter) params.append('class', classFilter);
+      if (sectionFilterStudent) params.append('section', sectionFilterStudent);
+      const response = await fetch(`/api/students?${params.toString()}`);
       const result = await response.json();
       if (response.ok && result.data) {
         setStudents(result.data);
@@ -161,7 +183,7 @@ export default function LibraryTransactionsPage({
     } catch (err) {
       console.error('Error fetching students:', err);
     }
-  }, [schoolCode]);
+  }, [schoolCode, classFilter, sectionFilterStudent]);
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -175,12 +197,41 @@ export default function LibraryTransactionsPage({
     }
   }, [schoolCode]);
 
+  const fetchClasses = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/classes?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setClasses(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching classes:', err);
+    }
+  }, [schoolCode]);
+
+  const fetchLibrarySectionsAndTypes = useCallback(async () => {
+    try {
+      const [secRes, typeRes] = await Promise.all([
+        fetch(`/api/library/sections?school_code=${schoolCode}`),
+        fetch(`/api/library/material-types?school_code=${schoolCode}`),
+      ]);
+      const secData = await secRes.json();
+      const typeData = await typeRes.json();
+      if (secRes.ok && secData.data) setLibrarySections(secData.data);
+      if (typeRes.ok && typeData.data) setLibraryMaterialTypes(typeData.data);
+    } catch (err) {
+      console.error('Error fetching library sections/types:', err);
+    }
+  }, [schoolCode]);
+
   useEffect(() => {
     fetchTransactions();
     fetchAvailableBooks();
     fetchStudents();
     fetchStaff();
-  }, [fetchTransactions, fetchAvailableBooks, fetchStudents, fetchStaff]);
+    fetchClasses();
+    fetchLibrarySectionsAndTypes();
+  }, [fetchTransactions, fetchAvailableBooks, fetchStudents, fetchStaff, fetchClasses, fetchLibrarySectionsAndTypes]);
 
   const handleCheckBorrower = async () => {
     if (!selectedBorrower) {
@@ -212,6 +263,7 @@ export default function LibraryTransactionsPage({
 
   const handleBookSelect = (bookId: string) => {
     setSelectedBook(bookId);
+    setError('');
     const book = books.find((b) => b.id === bookId);
     if (book && book.copies && book.copies.length > 0) {
       const availableCopy = book.copies.find((c) => c.status === 'available');
@@ -226,6 +278,24 @@ export default function LibraryTransactionsPage({
       setError('No copies available for this book');
     }
   };
+
+  // When book list changes (e.g. filters), clear selection if selected book no longer in list
+  useEffect(() => {
+    if (selectedBook && activeTab === 'issue' && !books.some((b) => b.id === selectedBook)) {
+      setSelectedBook('');
+      setSelectedCopy('');
+    }
+  }, [books, selectedBook, activeTab]);
+
+  const uniqueClasses = [...new Set(classes.map((c) => c.class).filter(Boolean))].sort();
+  const uniqueSections = [...new Set(classes.map((c) => c.section).filter(Boolean))].sort();
+  const filteredStaff = staffSearch.trim()
+    ? staff.filter(
+        (s) =>
+          s.full_name?.toLowerCase().includes(staffSearch.toLowerCase()) ||
+          s.staff_id?.toLowerCase().includes(staffSearch.toLowerCase())
+      )
+    : staff;
 
   const handleIssueBook = async () => {
     if (!selectedBorrower || !selectedBook || !selectedCopy) {
@@ -592,11 +662,12 @@ export default function LibraryTransactionsPage({
           </>
         ) : (
           <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
-            <div className="space-y-6">
+            <div className="space-y-8">
+              {/* Borrower Type */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Borrower Type</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center">
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Borrower Type</label>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
                       value="student"
@@ -606,11 +677,11 @@ export default function LibraryTransactionsPage({
                         setSelectedBorrower('');
                         setBorrowerInfo(null);
                       }}
-                      className="mr-2 text-[#5A7A95] focus:ring-[#5A7A95]"
+                      className="text-[#5A7A95] focus:ring-[#5A7A95]"
                     />
                     <span className="text-gray-900 dark:text-white">Student</span>
                   </label>
-                  <label className="flex items-center">
+                  <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
                       value="staff"
@@ -620,44 +691,125 @@ export default function LibraryTransactionsPage({
                         setSelectedBorrower('');
                         setBorrowerInfo(null);
                       }}
-                      className="mr-2 text-[#5A7A95] focus:ring-[#5A7A95]"
+                      className="text-[#5A7A95] focus:ring-[#5A7A95]"
                     />
                     <span className="text-gray-900 dark:text-white">Staff</span>
                   </label>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Select {borrowerType === 'student' ? 'Student' : 'Staff'}
-                </label>
-                <select
-                  value={selectedBorrower}
-                  onChange={(e) => {
-                    setSelectedBorrower(e.target.value);
-                    setBorrowerInfo(null);
-                  }}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
-                >
-                  <option value="">Select {borrowerType === 'student' ? 'Student' : 'Staff'}</option>
-                  {borrowerType === 'student'
-                    ? students.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {`${item.student_name} (${item.admission_no}) - ${item.class}${item.section || ''}`}
+              {/* Select Borrower: Class & Section (students) or Search (staff) */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 pb-2">
+                  {borrowerType === 'student' ? 'Select Student' : 'Select Staff'}
+                </h3>
+
+                {borrowerType === 'student' ? (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Class</label>
+                        <select
+                          value={classFilter}
+                          onChange={(e) => {
+                            setClassFilter(e.target.value);
+                            setSelectedBorrower('');
+                            setBorrowerInfo(null);
+                          }}
+                          className="w-full h-11 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] text-sm"
+                        >
+                          <option value="">All Classes</option>
+                          {uniqueClasses.map((cls) => (
+                            <option key={cls} value={cls}>
+                              {cls}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Section</label>
+                        <select
+                          value={sectionFilterStudent}
+                          onChange={(e) => {
+                            setSectionFilterStudent(e.target.value);
+                            setSelectedBorrower('');
+                            setBorrowerInfo(null);
+                          }}
+                          className="w-full h-11 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] text-sm"
+                        >
+                          <option value="">All Sections</option>
+                          {uniqueSections.map((sec) => (
+                            <option key={sec} value={sec}>
+                              {sec}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Student</label>
+                      <select
+                        value={selectedBorrower}
+                        onChange={(e) => {
+                          setSelectedBorrower(e.target.value);
+                          setBorrowerInfo(null);
+                        }}
+                        className="w-full h-11 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] text-sm"
+                      >
+                        <option value="">
+                          {students.length === 0 ? 'No students (set Class/Section to load)' : 'Select Student'}
                         </option>
-                      ))
-                    : staff.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {`${item.full_name} (${item.staff_id})`}
+                        {students.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.student_name} ({item.admission_no}) — {item.class}{item.section || ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Search by name or ID</label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <Input
+                          placeholder="Type name or staff ID..."
+                          value={staffSearch}
+                          onChange={(e) => setStaffSearch(e.target.value)}
+                          className="pl-10 h-11"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Staff</label>
+                      <select
+                        value={selectedBorrower}
+                        onChange={(e) => {
+                          setSelectedBorrower(e.target.value);
+                          setBorrowerInfo(null);
+                        }}
+                        className="w-full h-11 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] text-sm"
+                      >
+                        <option value="">
+                          {filteredStaff.length === 0 ? 'No staff match' : 'Select Staff'}
                         </option>
-                      ))}
-                </select>
+                        {filteredStaff.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.full_name} ({item.staff_id})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
+
                 {selectedBorrower && (
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={handleCheckBorrower}
-                    className="mt-2 border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
+                    className="border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
                   >
                     Check Eligibility
                   </Button>
@@ -688,22 +840,86 @@ export default function LibraryTransactionsPage({
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Book</label>
-                <select
-                  value={selectedBook}
-                  onChange={(e) => handleBookSelect(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
-                >
-                  <option value="">Select Book</option>
-                  {books
-                    .filter((book) => book.available_copies > 0)
-                    .map((book) => (
-                      <option key={book.id} value={book.id}>
-                        {book.title} by {book.author || 'Unknown'} ({book.available_copies} available)
-                      </option>
-                    ))}
-                </select>
+              {/* Select Book: filters + dropdown */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 pb-2">
+                  Select Book
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Section</label>
+                    <select
+                      value={bookSectionFilter}
+                      onChange={(e) => {
+                        setBookSectionFilter(e.target.value);
+                        setSelectedBook('');
+                        setSelectedCopy('');
+                      }}
+                      className="w-full h-11 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] text-sm"
+                    >
+                      <option value="">All Sections</option>
+                      {librarySections.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Material Type</label>
+                    <select
+                      value={bookTypeFilter}
+                      onChange={(e) => {
+                        setBookTypeFilter(e.target.value);
+                        setSelectedBook('');
+                        setSelectedCopy('');
+                      }}
+                      className="w-full h-11 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] text-sm"
+                    >
+                      <option value="">All Material Types</option>
+                      {libraryMaterialTypes.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Search book</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                      <Input
+                        placeholder="Title, author, ISBN..."
+                        value={bookSearch}
+                        onChange={(e) => {
+                          setBookSearch(e.target.value);
+                          setSelectedBook('');
+                          setSelectedCopy('');
+                        }}
+                        className="pl-10 h-11"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Book</label>
+                  <select
+                    value={selectedBook}
+                    onChange={(e) => handleBookSelect(e.target.value)}
+                    className="w-full h-11 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] text-sm"
+                  >
+                    <option value="">
+                      {books.length === 0 ? 'No available books (try changing filters)' : 'Select Book'}
+                    </option>
+                    {books
+                      .filter((book) => book.available_copies > 0)
+                      .map((book) => (
+                        <option key={book.id} value={book.id}>
+                          {book.title} — {book.author || 'Unknown'} ({book.available_copies} available)
+                        </option>
+                      ))}
+                  </select>
+                </div>
               </div>
 
               {selectedBook && selectedCopy && (
@@ -715,23 +931,29 @@ export default function LibraryTransactionsPage({
                 </div>
               )}
 
-              <Button
-                onClick={handleIssueBook}
-                disabled={saving || !selectedBorrower || !selectedBook || !selectedCopy || (borrowerInfo ? !borrowerInfo.canBorrow : false)}
-                className="w-full bg-[#5A7A95] hover:bg-[#4a6a85] disabled:opacity-50"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 size={18} className="mr-2 animate-spin" />
-                    Issuing...
-                  </>
-                ) : (
-                  <>
-                    <BookOpen size={18} className="mr-2" />
-                    Issue Book
-                  </>
-                )}
-              </Button>
+<Button
+  onClick={handleIssueBook}
+  disabled={
+    saving ||
+    !selectedBorrower ||
+    !selectedBook ||
+    !selectedCopy ||
+    (borrowerInfo ? !borrowerInfo.canBorrow : false)
+  }
+  className="w-[150px] h-9 flex items-center justify-center gap-2 whitespace-nowrap bg-[#5A7A95] hover:bg-[#4a6a85] disabled:opacity-50 text-sm font-medium"
+>
+  {saving ? (
+    <>
+      <Loader2 size={16} className="animate-spin" />
+      <span>Issuing...</span>
+    </>
+  ) : (
+    <>
+      <BookOpen size={16} />
+      <span>Issue Book</span>
+    </>
+  )}
+</Button>
             </div>
           </Card>
         )}

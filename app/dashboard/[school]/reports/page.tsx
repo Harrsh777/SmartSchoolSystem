@@ -71,9 +71,8 @@ export default function ReportsPage({
         throw new Error(errorMessage);
       }
 
-      // Check if response is CSV
-      if (!contentType.includes('text/csv') && !contentType.includes('application/octet-stream')) {
-        // Might be JSON error even with 200 status
+      // Check if response is CSV or plain text (some APIs return "No data available" as text/csv)
+      if (!contentType.includes('text/csv') && !contentType.includes('application/octet-stream') && !contentType.includes('text/plain')) {
         try {
           const data = await response.json();
           if (data.error) {
@@ -84,10 +83,7 @@ export default function ReportsPage({
         }
       }
 
-      // Get the blob from response
       const blob = await response.blob();
-      
-      // Verify blob is not empty and is actually CSV-like
       if (blob.size === 0) {
         throw new Error('Report file is empty');
       }
@@ -144,7 +140,7 @@ export default function ReportsPage({
 
         const contentType = response.headers.get('content-type') || '';
         
-        if (response.ok && (contentType.includes('text/csv') || contentType.includes('application/octet-stream'))) {
+        if (response.ok && (contentType.includes('text/csv') || contentType.includes('application/octet-stream') || contentType.includes('text/plain'))) {
           const blob = await response.blob();
           
           if (blob.size === 0) {
@@ -273,10 +269,10 @@ export default function ReportsPage({
       title: 'Timetable Information',
       description: 'Download class timetables, period schedules, and teacher assignments',
       icon: CalendarDays,
-      gradient: 'from-indigo-500 to-violet-600',
-      bgGradient: 'from-indigo-50 to-violet-100',
-      borderColor: 'border-indigo-200',
-      textColor: 'text-indigo-700',
+      gradient: 'from-[#5A7A95] to-[#6B9BB8]',
+      bgGradient: 'from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]',
+      borderColor: 'border-[#5A7A95]/30 dark:border-[#6B9BB8]/30',
+      textColor: 'text-[#5A7A95] dark:text-[#6B9BB8]',
       stats: 'Schedule & timetable data',
       features: ['Class schedules', 'Period timings', 'Teacher assignments', 'Subject allocation'],
     },
@@ -319,41 +315,40 @@ export default function ReportsPage({
   ];
 
   return (
-    <div className="space-y-6 pb-8 min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20">
-      {/* Header Section */}
+    <div className="space-y-4 sm:space-y-6 pb-8 min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 dark:from-[#0f172a] dark:via-[#1e293b] dark:to-[#0f172a]">
+      {/* Header Section - compact */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 md:p-8"
+        className="bg-white dark:bg-[#1e293b]/90 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700/50 p-4 md:p-5"
       >
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
-              <BarChart3 className="text-white" size={32} />
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-md shrink-0">
+              <BarChart3 className="text-white" size={24} />
             </div>
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">Reports Center</h1>
-              <p className="text-gray-600 text-sm md:text-base">
+            <div className="min-w-0">
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Reports Center</h1>
+              <p className="text-gray-600 dark:text-gray-400 text-sm">
                 Download comprehensive reports in CSV format for analysis and record-keeping
               </p>
             </div>
           </div>
-          
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={handleDownloadAll}
             disabled={downloadingAll || !!downloading}
-            className="inline-flex items-center gap-3 bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] hover:from-[#567C8D] hover:to-[#5A7A95] text-white px-6 py-3.5 rounded-xl font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] hover:from-[#567C8D] hover:to-[#5A7A95] text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all shrink-0"
           >
             {downloadingAll ? (
               <>
-                <Loader2 className="animate-spin" size={20} />
+                <Loader2 className="animate-spin" size={18} />
                 <span>Downloading All...</span>
               </>
             ) : (
               <>
-                <DownloadCloud size={20} />
+                <DownloadCloud size={18} />
                 <span>Download All Reports</span>
               </>
             )}
@@ -368,11 +363,11 @@ export default function ReportsPage({
             initial={{ opacity: 0, y: -10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded-xl shadow-lg"
+            className="p-3 bg-emerald-50 dark:bg-emerald-900/20 border-l-4 border-emerald-500 dark:border-emerald-400 rounded-lg shadow"
           >
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="text-emerald-600 flex-shrink-0" size={20} />
-              <p className="text-emerald-800 font-medium">{successMessage}</p>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" size={18} />
+              <p className="text-emerald-800 dark:text-emerald-200 text-sm font-medium">{successMessage}</p>
             </div>
           </motion.div>
         )}
@@ -381,170 +376,135 @@ export default function ReportsPage({
             initial={{ opacity: 0, y: -10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="p-4 bg-red-50 border-l-4 border-red-500 rounded-xl shadow-lg"
+            className="p-3 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 dark:border-red-400 rounded-lg shadow"
           >
-            <div className="flex items-center gap-3">
-              <AlertCircle className="text-red-600 flex-shrink-0" size={20} />
-              <p className="text-red-800 font-medium">{errorMessage}</p>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="text-red-600 dark:text-red-400 flex-shrink-0" size={18} />
+              <p className="text-red-800 dark:text-red-200 text-sm font-medium">{errorMessage}</p>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Report Cards Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Report Cards Grid - compact, 3 cols on xl */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {reportOptions.map((option, index) => {
           const Icon = option.icon;
           const isDownloading = downloading === option.id;
           const isCompleted = completedDownloads.has(option.id);
-          
+          const isTimetable = option.id === 'timetable';
+          const borderColor = isTimetable ? 'border-indigo-200 dark:border-indigo-800/50' : option.borderColor;
+          const bgGradient = isTimetable ? 'from-indigo-50 to-violet-100 dark:from-indigo-900/20 dark:to-violet-900/20' : option.bgGradient;
           return (
             <motion.div
               key={option.id}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              whileHover={{ y: -4 }}
+              transition={{ delay: index * 0.05 }}
+              whileHover={{ y: -2 }}
               className="group"
             >
-              <Card className={`h-full overflow-hidden border-2 ${option.borderColor} bg-white hover:shadow-2xl transition-all duration-300 relative`}>
-                {/* Gradient Background Effect */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${option.bgGradient} opacity-0 group-hover:opacity-30 transition-opacity duration-300`} />
-                
-                <div className="relative p-6 md:p-8">
-                  {/* Header */}
-                  <div className="flex items-start gap-4 mb-6">
+              <Card className={`h-full overflow-hidden border-2 ${borderColor} bg-white dark:bg-[#1e293b]/90 hover:shadow-xl transition-all duration-200 relative`}>
+                <div className={`absolute inset-0 bg-gradient-to-br ${bgGradient} opacity-0 group-hover:opacity-20 transition-opacity duration-200 pointer-events-none`} />
+                <div className="relative p-4">
+                  <div className="flex items-start gap-3 mb-3">
                     <motion.div
-                      whileHover={{ scale: 1.1, rotate: 5 }}
-                      className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br ${option.gradient} flex items-center justify-center text-white shadow-lg flex-shrink-0`}
+                      whileHover={{ scale: 1.05 }}
+                      className={`w-10 h-10 rounded-xl bg-gradient-to-br ${option.gradient} flex items-center justify-center text-white shadow-md flex-shrink-0`}
                     >
-                      <Icon size={28} />
+                      <Icon size={20} />
                     </motion.div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">
-                            {option.title}
-                          </h3>
-                          <p className="text-sm text-gray-600 mb-3 leading-relaxed">
-                            {option.description}
-                          </p>
-                        </div>
+                        <h3 className="text-base font-bold text-gray-900 dark:text-white leading-tight">
+                          {option.title}
+                        </h3>
                         {isCompleted && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="flex-shrink-0"
-                          >
-                            <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center">
-                              <CheckCircle2 className="text-emerald-600" size={18} />
-                            </div>
-                          </motion.div>
+                          <div className="w-6 h-6 bg-emerald-100 dark:bg-emerald-900/40 rounded-full flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" size={14} />
+                          </div>
                         )}
                       </div>
-                      
-                      {/* Stats Badge */}
-                      <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm rounded-lg border border-gray-200 mb-4">
-                        <Database size={14} className="text-gray-500" />
-                        <span className="text-xs font-medium text-gray-700">{option.stats}</span>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 line-clamp-2">
+                        {option.description}
+                      </p>
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-white/80 dark:bg-gray-800/80 rounded border border-gray-200 dark:border-gray-600 mt-2">
+                        <Database size={12} className="text-gray-500 dark:text-gray-400 shrink-0" />
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{option.stats}</span>
                       </div>
                     </div>
                   </div>
-
-                  {/* Features List */}
-                  <div className="mb-6">
-                    <div className="grid grid-cols-2 gap-2">
-                      {option.features.map((feature, idx) => (
-                        <div key={idx} className="flex items-center gap-2 text-sm text-gray-600">
-                          <div className={`w-1.5 h-1.5 rounded-full bg-gradient-to-r ${option.gradient}`} />
-                          <span>{feature}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Download Button */}
+                  <ul className="mb-3 space-y-1">
+                    {option.features.slice(0, 4).map((feature, idx) => (
+                      <li key={idx} className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                        <div className={`w-1 h-1 rounded-full bg-gradient-to-r ${option.gradient} shrink-0`} />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
                   <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
                     onClick={() => handleDownload(option.id)}
                     disabled={isDownloading || downloadingAll}
-                    className={`w-full bg-gradient-to-r ${option.gradient} hover:shadow-xl text-white px-6 py-4 rounded-xl font-semibold flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed transition-all relative overflow-hidden group`}
+                    className={`w-full bg-gradient-to-r ${option.gradient} hover:shadow-lg text-white px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all relative`}
                   >
                     {isDownloading ? (
                       <>
-                        <Loader2 className="animate-spin" size={20} />
-                        <span>Generating Report...</span>
+                        <Loader2 className="animate-spin" size={18} />
+                        <span>Generating...</span>
                       </>
                     ) : (
                       <>
-                        <Download size={20} />
+                        <Download size={18} />
                         <span>Download Report</span>
-                        <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                        <ArrowRight size={16} className="opacity-80 group-hover:translate-x-0.5 transition-transform" />
                       </>
                     )}
-                    
-                    {/* Shine effect on hover */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                   </motion.button>
                 </div>
-
-                {/* Decorative corner accent */}
-                <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${option.gradient} opacity-5 rounded-bl-full`} />
               </Card>
             </motion.div>
           );
         })}
       </div>
 
-      {/* Info Section */}
+      {/* Info Section - compact */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
+        transition={{ delay: 0.3 }}
       >
-        <Card className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-2 border-blue-200/50 overflow-hidden relative">
-          {/* Decorative background */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-400/10 to-purple-400/10 rounded-full blur-3xl" />
-          
-          <div className="relative p-6 md:p-8">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <Info className="text-white" size={24} />
-                </div>
+        <Card className="bg-gradient-to-br from-blue-50/80 via-indigo-50/60 to-purple-50/80 dark:from-[#1e293b] dark:via-[#2F4156]/80 dark:to-[#1e293b] border border-blue-200/50 dark:border-gray-700/50 overflow-hidden">
+          <div className="p-4 md:p-5">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow shrink-0">
+                <Info className="text-white" size={20} />
               </div>
-              <div className="flex-1">
-                <h4 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
-                  <FileSpreadsheet className="text-blue-600" size={22} />
+              <div className="flex-1 min-w-0">
+                <h4 className="text-base font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                  <FileSpreadsheet className="text-blue-600 dark:text-blue-400" size={18} />
                   About Reports
                 </h4>
-                <p className="text-gray-700 leading-relaxed mb-4">
-                  All reports are downloaded in CSV format, which can be opened in Excel, Google Sheets, 
-                  or any spreadsheet application. Reports include all relevant data and can be filtered, 
-                  sorted, and analyzed as needed.
+                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mb-3">
+                  All reports download as CSV (Excel, Google Sheets compatible). Filter, sort, and analyze as needed.
                 </p>
-                
-                {/* Features Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {[
-                    { icon: FileCheck, label: 'CSV Format', desc: 'Compatible with all spreadsheet apps' },
-                    { icon: Database, label: 'Complete Data', desc: 'All relevant information included' },
-                    { icon: Zap, label: 'Easy Analysis', desc: 'Filter, sort, and analyze easily' },
+                    { icon: FileCheck, label: 'CSV Format', desc: 'All spreadsheet apps' },
+                    { icon: Database, label: 'Complete Data', desc: 'All relevant info' },
+                    { icon: Zap, label: 'Easy Analysis', desc: 'Filter & sort' },
                   ].map((item, idx) => (
-                    <motion.div
+                    <div
                       key={idx}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.5 + idx * 0.1 }}
-                      className="flex items-start gap-3 p-3 bg-white/60 dark:bg-[#2F4156]/60 backdrop-blur-sm rounded-lg border border-[#5A7A95]/30 dark:border-[#6B9BB8]/30"
+                      className="flex items-center gap-2 p-2 bg-white/70 dark:bg-gray-800/50 rounded-lg border border-gray-200/80 dark:border-gray-700"
                     >
-                      <item.icon className="text-[#5A7A95] dark:text-[#6B9BB8] flex-shrink-0 mt-0.5" size={18} />
-                      <div>
-                        <div className="font-semibold text-gray-900 text-sm">{item.label}</div>
-                        <div className="text-xs text-gray-600">{item.desc}</div>
+                      <item.icon className="text-[#5A7A95] dark:text-[#6B9BB8] shrink-0" size={16} />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-gray-900 dark:text-white text-xs">{item.label}</div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400 truncate">{item.desc}</div>
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -553,29 +513,29 @@ export default function ReportsPage({
         </Card>
       </motion.div>
 
-      {/* Quick Stats Section */}
+      {/* Quick Stats - compact */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="grid grid-cols-2 md:grid-cols-4 gap-4"
+        transition={{ delay: 0.35 }}
+        className="grid grid-cols-2 md:grid-cols-4 gap-3"
       >
         {[
           { icon: FileText, label: 'Report Types', value: '9', color: 'from-[#5A7A95] to-[#6B9BB8]' },
-          { icon: Download, label: 'Download Format', value: 'CSV', color: 'from-[#6B9BB8] to-[#7DB5D3]' },
-          { icon: Database, label: 'Data Coverage', value: '100%', color: 'from-[#567C8D] to-[#5A7A95]' },
-          { icon: Sparkles, label: 'Always Updated', value: 'Real-time', color: 'from-[#5A7A95] to-[#6B9BB8]' },
+          { icon: Download, label: 'Format', value: 'CSV', color: 'from-[#6B9BB8] to-[#7DB5D3]' },
+          { icon: Database, label: 'Coverage', value: '100%', color: 'from-[#567C8D] to-[#5A7A95]' },
+          { icon: Sparkles, label: 'Updated', value: 'Real-time', color: 'from-[#5A7A95] to-[#6B9BB8]' },
         ].map((stat, idx) => (
           <motion.div
             key={idx}
-            whileHover={{ y: -4 }}
-            className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm hover:shadow-md transition-all"
+            whileHover={{ y: -2 }}
+            className="bg-white dark:bg-[#1e293b]/90 rounded-lg p-3 border border-gray-200 dark:border-gray-700/50 shadow-sm hover:shadow transition-all"
           >
-            <div className={`w-10 h-10 bg-gradient-to-br ${stat.color} rounded-lg flex items-center justify-center mb-3`}>
-              <stat.icon className="text-white" size={20} />
+            <div className={`w-8 h-8 bg-gradient-to-br ${stat.color} rounded-lg flex items-center justify-center mb-2`}>
+              <stat.icon className="text-white" size={16} />
             </div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">{stat.value}</div>
-            <div className="text-xs text-gray-600">{stat.label}</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">{stat.value}</div>
+            <div className="text-xs text-gray-600 dark:text-gray-400">{stat.label}</div>
           </motion.div>
         ))}
       </motion.div>

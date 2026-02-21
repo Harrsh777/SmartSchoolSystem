@@ -219,17 +219,23 @@ export default function StudentAttendanceReportPage({
             continue;
           }
           const blob = await res.blob();
-          const disposition = res.headers.get('Content-Disposition');
-          const match = disposition?.match(/filename="?([^";]+)"?/);
-          const filename = match ? match[1] : `student_attendance_${cls}_${section}_${downloadFrom}_to_${downloadTo}.xlsx`;
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = filename;
-          a.click();
-          URL.revokeObjectURL(a.href);
+          if (blob && blob.size > 0) {
+            const disposition = res.headers.get('Content-Disposition');
+            const match = disposition?.match(/filename="?([^";]+)"?/);
+            const filename = match ? match[1] : `student_attendance_${cls}_${section}_${downloadFrom}_to_${downloadTo}.xlsx`;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }
           if (i < selected.length - 1) await new Promise((r) => setTimeout(r, 400));
         }
         setShowDownloadModal(false);
+        setDownloadError('');
       } catch {
         setDownloadError('Failed to download. Please try again.');
       } finally {
@@ -259,17 +265,25 @@ export default function StudentAttendanceReportPage({
         return;
       }
       const blob = await res.blob();
+      if (!blob || blob.size === 0) {
+        setDownloadError('Report is empty. Please check date range and class/section.');
+        return;
+      }
       const disposition = res.headers.get('Content-Disposition');
       const match = disposition?.match(/filename="?([^";]+)"?/);
       const filename = match ? match[1] : `student_attendance_${downloadClass}_${downloadSection}_${downloadFrom}_to_${downloadTo}.xlsx`;
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      a.href = url;
       a.download = filename;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(a.href);
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       setShowDownloadModal(false);
-    } catch {
-      setDownloadError('Failed to download. Please try again.');
+      setDownloadError('');
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : 'Failed to download. Please try again.');
     } finally {
       setDownloading(false);
     }

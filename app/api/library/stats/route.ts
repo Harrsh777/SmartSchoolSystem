@@ -58,16 +58,14 @@ export async function GET(request: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('school_code', schoolCode);
 
-    // Get most issued books
-    const { data: mostIssued } = await supabase
+    // Get most issued books (count every transaction = every issue)
+    const { data: allIssues } = await supabase
       .from('library_transactions')
       .select('book_id, book:library_books(title, author)')
-      .eq('school_code', schoolCode)
-      .eq('status', 'returned');
+      .eq('school_code', schoolCode);
 
-    // Count book issues
     const bookIssueCounts = new Map<string, { title: string; author: string | null; count: number }>();
-    (mostIssued || []).forEach((transaction) => {
+    (allIssues || []).forEach((transaction) => {
       const book = Array.isArray(transaction.book) ? transaction.book[0] : transaction.book;
       if (book) {
         const bookData = book as { title?: string; author?: string | null };
@@ -107,7 +105,7 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Get section-wise usage
+    // Get section-wise usage (all transactions)
     const { data: sectionUsage } = await supabase
       .from('library_transactions')
       .select(`
@@ -117,8 +115,7 @@ export async function GET(request: NextRequest) {
           section:library_sections(name)
         )
       `)
-      .eq('school_code', schoolCode)
-      .eq('status', 'returned');
+      .eq('school_code', schoolCode);
 
     const sectionCounts = new Map<string, number>();
     (sectionUsage || []).forEach((transaction) => {
@@ -132,15 +129,14 @@ export async function GET(request: NextRequest) {
       sectionCounts.set(sectionName, (sectionCounts.get(sectionName) || 0) + 1);
     });
 
-    // Get student vs staff usage
+    // Get student vs staff usage (all transactions)
     const { data: borrowerStats } = await supabase
       .from('library_transactions')
       .select('borrower_type')
-      .eq('school_code', schoolCode)
-      .eq('status', 'returned');
+      .eq('school_code', schoolCode);
 
-    const studentCount = (borrowerStats || []).filter((t) => t.borrower_type === 'student').length;
-    const staffCount = (borrowerStats || []).filter((t) => t.borrower_type === 'staff').length;
+    const studentCount = (borrowerStats || []).filter((t) => String(t.borrower_type || '').toLowerCase() === 'student').length;
+    const staffCount = (borrowerStats || []).filter((t) => String(t.borrower_type || '').toLowerCase() === 'staff').length;
 
     return NextResponse.json({
       data: {

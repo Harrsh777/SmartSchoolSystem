@@ -67,13 +67,22 @@ export async function GET(request: NextRequest) {
     const classVal = classParam.trim();
     const sectionVal = sectionParam.trim();
 
-    const { data: students, error: studentsError } = await supabase
+    function escapeIlike(value: string): string {
+      return String(value ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/%/g, '\\%')
+        .replace(/_/g, '\\_');
+    }
+
+    let studentsQuery = supabase
       .from('students')
       .select('id, student_name, admission_no, class, section')
       .eq('school_code', schoolCode)
-      .eq('class', classVal)
-      .eq('section', sectionVal)
       .order('admission_no');
+    studentsQuery = studentsQuery.ilike('class', escapeIlike(classVal));
+    studentsQuery = studentsQuery.ilike('section', escapeIlike(sectionVal));
+
+    const { data: students, error: studentsError } = await studentsQuery;
 
     if (studentsError) {
       return NextResponse.json(

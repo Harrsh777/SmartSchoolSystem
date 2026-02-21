@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -33,7 +33,7 @@ export default function EventsPage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
-  const router = useRouter();
+ 
 
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);

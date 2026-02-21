@@ -77,8 +77,22 @@ export default function StudentAttendanceReportPage({
   const [downloadDateTo, setDownloadDateTo] = useState(defaultRange.to);
   const [downloadAllStaff, setDownloadAllStaff] = useState(true);
   const [downloadSelectedIds, setDownloadSelectedIds] = useState<Set<string>>(new Set());
+  const [downloadDepartment, setDownloadDepartment] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
+
+  const uniqueDepartments = useMemo(() => {
+    const set = new Set<string>();
+    staff.forEach((s) => {
+      if (s.department?.trim()) set.add(s.department.trim());
+    });
+    return Array.from(set).sort();
+  }, [staff]);
+
+  const staffFilteredByDepartment = useMemo(() => {
+    if (!downloadDepartment) return staff;
+    return staff.filter((s) => s.department?.trim() === downloadDepartment);
+  }, [staff, downloadDepartment]);
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -226,6 +240,9 @@ export default function StudentAttendanceReportPage({
       });
       if (!downloadAllStaff && downloadSelectedIds.size > 0) {
         params.set('staff_ids', Array.from(downloadSelectedIds).join(','));
+      }
+      if (downloadDepartment?.trim()) {
+        params.set('department', downloadDepartment.trim());
       }
       const url = `/api/reports/staff-attendance-marking?${params}`;
       const res = await fetch(url);
@@ -515,6 +532,25 @@ export default function StudentAttendanceReportPage({
                   </div>
                 </div>
 
+                {uniqueDepartments.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                    <select
+                      value={downloadDepartment}
+                      onChange={(e) => {
+                        setDownloadDepartment(e.target.value);
+                        if (!downloadAllStaff) setDownloadSelectedIds(new Set());
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">All departments</option>
+                      {uniqueDepartments.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <label className="text-sm font-medium text-gray-700">Staff selection</label>
@@ -557,17 +593,24 @@ export default function StudentAttendanceReportPage({
                     <div className="mt-4 max-h-48 overflow-y-auto border border-gray-200 rounded-xl p-3 space-y-2">
                       <button
                         type="button"
-                        onClick={selectAllDownloadStaff}
+                        onClick={() => {
+                          const list = staffFilteredByDepartment;
+                          if (downloadSelectedIds.size === list.length) {
+                            setDownloadSelectedIds(new Set());
+                          } else {
+                            setDownloadSelectedIds(new Set(list.map((s) => s.id)));
+                          }
+                        }}
                         className="flex items-center gap-2 text-sm text-indigo-600 hover:underline mb-2"
                       >
-                        {downloadSelectedIds.size === staff.length ? (
+                        {downloadSelectedIds.size === staffFilteredByDepartment.length && staffFilteredByDepartment.length > 0 ? (
                           <CheckSquare size={18} />
                         ) : (
                           <Square size={18} />
                         )}
-                        {downloadSelectedIds.size === staff.length ? 'Deselect all' : 'Select all'}
+                        {downloadSelectedIds.size === staffFilteredByDepartment.length && staffFilteredByDepartment.length > 0 ? 'Deselect all' : 'Select all'}
                       </button>
-                      {staff.map((s) => (
+                      {staffFilteredByDepartment.map((s) => (
                         <label
                           key={s.id}
                           className="flex items-center gap-2 cursor-pointer py-1.5 px-2 rounded-lg hover:bg-gray-50"
@@ -609,7 +652,8 @@ export default function StudentAttendanceReportPage({
                   onClick={handleDownloadReport}
                   disabled={
                     downloading ||
-                    (!downloadAllStaff && downloadSelectedIds.size === 0)
+                    (!downloadAllStaff && downloadSelectedIds.size === 0) ||
+                    (!downloadAllStaff && staffFilteredByDepartment.length === 0)
                   }
                   className="bg-indigo-600 hover:bg-indigo-700 text-white"
                 >

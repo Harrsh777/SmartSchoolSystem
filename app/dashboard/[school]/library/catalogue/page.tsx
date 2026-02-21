@@ -469,53 +469,56 @@ export default function LibraryCataloguePage({
 
         {/* Filters */}
         <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <Input
-              placeholder="Search by title, author, or ISBN..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="relative md:col-span-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <Input
+                placeholder="Search by title, author, or ISBN..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 h-11"
+              />
+            </div>
+            <div className="flex gap-4 md:col-span-3 md:grid md:grid-cols-3 md:gap-4">
+              <select
+                value={sectionFilter}
+                onChange={(e) => setSectionFilter(e.target.value)}
+                className="flex-1 w-full min-w-0 h-11 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] text-sm"
+              >
+                <option value="">All Sections</option>
+                {sections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="flex-1 w-full min-w-0 h-11 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] text-sm"
+              >
+                <option value="">All Material Types</option>
+                {materialTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+  variant="outline"
+  onClick={() => {
+    setSearchTerm('');
+    setSectionFilter('');
+    setTypeFilter('');
+  }}
+  className="flex items-center justify-center gap-2 h-11 px-4 whitespace-nowrap border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-600 dark:hover:bg-gray-700/50"
+>
+  <X size={18} />
+  <span>Clear Filters</span>
+</Button>
+            </div>
           </div>
-          <select
-            value={sectionFilter}
-            onChange={(e) => setSectionFilter(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">All Sections</option>
-            {sections.map((section) => (
-              <option key={section.id} value={section.id}>
-                {section.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">All Material Types</option>
-            {materialTypes.map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-              </option>
-            ))}
-          </select>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setSearchTerm('');
-              setSectionFilter('');
-              setTypeFilter('');
-            }}
-          >
-            <X size={18} className="mr-2" />
-            Clear Filters
-          </Button>
-        </div>
-      </Card>
+        </Card>
 
         {/* Books Table */}
         <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 overflow-hidden">
