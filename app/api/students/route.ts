@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     const statusFilter = searchParams.get('status');
 
     // Build query - select only fields needed for list view
-    const studentFields = 'id,admission_no,student_name,first_name,last_name,class,section,academic_year,status,student_contact,father_name,mother_name,father_contact,mother_contact,roll_number,email,created_at,updated_at';
+    const studentFields = 'id,admission_no,student_name,first_name,last_name,class,section,academic_year,status,student_contact,father_name,mother_name,father_contact,mother_contact,roll_number,email,house,created_at,updated_at';
     let query = supabase
       .from('students')
       .select(studentFields)

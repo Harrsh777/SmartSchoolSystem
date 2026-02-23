@@ -93,7 +93,6 @@ export default function AddStudentPage({
     religion: '',
     category: '',
     nationality: 'Indian',
-    house: '',
     transport_type: '',
     rte: false,
     new_admission: true,
@@ -288,7 +287,6 @@ export default function AddStudentPage({
           religion: formData.religion.trim() || null,
           category: formData.category.trim() || null,
           nationality: formData.nationality.trim() || 'Indian',
-          house: formData.house.trim() || null,
           transport_type: formData.transport_type.trim() || null,
           rte: formData.rte,
           new_admission: formData.new_admission,
@@ -1245,18 +1243,6 @@ export default function AddStudentPage({
                     value={formData.nationality}
                     onChange={(e) => handleChange('nationality', e.target.value)}
                     placeholder="Nationality"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    House
-                  </label>
-                  <Input
-                    type="text"
-                    value={formData.house}
-                    onChange={(e) => handleChange('house', e.target.value)}
-                    placeholder="House name"
                   />
                 </div>
 

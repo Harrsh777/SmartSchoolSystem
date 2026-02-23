@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (category && category !== 'all') {
-      query = query.eq('category', category);
+      // Case-insensitive match so "events" and "Events" both work
+      query = query.ilike('category', category);
     }
 
     const { data: images, error } = await query;

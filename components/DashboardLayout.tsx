@@ -2081,6 +2081,11 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
               <div className="mb-4 -mt-1 -ml-1">
                 <button
                   onClick={() => {
+                    // From fees v2 subpages (e.g. .../fees/v2/dashboard), back goes to fees hub (.../fees), not .../fees/v2
+                    if (pathname.includes('/fees/v2/')) {
+                      router.push(`${basePath}/fees`);
+                      return;
+                    }
                     const segments = pathname.split('/').filter(Boolean);
                     if (segments.length > 3) {
                       const parentPath = '/' + segments.slice(0, -1).join('/');

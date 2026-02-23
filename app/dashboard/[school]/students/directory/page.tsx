@@ -18,11 +18,22 @@ import {
   ChevronRight,
   Calendar,
   UserX,
-  UserCheck
+  UserCheck,
+  Home,
+  Users,
+  Loader2,
+  X
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
 type StudentStatus = 'active' | 'deactivated' | 'transferred' | 'alumni' | 'deleted';
+
+interface InstituteHouse {
+  id: string;
+  house_name: string;
+  house_color: string | null;
+  description: string | null;
+}
 
 export default function StudentDirectoryPage({
   params,
@@ -40,6 +51,12 @@ export default function StudentDirectoryPage({
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [houses, setHouses] = useState<InstituteHouse[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkHouseModalOpen, setBulkHouseModalOpen] = useState(false);
+  const [bulkHouseValue, setBulkHouseValue] = useState('');
+  const [updatingHouseId, setUpdatingHouseId] = useState<string | null>(null);
+  const [bulkAssigning, setBulkAssigning] = useState(false);
 
   // Helper to safely get string value
   const getString = (value: unknown): string => {
@@ -68,6 +85,20 @@ export default function StudentDirectoryPage({
   useEffect(() => {
     fetchAcademicYears();
   }, [fetchAcademicYears]);
+
+  const fetchHouses = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/institute/houses?school_code=${schoolCode}`);
+      const data = await res.json();
+      if (res.ok && data.data) setHouses(data.data);
+    } catch (err) {
+      console.error('Error fetching houses:', err);
+    }
+  }, [schoolCode]);
+
+  useEffect(() => {
+    fetchHouses();
+  }, [fetchHouses]);
 
   useEffect(() => {
     fetchStudents();
@@ -175,6 +206,78 @@ export default function StudentDirectoryPage({
     } catch (err) {
       console.error('Error updating status:', err);
       alert('Failed to update student status');
+    }
+  };
+
+  const updateStudentHouse = async (e: React.ChangeEvent<HTMLSelectElement>, studentId: string) => {
+    e.stopPropagation();
+    const houseName = e.target.value;
+    setUpdatingHouseId(studentId);
+    try {
+      const res = await fetch(`/api/students/${studentId}?school_code=${schoolCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ house: houseName || null }),
+      });
+      const data = await res.json();
+      if (res.ok && data.data) {
+        setStudents((prev) =>
+          prev.map((s) => (s.id === studentId ? { ...s, house: houseName || null } : s))
+        );
+      } else {
+        alert(data.error || 'Failed to update house');
+      }
+    } catch (err) {
+      console.error('Error updating house:', err);
+      alert('Failed to update house');
+    } finally {
+      setUpdatingHouseId(null);
+    }
+  };
+
+  const toggleSelect = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredStudents.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredStudents.map((s) => s.id!).filter(Boolean)));
+    }
+  };
+
+  const bulkAssignHouse = async () => {
+    if (!bulkHouseValue.trim() || selectedIds.size === 0) return;
+    setBulkAssigning(true);
+    try {
+      let done = 0;
+      let failed = 0;
+      for (const id of selectedIds) {
+        const res = await fetch(`/api/students/${id}?school_code=${schoolCode}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ house: bulkHouseValue.trim() }),
+        });
+        if (res.ok) done++;
+        else failed++;
+      }
+      setBulkHouseModalOpen(false);
+      setBulkHouseValue('');
+      setSelectedIds(new Set());
+      fetchStudents();
+      alert(`House assigned: ${done} updated${failed ? `, ${failed} failed` : ''}.`);
+    } catch (err) {
+      console.error('Bulk assign house:', err);
+      alert('Failed to assign house for some students.');
+    } finally {
+      setBulkAssigning(false);
     }
   };
 
@@ -289,12 +392,90 @@ export default function StudentDirectoryPage({
           </div>
         </div>
 
-        <div className="pt-3 border-t border-gray-200">
+        <div className="pt-3 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-gray-600">
             Showing <span className="font-semibold text-blue-800">{filteredStudents.length}</span> students
           </p>
+          {houses.length > 0 && (
+            <div className="flex items-center gap-2">
+              {selectedIds.size > 0 && (
+                <>
+                  <span className="text-sm text-gray-600">
+                    <span className="font-semibold text-blue-800">{selectedIds.size}</span> selected
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelectedIds(new Set())}
+                    className="border-blue-200 text-blue-800"
+                  >
+                    Clear
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-blue-800 hover:bg-blue-900 text-white"
+                    onClick={() => setBulkHouseModalOpen(true)}
+                  >
+                    <Home size={16} className="mr-1.5" />
+                    Assign to house
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </Card>
+
+      {/* Bulk Assign House Modal */}
+      {bulkHouseModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !bulkAssigning && setBulkHouseModalOpen(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-gray-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Users size={20} className="text-blue-800" />
+                Assign to house
+              </h3>
+              <button type="button" onClick={() => !bulkAssigning && setBulkHouseModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Assign <span className="font-semibold">{selectedIds.size}</span> student{selectedIds.size !== 1 ? 's' : ''} to a house.
+            </p>
+            <label className="block text-sm font-medium text-gray-700 mb-2">House</label>
+            <select
+              value={bulkHouseValue}
+              onChange={(e) => setBulkHouseValue(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white"
+            >
+              <option value="">Select house</option>
+              {houses.map((h) => (
+                <option key={h.id} value={h.house_name}>
+                  {h.house_name}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-2 mt-6">
+              <Button variant="outline" onClick={() => !bulkAssigning && setBulkHouseModalOpen(false)} disabled={bulkAssigning}>
+                Cancel
+              </Button>
+              <Button
+                onClick={bulkAssignHouse}
+                disabled={!bulkHouseValue.trim() || bulkAssigning}
+                className="bg-blue-800 hover:bg-blue-900 text-white"
+              >
+                {bulkAssigning ? <Loader2 size={18} className="animate-spin mr-1" /> : <Home size={18} className="mr-1" />}
+                {bulkAssigning ? 'Assigning...' : 'Assign'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Students Grid/List */}
       {viewMode === 'grid' ? (
@@ -312,6 +493,17 @@ export default function StudentDirectoryPage({
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
+                    {houses.length > 0 && (
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(student.id!)}
+                          onChange={() => {}}
+                          onClick={(e) => toggleSelect(e, student.id!)}
+                          className="rounded border-gray-300"
+                        />
+                      </div>
+                    )}
                     <div className="w-16 h-16 rounded-full bg-blue-800 flex items-center justify-center text-white text-xl font-bold shadow-lg">
                       {(() => {
                         const name = getString(student.student_name);
@@ -333,6 +525,25 @@ export default function StudentDirectoryPage({
                     <GraduationCap size={16} className="text-blue-700" />
                     <span>Class {getString(student.class) || 'N/A'} - {getString(student.section) || 'N/A'}</span>
                   </div>
+                  {houses.length > 0 && (
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Home size={16} className="text-blue-700 shrink-0" />
+                      {updatingHouseId === student.id ? (
+                        <Loader2 size={16} className="animate-spin text-blue-800" />
+                      ) : (
+                        <select
+                          value={getString(student.house) || ''}
+                          onChange={(e) => updateStudentHouse(e, student.id!)}
+                          className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white flex-1 min-w-0 focus:ring-2 focus:ring-blue-700"
+                        >
+                          <option value="">No house</option>
+                          {houses.map((h) => (
+                            <option key={h.id} value={h.house_name}>{h.house_name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
                   {!!student.roll_number && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <User size={16} className="text-blue-700" />
@@ -411,9 +622,23 @@ export default function StudentDirectoryPage({
             <table className="w-full">
               <thead className="bg-blue-800 text-white">
                 <tr>
+                  {houses.length > 0 && (
+                    <th className="px-3 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={filteredStudents.length > 0 && selectedIds.size === filteredStudents.length}
+                        onChange={toggleSelectAll}
+                        className="rounded border-white/60 bg-white/10"
+                        aria-label="Select all"
+                      />
+                    </th>
+                  )}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Student</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Admission ID</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Class</th>
+                  {houses.length > 0 && (
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">House</th>
+                  )}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Contact</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Actions</th>
@@ -427,6 +652,17 @@ export default function StudentDirectoryPage({
                       className="hover:bg-blue-50/50 transition-colors cursor-pointer"
                       onClick={() => handleStudentClick(student.id!)}
                     >
+                      {houses.length > 0 && (
+                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(student.id!)}
+                            onChange={() => {}}
+                            onClick={(e) => toggleSelect(e, student.id!)}
+                            className="rounded border-gray-300"
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-blue-800 flex items-center justify-center text-white text-sm font-bold">
@@ -456,6 +692,24 @@ export default function StudentDirectoryPage({
                           })()}
                         </span>
                       </td>
+                      {houses.length > 0 && (
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          {updatingHouseId === student.id ? (
+                            <Loader2 size={18} className="animate-spin text-blue-800" />
+                          ) : (
+                            <select
+                              value={getString(student.house) || ''}
+                              onChange={(e) => updateStudentHouse(e, student.id!)}
+                              className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white min-w-[100px] focus:ring-2 focus:ring-blue-700 focus:border-blue-700"
+                            >
+                              <option value="">No house</option>
+                              {houses.map((h) => (
+                                <option key={h.id} value={h.house_name}>{h.house_name}</option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {(() => {
                           const fatherContact = getString(student.father_contact);
@@ -527,7 +781,7 @@ export default function StudentDirectoryPage({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center">
+                    <td colSpan={houses.length > 0 ? 8 : 6} className="px-6 py-8 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <User className="text-gray-400" size={48} />
                         <p className="text-gray-600 font-medium">No students found</p>

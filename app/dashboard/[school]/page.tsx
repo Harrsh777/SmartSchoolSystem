@@ -211,6 +211,7 @@ export default function DashboardPage({
         visitor_name: string;
         purpose_of_visit: string;
         created_at?: string;
+        status?: string;
       }>;
       leaves?: Array<{
         id: string;
@@ -221,6 +222,9 @@ export default function DashboardPage({
         leave_end_date?: string;
         created_at?: string;
       }>;
+      noticesArePending?: boolean;
+      visitorsArePending?: boolean;
+      leavesArePending?: boolean;
     };
   }
   const [administrativeData, setAdministrativeData] = useState<AdministrativeData | null>(null);
@@ -1917,15 +1921,12 @@ export default function DashboardPage({
         ) : (
               <div className="min-h-[300px]">
                 {activeUpdateTab === 'notice' && (
-          <div className="text-center py-12">
-                    <div className="relative mx-auto mb-4 w-32 h-32">
-                      <div className="absolute inset-0 bg-[#E0F2FE] rounded-full opacity-20"></div>
-                      <div className="absolute inset-4 bg-[#E0F2FE] rounded-lg flex items-center justify-center">
-                        <Package className="text-[#38BDF8]" size={48} />
-              </div>
-                    </div>
+          <div className="text-center py-6">
                     {administrativeData?.recentUpdates?.notices && administrativeData.recentUpdates.notices.length > 0 ? (
-                      <div className="space-y-2 text-left">
+                      <div className="space-y-3 text-left">
+                        <p className="text-xs font-medium text-[#64748B] uppercase tracking-wide">
+                          {administrativeData.recentUpdates.noticesArePending ? 'Pending / Active notices' : 'Recent history'}
+                        </p>
                         {administrativeData.recentUpdates.notices.map((notice) => (
                           <div key={notice.id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB]">
                             <h5 className="font-semibold text-[#0F172A] text-sm mb-1">{notice.title}</h5>
@@ -1942,7 +1943,13 @@ export default function DashboardPage({
           </div>
         ) : (
                       <>
-                        <p className="text-sm font-semibold text-[#0F172A] mb-1">No new updates</p>
+                        <div className="relative mx-auto mb-4 w-32 h-32">
+                          <div className="absolute inset-0 bg-[#E0F2FE] rounded-full opacity-20"></div>
+                          <div className="absolute inset-4 bg-[#E0F2FE] rounded-lg flex items-center justify-center">
+                            <Package className="text-[#38BDF8]" size={48} />
+                          </div>
+                        </div>
+                        <p className="text-sm font-semibold text-[#0F172A] mb-1">No notices</p>
                         <p className="text-xs text-[#64748B]">Notices will appear here once you receive any updates.</p>
                       </>
                     )}
@@ -1950,9 +1957,12 @@ export default function DashboardPage({
                 )}
                 
                 {activeUpdateTab === 'visitors' && (
-                  <div className="text-center py-12">
+                  <div className="text-center py-6">
                     {administrativeData?.recentUpdates?.visitors && administrativeData.recentUpdates.visitors.length > 0 ? (
-                      <div className="space-y-2 text-left">
+                      <div className="space-y-3 text-left">
+                        <p className="text-xs font-medium text-[#64748B] uppercase tracking-wide">
+                          {administrativeData.recentUpdates.visitorsArePending ? 'Pending approval / Visitors in' : 'Recent history'}
+                        </p>
                         {administrativeData.recentUpdates.visitors.map((visitor) => (
                           <div key={visitor.id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB]">
                             <h5 className="font-semibold text-[#0F172A] text-sm mb-1">{visitor.visitor_name}</h5>
@@ -1973,30 +1983,33 @@ export default function DashboardPage({
                             <Package className="text-[#38BDF8]" size={48} />
                           </div>
                         </div>
-                        <p className="text-sm font-semibold text-[#0F172A] mb-1">No new updates</p>
-                        <p className="text-xs text-[#64748B]">Visitor approvals will appear here once you receive any updates.</p>
+                        <p className="text-sm font-semibold text-[#0F172A] mb-1">No visitors</p>
+                        <p className="text-xs text-[#64748B]">Pending visitors or recent history will appear here.</p>
                       </>
                     )}
                   </div>
                 )}
                 
                 {activeUpdateTab === 'leaves' && (
-                  <div className="text-center py-12">
+                  <div className="text-center py-6">
                     {administrativeData?.recentUpdates?.leaves && administrativeData.recentUpdates.leaves.length > 0 ? (
-                      <div className="space-y-2 text-left">
+                      <div className="space-y-3 text-left">
+                        <p className="text-xs font-medium text-[#64748B] uppercase tracking-wide">
+                          {administrativeData.recentUpdates.leavesArePending ? 'Pending leave approval' : 'Recent history'}
+                        </p>
                         {administrativeData.recentUpdates.leaves.map((leave) => (
                           <div key={leave.id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB]">
                             <h5 className="font-semibold text-[#0F172A] text-sm mb-1">
-                              {leave.type === 'staff' ? leave.leave_type : leave.leave_title}
+                              {leave.type === 'staff' ? (leave.leave_type || 'Staff leave') : (leave.leave_title || 'Student leave')}
                             </h5>
                             {leave.leave_start_date && leave.leave_end_date && (
                               <p className="text-xs text-[#64748B]">
-                                {new Date(leave.leave_start_date).toLocaleDateString()} - {new Date(leave.leave_end_date).toLocaleDateString()}
-                    </p>
-                  )}
+                                {new Date(leave.leave_start_date).toLocaleDateString()} – {new Date(leave.leave_end_date).toLocaleDateString()}
+                              </p>
+                            )}
                             {leave.created_at && (
                               <p className="text-xs text-[#64748B] mt-1">
-                                {new Date(leave.created_at).toLocaleDateString()}
+                                Applied: {new Date(leave.created_at).toLocaleDateString()}
                               </p>
                             )}
                           </div>
@@ -2008,10 +2021,10 @@ export default function DashboardPage({
                           <div className="absolute inset-0 bg-[#E0F2FE] rounded-full opacity-20"></div>
                           <div className="absolute inset-4 bg-[#E0F2FE] rounded-lg flex items-center justify-center">
                             <Package className="text-[#38BDF8]" size={48} />
-                </div>
-              </div>
-                        <p className="text-sm font-semibold text-[#0F172A] mb-1">No new updates</p>
-                        <p className="text-xs text-[#64748B]">Leave approvals will appear here once you receive any updates.</p>
+                          </div>
+                        </div>
+                        <p className="text-sm font-semibold text-[#0F172A] mb-1">No leave requests</p>
+                        <p className="text-xs text-[#64748B]">Pending leave approvals or recent history will appear here.</p>
                       </>
             )}
           </div>
@@ -2036,7 +2049,7 @@ export default function DashboardPage({
                   onClick={() => router.push(`/dashboard/${schoolCode}/attendance/staff`)}
                   className="px-3 py-1.5 bg-[#F97316] text-white rounded text-xs font-medium hover:bg-[#F97316]/90 transition-colors"
                 >
-                  ATTENDANCE APPROVAL
+                 MARK ATTENDANCE 
                 </button>
           </div>
         </div>
