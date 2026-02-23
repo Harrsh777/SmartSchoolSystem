@@ -17,6 +17,42 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 
 ---
 
+## How modules and submodules are structured
+
+The admin sidebar has **main menu items** (e.g. Staff Management, Classes, Fees). Many of these open a **modal or hub** that lists **submodules** — specific screens like “Staff Directory”, “Add Staff”, “Fee Heads”, “Collect Payment”. Each submodule has:
+
+- **Label** — display name in the UI.
+- **Path** — under `/dashboard/[school_code]`, e.g. `/staff-management/directory`, `/fees/v2/fee-structures`.
+- **Purpose** — what that screen does and who uses it.
+- **APIs** — which endpoints that screen calls (GET/POST/PATCH/DELETE).
+- **Tables** — which DB tables it reads/writes.
+
+In the sections below, each **module** (e.g. §6 Staff Management) includes a **Submodules (in-depth)** part that describes every submodule: purpose, route, user flow, tables, APIs, and mobile UI notes. Use these when building the mobile app so each screen (e.g. “Fee Structures”, “Student Directory”) is implemented correctly.
+
+**Quick reference — submodule paths (relative to `/dashboard/[school_code]`):**
+
+| Module | Submodule | Path |
+|--------|-----------|------|
+| Institute Info | Basic Institute Info | `/institute-info` |
+| Academic Year Management | Year Setup, Promotion Engine, Year Closure, Audit Logs | `/academic-year-management/year-setup`, `.../promotion-engine`, `.../year-closure`, `.../audit-logs` |
+| Staff Management | Staff Directory, Add Staff, Bulk Staff Import, Bulk Photo Upload, Staff Attendance, Staff Attendance Marking Report | `/staff-management/directory`, `.../add`, `.../bulk-import`, `.../bulk-photo`, `.../attendance`, `.../student-attendance-report` |
+| Classes | Classes Overview, Modify Classes, Subject Teachers, Add/Modify Subjects | `/classes/overview`, `.../modify`, `.../subject-teachers`, `.../subjects` |
+| Student Management | Add Student, Student Directory, Mark Attendance, Student Attendance Report, Bulk Import Students, Student Siblings | `/students/add`, `.../directory`, `.../mark-attendance`, `.../attendance-report`, `.../bulk-import`, `.../siblings` |
+| Timetable | Timetable Builder, Class Timetable, Teacher Timetable, Group Wise Timetable | `/timetable`, `.../class`, `.../teacher`, `.../group-wise` |
+| Event/Calendar | Academic Calendar, Events | `/calendar/academic`, `.../events` |
+| Examinations | Examination Dashboard, Create Examination, Grade Scale, Examination Reports | `/examinations/dashboard`, `.../create`, `.../grade-scale`, `.../reports` |
+| Report Card | Generate Report Card, Report Card Dashboard, Customize Template | `/report-card/generate`, `.../dashboard`, `.../templates` |
+| Marks | Marks Dashboard, Mark Entry | `/marks`, `/marks-entry` |
+| Fees | Fee Dashboard, Fee Heads, Fee Structures, Collect Payment, Student Fee Statements, Discounts & Fines, Fee Reports | `/fees/v2/dashboard`, `.../fee-heads`, `.../fee-structures`, `.../collection`, `/fees/statements`, `.../discounts-fines`, `.../reports` |
+| Library | Library Dashboard, Library Basics, Library Catalogue, Library Transactions | `/library/dashboard`, `.../basics`, `.../catalogue`, `.../transactions` |
+| Transport | Transport Dashboard, Vehicles, Stops, Routes, Student Route Mapping | `/transport/dashboard`, `.../vehicles`, `.../stops`, `.../routes`, `.../route-students` |
+| Leave Management | Leave Dashboard, Staff Leave Management, Student Leave Approval, Staff Leave Approval, Leave Basics | `/leave/dashboard`, `.../staff-leave-management`, `.../student-leave`, `.../staff-leave`, `.../basics` |
+| Front Office management | Front Office Dashboard, Gate pass, Visitor Management | `/front-office`, `/gate-pass`, `/visitor-management` |
+| Certificate Management | Certificate Dashboard, New Certificate | `/certificates/dashboard`, `.../new` |
+| Attendance | Staff Attendance | `/attendance/staff` |
+
+---
+
 ## 1. Home (Dashboard)
 
 **Purpose:** Single landing view after login: school context, key stats, and quick access to modules.
@@ -73,6 +109,55 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - Save button fixed at bottom or as FAB. Success toast and optional “View” after save.
 - Light card per section; consistent spacing.
 
+**Submodules (in-depth):**
+
+- **Basic Institute Info** — Path: `/institute-info`  
+  **Purpose:** Single screen to view and edit core school details (name, code, address, contact, logo).  
+  **Flow:** Load school by `school_code` → show form; on save → `PATCH` school; optional logo upload.  
+  **Tables:** `accepted_schools` (or `institute_info`).  
+  **APIs:** `GET /api/schools/accepted?school_code=...`, `PATCH /api/schools/accepted/[id]` or institute endpoint; optional `POST /api/upload/logo`.  
+  **Mobile:** One scrollable form; sticky “Save”; success toast and optional refresh.
+
+---
+
+## 2a. Academic Year Management
+
+**Purpose:** Manage academic years (create, set current), run promotion (promote students to next class), year closure, and view audit logs.
+
+**Flow:**
+1. User opens Academic Year Management; sees current year and list of years.
+2. Year setup: create academic year (name, start_date, end_date); set current/default year.
+3. Promotion engine: select source year/class → target year/class → run promotion (move students).
+4. Year closure: close an academic year (lock data if applicable).
+5. Audit logs: view log of who did what and when (promotions, closures, key actions).
+
+**Tables:**
+- `academic_years` — id, school_code, name, start_date, end_date, is_current.
+- `students` — academic_year, class, section (updated by promotion).
+- Optional: `audit_logs` — user_id, action, entity, entity_id, old_values, new_values, created_at.
+
+**APIs:**
+- `GET /api/academic-years?school_code=...` — list years.
+- `POST /api/academic-years` — create year; `PATCH` to set is_current.
+- `POST /api/academic-years/promotion` or `/api/promotion/run` — run promotion (body: source_year, target_year, class/section mapping or rules).
+- `POST /api/academic-years/[id]/closure` — close year (if supported).
+- `GET /api/audit-logs?school_code=...` — audit log (filter by date, action, user).
+
+**Mobile UI/UX:**
+- **Year list:** Cards (name, dates, “Current” badge); “Add year” form.
+- **Promotion:** Stepper: select source year → target year → select classes/sections → preview → “Run promotion”; confirm.
+- **Audit logs:** Date/user filter; table (date, user, action, entity); tap for detail if supported.
+
+**Submodules (in-depth):**
+
+- **Year Setup** — Path: `/academic-year-management/year-setup`. **Purpose:** Create and manage academic years; set current year. **Flow:** GET years → add (POST) or edit; set is_current. **Tables:** `academic_years`. **APIs:** `GET /api/academic-years`, `POST /api/academic-years`, `PATCH /api/academic-years/[id]`. **Mobile:** List years; “Add year” (name, start, end); “Set as current” action.
+
+- **Promotion Engine** — Path: `/academic-year-management/promotion-engine`. **Purpose:** Promote students from one class/section/year to the next. **Flow:** Select source academic year and (optionally) class/section → target year/class → preview count → POST promotion API. **Tables:** `students` (academic_year, class, section updated). **APIs:** `POST /api/academic-years/promotion` or `/api/promotion/run`. **Mobile:** Step 1: source year/class; Step 2: target year/class; Step 3: preview; Step 4: Confirm and run.
+
+- **Year Closure** — Path: `/academic-year-management/year-closure`. **Purpose:** Close an academic year (lock or archive). **Flow:** Select year → “Close year” → confirm → POST closure. **Tables:** `academic_years` (status or closed_at). **APIs:** `POST /api/academic-years/[id]/closure` or equivalent. **Mobile:** List years; “Close” on a year; confirm dialog.
+
+- **Audit Logs** — Path: `/academic-year-management/audit-logs`. **Purpose:** View audit trail of promotions, closures, and other key actions. **Flow:** GET audit logs with filters (date range, user, action). **Tables:** `audit_logs`. **APIs:** `GET /api/audit-logs?school_code=...&from=...&to=...`. **Mobile:** Date range picker; table (date, user, action, entity); optional detail row.
+
 ---
 
 ## 3. Gallery
@@ -98,6 +183,8 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Detail:** Full-screen image with optional title and uploader; swipe to close.
 - **Upload (admin):** FAB or header button → screen with category, title, image picker; then submit. Show progress and success state.
 - Use consistent corner radius and spacing; avoid tiny tap targets.
+
+**Submodules (in-depth):** Gallery is a single functional area (list albums, view photos, upload). If the app splits it into submodules (e.g. “Albums”, “Upload”), use the same **Tables** and **APIs** above; path would be `/gallery` and optionally `/gallery/upload` or `/gallery/[albumId]` for album detail.
 
 ---
 
@@ -133,6 +220,8 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Staff assignment:** Searchable list of staff; tap staff → “Assigned roles” (chips) + “Add role” (picker). Save.
 - Use clear hierarchy (section headers, cards); destructive actions (e.g. remove role) with confirmation.
 - Loading and empty states for roles and staff.
+
+**Submodules (in-depth):** Admin Role Management is typically one hub (roles list + role detail + staff assignment). If the app exposes separate screens: **Roles** (list/create/edit roles and permissions), **Staff–Role assignment** (assign roles to staff). Same **Tables** and **APIs** as above; paths often `/role-management` and `/role-management/[roleId]` or embedded in one screen.
 
 ---
 
@@ -200,6 +289,20 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Attendance:** Date picker; list of staff with Present/Absent/Leave chips or dropdown; “Save” to submit.
 - Use cards for detail view; primary action (Save/Submit) fixed at bottom.
 
+**Submodules (in-depth):**
+
+- **Staff Directory** — Path: `/staff-management/directory` or `/staff/directory`. **Purpose:** Searchable, filterable list of all staff; tap to view/edit profile. **Flow:** `GET /api/staff?school_code=...` with optional search, role/department filters; tap row → detail (GET staff/[id]). Edit → PATCH. **Tables:** `staff`, `staff_login`, `staff_roles`. **APIs:** `GET /api/staff`, `GET /api/staff/[id]`, `PATCH /api/staff/[id]`. **Mobile:** Search bar, filter chips, list with avatar/name/role; pull-to-refresh; tap → detail with tabs (Info | Attendance).
+
+- **Add Staff** — Path: `/staff-management/add` or `/staff/add`. **Purpose:** Create a new staff record (and optionally login). **Flow:** Form (name, staff_id, email, phone, role, designation, join_date) → `POST /api/staff`. **Tables:** `staff`, `staff_login`. **APIs:** `POST /api/staff`. **Mobile:** Stepper or single form; validation; success → “Add another” or “View directory”.
+
+- **Bulk Staff Import** — Path: `/staff-management/bulk-import`. **Purpose:** Import many staff from CSV/Excel. **Flow:** Upload file → parse/validate → preview → `POST /api/staff/import`. **Tables:** `staff`, `staff_login`. **APIs:** `POST /api/staff/import`. **Mobile:** File picker → progress → preview with errors → “Import” → result summary.
+
+- **Bulk Photo Upload** — Path: `/staff-management/bulk-photo`. **Purpose:** Upload photos for multiple staff (staff_id in filename or CSV mapping). **Flow:** Select images or CSV mapping → `POST /api/staff/photos/bulk`. **Tables:** `staff` (photo_url). **APIs:** `POST /api/staff/photos/bulk`. **Mobile:** Multi-image picker; optional mapping; progress; success count.
+
+- **Staff Attendance** — Path: `/staff-management/attendance`. **Purpose:** Mark daily staff attendance (present/absent/leave/half-day). **Flow:** Select date → GET staff attendance → list with toggles → POST update. **Tables:** `staff_attendance`. **APIs:** `GET /api/attendance/staff`, `POST /api/attendance/update`. **Mobile:** Date picker; list with status toggles; “Save”; confirm if many changes.
+
+- **Staff Attendance Marking Report** — Path: `/staff-management/student-attendance-report`. **Purpose:** Report of who marked attendance and staff attendance summary over date range. **Flow:** Filters (date range) → `GET /api/reports/staff-attendance-marking`. **Tables:** `staff_attendance`. **APIs:** `GET /api/reports/staff-attendance-marking`. **Mobile:** Date range; table or cards; export if supported.
+
 ---
 
 ## 7. Classes
@@ -235,6 +338,16 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Detail:** Edit class name/section/year; “Assign class teacher” → pick staff; “Subjects” → list subject-teachers (edit if API supports).
 - **Add class:** Form (class, section, academic_year, optional class teacher); success → back to list.
 - Use simple list or grid; avoid cramming too many actions in one row.
+
+**Submodules (in-depth):**
+
+- **Classes Overview** — Path: `/classes/overview`. **Purpose:** Summary of all classes with student count and class teacher. **Flow:** `GET /api/classes/overview?school_code=...` or `GET /api/classes` with counts. **Tables:** `classes`, `students` (count), `staff`. **APIs:** `GET /api/classes/overview`, `GET /api/classes`. **Mobile:** Cards or list (class name, section, count, teacher); tap → class detail.
+
+- **Modify Classes** — Path: `/classes/modify`. **Purpose:** Create, edit, delete classes; assign class teacher. **Flow:** List classes → add (POST) or edit (PATCH) or delete; assign class_teacher_id. **Tables:** `classes`. **APIs:** `GET /api/classes`, `POST /api/classes`, `PATCH /api/classes/[id]`. **Mobile:** List with “Add class”; tap row → edit form; class teacher picker.
+
+- **Subject Teachers** — Path: `/classes/subject-teachers`. **Purpose:** Assign subject and teacher per class/section. **Flow:** Select class → load subjects and teachers → assign (POST/PATCH class-subject-teacher mapping). **Tables:** `class_subjects`, `staff_subjects`, `subjects`, `staff`. **APIs:** `GET /api/classes/[id]/subjects`, `GET /api/classes/teachers`, POST/PATCH for assignments. **Mobile:** Class picker → table (subject, teacher); tap to change teacher dropdown.
+
+- **Add/Modify Subjects** — Path: `/classes/subjects`. **Purpose:** CRUD subjects for the school (name, code, optional type). **Flow:** List subjects → add/edit/delete. **Tables:** `subjects`. **APIs:** `GET /api/subjects?school_code=...`, `POST /api/subjects`, `PATCH /api/subjects/[id]`. **Mobile:** List + “Add subject”; form (name, code); save.
 
 ---
 
@@ -272,6 +385,20 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Mark attendance:** Date + class/section selector → list of students with toggle/chip (Present/Absent/Leave). “Save” at bottom; confirm if large count.
 - **Add student:** Stepper or long form; validation; success → “Add another” or “View student”.
 
+**Submodules (in-depth):**
+
+- **Add Student** — Path: `/students/add`. **Purpose:** Create a new student record (and optionally login). **Flow:** Form (name, admission_no, class, section, academic_year, roll_number, gender, dob, parent info, etc.) → `POST /api/students`. **Tables:** `students`, `student_login`. **APIs:** `POST /api/students`. **Mobile:** Stepper or single form; validation; success → “Add another” or “View student”.
+
+- **Student Directory** — Path: `/students/directory`. **Purpose:** Searchable, filterable list of students; view/edit profile. **Flow:** `GET /api/students?school_code=...&class=...&section=...`; tap → detail (GET /api/students/[id]); edit → PATCH. **Tables:** `students`, `student_login`. **APIs:** `GET /api/students`, `GET /api/students/[id]`, `PATCH /api/students/[id]`. **Mobile:** Search + filters (class, section); list with avatar, name, admission_no, class-section; tap → detail (tabs: Info | Attendance | Fees | Marks).
+
+- **Mark Attendance** — Path: `/students/mark-attendance`. **Purpose:** Mark daily student attendance by class/section. **Flow:** Select date and class/section → GET students (or attendance for date) → list with Present/Absent/Leave → POST attendance. **Tables:** `student_attendance`. **APIs:** `GET /api/attendance/student?school_code=...&date=...`, `POST /api/attendance/mark` or `admin-mark`. **Mobile:** Date + class/section pickers → list with toggles/chips; “Save”; confirm if large count.
+
+- **Student Attendance Report** — Path: `/students/attendance-report` (or similar). **Purpose:** View attendance summary by student/class/date range; export. **Flow:** Filters (date range, class, section) → GET report API. **Tables:** `student_attendance`, `students`. **APIs:** `GET /api/attendance/student` with range or dedicated report endpoint. **Mobile:** Date range, class filter; table or cards; export if supported.
+
+- **Bulk Import Students** — Path: `/students/bulk-import`. **Purpose:** Import many students from CSV/Excel. **Flow:** Upload file → parse/validate → preview → `POST /api/students/import`. **Tables:** `students`, `student_login`. **APIs:** `POST /api/students/import` or parse then import. **Mobile:** File picker → preview with errors → “Import” → result summary.
+
+- **Student Siblings** — Path: `/students/siblings`. **Purpose:** Link siblings (associate students as siblings). **Flow:** Select student → add sibling (search and link); list/remove siblings. **Tables:** `student_siblings` or sibling fields on `students`. **APIs:** `GET /api/students/[id]` (with siblings), `POST /api/.../siblings` or PATCH to add sibling. **Mobile:** Student search → detail → “Siblings” section; “Add sibling” → search student → link; list with remove.
+
 ---
 
 ## 9. Timetable
@@ -303,6 +430,16 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Period groups:** Separate screen or bottom sheet to edit period names/times.
 - On small screens: consider day selector (Mon–Sat) and list of periods for that day instead of full grid; or horizontal scroll for grid.
 
+**Submodules (in-depth):**
+
+- **Timetable Builder** — Path: `/timetable` (main timetable entry). **Purpose:** Define period groups and build/edit slots per class. **Flow:** GET period groups and classes → select class → GET/PUT slots (grid: day × period → subject, teacher, room). **Tables:** `timetable_period_groups`, `timetable_slots`. **APIs:** `GET /api/timetable/period-groups`, `GET /api/timetable/list`, `GET /api/timetable/slots?class_id=...`, `POST/PUT /api/timetable/slots`. **Mobile:** Class list → timetable grid; edit cells; “Save”.
+
+- **Class Timetable** — Path: `/timetable/class`. **Purpose:** View/edit timetable by class (same data as builder, class-centric view). **Flow:** Same as builder; filter or entry by class. **Tables:** `timetable_slots`, `classes`, `subjects`, `staff`. **APIs:** `GET /api/timetable/slots?school_code=...&class_id=...`, update slots. **Mobile:** Class picker → grid (days × periods); tap cell to edit.
+
+- **Teacher Timetable** — Path: `/timetable/teacher`. **Purpose:** View timetable by teacher (which classes/subjects per day-period). **Flow:** GET slots grouped by staff_id or API that returns teacher-wise view. **Tables:** `timetable_slots`, `staff`, `classes`, `subjects`. **APIs:** `GET /api/timetable/teacher?school_code=...&staff_id=...` or derive from slots. **Mobile:** Teacher picker → grid or list of assignments (day, period, class, subject).
+
+- **Group Wise Timetable** — Path: `/timetable/group-wise`. **Purpose:** View timetable by group (e.g. grade group or custom group). **Flow:** Groups may be defined in backend; GET slots for group’s classes. **Tables:** `timetable_slots`, possibly `timetable_groups` or class groups. **APIs:** `GET /api/timetable/group-wise?school_code=...&group_id=...` or similar. **Mobile:** Group picker → list of classes in group with timetable links or combined view.
+
 ---
 
 ## 10. Calendar
@@ -333,6 +470,12 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Event list:** Optional “List” view: grouped by date; tap → detail.
 - **Add event:** Form (date picker, title, description, type, applicable for); “Create”. Success → back to calendar.
 - Use calendar component (e.g. react-native-calendars); keep event type (event vs holiday) visually distinct (e.g. color or icon).
+
+**Submodules (in-depth):**
+
+- **Academic Calendar** — Path: `/calendar/academic`. **Purpose:** View/edit academic calendar (terms, session dates, key dates). **Flow:** GET academic calendar for school/year → display; edit if supported (PATCH). **Tables:** `academic_calendar`. **APIs:** `GET /api/calendar/academic?school_code=...&academic_year=...`. **Mobile:** List or calendar view of terms/dates; read-only or simple edit form.
+
+- **Events** — Path: `/calendar/events`. **Purpose:** List and create events (holidays, school events). **Flow:** GET events in range → list; tap → detail; create (POST), edit (PATCH), delete (DELETE). **Tables:** `events`. **APIs:** `GET /api/calendar/events?school_code=...&start_date=...&end_date=...`, `POST /api/calendar/events`, `PATCH/DELETE /api/calendar/events/[id]`. **Mobile:** Month view with dots; tap date → events for day; “Add event” form; event type (event/holiday) with distinct color/icon.
 
 ---
 
@@ -368,6 +511,53 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Create:** Stepper: (1) Basic info (name, type, year, dates) → (2) Classes → (3) Subjects & max marks → (4) Schedule (add rows). “Create” at end; show validation per step.
 - **Publish:** Button on detail; confirm dialog. Use status badges (Draft / Published) with color.
 
+**Submodules (in-depth):**
+
+- **Examination Dashboard** — Path: `/examinations/dashboard`. **Purpose:** Overview of exams (upcoming, ongoing, completed); quick links to create and view. **Flow:** `GET /api/examinations?school_code=...` or v2/list; show cards by status. **Tables:** `examinations`. **APIs:** `GET /api/examinations` or `GET /api/examinations/v2/list`. **Mobile:** Cards (name, dates, status); “Create exam” button; tap card → exam detail.
+
+- **Create Examination** — Path: `/examinations/create`. **Purpose:** Create new exam with basic info, class mappings, subject mappings, and schedule. **Flow:** Stepper: (1) name, type, year, dates (POST or save draft) → (2) classes → (3) subjects & max marks → (4) schedule rows → submit. **Tables:** `examinations`, `exam_class_mappings`, `exam_subject_mappings`, `exam_schedules`. **APIs:** `POST /api/examinations/v2/create` or step-wise APIs. **Mobile:** Stepper; validation per step; “Create” at end.
+
+- **Grade Scale** — Path: `/examinations/grade-scale`. **Purpose:** Define grade boundaries (min_marks, max_marks, grade) for auto-grading. **Flow:** GET grade scale → list rows; add/edit/delete. **Tables:** `grade_scales`. **APIs:** `GET /api/grade-scales?school_code=...`, `POST/PATCH /api/grade-scales`. **Mobile:** List (min, max, grade); “Add” form; inline or modal edit.
+
+- **Examination Reports** — Path: `/examinations/reports`. **Purpose:** Reports per exam (schedule, marks summary, pass/fail, rank). **Flow:** Select exam → GET report data. **Tables:** `examinations`, `exam_schedules`, `student_subject_marks`, `student_exam_summary`. **APIs:** `GET /api/examinations/[id]/schedules`, `GET /api/reports/marks?exam_id=...` or exam-specific report. **Mobile:** Exam picker → table or summary cards; export if supported.
+
+---
+
+## 11a. Report Card
+
+**Purpose:** Generate report cards for students (exam-wise or term-wise); customize templates; view dashboard of generated report cards.
+
+**Flow:**
+1. User opens Report Card; dashboard shows recent generated report cards or templates.
+2. Generate: select exam/class/section (or student) → choose template → generate (PDF/image); optional bulk.
+3. Customize template: edit layout, placeholders (name, class, marks, grade), save.
+4. Dashboard: list issued/generated report cards; view, download, share.
+
+**Tables:**
+- `report_card_templates` — school_code, name, layout (HTML/JSON), placeholders.
+- Generated report cards (e.g. `report_cards` or `certificates_issued`-style) — student_id, exam_id, template_id, file_url, generated_at.
+- `examinations`, `student_subject_marks`, `students`, `classes` — for data in report.
+
+**APIs:**
+- `GET /api/report-card/templates?school_code=...` — list templates.
+- `POST /api/report-card/templates` — create; `PATCH /api/report-card/templates/[id]` — update.
+- `POST /api/report-card/generate` — generate (body: exam_id, class/section or student_ids, template_id).
+- `GET /api/report-card/dashboard?school_code=...` — list generated report cards.
+- `GET /api/report-card/generated/[id]` — single (download URL).
+
+**Mobile UI/UX:**
+- **Dashboard:** Cards (recent report cards); “Generate” button; “Templates” link.
+- **Generate:** Exam/class picker → template picker → “Generate” → progress → list of generated (view/download).
+- **Templates:** List templates; tap to edit (name, placeholders); save.
+
+**Submodules (in-depth):**
+
+- **Generate Report Card** — Path: `/report-card/generate`. **Purpose:** Generate report cards for selected exam/class/students using a template. **Flow:** Select exam (and class/section or students) → select template → POST generate → show generated list with view/download. **Tables:** Generated report card storage; `report_card_templates`, `student_subject_marks`, `examinations`. **APIs:** `POST /api/report-card/generate`, `GET /api/report-card/dashboard` or generated list. **Mobile:** Stepper or single screen: exam → class/students → template → Generate; then list with View/Download.
+
+- **Report Card Dashboard** — Path: `/report-card/dashboard`. **Purpose:** List and access generated report cards; filters by exam/class/date. **Flow:** GET list of generated report cards → tap → view/download. **Tables:** Generated report cards. **APIs:** `GET /api/report-card/dashboard`. **Mobile:** List/cards (student name, exam, date); filter; tap → View/Download.
+
+- **Customize Template** — Path: `/report-card/templates`. **Purpose:** CRUD report card templates (layout, placeholders). **Flow:** GET templates → add/edit (name, layout, placeholders) → save. **Tables:** `report_card_templates`. **APIs:** `GET /api/report-card/templates`, `POST/PATCH /api/report-card/templates`. **Mobile:** List templates; “Add” form; tap to edit (fields for name and key placeholders; full layout often on web).
+
 ---
 
 ## 12. Marks
@@ -399,6 +589,12 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Entry:** Exam picker → Class picker → Subject picker → list of students with numeric input (and optional grade/remarks). Sticky “Submit” at bottom; confirm before submit. Show “Saved” state.
 - **View:** Same filters; read-only list or table; optional export.
 - **Grade scale:** List of rows (min, max, grade); add/edit in form or inline. Keep inputs accessible (large enough, correct keyboard).
+
+**Submodules (in-depth):**
+
+- **Marks Dashboard** — Path: `/marks`. **Purpose:** Entry point: list exams or class-wise entry; view marks summary. **Flow:** GET exams or marks overview; navigate to mark entry or view. **Tables:** `examinations`, `student_subject_marks`. **APIs:** `GET /api/examinations`, `GET /api/marks/view?exam_id=...`. **Mobile:** Exam cards or filters (exam, class, subject); “Enter marks” / “View marks” actions.
+
+- **Mark Entry** — Path: `/marks-entry`. **Purpose:** Enter marks per exam, class, subject for each student. **Flow:** Select exam → class → subject → GET students (and existing marks) → input marks → POST submit. **Tables:** `student_subject_marks`. **APIs:** `GET /api/marks/class?school_code=...&exam_id=...&class_id=...`, `POST /api/examinations/marks/submit` or `POST /api/marks`. **Mobile:** Pickers (exam, class, subject); list of students with numeric input; sticky “Submit”; confirm; show “Saved”.
 
 ---
 
@@ -439,6 +635,22 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Statements:** Search student → show dues and payment history in list/cards.
 - Use rupee (₹) formatting; clear labels for payment mode and date.
 
+**Submodules (in-depth):**
+
+- **Fee Dashboard** — Path: `/fees/v2/dashboard`. **Purpose:** Summary cards: total collected, this month, pending; quick “Collect payment”. **Flow:** `GET /api/v2/fees/reports/dashboard?school_code=...`. **Tables:** Aggregates from `payments`, `fee_structures`, dues. **APIs:** `GET /api/v2/fees/reports/dashboard`. **Mobile:** Cards (collected, month, pending); “Collect payment” button.
+
+- **Fee Heads** — Path: `/fees/v2/fee-heads`. **Purpose:** CRUD fee heads (name, description, is_optional, optional default amount). **Flow:** GET list → add/edit/delete. **Tables:** `fee_heads`. **APIs:** `GET /api/v2/fees/fee-heads`, `POST /api/v2/fees/fee-heads`, `PATCH/DELETE` if supported. **Mobile:** List; “Add” form; tap to edit.
+
+- **Fee Structures** — Path: `/fees/v2/fee-structures`. **Purpose:** Create/edit structures: attach fee heads with amounts, link to class/academic_year. **Flow:** GET structures → create (POST) or edit (PATCH); manage head–amount mapping. **Tables:** `fee_structures`, structure–head mapping. **APIs:** `GET /api/v2/fees/fee-structures`, `POST /api/v2/fees/fee-structures`, `GET/PATCH /api/v2/fees/fee-structures/[id]`. **Mobile:** List by name/class; tap → edit components (heads + amounts).
+
+- **Collect Payment** — Path: `/fees/v2/collection`. **Purpose:** Record payment: select student, structure/head, amount, mode, date → receipt. **Flow:** Student search → GET dues → “Add payment” (amount, mode, date) → POST payments → show receipt. **Tables:** `payments`, `receipts`. **APIs:** `GET /api/v2/fees/students/[studentId]/fees`, `POST /api/v2/fees/payments`. **Mobile:** Student search → outstanding summary → payment form → receipt; share/print.
+
+- **Student Fee Statements** — Path: `/fees/statements`. **Purpose:** Per-student view of dues and payment history. **Flow:** Search student → GET statement (dues, paid, dates). **Tables:** `payments`, `fee_structures`, `students`. **APIs:** `GET /api/v2/fees/students/[studentId]/fees`, `GET /api/fees/statements`. **Mobile:** Student picker → list/cards of dues and history.
+
+- **Discounts & Fines** — Path: `/fees/discounts-fines`. **Purpose:** Configure or apply discounts/fines per student or head; waive or add fine. **Flow:** If config: list rules; if per-student: select student → add discount/fine. **Tables:** Discount/fine table or fields on payments/structures. **APIs:** `GET/POST /api/fees/discounts` or similar; per-student apply/waive. **Mobile:** List of rules or student search → “Add discount/fine” form.
+
+- **Fee Reports** — Path: `/fees/reports`. **Purpose:** Daily/monthly collection, pending, overdue reports. **Flow:** Filters (date range, class) → GET report. **Tables:** `payments`, `students`, `fee_structures`. **APIs:** `GET /api/fees/reports/daily`, `reports/monthly`, `reports/pending`. **Mobile:** Date range + filters; table or summary; export if supported.
+
 ---
 
 ## 14. Library
@@ -476,6 +688,16 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Return:** List “Issued” transactions or search by student/copy → “Return”. Confirm.
 - **Add book:** Form (title, author, ISBN, section, type) + “Add copies” (count or list of accession numbers). Use cards for book detail; clear status badges (Available / Issued).
 
+**Submodules (in-depth):**
+
+- **Library Dashboard** — Path: `/library/dashboard`. **Purpose:** Summary: total books, issued count, overdue; quick links to catalogue and transactions. **Flow:** `GET /api/library/stats?school_code=...`. **Tables:** Aggregates from `library_books`, `library_book_copies`, `library_transactions`. **APIs:** `GET /api/library/stats`. **Mobile:** Cards (books, issued, overdue); links to Catalogue, Transactions.
+
+- **Library Basics** — Path: `/library/basics`. **Purpose:** CRUD for sections and material types (dropdowns used in catalogue). **Flow:** GET sections and material types → add/edit/delete. **Tables:** `library_sections`, `library_material_types`. **APIs:** `GET /api/library/sections`, `GET /api/library/material-types`, POST/PATCH for each. **Mobile:** Tabs or list “Sections” | “Material types”; list + “Add” form each.
+
+- **Library Catalogue** — Path: `/library/catalogue`. **Purpose:** List/search books; add book and copies; view detail (copies, issue). **Flow:** GET books (search, filters) → tap → detail with copies; POST book, POST copies; issue from detail. **Tables:** `library_books`, `library_book_copies`. **APIs:** `GET /api/library/books`, `POST /api/library/books`, `GET /api/library/books/[id]`, `POST /api/library/books/copies`. **Mobile:** Search; list (title, author, X/Y available); tap → detail; “Issue” per copy.
+
+- **Library Transactions** — Path: `/library/transactions`. **Purpose:** List issue/return transactions; perform return. **Flow:** GET transactions (filter: issued/returned) → “Return” on issued row. **Tables:** `library_transactions`. **APIs:** `GET /api/library/transactions`, `POST /api/library/transactions/[id]/return`. **Mobile:** Filter (Issued / Returned); list (borrower, book, due date); “Return” button; confirm.
+
 ---
 
 ## 15. Transport
@@ -512,6 +734,18 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Assign students:** Search student → pick route and stop from dropdown → “Assign”. List current assignments with “Remove” option.
 - Use clear hierarchy (Route → Stops; Route → Students); avoid long forms on one screen.
 
+**Submodules (in-depth):**
+
+- **Transport Dashboard** — Path: `/transport/dashboard`. **Purpose:** Overview: routes count, vehicles, students mapped; quick links. **Flow:** GET routes/vehicles summary or stats. **Tables:** `transport_routes`, `transport_vehicles`, `transport_students`. **APIs:** `GET /api/transport/routes` (summary), or dedicated stats endpoint. **Mobile:** Cards (routes, vehicles, students); links to Vehicles, Stops, Routes, Student mapping.
+
+- **Vehicles** — Path: `/transport/vehicles`. **Purpose:** CRUD vehicles (number, type, capacity). **Flow:** GET vehicles → add (POST), edit (PATCH). **Tables:** `transport_vehicles`. **APIs:** `GET /api/transport/vehicles`, `POST /api/transport/vehicles`, `PATCH /api/transport/vehicles/[id]`. **Mobile:** List; “Add” form (number, type, capacity); tap to edit.
+
+- **Stops** — Path: `/transport/stops`. **Purpose:** CRUD stops (name, address, order). **Flow:** GET stops → add/edit. **Tables:** `transport_stops`. **APIs:** `GET /api/transport/stops`, `POST /api/transport/stops`, `PATCH /api/transport/stops/[id]`. **Mobile:** List; “Add” form; tap to edit.
+
+- **Routes** — Path: `/transport/routes`. **Purpose:** Create/edit routes: name, vehicle, sequence of stops. **Flow:** GET routes → add (name, vehicle) → add route_stops (stop_id, order); PATCH to update. **Tables:** `transport_routes`, `transport_route_stops`. **APIs:** `GET /api/transport/routes`, `POST /api/transport/routes`, `PATCH /api/transport/routes/[id]`. **Mobile:** List route cards; tap → detail (stops in order); edit stops order; “Assign students” link.
+
+- **Student Route Mapping** — Path: `/transport/route-students`. **Purpose:** Assign students to route (and optionally stop). **Flow:** Search student → select route and stop → POST assign; list assignments with remove. **Tables:** `transport_students` or student–route mapping. **APIs:** `GET /api/transport/students`, POST to assign, DELETE to remove. **Mobile:** Student search → route + stop dropdowns → “Assign”; list current with “Remove”.
+
 ---
 
 ## 16. Leave Management
@@ -547,6 +781,18 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Requests list:** Tabs “Staff” | “Students”; filter by status. Card per request (name, dates, type, reason, status). Tap → detail with “Approve” / “Reject” and comment field.
 - **Leave types:** List with add; form (name, code, max days, applicable to). Use status chips (Pending / Approved / Rejected) with color.
 
+**Submodules (in-depth):**
+
+- **Leave Dashboard** — Path: `/leave/dashboard`. **Purpose:** Summary: pending staff/student requests; leave types; recent requests. **Flow:** `GET /api/leave/dashboard-summary?school_code=...`. **Tables:** `leave_types`, `staff_leave_requests`, `student_leave_requests`. **APIs:** `GET /api/leave/dashboard-summary`. **Mobile:** Cards (pending staff, pending student); “Leave types”; list recent requests (tap to open).
+
+- **Staff Leave Management** — Path: `/leave/staff-leave-management`. **Purpose:** List staff leave requests; approve/reject. **Flow:** GET staff requests (filter status) → tap → detail → PATCH (status, comment). **Tables:** `staff_leave_requests`. **APIs:** `GET /api/leave/requests`, `GET /api/leave/requests/[id]`, `PATCH /api/leave/requests/[id]`. **Mobile:** Tabs or filter (Pending/Approved/Rejected); cards (name, dates, type, reason); tap → Approve/Reject + comment.
+
+- **Student Leave Approval** — Path: `/leave/student-leave`. **Purpose:** List student leave requests; approve/reject (class teacher or admin). **Flow:** GET student requests → tap → detail → approve/reject. **Tables:** `student_leave_requests`. **APIs:** `GET /api/leave/student-requests`, `POST /api/leave/student-requests/[id]/class-teacher-approval` or PATCH. **Mobile:** Same pattern as staff; filter by class if supported.
+
+- **Staff Leave Approval** — Path: `/leave/staff-leave`. **Purpose:** Same as Staff Leave Management (alternate path for approval flow). Use same APIs and flow as Staff Leave Management.
+
+- **Leave Basics** — Path: `/leave/basics`. **Purpose:** Configure leave types and optional working days/holidays. **Flow:** GET leave types → CRUD; GET/PATCH working days if supported. **Tables:** `leave_types`, optional `institute_working_days`. **APIs:** `GET /api/leave/types`, `POST/PATCH /api/leave/types`, `GET /api/leave/basics`. **Mobile:** List leave types; “Add” form (name, code, max days, applicable to); edit/delete.
+
 ---
 
 ## 17. Communication
@@ -572,6 +818,8 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **List:** Cards (title, category, date, priority badge). Pull-to-refresh; filter by category. Tap → full content (read view).
 - **Create/Edit:** Form: title, content (multiline or rich), category dropdown, priority, publish date. “Save draft” / “Publish”. Use priority color (e.g. High = red, Normal = gray).
 - **Detail:** Full title and body; optional “Edit” for admin. Use readable font size and line height for content.
+
+**Submodules (in-depth):** Communication is a single functional area: list notices, create/edit notice, view detail. Path: `/communication`. If the app splits into submodules, use: **Notices list** (default), **Create notice** (`/communication/new`), **Notice detail** (`/communication/[id]`). Same **Tables** and **APIs** as above.
 
 ---
 
@@ -602,6 +850,8 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Report list:** One row/card per report type (icon + name). Tap → filter screen.
 - **Filters:** Date range, class, exam, etc. “View” or “Export”. If export → “Download” or “Share” after response.
 - **View:** If backend returns JSON, show table or key metrics; paginate if large. Use simple table layout; consider horizontal scroll for many columns.
+
+**Submodules (in-depth):** Reports is a list of report types; each type can be a submodule (same path `/reports` with query or subpath). **Student report** — filters (class, section) → GET /api/reports/student. **Staff report** — GET /api/reports/staff. **Marks report** — exam_id, class → GET /api/reports/marks. **Examination report** — GET /api/reports/examination. **Financial report** — GET /api/reports/financial. **Leave report** — GET /api/reports/leave. **Timetable / Library / Transport / Staff attendance marking** — corresponding GET /api/reports/... endpoints. **Mobile:** One card/row per report type; tap → filter screen → View/Export.
 
 ---
 
@@ -636,6 +886,12 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **List:** Cards (student name, certificate title, date). Tap → view certificate (image/PDF) and “Share” / “Download”.
 - **Issue new:** Student search → template picker → form for placeholders → “Generate”. Show preview if API returns URL; then “Issue” or “Download”.
 - **Templates:** List templates; tap to edit (web or simple form for name and key fields). Use consistent card style; loading for generate.
+
+**Submodules (in-depth):**
+
+- **Certificate Dashboard** — Path: `/certificates/dashboard`. **Purpose:** Overview of issued certificates; list recent; links to issue and templates. **Flow:** `GET /api/certificates/issued?school_code=...` or `GET /api/certificates/simple`. **Tables:** `simple_certificates`, `certificates_issued`. **APIs:** `GET /api/certificates/simple`, `GET /api/certificates/issued`. **Mobile:** Cards (recent issued); “New certificate” button; “Templates” link.
+
+- **New Certificate** — Path: `/certificates/new`. **Purpose:** Issue a certificate: select student, template, fill placeholders → generate and save. **Flow:** Student search → template picker → form (placeholders) → POST generate → preview → Issue/Download. **Tables:** `certificates_issued`, `simple_certificates`. **APIs:** `GET /api/certificates/templates`, `POST /api/certificates/generate`; optional `POST /api/certificates/simple/upload`. **Mobile:** Stepper: Student → Template → Fields → Generate; preview; Share/Download.
 
 ---
 
@@ -736,6 +992,14 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Visitors:** “Check in” → form (name, phone, purpose, person to meet) → submit (check_in_time set). List: “In” / “Out” filter; cards (name, purpose, time in, time out). Tap “Check out” on card or detail.
 - Use clear “In” / “Out” badges; time formatting consistent (e.g. HH:mm).
 
+**Submodules (in-depth):**
+
+- **Front Office Dashboard** — Path: `/front-office`. **Purpose:** Summary: today’s gate passes, today’s visitors (in/out counts); quick links. **Flow:** `GET /api/front-office/dashboard?school_code=...` or aggregate from gate-pass and visitors stats. **Tables:** `gate_passes`, `visitors`. **APIs:** `GET /api/front-office/dashboard`, `GET /api/gate-pass/stats`, `GET /api/visitors/stats`. **Mobile:** Cards (passes today, visitors in/out); links to Gate pass, Visitor management.
+
+- **Gate pass** — Path: `/gate-pass`. **Purpose:** Create and list gate passes (student/staff out with reason, time out, expected return). **Flow:** “New pass” → form (person_type, person_id/name, class/section if student, reason, date, time_out, expected_return_time, approved_by) → POST; list with date filter; optional “Mark returned”. **Tables:** `gate_passes`. **APIs:** `GET /api/gate-pass?school_code=...`, `POST /api/gate-pass`, `GET /api/gate-pass/[id]`, `PATCH` to mark returned. **Mobile:** List with filter; “New pass” form; tap row → detail; “Mark returned” if supported.
+
+- **Visitor Management** — Path: `/visitor-management`. **Purpose:** Check-in and check-out visitors; list and search. **Flow:** “Check in” → form (name, phone, purpose, person_to_meet) → POST (check_in_time set); list filter “In”/“Out”; “Check out” → PATCH set check_out_time. **Tables:** `visitors`. **APIs:** `GET /api/visitors`, `POST /api/visitors`, `PATCH /api/visitors/[id]/mark-out`. **Mobile:** “Check in” form; list with In/Out filter; “Check out” on card or detail.
+
 ---
 
 ## 23. Copy Checking
@@ -760,6 +1024,31 @@ For each module: **purpose**, **flow**, **tables**, **APIs**, and **mobile UI/UX
 - **Filters:** Class, Section, Subject, Date, Work type (Class work / Homework). “Load” → list of students with checkbox or “Checked” / “Pending” chip.
 - **List:** One row per student (name, roll no, status). Tap to toggle or tap “Mark checked” for multiple. Optional remarks field per student (expand or modal). “Save” at bottom.
 - Use compact list; ensure checkboxes/taps are large enough; confirm before submit if many rows.
+
+**Submodules (in-depth):** Copy Checking is a single screen: filters (class, section, subject, date, work type) → list students with check status → submit. Path: `/copy-checking`. No separate submodule paths in the sidebar.
+
+---
+
+## 24. Attendance
+
+**Purpose:** Mark and view staff attendance (present/absent/leave/half-day); optional reports.
+
+**Flow:**
+1. User opens Attendance (or Staff Attendance); selects date.
+2. List of staff with current status; toggle or select status per staff; save.
+3. View report by date range if supported.
+
+**Tables:** `staff_attendance` — staff_id, school_code, attendance_date, status.
+
+**APIs:**
+- `GET /api/attendance/staff?school_code=...&date=...` — list staff and status for date.
+- `POST /api/attendance/update` or staff-attendance endpoint — submit attendance.
+
+**Mobile UI/UX:** Date picker; list of staff with status chips or toggles; “Save”; confirm if many changes.
+
+**Submodules (in-depth):**
+
+- **Staff Attendance** — Path: `/attendance/staff`. **Purpose:** Mark daily staff attendance. **Flow:** Same as module flow above. **Tables:** `staff_attendance`. **APIs:** `GET /api/attendance/staff`, `POST /api/attendance/update`. **Mobile:** Same as §6 Staff Management → Staff Attendance; can be the same screen or shared component.
 
 ---
 

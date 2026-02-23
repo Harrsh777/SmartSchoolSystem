@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { IndianRupee, Download, Clock, CheckCircle, AlertCircle, Loader2, Receipt } from 'lucide-react';
+import { IndianRupee, Download, Clock, CheckCircle, AlertCircle, Loader2, Receipt, RefreshCw } from 'lucide-react';
 
 interface StudentFee {
   id: string;
@@ -42,50 +42,49 @@ export default function StudentFeesPage() {
   const [activeTab, setActiveTab] = useState<'fees' | 'receipts'>('fees');
   const [schoolCode, setSchoolCode] = useState<string>('');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError('');
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError('');
 
-        // Get student ID from session
-        const studentData = sessionStorage.getItem('student');
-        if (!studentData) {
-          setError('Student information not found');
-          setLoading(false);
-          return;
-        }
-        const student = JSON.parse(studentData);
-        const studentId = student.id;
-        const studentSchoolCode = student.school_code;
-        if (!studentId || !studentSchoolCode) {
-          setError('Student information incomplete');
-          setLoading(false);
-          return;
-        }
-        setSchoolCode(String(studentSchoolCode));
-
-        // Fetch fees
-        const feesRes = await fetch(`/api/student/fees?school_code=${encodeURIComponent(String(studentSchoolCode))}&student_id=${encodeURIComponent(String(studentId))}`);
-        const feesData = await feesRes.json();
-        if (feesRes.ok) {
-          setFees(feesData.data || []);
-        }
-
-        // Fetch receipts
-        const receiptsRes = await fetch(`/api/student/fees/receipts?school_code=${encodeURIComponent(String(studentSchoolCode))}&student_id=${encodeURIComponent(String(studentId))}`);
-        const receiptsData = await receiptsRes.json();
-        if (receiptsRes.ok) {
-          setReceipts(receiptsData.data || []);
-        }
-      } catch (err) {
-        setError('Failed to load fee information');
-        console.error(err);
-      } finally {
+      const studentData = sessionStorage.getItem('student');
+      if (!studentData) {
+        setError('Student information not found');
         setLoading(false);
+        return;
       }
-    };
+      const student = JSON.parse(studentData);
+      const studentId = student.id;
+      const studentSchoolCode = student.school_code;
+      if (!studentId || !studentSchoolCode) {
+        setError('Student information incomplete');
+        setLoading(false);
+        return;
+      }
+      setSchoolCode(String(studentSchoolCode));
 
+      // Fetch fees (no cache so updated fee structure names from admin show here)
+      const feesRes = await fetch(`/api/student/fees?school_code=${encodeURIComponent(String(studentSchoolCode))}&student_id=${encodeURIComponent(String(studentId))}`, { cache: 'no-store' });
+      const feesData = await feesRes.json();
+      if (feesRes.ok) {
+        setFees(feesData.data || []);
+      }
+
+      // Fetch receipts (no cache for consistency)
+      const receiptsRes = await fetch(`/api/student/fees/receipts?school_code=${encodeURIComponent(String(studentSchoolCode))}&student_id=${encodeURIComponent(String(studentId))}`, { cache: 'no-store' });
+      const receiptsData = await receiptsRes.json();
+      if (receiptsRes.ok) {
+        setReceipts(receiptsData.data || []);
+      }
+    } catch (err) {
+      setError('Failed to load fee information');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
   }, []);
 
@@ -141,12 +140,19 @@ export default function StudentFeesPage() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
+        className="flex items-start justify-between gap-4 flex-wrap"
       >
-        <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-          <IndianRupee size={32} className="text-indigo-600" />
-          My Fees
-        </h1>
-        <p className="text-gray-600">View your fee statements and payment history</p>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+            <IndianRupee size={32} className="text-indigo-600" />
+            My Fees
+          </h1>
+          <p className="text-gray-600">View your fee statements and payment history (structure names match school fee structures)</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => fetchData()} disabled={loading} className="shrink-0">
+          <RefreshCw size={16} className={loading ? 'animate-spin mr-2' : 'mr-2'} />
+          Refresh
+        </Button>
       </motion.div>
 
       {/* Summary Cards */}

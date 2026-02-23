@@ -44,6 +44,16 @@ interface PendingStudent {
   due_date: string;
 }
 
+interface FeeStructureSummary {
+  id: string;
+  name: string;
+  class_name: string;
+  section: string | null;
+  academic_year: string | null;
+  is_active: boolean;
+  items?: unknown[];
+}
+
 export default function FeesDashboardPage({
   params,
 }: {
@@ -55,6 +65,7 @@ export default function FeesDashboardPage({
   const [monthlyData, setMonthlyData] = useState<MonthlyCollection[]>([]);
   const [recentPayments, setRecentPayments] = useState<RecentPayment[]>([]);
   const [pendingStudents, setPendingStudents] = useState<PendingStudent[]>([]);
+  const [feeStructures, setFeeStructures] = useState<FeeStructureSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
@@ -62,12 +73,13 @@ export default function FeesDashboardPage({
     try {
       setLoading(true);
       
-      // Fetch all data in parallel
-      const [statsRes, monthlyRes, paymentsRes, pendingRes] = await Promise.all([
+      // Fetch all data in parallel (including current fee structures so dashboard reflects updates)
+      const [statsRes, monthlyRes, paymentsRes, pendingRes, structuresRes] = await Promise.all([
         fetch(`/api/v2/fees/reports/dashboard?school_code=${schoolCode}`),
         fetch(`/api/v2/fees/reports/monthly?school_code=${schoolCode}`),
         fetch(`/api/v2/fees/payments/recent?school_code=${schoolCode}&limit=10`),
         fetch(`/api/v2/fees/students/pending?school_code=${schoolCode}&limit=20`),
+        fetch(`/api/v2/fees/fee-structures?school_code=${schoolCode}`),
       ]);
 
       if (statsRes.ok) {
@@ -88,6 +100,11 @@ export default function FeesDashboardPage({
       if (pendingRes.ok) {
         const pendingResult = await pendingRes.json();
         setPendingStudents(pendingResult.data || []);
+      }
+
+      if (structuresRes.ok) {
+        const structuresResult = await structuresRes.json();
+        setFeeStructures(structuresResult.data || []);
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -238,6 +255,88 @@ export default function FeesDashboardPage({
             <ArrowRight size={18} />
           </Button>
         </div>
+      </Card>
+
+      {/* Current Fee Structures - reflects latest from fee-structures/create and list */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <FileText size={20} className="text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Current Fee Structures</h2>
+              <p className="text-sm text-gray-500">Structures shown here match Fee Structures and any updates from Create</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures/create`)}
+          >
+            Create structure
+          </Button>
+        </div>
+        {feeStructures.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Class / Section</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Academic Year</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Items</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {feeStructures.map((s) => (
+                  <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-gray-900">{s.name}</p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {s.class_name}{s.section ? ` - ${s.section}` : ''}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{s.academic_year || '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${s.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                        {s.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-700">
+                      {Array.isArray(s.items) ? s.items.length : 0} heads
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures/${s.id}`)}
+                        className="text-indigo-600 border-indigo-300 hover:bg-indigo-50"
+                      >
+                        View
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            <FileText size={40} className="mx-auto mb-3 text-gray-400" />
+            <p>No fee structures yet</p>
+            <p className="text-sm mt-1">Create a structure from Fee Structures or the button above</p>
+            <Button
+              variant="outline"
+              className="mt-4"
+              onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures/create`)}
+            >
+              Create fee structure
+            </Button>
+          </div>
+        )}
       </Card>
 
       {/* Detailed Information Section */}

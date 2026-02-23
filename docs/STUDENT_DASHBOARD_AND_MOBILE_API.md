@@ -58,7 +58,277 @@ The student dashboard menu is **grouped by module**. Below are the **exact paths
 
 ---
 
-## 2.1 UI/UX & Visual Design (React Native Mobile App)
+## 2.1 Backend: My Class & Attendance (for mobile / Cursor)
+
+This section explains **only the backend behavior** for **My Class** and **Attendance** so the mobile app can fetch the same data. If your app shows “No class teacher”, “No classmates”, or empty attendance, use the same APIs and parameters below.
+
+### Where the student object comes from
+
+After login, the app has a **student** object (e.g. from secure storage). It must include at least:
+
+- `id` (UUID) → use as `student_id`
+- `school_code`
+- `class` (e.g. `"10"`)
+- `section` (e.g. `"A"`)
+- `academic_year` (e.g. `"2026"`)
+
+Use these **exact** values in API query params. The backend matches `class` and `section` **exactly** (case-sensitive) against the `classes` and `students` tables. If the server stores `"10"` and you send `"CLASS-10"`, you get 404 or empty data.
+
+---
+
+### My Class — backend flow
+
+The **My Class** screen shows: (1) Class details, (2) Class teacher, (3) Class timetable, (4) Classmates.
+
+#### 1) Class details + Class teacher
+
+**API:** `GET /api/student/class-teacher`
+
+**Query params (all required):**
+
+| Param            | Source           | Example |
+|------------------|------------------|--------|
+| `school_code`    | `student.school_code` | `VEDANTPUBL` |
+| `class`          | `student.class`       | `10` |
+| `section`        | `student.section`     | `A` |
+| `academic_year`  | `student.academic_year` | `2026` |
+
+**Success response (200):**
+
+```json
+{
+  "data": {
+    "class": {
+      "id": "<uuid>",
+      "class": "10",
+      "section": "A",
+      "academic_year": "2026"
+    },
+    "class_teacher": {
+      "id": "<uuid>",
+      "full_name": "Dr. Harsh",
+      "staff_id": "STF004",
+      "email": "rajesh.singh@school.com",
+      "phone": "+91 98765 43002",
+      "department": "Fitness",
+      "designation": "PT Teacher"
+    }
+  }
+}
+```
+
+- If no class teacher is assigned to that class, `class_teacher` is `null`.
+- **Important:** Save `data.class.id` (UUID). You need it for the **timetable** API below.
+
+**Errors:**
+
+- 400: Missing any of `school_code`, `class`, `section`, `academic_year`.
+- 404: No row in `classes` for that school + class + section + academic_year (e.g. typo or wrong year).
+
+**Backend behavior:** The server looks up the `classes` row by `school_code`, `class`, `section`, `academic_year`. Then, if `classes.class_teacher_id` is set, it loads that staff row and returns it as `class_teacher`. So the mobile app must send the **same** `class` / `section` / `academic_year` as in the logged-in student.
+
+---
+
+#### 2) Class timetable
+
+Timetable is **per class** (not per student). You need the **class UUID** from step 1 (`data.class.id`).
+
+**API 1 — Period group for this class:**  
+`GET /api/timetable/period-groups/classes?school_code=<school_code>`
+
+- Returns a list of assignments: each has `group_id` and `class.id`.
+- Find the item where `class.id === classId` (the UUID from class-teacher). Use that `group_id` in the next call.
+
+**API 2 — Period group details:**  
+`GET /api/timetable/period-groups/<group_id>?school_code=<school_code>`
+
+- Returns the period group (e.g. `group_name`, `selected_days`, `periods` with timings and order).
+- If no assignment found in step 1, the web shows: “No period group assigned to this class” / “Please assign a period group to this class first”.
+
+**API 3 — Slots (weekly schedule):**  
+`GET /api/timetable/slots?school_code=<school_code>&class_id=<class_id>`
+
+- `class_id` = the **same** UUID from class-teacher (`data.class.id`).
+- Returns an array of slots: `day`, `period_order` or `period`, `subject` (name, color), `teacher` or `teachers` (full_name, staff_id), etc.
+- If the class has no slots or no period group, the list can be empty; the web then shows “No timetable available” or “No period group assigned”.
+
+**Summary for mobile:**  
+1. Call class-teacher → get `class.id`.  
+2. Call period-groups/classes → find assignment where `class.id === class.id` → get `group_id`.  
+3. Optionally call period-groups/:id for group details.  
+4. Call timetable/slots with `class_id=class.id`.  
+If step 2 has no matching class, show “No period group assigned”. If step 4 returns empty, show “No timetable available”.
+
+---
+
+#### 3) Classmates
+
+**API:** `GET /api/student/classmates`
+
+**Query params (all required):**
+
+| Param            | Source           |
+|------------------|------------------|
+| `school_code`    | `student.school_code` |
+| `class`          | `student.class`  |
+| `section`        | `student.section` |
+| `academic_year`  | `student.academic_year` |
+
+**Success response (200):**
+
+```json
+{
+  "data": [
+    {
+      "id": "<uuid>",
+      "student_name": "Arushi",
+      "admission_no": "STU010",
+      "class": "10",
+      "section": "A",
+      "academic_year": "2026",
+      "photo_url": "<url or null>"
+    }
+  ]
+}
+```
+
+- Backend filters `students` by same `school_code`, `class`, `section`, `academic_year` (exact match). Search/filter by name or admission no. can be done **on the client** on this list.
+
+**If you get empty `data`:**  
+Check that `student.class`, `student.section`, and `student.academic_year` match exactly what’s in the database (same spelling and case as in the login response or as used on the web).
+
+---
+
+### Attendance — backend flow
+
+The **Attendance** screen shows: total days in range, present/absent/late/not marked counts, percentage, and a day-wise list (e.g. “Last 30 days”) with status per day.
+
+**API:** `GET /api/attendance/student`
+
+**Query params:**
+
+| Param         | Required | Description |
+|---------------|----------|-------------|
+| `school_code` | Yes      | `student.school_code` |
+| `student_id`  | Yes      | `student.id` (UUID) |
+| `start_date`  | Yes*     | Start of range, **YYYY-MM-DD** (local date). |
+| `end_date`    | Yes*     | End of range, **YYYY-MM-DD** (local date). |
+
+*For the “last 30 days” behavior, the web uses a 30-day window and sends both `start_date` and `end_date`.*
+
+**Example (last 30 days, ending today):**
+
+- Today = 2026-02-22 (local).
+- `end_date` = 2026-02-22  
+- `start_date` = 2026-01-24 (30 days back, inclusive).
+
+So:  
+`/api/attendance/student?school_code=...&student_id=...&start_date=2026-01-24&end_date=2026-02-22`
+
+**Success response (200):**
+
+```json
+{
+  "data": [
+    {
+      "id": "<uuid>",
+      "attendance_date": "2026-02-20",
+      "status": "present",
+      "marked_by": "<staff_id or null>",
+      "student_id": "<uuid>",
+      "school_code": "..."
+    }
+  ],
+  "statistics": {
+    "total": 3,
+    "present": 2,
+    "absent": 1,
+    "late": 0,
+    "percentage": 66
+  }
+}
+```
+
+- `data`: only **marked** days in the requested range. Days with no row are “not marked”.
+- `statistics`: computed **only over the returned rows** (marked days): `total` = number of records, `percentage` = present / total * 100.
+
+**How the web builds the “30 days” UI:**
+
+1. Fix a 30-day window (e.g. `start_date` and `end_date` as above).
+2. Call the API with that range.
+3. Build a list of all 30 calendar days. For each day:
+   - If there is a record in `data` with that `attendance_date` → show status: `present` | `absent` | `late`.
+   - If there is no record for that date → show “Not marked”.
+4. **Counts:**  
+   - Total days = 30 (fixed).  
+   - Present / absent / late = from records in `data`.  
+   - Not marked = 30 − (number of records in `data`).  
+5. **Percentage:** The web uses **only marked days** for the percentage:  
+   `percentage = present / (present + absent + late) * 100`  
+   (So it’s “% present among marked days”, not “% of all 30 days”.)
+
+**Date format:**  
+Always use **YYYY-MM-DD** in local time for `start_date` and `end_date`. The backend compares dates as strings; the web uses local date (no UTC shift) so that “today” and “last 30 days” match what the teacher sees.
+
+**Pagination (Back / Next 30 days):**  
+- “Back 30 days”: move the 30-day window backward (e.g. subtract 30 from both start and end).  
+- “Next 30 days”: move the window forward.  
+Re-call the API with the new `start_date` and `end_date`.
+
+**If attendance is empty or wrong:**
+
+- Ensure you send `student_id` = the logged-in student’s `id` (UUID).
+- Ensure `school_code` matches.
+- Ensure dates are YYYY-MM-DD and the range is correct (e.g. 30 days inclusive).
+- If the server returns empty `data` but you expect marks, the school may not have marked attendance for that student in that range.
+
+---
+
+### Examinations — backend for mobile
+
+The **Examinations** screen shows **all** exams for the student’s class: **upcoming**, **ongoing**, and **previous (past)**. The web app groups them into “Upcoming & ongoing” and “Previous examinations”; the mobile app should do the same using the same API and client-side grouping.
+
+**API:** `GET /api/examinations/v2/student`
+
+| Query param   | Required | Description |
+|---------------|----------|-------------|
+| `school_code` | Yes      | From logged-in student. |
+| `student_id`  | Yes      | Student UUID (`student.id`). |
+
+**Response:** `{ "data": [ ... ] }` — array of examinations for the student’s class, ordered by `start_date` ascending. Each item includes:
+
+- `id`, `exam_name`, `start_date`, `end_date`, `academic_year`, `description` (optional)
+- `status` (optional) — may be `upcoming` / `ongoing` / `completed` if set by the backend
+- `subject_mappings` — array of `{ subject_id?, subject_name?, teacher_name?, max_marks?, pass_marks? }`
+- `schedules` — array of `{ id?, exam_date?, start_time?, end_time?, subject? }` for per-subject date/time
+- `total_max_marks`, `total_pass_marks` (optional)
+
+**How to show “Upcoming” vs “Previous” in the mobile app:**
+
+1. **Use the full list** — do not filter exams on the client before grouping; show both upcoming and previous.
+2. **Classify by date (today vs end_date):**
+   - **Upcoming / ongoing:** `end_date >= today` (today at start of day). Include exams that haven’t ended yet.
+   - **Previous:** `end_date < today` (exam has ended).
+3. **Optional:** If the API does not send `status`, derive it:  
+   - `end_date < today` → **Completed** (or “Previous”)  
+   - `start_date > today` → **Upcoming**  
+   - else → **Ongoing**
+4. **UI:** Show two sections (or tabs): e.g. “Upcoming & ongoing” and “Previous examinations”. If there are no upcoming exams, still show “Previous examinations” if the API returned past exams. Use “No examinations found” only when `data` is empty.
+
+**Marks for an exam:** If your app shows results, use the same marks API as the web (e.g. marks per examination). The examinations API does not include marks; fetch marks separately if your backend exposes a student marks-by-exam endpoint.
+
+---
+
+### Checklist for mobile (My Class & Attendance)
+
+- Use **exact** `student.class`, `student.section`, `student.academic_year` from login (or profile) for class-teacher and classmates.
+- Use `data.class.id` from class-teacher as `class_id` for timetable (period-groups and slots).
+- For attendance, use `student.id` as `student_id` and send `start_date` and `end_date` in **YYYY-MM-DD** (e.g. 30-day window).
+- Implement “not marked” and percentage the same way as the web: 30-day grid, and percentage = present / (present + absent + late) for marked days only.
+
+---
+
+## 2.2 UI/UX & Visual Design (React Native Mobile App)
 
 This section defines the **look and structure** of the student dashboard in your React Native app so it matches the intended wireframe: dark theme, card-based layout, and two main entry screens (Home + Modules grid).
 
@@ -220,20 +490,20 @@ If the class teacher response includes `class.id`, the Home page may also fetch 
 
 ### 3.4 Examinations (`/student/dashboard/examinations`)
 
-**Purpose:** List upcoming/ongoing exams for the student, show schedule (subject, date, time), and optionally marks once available.
+**Purpose:** List **all** exams for the student (upcoming, ongoing, and **previous**). Show schedule (subject, date, time) and marks when available.
 
 **APIs:**
 
 | API | Method | Query params | Response |
 |-----|--------|--------------|----------|
-| `/api/examinations/v2/student` | GET | `school_code`, `student_id` | `{ data: [ { id, exam_name, start_date, end_date, status, academic_year, schedules?, subject_mappings? } ] }` |
+| `/api/examinations/v2/student` | GET | `school_code`, `student_id` | `{ data: [ { id, exam_name, start_date, end_date, status?, academic_year, schedules?, subject_mappings?, total_max_marks?, total_pass_marks? } ] }` — **all** exams for the class (no server-side filter by status). |
 | `/api/marks` | GET | `school_code`, `student_id` | `{ data: [ { exam_id, subject_id, marks_obtained, max_marks, ... } ] }` (marks per exam/subject) |
 
-**Fetching:** On mount, fetch exams first; then fetch marks and merge by `exam_id` for display. Filter exams client-side to “upcoming” and “ongoing” based on `start_date`/`end_date` and `status`.
+**Fetching:** On mount, fetch exams first; then fetch marks and merge by `exam_id`. **Do not** drop past exams: show both “Upcoming & ongoing” and “Previous”. Group client-side: `end_date >= today` → upcoming/ongoing; `end_date < today` → previous. See **§2.1 Examinations — backend for mobile** for full details.
 
-**Mobile:** Same two GETs. You can add filters (e.g. `status=upcoming`) if the backend supports them.
+**Mobile:** Same two GETs. Show two sections (or tabs): “Upcoming & ongoing” and “Previous examinations”. If there are no upcoming exams, still show the previous section when the API returns past exams. Use “No examinations found” only when `data` is empty.
 
-**Mobile screen (React Native):** List of exam cards. Each card: exam name, date range, status (Upcoming/Ongoing/Completed). Expand or tap to see schedule (subject, date, time) and, if available, marks from the marks API. Use one card per exam; inside card use small list rows for subjects. Optional segment filter at top (Upcoming / Completed).
+**Mobile screen (React Native):** Two sections: “Upcoming & ongoing” and “Previous examinations”. Each section: list of exam cards. Each card: exam name, date range, status badge (Upcoming/Ongoing/Completed). Expand or tap to see schedule (subject, date, time) and marks from the marks API when available.
 
 ---
 
@@ -343,7 +613,7 @@ If the class teacher response includes `class.id`, the Home page may also fetch 
 
 ---
 
-### 3.11 Fees (`/student/dashboard/fees` and `/student/dashboard/fees/v2`)
+### 3.11  (`/student/dashboard/fees` and `/student/dashboard/fees/v2`)
 
 **Purpose:** Show fee structure and payment history; optional receipt download.
 
@@ -353,7 +623,7 @@ If the class teacher response includes `class.id`, the Home page may also fetch 
 |-----|--------|--------------|----------|
 | `/api/student/fees` | GET | `school_code`, `student_id` | `{ data: [ { id, component_name, amount, due_date, status, ... } ] }` – fee components/dues for the student |
 | `/api/student/fees/receipts` | GET | `school_code`, `student_id` | `{ data: [ { id, payment_id, amount, paid_at, status, ... } ] }` – payment/receipt list |
-| `/api/fees/receipts/:paymentId/download` | GET | `school_code` (query) | Returns PDF or file for that receipt. Used in browser as download link. |
+| `/api/fees/receipts/[id]/download` | GET | `school_code` (query) | Returns PDF for that receipt. `[id]` = payment ID (use `receipt.payment.id` or `receipt.id` from receipts list). Used in browser as download link. |
 
 **Fetching:** On mount, fetch fees and receipts in parallel (as in `fees/v2/page.tsx`). Receipt download: open the download URL (with `school_code`) in a new window or use as download URL in mobile.
 
