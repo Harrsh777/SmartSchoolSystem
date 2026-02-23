@@ -17,6 +17,7 @@ export default function SchoolDashboardLayout({
   const { school: schoolCode } = use(params);
   const router = useRouter();
   const [schoolName, setSchoolName] = useState('School Dashboard');
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   // Logout handler for 401 responses only – clear only admin session so teacher tab is unaffected
   useEffect(() => {
@@ -33,14 +34,44 @@ export default function SchoolDashboardLayout({
     };
   }, [router]);
 
-  // Require admin session for dashboard (so teacher-only session in another tab doesn't grant access)
+  // Require admin session; if sessionStorage is empty (e.g. new tab), rehydrate from server so multiple tabs work
   useEffect(() => {
     const storedSchool = sessionStorage.getItem('school');
-    if (!storedSchool) {
-      router.push('/login');
+    if (storedSchool) {
+      setSessionChecked(true);
       return;
     }
+    let cancelled = false;
+    fetch('/api/auth/session', { credentials: 'include' })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          return res.json().then((data) => {
+            if (data.role === 'school' && data.user) {
+              sessionStorage.setItem('school', JSON.stringify(data.user));
+              sessionStorage.setItem('admin_authenticated', '1');
+              setSessionChecked(true);
+            } else {
+              router.push('/login');
+            }
+          });
+        } else {
+          router.push('/login');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) router.push('/login');
+      });
+    return () => { cancelled = true; };
   }, [router]);
+
+  if (!sessionChecked) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-[#2F6FED] border-t-transparent" />
+      </div>
+    );
+  }
 
   useEffect(() => {
     // Get school name from sessionStorage

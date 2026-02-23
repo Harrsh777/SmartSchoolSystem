@@ -57,6 +57,45 @@ export default function StudentDirectoryPage({
   const [bulkHouseValue, setBulkHouseValue] = useState('');
   const [updatingHouseId, setUpdatingHouseId] = useState<string | null>(null);
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportClass, setExportClass] = useState('');
+  const [exportSection, setExportSection] = useState('');
+  const [exportColumns, setExportColumns] = useState<string[]>([
+    'admission_no', 'student_name', 'class', 'section', 'house', 'roll_number', 'email', 'status',
+  ]);
+  const [exporting, setExporting] = useState(false);
+
+  /** Columns that can be included in the Excel export */
+  const EXPORT_COLUMN_OPTIONS: { key: string; label: string }[] = [
+    { key: 'admission_no', label: 'Admission No' },
+    { key: 'student_name', label: 'Student Name' },
+    { key: 'class', label: 'Class' },
+    { key: 'section', label: 'Section' },
+    { key: 'academic_year', label: 'Academic Year' },
+    { key: 'roll_number', label: 'Roll No' },
+    { key: 'house', label: 'House' },
+    { key: 'gender', label: 'Gender' },
+    { key: 'date_of_birth', label: 'Date of Birth' },
+    { key: 'email', label: 'Email' },
+    { key: 'student_contact', label: 'Student Contact' },
+    { key: 'father_name', label: 'Father Name' },
+    { key: 'father_contact', label: 'Father Contact' },
+    { key: 'mother_name', label: 'Mother Name' },
+    { key: 'mother_contact', label: 'Mother Contact' },
+    { key: 'address', label: 'Address' },
+    { key: 'city', label: 'City' },
+    { key: 'state', label: 'State' },
+    { key: 'pincode', label: 'Pincode' },
+    { key: 'blood_group', label: 'Blood Group' },
+    { key: 'status', label: 'Status' },
+    { key: 'date_of_admission', label: 'Date of Admission' },
+    { key: 'religion', label: 'Religion' },
+    { key: 'category', label: 'Category' },
+    { key: 'aadhaar_number', label: 'Aadhaar No' },
+    { key: 'rfid', label: 'RFID' },
+    { key: 'transport_type', label: 'Transport Type' },
+    { key: 'created_at', label: 'Created At' },
+  ];
 
   // Helper to safely get string value
   const getString = (value: unknown): string => {
@@ -281,6 +320,72 @@ export default function StudentDirectoryPage({
     }
   };
 
+  const openExportModal = () => {
+    setExportClass(selectedClass);
+    setExportSection(selectedSection);
+    setExportModalOpen(true);
+  };
+
+  const exportSectionOptions = exportClass
+    ? Array.from(
+        new Set(
+          students
+            .filter((s) => getString(s.class) === exportClass)
+            .map((s) => getString(s.section))
+            .filter((s) => s.length > 0)
+        )
+      ).sort()
+    : Array.from(new Set(students.map((s) => getString(s.section)).filter((s) => s.length > 0))).sort();
+
+  const handleExportExcel = async () => {
+    if (exportColumns.length === 0) {
+      alert('Select at least one column to export.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        status: selectedStatus,
+        columns: exportColumns.join(','),
+      });
+      if (exportClass) params.set('class', exportClass);
+      if (exportSection) params.set('section', exportSection);
+      if (academicYear) params.set('academic_year', academicYear);
+
+      const res = await fetch(`/api/download/students?${params.toString()}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Export failed');
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition');
+      const match = disposition && /filename="?([^"]+)"?/.exec(disposition);
+      const filename = match ? match[1] : `students_${schoolCode}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      setExportModalOpen(false);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to download Excel.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const toggleExportColumn = (key: string) => {
+    setExportColumns((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
+
+  const selectAllExportColumns = () => setExportColumns(EXPORT_COLUMN_OPTIONS.map((c) => c.key));
+  const clearAllExportColumns = () => setExportColumns([]);
+
   return (
     <div className="space-y-4">
       {/* Header - year and Grid on left, Export on right */}
@@ -314,7 +419,7 @@ export default function StudentDirectoryPage({
             {viewMode === 'grid' ? 'List View' : 'Grid View'}
           </Button>
         </div>
-        <Button size="sm" className="bg-blue-800 hover:bg-blue-900 text-white">
+        <Button size="sm" className="bg-blue-800 hover:bg-blue-900 text-white" onClick={openExportModal}>
           <Download size={16} className="mr-1.5" />
           Export
         </Button>
@@ -471,6 +576,100 @@ export default function StudentDirectoryPage({
               >
                 {bulkAssigning ? <Loader2 size={18} className="animate-spin mr-1" /> : <Home size={18} className="mr-1" />}
                 {bulkAssigning ? 'Assigning...' : 'Assign'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Export to Excel Modal */}
+      {exportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !exporting && setExportModalOpen(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Download size={20} className="text-blue-800" />
+                Export to Excel
+              </h3>
+              <button type="button" onClick={() => !exporting && setExportModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-4">
+              <p className="text-sm text-gray-600">Choose class, section, and columns to include in the download.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Class</label>
+                  <select
+                    value={exportClass}
+                    onChange={(e) => {
+                      setExportClass(e.target.value);
+                      setExportSection('');
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white text-sm"
+                  >
+                    <option value="">All Classes</option>
+                    {uniqueClasses.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Section</label>
+                  <select
+                    value={exportSection}
+                    onChange={(e) => setExportSection(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white text-sm"
+                  >
+                    <option value="">All Sections</option>
+                    {exportSectionOptions.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-gray-700">Columns to export</label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={selectAllExportColumns} className="text-xs text-blue-800 hover:underline font-medium">Select all</button>
+                    <button type="button" onClick={clearAllExportColumns} className="text-xs text-gray-500 hover:underline font-medium">Clear</button>
+                  </div>
+                </div>
+                <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {EXPORT_COLUMN_OPTIONS.map((col) => (
+                    <label key={col.key} className="flex items-center gap-2 cursor-pointer text-sm">
+                      <input
+                        type="checkbox"
+                        checked={exportColumns.includes(col.key)}
+                        onChange={() => toggleExportColumn(col.key)}
+                        className="rounded border-gray-300 text-blue-800 focus:ring-blue-700"
+                      />
+                      <span className="text-gray-700">{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {exportColumns.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">Select at least one column.</p>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => !exporting && setExportModalOpen(false)} disabled={exporting}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleExportExcel}
+                disabled={exporting || exportColumns.length === 0}
+                className="bg-blue-800 hover:bg-blue-900 text-white"
+              >
+                {exporting ? <Loader2 size={18} className="animate-spin mr-1" /> : <Download size={18} className="mr-1" />}
+                {exporting ? 'Exporting...' : 'Download Excel'}
               </Button>
             </div>
           </motion.div>

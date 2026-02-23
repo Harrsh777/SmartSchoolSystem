@@ -129,44 +129,69 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
       return;
     }
 
-    const storedStudent = sessionStorage.getItem('student');
-    const role = sessionStorage.getItem('role');
+    let cancelled = false;
 
-    // Academic calendar: allow any logged-in user (student or staff) without permission check
-    if (pathname === '/student/dashboard/calendar/academic') {
-      if (!role) {
-        router.push('/login');
-        return;
-      }
-      if (storedStudent && role === 'student') {
-        try {
-          const studentData = JSON.parse(storedStudent);
-          setStudent(studentData);
-          fetchSchoolName(studentData.school_code);
-        } catch (err) {
-          console.error('Error parsing student data:', err);
+    const runAuth = async () => {
+      let storedStudent = sessionStorage.getItem('student');
+      let role = sessionStorage.getItem('role');
+
+      // If sessionStorage empty (e.g. new tab), rehydrate from server so multiple tabs work
+      if (!storedStudent || role !== 'student') {
+        const res = await fetch('/api/auth/session', { credentials: 'include' });
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.role === 'student' && data.user) {
+            sessionStorage.setItem('student', JSON.stringify(data.user));
+            sessionStorage.setItem('role', 'student');
+            storedStudent = JSON.stringify(data.user);
+            role = 'student';
+          }
         }
       }
-      setLoading(false);
-      return;
-    }
 
-    // All other student dashboard pages require student login
-    if (!storedStudent || role !== 'student') {
-      router.push('/login');
-      return;
-    }
+      // Academic calendar: allow any logged-in user (student or staff) without permission check
+      if (pathname === '/student/dashboard/calendar/academic') {
+        if (!role) {
+          router.push('/student/login');
+          setLoading(false);
+          return;
+        }
+        if (storedStudent && role === 'student') {
+          try {
+            const studentData = JSON.parse(storedStudent);
+            setStudent(studentData);
+            fetchSchoolName(studentData.school_code);
+          } catch (err) {
+            console.error('Error parsing student data:', err);
+          }
+        }
+        setLoading(false);
+        return;
+      }
 
-    try {
-      const studentData = JSON.parse(storedStudent);
-      setStudent(studentData);
-      fetchSchoolName(studentData.school_code);
-    } catch (err) {
-      console.error('Error parsing student data:', err);
-      router.push('/login');
-    } finally {
-      setLoading(false);
-    }
+      // All other student dashboard pages require student login
+      if (!storedStudent || role !== 'student') {
+        router.push('/student/login');
+        setLoading(false);
+        return;
+      }
+
+      if (cancelled) return;
+      try {
+        const studentData = JSON.parse(storedStudent);
+        setStudent(studentData);
+        fetchSchoolName(studentData.school_code);
+      } catch (err) {
+        console.error('Error parsing student data:', err);
+        router.push('/student/login');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    runAuth();
+    return () => { cancelled = true; };
   }, [router, pathname]);
 
   const fetchSchoolName = async (schoolCode: string) => {

@@ -184,28 +184,50 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       return;
     }
 
-    // Check if teacher is logged in (teacher_authenticated allows teacher to stay logged in when admin logs in another tab)
-    const storedTeacher = sessionStorage.getItem('teacher');
-    const role = sessionStorage.getItem('role');
-    const teacherAuthenticated = sessionStorage.getItem('teacher_authenticated');
+    let cancelled = false;
 
-    if (!storedTeacher || (teacherAuthenticated !== '1' && role !== 'teacher')) {
-      router.push('/login');
-      return;
-    }
+    const runAuth = async () => {
+      // Check if teacher is logged in; if sessionStorage empty (e.g. new tab), rehydrate from server
+      let storedTeacher = sessionStorage.getItem('teacher');
+      const role = sessionStorage.getItem('role');
+      const teacherAuthenticated = sessionStorage.getItem('teacher_authenticated');
 
-    try {
-      const teacherData = JSON.parse(storedTeacher);
-      setTeacher(teacherData);
-      fetchSchoolName(teacherData.school_code);
-      checkIfClassTeacher(teacherData.id, teacherData.school_code, teacherData);
-      fetchStaffPermissions(teacherData.id);
-    } catch (err) {
-      console.error('Error parsing teacher data:', err);
-      router.push('/login');
-    } finally {
-      setLoading(false);
-    }
+      if (!storedTeacher || (teacherAuthenticated !== '1' && role !== 'teacher')) {
+        const res = await fetch('/api/auth/session', { credentials: 'include' });
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.role === 'teacher' && data.user) {
+            sessionStorage.setItem('teacher', JSON.stringify(data.user));
+            sessionStorage.setItem('role', 'teacher');
+            sessionStorage.setItem('teacher_authenticated', '1');
+            storedTeacher = JSON.stringify(data.user);
+          }
+        }
+        if (!storedTeacher) {
+          router.push('/login');
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (cancelled) return;
+      try {
+        const teacherData = JSON.parse(storedTeacher!);
+        setTeacher(teacherData);
+        fetchSchoolName(teacherData.school_code);
+        checkIfClassTeacher(teacherData.id, teacherData.school_code, teacherData);
+        fetchStaffPermissions(teacherData.id);
+      } catch (err) {
+        console.error('Error parsing teacher data:', err);
+        router.push('/login');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    runAuth();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, pathname]);
 

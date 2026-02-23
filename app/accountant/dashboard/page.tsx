@@ -67,27 +67,55 @@ export default function AccountantDashboard() {
   });
 
   useEffect(() => {
-    // Check if accountant is logged in
-    const storedAccountant = sessionStorage.getItem('accountant');
-    const storedSchool = sessionStorage.getItem('school');
-    const role = sessionStorage.getItem('role');
+    let cancelled = false;
 
-    if (!storedAccountant || role !== 'accountant') {
-      router.push('/accountant/login');
-      return;
-    }
+    const runAuth = async () => {
+      let storedAccountant = sessionStorage.getItem('accountant');
+      let storedSchool = sessionStorage.getItem('school');
+      let role = sessionStorage.getItem('role');
 
-    try {
-      const accountantData = JSON.parse(storedAccountant);
-      const schoolData = JSON.parse(storedSchool || '{}');
-      setAccountant(accountantData);
-      setSchool(schoolData);
-      fetchStudents(accountantData.school_code);
-      fetchStats(accountantData.school_code);
-    } catch (err) {
-      console.error('Error parsing session data:', err);
-      router.push('/accountant/login');
-    }
+      // If sessionStorage empty (e.g. new tab), rehydrate from server so multiple tabs work
+      if (!storedAccountant || role !== 'accountant') {
+        const res = await fetch('/api/auth/session', { credentials: 'include' });
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.role === 'accountant' && data.user?.staff) {
+            sessionStorage.setItem('accountant', JSON.stringify(data.user.staff));
+            sessionStorage.setItem('role', 'accountant');
+            if (data.user.school) {
+              sessionStorage.setItem('school', JSON.stringify(data.user.school));
+            }
+            storedAccountant = JSON.stringify(data.user.staff);
+            storedSchool = data.user.school ? JSON.stringify(data.user.school) : storedSchool;
+            role = 'accountant';
+          }
+        }
+        if (!storedAccountant || role !== 'accountant') {
+          router.push('/accountant/login');
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (cancelled) return;
+      try {
+        const accountantData = JSON.parse(storedAccountant);
+        const schoolData = JSON.parse(storedSchool || '{}');
+        setAccountant(accountantData);
+        setSchool(schoolData);
+        fetchStudents(accountantData.school_code);
+        fetchStats(accountantData.school_code);
+      } catch (err) {
+        console.error('Error parsing session data:', err);
+        router.push('/accountant/login');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    runAuth();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 

@@ -2080,20 +2080,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
             {pathname !== basePath && pathname !== `${basePath}/` && (
               <div className="mb-4 -mt-1 -ml-1">
                 <button
-                  onClick={() => {
-                    // From fees v2 subpages (e.g. .../fees/v2/dashboard), back goes to fees hub (.../fees), not .../fees/v2
-                    if (pathname.includes('/fees/v2/')) {
-                      router.push(`${basePath}/fees`);
-                      return;
-                    }
-                    const segments = pathname.split('/').filter(Boolean);
-                    if (segments.length > 3) {
-                      const parentPath = '/' + segments.slice(0, -1).join('/');
-                      router.push(parentPath);
-                    } else {
-                      router.push(basePath);
-                    }
-                  }}
+                  onClick={() => router.push(basePath)}
                   className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-[#5A7A95] dark:text-[#6B9BB8] hover:text-[#4A6A85] dark:hover:text-[#5A8BA8] hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] rounded-lg transition-colors"
                   aria-label="Go back"
                 >
