@@ -3750,8 +3750,25 @@ CREATE INDEX IF NOT EXISTS idx_login_audit_ip ON login_audit_log(ip_address);`;
                       </div>
                     ) : actionAuditTableMissing ? (
                       <div className="text-center py-12">
-                        <p className="text-gray-500 dark:text-gray-400 mb-2">Audit logs table not found.</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Run the SQL in <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">docs/AUDIT_LOGS_SCHEMA.md</code> in Supabase SQL Editor.</p>
+                        <p className="text-gray-500 dark:text-gray-400 mb-2">The <code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded">audit_logs</code> table is missing.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Run the SQL below in Supabase → SQL Editor. See <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">docs/SECURITY_AUDIT_SUPABASE_SCHEMA.md</code> for full schema (login_audit_log + audit_logs).</p>
+                        <pre className="text-xs bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto max-h-56 overflow-y-auto text-left mx-auto max-w-2xl"><code>{`DROP TABLE IF EXISTS audit_logs;
+CREATE TABLE audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT,
+  user_name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT,
+  severity TEXT NOT NULL CHECK (severity IN ('CRITICAL', 'MEDIUM')),
+  ip_address TEXT,
+  device_summary TEXT,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX idx_audit_logs_severity ON audit_logs(severity);`}</code></pre>
                       </div>
                     ) : actionAuditData.length === 0 ? (
                       <div className="text-center py-12">

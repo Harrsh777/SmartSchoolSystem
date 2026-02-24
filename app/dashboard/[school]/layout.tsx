@@ -65,16 +65,8 @@ export default function SchoolDashboardLayout({
     return () => { cancelled = true; };
   }, [router]);
 
-  if (!sessionChecked) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-[#2F6FED] border-t-transparent" />
-      </div>
-    );
-  }
-
+  // Get school name from sessionStorage or API (must run every render for Rules of Hooks)
   useEffect(() => {
-    // Get school name from sessionStorage
     const storedSchool = sessionStorage.getItem('school');
     if (storedSchool) {
       const schoolData: AcceptedSchool = JSON.parse(storedSchool);
@@ -84,7 +76,6 @@ export default function SchoolDashboardLayout({
       }
     }
 
-    // If not in sessionStorage, fetch from API
     fetch(`/api/schools/accepted`)
       .then(res => res.json())
       .then(result => {
@@ -98,6 +89,14 @@ export default function SchoolDashboardLayout({
       })
       .catch(err => console.error('Error fetching school:', err));
   }, [schoolCode]);
+
+  if (!sessionChecked) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-[#2F6FED] border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <TranslationProvider>

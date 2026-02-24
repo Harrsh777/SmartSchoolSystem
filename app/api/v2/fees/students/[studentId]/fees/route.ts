@@ -19,6 +19,7 @@ export async function GET(
     const { studentId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    const academicYear = searchParams.get('academic_year')?.trim() || '';
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -46,7 +47,7 @@ export async function GET(
       student_school_code: student?.school_code,
     });
 
-    // Get student fees with structure details
+    // Get student fees with structure details (only from active fee structures)
     const { data: fees, error } = await supabase
       .from('student_fees')
       .select(`
@@ -56,6 +57,8 @@ export async function GET(
           name,
           class_name,
           section,
+          academic_year,
+          is_active,
           late_fee_type,
           late_fee_value,
           grace_period_days
@@ -80,8 +83,21 @@ export async function GET(
       );
     }
 
+    let feesToUse = (fees || []).filter((fee) => {
+      const structure = fee.fee_structure as { is_active?: boolean } | null;
+      return structure?.is_active !== false;
+    });
+
+    if (academicYear) {
+      feesToUse = feesToUse.filter((fee) => {
+        const structure = fee.fee_structure as { academic_year?: string | null } | null;
+        const feeYear = (structure?.academic_year ?? '').toString().trim();
+        return feeYear === academicYear;
+      });
+    }
+
     // Calculate late fee for each fee record
-    const feesWithLateFee = fees?.map(fee => {
+    const feesWithLateFee = feesToUse.map(fee => {
       const structure = fee.fee_structure;
       let lateFee = 0;
 

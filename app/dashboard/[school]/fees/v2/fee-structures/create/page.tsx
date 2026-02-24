@@ -61,6 +61,7 @@ export default function CreateFeeStructurePage({
   const [startMonth, setStartMonth] = useState(4); // April
   const [endMonth, setEndMonth] = useState(3); // March (next year)
   const [frequency, setFrequency] = useState('monthly');
+  const [paymentDueDay, setPaymentDueDay] = useState(15); // Last date of payment (1-31)
   
   // Step 3: Fee Composition - yearly: single; monthly: by month; quarterly: by Q1–Q4
   const [selectedFeeHeads, setSelectedFeeHeads] = useState<Record<string, number>>({});
@@ -222,12 +223,13 @@ export default function CreateFeeStructurePage({
           return;
         }
       } else if (frequency === 'quarterly') {
-        for (const q of QUARTERS) {
+        const atLeastOneComplete = QUARTERS.some((q) => {
           const amts = selectedFeeHeadsByQuarter[q.id] || {};
-          if (Object.keys(amts).length === 0 || Object.values(amts).some((a) => a <= 0)) {
-            setError(`Please enter fee amounts for ${q.id}`);
-            return;
-          }
+          return Object.keys(amts).length > 0 && !Object.values(amts).some((a) => a <= 0);
+        });
+        if (!atLeastOneComplete) {
+          setError('Please enter fee amounts for at least one quarter (e.g. Q1). You can fill remaining quarters before saving.');
+          return;
         }
       } else if (frequency === 'monthly') {
         const months = getMonthsInRange();
@@ -258,6 +260,17 @@ export default function CreateFeeStructurePage({
     if (classSectionMap.length === 0) {
       setError('Please add at least one class');
       return;
+    }
+
+    if (frequency === 'quarterly') {
+      const missingQuarters = QUARTERS.filter((q) => {
+        const amts = selectedFeeHeadsByQuarter[q.id] || {};
+        return Object.keys(amts).length === 0 || Object.values(amts).some((a) => a <= 0);
+      });
+      if (missingQuarters.length > 0) {
+        setError(`Please enter fee amounts for all quarters before saving: ${missingQuarters.map((q) => q.id).join(', ')}`);
+        return;
+      }
     }
 
     try {
@@ -346,6 +359,7 @@ export default function CreateFeeStructurePage({
             start_month: startMonth,
             end_month: endMonth,
             frequency,
+            payment_due_day: paymentDueDay,
             late_fee_type: lateFeeType || null,
             late_fee_value: lateFeeValue ? parseFloat(lateFeeValue) : 0,
             grace_period_days: gracePeriodDays,
@@ -694,6 +708,22 @@ export default function CreateFeeStructurePage({
                     <option value="yearly">Yearly</option>
                   </select>
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Last date of payment (day of month) *</label>
+                  <p className="text-xs text-gray-500 mb-1">Fees are due by this date each period. After this date (and any grace period), late fees apply.</p>
+                  <select
+                    value={paymentDueDay}
+                    onChange={(e) => setPaymentDueDay(parseInt(e.target.value))}
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                      <option key={d} value={d}>
+                        {d}{d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'} of month
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
 
@@ -973,6 +1003,10 @@ export default function CreateFeeStructurePage({
                       <p className="font-semibold text-gray-900">
                         {MONTHS.find(m => m.value === startMonth)?.label} - {MONTHS.find(m => m.value === endMonth)?.label}
                       </p>
+                    </div>
+                    <div>
+                      <span className="text-sm text-gray-600">Last date of payment:</span>
+                      <p className="font-semibold text-gray-900">{paymentDueDay}{paymentDueDay === 1 ? 'st' : paymentDueDay === 2 ? 'nd' : paymentDueDay === 3 ? 'rd' : 'th'} of each period</p>
                     </div>
                     <div>
                       <span className="text-sm text-gray-600">Total Amount:</span>

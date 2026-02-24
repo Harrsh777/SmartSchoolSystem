@@ -1927,7 +1927,7 @@ export default function DashboardPage({
                         <p className="text-xs font-medium text-[#64748B] uppercase tracking-wide">
                           {administrativeData.recentUpdates.noticesArePending ? 'Pending / Active notices' : 'Recent history'}
                         </p>
-                        {administrativeData.recentUpdates.notices.map((notice) => (
+                        {administrativeData.recentUpdates.notices.slice(0, 3).map((notice) => (
                           <div key={notice.id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB]">
                             <h5 className="font-semibold text-[#0F172A] text-sm mb-1">{notice.title}</h5>
                             {notice.message && (
@@ -1963,7 +1963,7 @@ export default function DashboardPage({
                         <p className="text-xs font-medium text-[#64748B] uppercase tracking-wide">
                           {administrativeData.recentUpdates.visitorsArePending ? 'Pending approval / Visitors in' : 'Recent history'}
                         </p>
-                        {administrativeData.recentUpdates.visitors.map((visitor) => (
+                        {administrativeData.recentUpdates.visitors.slice(0, 3).map((visitor) => (
                           <div key={visitor.id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB]">
                             <h5 className="font-semibold text-[#0F172A] text-sm mb-1">{visitor.visitor_name}</h5>
                             <p className="text-xs text-[#64748B]">{visitor.purpose_of_visit}</p>
@@ -1997,7 +1997,7 @@ export default function DashboardPage({
                         <p className="text-xs font-medium text-[#64748B] uppercase tracking-wide">
                           {administrativeData.recentUpdates.leavesArePending ? 'Pending leave approval' : 'Recent history'}
                         </p>
-                        {administrativeData.recentUpdates.leaves.map((leave) => (
+                        {administrativeData.recentUpdates.leaves.slice(0, 3).map((leave) => (
                           <div key={leave.id} className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB]">
                             <h5 className="font-semibold text-[#0F172A] text-sm mb-1">
                               {leave.type === 'staff' ? (leave.leave_type || 'Staff leave') : (leave.leave_title || 'Student leave')}

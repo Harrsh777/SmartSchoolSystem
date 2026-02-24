@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
+import { logAudit } from '@/lib/audit-logger';
 
 /**
  * GET /api/v2/fees/payments
@@ -170,6 +171,7 @@ export async function POST(request: NextRequest) {
     const staffId = request.headers.get('x-staff-id');
     let collectedBy: string | null = null;
     let collectedByStaffId: string | null = null;
+    let collectorName = 'Staff';
 
     if (staffId) {
       const { data: staff } = await supabase
@@ -179,7 +181,8 @@ export async function POST(request: NextRequest) {
         .eq('staff_id', staffId)
         .single();
       collectedBy = staff?.id || null;
-      collectedByStaffId = staff?.staff_id || null;
+      collectedByStaffId = (staff as { staff_id?: string } | null)?.staff_id || null;
+      collectorName = (staff as { full_name?: string } | null)?.full_name || collectedByStaffId || 'Staff';
     }
 
     if (!collectedBy) {
@@ -434,24 +437,16 @@ export async function POST(request: NextRequest) {
       console.error('Error in income entry creation:', incomeCreationError);
     }
 
-    // 6. Audit log
-    await supabase.from('audit_logs').insert({
-      school_id: school.id,
-      school_code: normalizedSchoolCode,
-      action: 'payment_collected',
-      entity_type: 'payment',
-      entity_id: payment.id,
-      performed_by: collectedBy,
-      performed_by_staff_id: collectedByStaffId,
-      changes: {
-        amount,
-        payment_mode,
-        student_id,
-        allocations,
-      },
-      metadata: {
-        receipt_id: receipt?.id || null,
-      },
+    // 6. Audit log (Security & Action Audit dashboard)
+    logAudit(request, {
+      userId: collectedBy,
+      userName: collectorName,
+      role: 'Accountant',
+      actionType: 'FEE_PAID',
+      entityType: 'PAYMENT',
+      entityId: payment.id,
+      severity: 'CRITICAL',
+      metadata: { amount: Number(amount), receipt_id: receipt?.id ?? null },
     });
 
     return NextResponse.json({

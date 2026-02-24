@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/v2/fees/fee-structures
  * Create a new fee structure
- * Body: { school_code, name, class_name, section, academic_year, start_month, end_month, frequency, late_fee_type, late_fee_value, grace_period_days, items: [{ fee_head_id, amount }] }
+ * Body: { school_code, name, class_name, section, academic_year, start_month, end_month, frequency, payment_due_day?, late_fee_type, late_fee_value, grace_period_days, items: [{ fee_head_id, amount }] }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
       start_month,
       end_month,
       frequency,
+      payment_due_day,
       late_fee_type,
       late_fee_value,
       grace_period_days,
@@ -156,6 +157,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create fee structure
+    const dueDay = payment_due_day != null ? Math.min(31, Math.max(1, Number(payment_due_day))) : 15;
     const { data: feeStructure, error: insertError } = await supabase
       .from('fee_structures')
       .insert({
@@ -168,6 +170,7 @@ export async function POST(request: NextRequest) {
         start_month: typeof start_month === 'string' ? parseInt(start_month) : (Number(start_month) || 0),
         end_month: typeof end_month === 'string' ? parseInt(end_month) : (Number(end_month) || 0),
         frequency,
+        payment_due_day: dueDay,
         late_fee_type: late_fee_type || null,
         late_fee_value: late_fee_value ? (typeof late_fee_value === 'string' ? parseFloat(late_fee_value) : Number(late_fee_value)) : 0,
         grace_period_days: grace_period_days ? (typeof grace_period_days === 'string' ? parseInt(grace_period_days) : Number(grace_period_days)) : 0,

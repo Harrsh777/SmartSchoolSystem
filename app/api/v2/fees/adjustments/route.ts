@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
+import { logAudit } from '@/lib/audit-logger';
 
 /**
  * GET /api/v2/fees/adjustments
@@ -145,14 +146,16 @@ export async function POST(request: NextRequest) {
     // Get creator info
     const staffId = request.headers.get('x-staff-id');
     let createdBy: string | null = null;
+    let creatorName = 'Staff';
     if (staffId) {
       const { data: staff } = await supabase
         .from('staff')
-        .select('id')
+        .select('id, full_name')
         .eq('school_code', normalizedSchoolCode)
         .eq('staff_id', staffId)
         .single();
       createdBy = staff?.id || null;
+      creatorName = (staff as { full_name?: string } | null)?.full_name || staffId || 'Staff';
     }
 
     // Create adjustment
@@ -179,19 +182,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Audit log
-    await supabase.from('audit_logs').insert({
-      school_id: school.id,
-      school_code: normalizedSchoolCode,
-      action: 'adjustment_created',
-      entity_type: 'fee_adjustment',
-      entity_id: adjustment.id,
-      performed_by: createdBy,
-      changes: {
-        amount,
-        adjustment_type,
-        reason,
-      },
+    // Audit log (Security & Action Audit dashboard)
+    logAudit(request, {
+      userId: createdBy ?? undefined,
+      userName: creatorName,
+      role: 'Accountant',
+      actionType: 'DISCOUNT_APPLIED',
+      entityType: 'FEE',
+      entityId: adjustment.id,
+      severity: 'MEDIUM',
+      metadata: { amount, adjustment_type, reason: reason?.slice(0, 200) },
     });
 
     return NextResponse.json({ data: adjustment }, { status: 201 });

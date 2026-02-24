@@ -48,21 +48,28 @@ export async function POST(
     // Calculate total base amount from items
     const totalBaseAmount = structure.items?.reduce((sum: number, item: { amount: number }) => sum + (item.amount || 0), 0) || 0;
 
-    // Normalize values for maatching
+    // Normalize values for matching
     const normalizedSchoolCode = String(structure.school_code || '').toUpperCase().trim();
     const normalizedClassName = String(structure.class_name || '').trim();
-    const normalizedSection = structure.section ? String(structure.section).trim().toUpperCase() : null;
+    const normalizedSection = structure.section ? String(structure.section).trim() : null;
     const normalizedAcademicYear = structure.academic_year ? String(structure.academic_year).trim() : null;
+    const structureSchoolId = structure.school_id || null;
 
-    // Debug: First, let's check what students exist for this school
-    const { data: allStudentsForSchool } = await supabase
+    // Debug: First, check what students exist for this school
+    let debugQuery = supabase
       .from('students')
       .select('id, admission_no, student_name, class, section, academic_year, school_code')
-      .eq('school_code', normalizedSchoolCode)
       .limit(100);
+    if (structureSchoolId) {
+      debugQuery = debugQuery.eq('school_id', structureSchoolId);
+    } else {
+      debugQuery = debugQuery.ilike('school_code', normalizedSchoolCode);
+    }
+    const { data: allStudentsForSchool } = await debugQuery;
 
     console.log('All students for school:', {
       school_code: normalizedSchoolCode,
+      school_id: structureSchoolId,
       count: allStudentsForSchool?.length || 0,
       sample_students: allStudentsForSchool?.slice(0, 5).map(s => ({
         name: s.student_name,
@@ -72,53 +79,86 @@ export async function POST(
       })),
     });
 
-    // Get all applicable students
+    // Build student query: match by school (id or code), then class/section (case-insensitive), then academic_year if set
     let studentsQuery = supabase
       .from('students')
       .select('id, school_id, school_code, admission_no, student_name, class, section, academic_year')
-      .eq('school_code', normalizedSchoolCode)
-      .eq('class', normalizedClassName);
+      .ilike('class', normalizedClassName);
 
-    // Filter by section if provided
-    if (normalizedSection) {
-      studentsQuery = studentsQuery.eq('section', normalizedSection);
+    if (structureSchoolId) {
+      studentsQuery = studentsQuery.eq('school_id', structureSchoolId);
+    } else {
+      studentsQuery = studentsQuery.ilike('school_code', normalizedSchoolCode);
     }
 
-    // Filter by academic_year if provided
-    // Note: We use a more flexible matching - if exact match fails, we'll try without academic_year filter
+    if (normalizedSection) {
+      studentsQuery = studentsQuery.ilike('section', normalizedSection);
+    }
+
     if (normalizedAcademicYear) {
       studentsQuery = studentsQuery.eq('academic_year', normalizedAcademicYear);
     }
 
     const { data: initialStudents, error: studentsError } = await studentsQuery;
     let students: typeof initialStudents = initialStudents;
-    
-    // If no students found and academic_year was specified, try again without academic_year filter
-    // This handles cases where academic year format doesn't match (e.g., '2024-2025' vs '2025')
+
+    // If still no students and academic_year was used, retry without academic_year filter (format mismatch e.g. 2026 vs 2026-2027)
     let academicYearIgnored = false;
     if ((!students || students.length === 0) && normalizedAcademicYear) {
       console.log('No students found with academic_year filter, trying without academic_year...');
       let retryQuery = supabase
         .from('students')
         .select('id, school_id, school_code, admission_no, student_name, class, section, academic_year')
-        .eq('school_code', normalizedSchoolCode)
-        .eq('class', normalizedClassName);
-      
-      if (normalizedSection) {
-        retryQuery = retryQuery.eq('section', normalizedSection);
+        .ilike('class', normalizedClassName);
+
+      if (structureSchoolId) {
+        retryQuery = retryQuery.eq('school_id', structureSchoolId);
+      } else {
+        retryQuery = retryQuery.ilike('school_code', normalizedSchoolCode);
       }
-      
+      if (normalizedSection) {
+        retryQuery = retryQuery.ilike('section', normalizedSection);
+      }
+
       const { data: retryStudents, error: retryError } = await retryQuery;
-      
+
       if (!retryError && retryStudents && retryStudents.length > 0) {
         console.log(`Found ${retryStudents.length} students when ignoring academic_year filter`);
         students = retryStudents;
         academicYearIgnored = true;
-        // Log warning but continue with fee generation
-        console.warn(`Academic year mismatch: Structure has "${normalizedAcademicYear}" but students have different values. Proceeding without academic year filter.`);
+        console.warn(`Academic year mismatch: Structure has "${normalizedAcademicYear}" but students have different/null values. Proceeding without academic year filter.`);
       } else {
-        // Still no students found even without academic year filter
         students = null;
+      }
+    }
+
+    // If still no students and we filtered by school_id, retry with school_code (in case students have school_code but no school_id)
+    if ((!students || students.length === 0) && structureSchoolId) {
+      console.log('No students found with school_id, trying with school_code...');
+      let fallbackQuery = supabase
+        .from('students')
+        .select('id, school_id, school_code, admission_no, student_name, class, section, academic_year')
+        .ilike('school_code', normalizedSchoolCode)
+        .ilike('class', normalizedClassName);
+      if (normalizedSection) fallbackQuery = fallbackQuery.ilike('section', normalizedSection);
+      if (normalizedAcademicYear) fallbackQuery = fallbackQuery.eq('academic_year', normalizedAcademicYear);
+      const { data: fallbackStudents, error: fallbackError } = await fallbackQuery;
+      if (!fallbackError && fallbackStudents && fallbackStudents.length > 0) {
+        students = fallbackStudents;
+        console.log(`Found ${fallbackStudents.length} students using school_code instead of school_id`);
+      }
+      if ((!students || students.length === 0) && normalizedAcademicYear) {
+        fallbackQuery = supabase
+          .from('students')
+          .select('id, school_id, school_code, admission_no, student_name, class, section, academic_year')
+          .ilike('school_code', normalizedSchoolCode)
+          .ilike('class', normalizedClassName);
+        if (normalizedSection) fallbackQuery = fallbackQuery.ilike('section', normalizedSection);
+        const { data: fallback2 } = await fallbackQuery;
+        if (fallback2 && fallback2.length > 0) {
+          students = fallback2;
+          academicYearIgnored = true;
+        }
       }
     }
 
@@ -229,15 +269,18 @@ export async function POST(
 
     for (const student of students) {
       for (const month of months) {
-        const dueMonth = new Date(month.getFullYear(), month.getMonth(), 1);
-        const dueDate = new Date(month.getFullYear(), month.getMonth(), 15); // 15th of each month
+        const dueDay = Math.min(
+          structure.payment_due_day ? Math.max(1, Math.min(31, structure.payment_due_day)) : 15,
+          new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+        );
+        const dueDate = new Date(month.getFullYear(), month.getMonth(), dueDay);
 
         feeRecords.push({
-          school_id: student.school_id,
-          school_code: student.school_code,
+          school_id: student.school_id || structure.school_id,
+          school_code: student.school_code || normalizedSchoolCode,
           student_id: student.id,
           fee_structure_id: id,
-          due_month: dueMonth.toISOString().split('T')[0],
+          due_month: new Date(month.getFullYear(), month.getMonth(), 1).toISOString().split('T')[0],
           due_date: dueDate.toISOString().split('T')[0],
           base_amount: totalBaseAmount,
         });

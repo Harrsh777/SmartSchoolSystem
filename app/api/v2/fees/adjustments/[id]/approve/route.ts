@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
+import { logAudit } from '@/lib/audit-logger';
 
 /**
  * POST /api/v2/fees/adjustments/[id]/approve
@@ -43,14 +44,16 @@ export async function POST(
     // Get approver info
     const staffId = request.headers.get('x-staff-id');
     let approvedBy: string | null = null;
+    let approverName = 'Staff';
     if (staffId) {
       const { data: staff } = await supabase
         .from('staff')
-        .select('id')
+        .select('id, full_name')
         .eq('school_code', adjustment.school_code)
         .eq('staff_id', staffId)
         .single();
       approvedBy = staff?.id || null;
+      approverName = (staff as { full_name?: string } | null)?.full_name || staffId || 'Staff';
     }
 
     if (!approvedBy) {
@@ -103,18 +106,16 @@ export async function POST(
       }
     }
 
-    // Audit log
-    await supabase.from('audit_logs').insert({
-      school_id: adjustment.school_id,
-      school_code: adjustment.school_code,
-      action: 'adjustment_approved',
-      entity_type: 'fee_adjustment',
-      entity_id: id,
-      performed_by: approvedBy,
-      changes: {
-        status: 'approved',
-        amount: adjustment.amount,
-      },
+    // Audit log (Security & Action Audit dashboard)
+    logAudit(request, {
+      userId: approvedBy ?? undefined,
+      userName: approverName,
+      role: 'Accountant',
+      actionType: 'APPROVED',
+      entityType: 'FEE',
+      entityId: id,
+      severity: 'MEDIUM',
+      metadata: { adjustment_amount: adjustment.amount },
     });
 
     return NextResponse.json({

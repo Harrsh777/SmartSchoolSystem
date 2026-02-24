@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, TrendingUp, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 
 const MONTHS = [
   { value: 1, label: 'January' },
@@ -65,6 +65,14 @@ export default function FeeStructuresPage({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [generating, setGenerating] = useState<string | null>(null);
+  const [deactivateModal, setDeactivateModal] = useState<{
+    structureId: string;
+    structureName: string;
+    students: Array<{ id: string; student_name: string; admission_no: string; class: string; section: string }>;
+    count: number;
+  } | null>(null);
+  const [deactivating, setDeactivating] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const fetchStructures = useCallback(async () => {
     try {
@@ -119,12 +127,37 @@ export default function FeeStructuresPage({
     }
   };
 
-  const handleDeactivate = async (structureId: string) => {
-    if (!confirm('Deactivate this fee structure? This will prevent it from being used for fee generation. Existing fees will not be affected.')) {
-      return;
-    }
-
+  const handleDeactivate = async (structureId: string, structureName: string) => {
     try {
+      setError('');
+      const res = await fetch(`/api/v2/fees/fee-structures/${structureId}/students-with-fees`);
+      const result = await res.json();
+      const students = result.data?.students || [];
+      const count = result.data?.count ?? students.length;
+
+      if (count > 0) {
+        setDeactivateModal({
+          structureId,
+          structureName,
+          students,
+          count,
+        });
+        return;
+      }
+
+      if (!confirm('Deactivate this fee structure? This will prevent it from being used for fee generation. Existing fees will not be affected.')) {
+        return;
+      }
+      await doDeactivate(structureId);
+    } catch (err) {
+      setError('Failed to check fee structure');
+      console.error(err);
+    }
+  };
+
+  const doDeactivate = async (structureId: string) => {
+    try {
+      setDeactivating(structureId);
       setError('');
       const response = await fetch(`/api/v2/fees/fee-structures/${structureId}/deactivate`, {
         method: 'POST',
@@ -137,6 +170,7 @@ export default function FeeStructuresPage({
 
       if (response.ok) {
         setSuccess('Fee structure deactivated successfully');
+        setDeactivateModal(null);
         fetchStructures();
         setTimeout(() => setSuccess(''), 3000);
       } else {
@@ -145,6 +179,33 @@ export default function FeeStructuresPage({
     } catch (err) {
       setError('Failed to deactivate fee structure');
       console.error(err);
+    } finally {
+      setDeactivating(null);
+    }
+  };
+
+  const handleDelete = async (structureId: string, structureName: string) => {
+    if (!confirm(`Delete fee structure "${structureName}"? This cannot be undone. Only inactive structures with no generated fees can be deleted.`)) {
+      return;
+    }
+    try {
+      setDeleting(structureId);
+      setError('');
+      const response = await fetch(`/api/v2/fees/fee-structures/${structureId}`, { method: 'DELETE' });
+      const result = await response.json();
+
+      if (response.ok) {
+        setSuccess('Fee structure deleted successfully');
+        fetchStructures();
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(result.error || 'Failed to delete fee structure');
+      }
+    } catch (err) {
+      setError('Failed to delete fee structure');
+      console.error(err);
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -461,14 +522,38 @@ export default function FeeStructuresPage({
                                         )}
                                       </Button>
                                       <Button
-                                        onClick={() => handleDeactivate(structure.id)}
+                                        onClick={() => handleDeactivate(structure.id, structure.name)}
+                                        disabled={deactivating === structure.id}
                                         className="bg-red-600 hover:bg-red-700 text-white text-xs py-1.5 px-2"
                                         size="sm"
                                       >
-                                        <PowerOff size={14} className="mr-1" />
-                                        Deactivate
+                                        {deactivating === structure.id ? (
+                                          <Loader2 size={14} className="animate-spin" />
+                                        ) : (
+                                          <>
+                                            <PowerOff size={14} className="mr-1" />
+                                            Deactivate
+                                          </>
+                                        )}
                                       </Button>
                                     </>
+                                  )}
+                                  {!structure.is_active && (
+                                    <Button
+                                      onClick={() => handleDelete(structure.id, structure.name)}
+                                      disabled={deleting === structure.id}
+                                      className="bg-gray-700 hover:bg-gray-800 text-white text-xs py-1.5 px-2"
+                                      size="sm"
+                                    >
+                                      {deleting === structure.id ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                      ) : (
+                                        <>
+                                          <Trash2 size={14} className="mr-1" />
+                                          Delete
+                                        </>
+                                      )}
+                                    </Button>
                                   )}
                                   <Button
                                     variant="outline"
@@ -531,6 +616,67 @@ export default function FeeStructuresPage({
           })
         )}
       </div>
+
+      {/* Deactivate warning modal: students with generated fees */}
+      <AnimatePresence>
+        {deactivateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={() => !deactivating && setDeactivateModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-md w-full max-h-[80vh] flex flex-col border border-gray-200 dark:border-gray-700"
+            >
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <AlertCircle className="text-amber-500" size={22} />
+                  Students with generated fees
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  The following {deactivateModal.count} student(s) have fees generated for structure &quot;{deactivateModal.structureName}&quot;. Deactivating will prevent new fee generation; existing fees will not be affected.
+                </p>
+              </div>
+              <div className="p-4 overflow-y-auto flex-1 min-h-0">
+                <ul className="space-y-2">
+                  {deactivateModal.students.map((s) => (
+                    <li key={s.id} className="text-sm text-gray-700 dark:text-gray-300 py-1 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                      <span className="font-medium">{s.student_name}</span>
+                      {s.admission_no && <span className="text-gray-500 dark:text-gray-400 ml-2">({s.admission_no})</span>}
+                      {s.class && <span className="text-gray-500 dark:text-gray-400 ml-2">— {s.class}{s.section ? `-${s.section}` : ''}</span>}
+                    </li>
+                  ))}
+                </ul>
+                {deactivateModal.count > deactivateModal.students.length && (
+                  <p className="text-xs text-gray-500 mt-2">... and {deactivateModal.count - deactivateModal.students.length} more</p>
+                )}
+              </div>
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setDeactivateModal(null)}
+                  disabled={!!deactivating}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={() => doDeactivate(deactivateModal.structureId)}
+                  disabled={!!deactivating}
+                >
+                  {deactivating ? <Loader2 size={18} className="animate-spin" /> : 'Deactivate anyway'}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

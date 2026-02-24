@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, FileText, Loader2, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import Input from '@/components/ui/Input';
+import { ArrowLeft, FileText, Loader2, AlertCircle, CheckCircle, XCircle, Edit2, Save } from 'lucide-react';
 
 interface FeeStructureItem {
   id: string;
@@ -62,6 +63,13 @@ export default function FeeStructureDetailPage({
   const [structure, setStructure] = useState<FeeStructure | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editingLateFee, setEditingLateFee] = useState(false);
+  const [lateFeeType, setLateFeeType] = useState('');
+  const [lateFeeValue, setLateFeeValue] = useState('');
+  const [gracePeriodDays, setGracePeriodDays] = useState(0);
+  const [savingLateFee, setSavingLateFee] = useState(false);
+  const [lateFeeError, setLateFeeError] = useState('');
+  const [lateFeeSuccess, setLateFeeSuccess] = useState('');
 
   useEffect(() => {
     fetchStructure();
@@ -77,6 +85,10 @@ export default function FeeStructureDetailPage({
 
       if (response.ok) {
         setStructure(result.data);
+        const s = result.data as FeeStructure;
+        setLateFeeType(s.late_fee_type || '');
+        setLateFeeValue(s.late_fee_value != null ? String(s.late_fee_value) : '');
+        setGracePeriodDays(s.grace_period_days ?? 0);
       } else {
         setError(result.error || 'Failed to fetch fee structure');
       }
@@ -94,6 +106,37 @@ export default function FeeStructureDetailPage({
 
   const getTotalAmount = () => {
     return structure?.items?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+  };
+
+  const handleSaveLateFee = async () => {
+    if (!structure) return;
+    setSavingLateFee(true);
+    setLateFeeError('');
+    setLateFeeSuccess('');
+    try {
+      const res = await fetch(`/api/v2/fees/fee-structures/${structureId}?school_code=${schoolCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          late_fee_type: lateFeeType.trim() || null,
+          late_fee_value: lateFeeValue ? parseFloat(lateFeeValue) : 0,
+          grace_period_days: gracePeriodDays,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.data) {
+        setStructure({ ...structure, ...data.data });
+        setEditingLateFee(false);
+        setLateFeeSuccess('Late fee settings saved.');
+        setTimeout(() => setLateFeeSuccess(''), 3000);
+      } else {
+        setLateFeeError(data.error || 'Failed to save late fee');
+      }
+    } catch (err) {
+      setLateFeeError('Failed to save late fee');
+    } finally {
+      setSavingLateFee(false);
+    }
   };
 
   if (loading) {
@@ -162,8 +205,19 @@ export default function FeeStructureDetailPage({
         >
           <AlertCircle size={20} />
           <p className="text-sm">
-            This fee structure is active and cannot be edited. You must deactivate it first to make changes.
+            This fee structure is active. You can only edit Late Fee rules below; other changes require deactivation first.
           </p>
+        </motion.div>
+      )}
+
+      {!structure.is_active && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg flex items-center gap-2"
+        >
+          <AlertCircle size={20} />
+          <p className="text-sm">This structure is inactive. You can edit details including Late Fee below.</p>
         </motion.div>
       )}
 
@@ -259,10 +313,81 @@ export default function FeeStructureDetailPage({
         </Card>
       )}
 
-      {/* Late Fee Policy */}
-      {structure.late_fee_type && (
-        <Card>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Late Fee Policy</h2>
+      {/* Late Fee Policy - view and edit */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900">Late Fee Policy</h2>
+          {!editingLateFee ? (
+            <Button variant="outline" size="sm" onClick={() => setEditingLateFee(true)}>
+              <Edit2 size={16} className="mr-1" />
+              Edit Late Fee
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => {
+              setEditingLateFee(false);
+              setLateFeeError('');
+              setLateFeeSuccess('');
+              if (structure) {
+                setLateFeeType(structure.late_fee_type || '');
+                setLateFeeValue(structure.late_fee_value != null ? String(structure.late_fee_value) : '');
+                setGracePeriodDays(structure.grace_period_days ?? 0);
+              }
+            }}>
+              Cancel
+            </Button>
+              <Button size="sm" onClick={handleSaveLateFee} disabled={savingLateFee}>
+                {savingLateFee ? <Loader2 size={16} className="animate-spin mr-1" /> : <Save size={16} className="mr-1" />}
+                Save
+              </Button>
+            </div>
+          )}
+        </div>
+        {lateFeeError && <p className="text-sm text-red-600 mb-3">{lateFeeError}</p>}
+        {lateFeeSuccess && <p className="text-sm text-green-600 mb-3">{lateFeeSuccess}</p>}
+        {editingLateFee ? (
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Late Fee Type</label>
+              <select
+                value={lateFeeType}
+                onChange={(e) => setLateFeeType(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">No Late Fee</option>
+                <option value="flat">Flat Amount</option>
+                <option value="per_day">Per Day</option>
+                <option value="percentage">Percentage (of base per day)</option>
+              </select>
+            </div>
+            {lateFeeType && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {lateFeeType === 'percentage' ? 'Percentage (%)' : 'Late Fee Value (₹)'}
+                  </label>
+                  <Input
+                    type="number"
+                    value={lateFeeValue}
+                    onChange={(e) => setLateFeeValue(e.target.value)}
+                    placeholder={lateFeeType === 'percentage' ? 'e.g. 0.5' : 'e.g. 50'}
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Grace Period (days)</label>
+                  <Input
+                    type="number"
+                    value={gracePeriodDays}
+                    onChange={(e) => setGracePeriodDays(parseInt(e.target.value) || 0)}
+                    min="0"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        ) : structure.late_fee_type ? (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -272,7 +397,7 @@ export default function FeeStructureDetailPage({
               <div>
                 <label className="block text-sm font-medium text-amber-900 mb-1">Late Fee Value</label>
                 <p className="text-lg font-semibold text-amber-900">
-                  ₹{structure.late_fee_value.toLocaleString('en-IN')}
+                  {structure.late_fee_type === 'percentage' ? `${structure.late_fee_value}%` : `₹${structure.late_fee_value.toLocaleString('en-IN')}`}
                   {structure.late_fee_type === 'per_day' && '/day'}
                 </p>
               </div>
@@ -282,8 +407,10 @@ export default function FeeStructureDetailPage({
               </div>
             </div>
           </div>
-        </Card>
-      )}
+        ) : (
+          <p className="text-gray-500 py-2">No late fee configured. Click &quot;Edit Late Fee&quot; to add.</p>
+        )}
+      </Card>
 
       {/* Created Information */}
       <Card>

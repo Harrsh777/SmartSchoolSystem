@@ -98,9 +98,19 @@ export async function PATCH(
       );
     }
 
-    if (existing.is_active) {
+    const isActive = existing.is_active as boolean;
+    const onlyLateFeeUpdate = isActive && [
+      'late_fee_type',
+      'late_fee_value',
+      'grace_period_days',
+    ].every((key) => body[key] !== undefined) && [
+      'name', 'class_name', 'section', 'academic_year', 'start_month', 'end_month',
+      'frequency', 'payment_due_day', 'items',
+    ].every((key) => body[key] === undefined);
+
+    if (isActive && !onlyLateFeeUpdate) {
       return NextResponse.json(
-        { error: 'Cannot update an active fee structure. Deactivate it first.' },
+        { error: 'Cannot update an active fee structure. Deactivate it first, or update only Late Fee (type, value, grace period).' },
         { status: 400 }
       );
     }
@@ -117,6 +127,10 @@ export async function PATCH(
     if (body.late_fee_type !== undefined) updateData.late_fee_type = body.late_fee_type || null;
     if (body.late_fee_value !== undefined) updateData.late_fee_value = typeof body.late_fee_value === 'string' ? parseFloat(body.late_fee_value) : (Number(body.late_fee_value) || 0);
     if (body.grace_period_days !== undefined) updateData.grace_period_days = typeof body.grace_period_days === 'string' ? parseInt(body.grace_period_days) : (Number(body.grace_period_days) || 0);
+    if (body.payment_due_day !== undefined) {
+      const day = typeof body.payment_due_day === 'string' ? parseInt(body.payment_due_day) : Number(body.payment_due_day);
+      updateData.payment_due_day = Math.min(31, Math.max(1, day || 15));
+    }
 
     const { data: updated, error: updateError } = await supabase
       .from('fee_structures')
@@ -179,6 +193,85 @@ export async function PATCH(
     console.error('Error in PATCH /api/v2/fees/fee-structures/[id]:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/v2/fees/fee-structures/[id]
+ * Delete a fee structure. Allowed only when structure is inactive.
+ * If any student fees have been generated for this structure, deletion is not allowed (use deactivate instead).
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const permissionCheck = await requirePermission(request, 'manage_fees');
+    if (permissionCheck) {
+      return permissionCheck;
+    }
+
+    const { id } = await params;
+    const supabase = getServiceRoleClient();
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('fee_structures')
+      .select('id, is_active')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) {
+      return NextResponse.json(
+        { error: 'Fee structure not found' },
+        { status: 404 }
+      );
+    }
+
+    if (existing.is_active) {
+      return NextResponse.json(
+        { error: 'Cannot delete an active fee structure. Deactivate it first.' },
+        { status: 400 }
+      );
+    }
+
+    const { count, error: countError } = await supabase
+      .from('student_fees')
+      .select('id', { count: 'exact', head: true })
+      .eq('fee_structure_id', id);
+
+    if (!countError && count && count > 0) {
+      return NextResponse.json(
+        {
+          error: 'Cannot delete this fee structure because fees have already been generated for students. You can deactivate it instead so no new fees are generated.',
+        },
+        { status: 400 }
+      );
+    }
+
+    await supabase.from('fee_structure_items').delete().eq('fee_structure_id', id);
+    const { error: deleteError } = await supabase
+      .from('fee_structures')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error('Error deleting fee structure:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete fee structure', details: deleteError.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      message: 'Fee structure deleted successfully',
+      data: { id },
+    }, { status: 200 });
+  } catch (error) {
+    console.error('Error in DELETE /api/v2/fees/fee-structures/[id]:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

@@ -6,8 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { 
-  Receipt, 
+import {  
   ArrowLeft,
   Search,
   Download,
@@ -423,7 +422,7 @@ export default function FeeStatementsPage({
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-[#2F6FED] rounded-lg">
-                  <Receipt className="text-white" size={24} />
+                  <IndianRupee className="text-white" size={24} />
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">{feeStatement.student.student_name}</h3>
@@ -796,7 +795,7 @@ export default function FeeStatementsPage({
 
       {!selectedStudent && !loading && (
         <Card className="p-12 text-center">
-          <Receipt className="mx-auto text-gray-400 mb-4" size={48} />
+          <IndianRupee className="mx-auto text-gray-400 mb-4" size={48} />
           <p className="text-gray-500">Search for a student to view their fee statement</p>
         </Card>
       )}
