@@ -4,26 +4,22 @@ import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { 
-  ArrowLeft, 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Calendar, 
-  Briefcase, 
-  GraduationCap,
-  Building2,
+import {
+  ArrowLeft,
+  User,
+  Mail,
+  Phone,
+  Calendar,
+  Briefcase,
   FileText,
   CreditCard,
-  Globe,
-  Award,
-  Clock,
-  Heart,
-  Shield,
-  Hash
+  Info,
+  CheckCircle2,
+  Home,
 } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
+
+type HouseIncharge = { id: string; house_name: string; house_color?: string | null };
 
 export default function ViewStaffPage({
   params,
@@ -34,18 +30,34 @@ export default function ViewStaffPage({
   const router = useRouter();
   const [staff, setStaff] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
+  const [houseInchargeOf, setHouseInchargeOf] = useState<HouseIncharge[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'attendance' | 'payroll' | 'documents'>('overview');
 
   useEffect(() => {
     fetchStaff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffId, schoolCode]);
 
+  useEffect(() => {
+    if (!schoolCode || !staff?.id) return;
+    fetch(`/api/institute/houses?school_code=${encodeURIComponent(schoolCode)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.data || !Array.isArray(data.data)) return;
+        const incharge = data.data.filter(
+          (h: { staff_incharge_id?: string | null }) => h.staff_incharge_id === staff.id
+        );
+        setHouseInchargeOf(incharge.map((h: { id: string; house_name: string; house_color?: string | null }) => ({ id: h.id, house_name: h.house_name, house_color: h.house_color })));
+      })
+      .catch(() => {});
+  }, [schoolCode, staff?.id]);
+
   const fetchStaff = async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/staff/${staffId}?school_code=${schoolCode}`);
       const result = await response.json();
-      
+
       if (response.ok && result.data) {
         setStaff(result.data);
       } else {
@@ -63,7 +75,7 @@ export default function ViewStaffPage({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e3a8a] mx-auto mb-4" />
           <p className="text-gray-600">Loading staff details...</p>
         </div>
       </div>
@@ -86,14 +98,19 @@ export default function ViewStaffPage({
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Not provided';
     try {
-      return new Date(dateString).toLocaleDateString('en-US', {
+      return new Date(dateString).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
         year: 'numeric',
-        month: 'long',
-        day: 'numeric'
       });
     } catch {
       return dateString;
     }
+  };
+
+  const getStaffPhotoUrl = (s: Staff & { profile_photo_url?: string; image_url?: string }): string => {
+    const url = s.photo_url ?? s.profile_photo_url ?? s.image_url;
+    return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
   };
 
   const safeString = (value: unknown): string => {
@@ -103,393 +120,324 @@ export default function ViewStaffPage({
     return String(value);
   };
 
+  const staffPhotoUrl = getStaffPhotoUrl(staff);
+  const isActive = staff.is_active !== false;
+
+  const tabs = [
+    { id: 'overview' as const, label: 'Overview' },
+    { id: 'attendance' as const, label: 'Attendance' },
+    { id: 'payroll' as const, label: 'Payroll & Salary' },
+    { id: 'documents' as const, label: 'Documents' },
+  ];
+
   return (
-    <div className="space-y-8">
-      {/* Header */}
+    <div className="space-y-6 pb-8 min-h-screen bg-[#f8fafc]">
+      {/* Back + Title row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
             onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/directory`)}
+            className="border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
           >
             <ArrowLeft size={18} className="mr-2" />
             Back
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-black mb-2">Staff Details</h1>
-            <p className="text-gray-600">View complete staff information</p>
+            <h1 className="text-xl font-bold text-gray-900">Staff Details</h1>
+            <p className="text-sm text-gray-600">View complete staff information</p>
           </div>
         </div>
-        <Button onClick={() => router.push(`/dashboard/${schoolCode}/staff/${staffId}/edit`)}>
+        <Button
+          onClick={() => router.push(`/dashboard/${schoolCode}/staff/${staffId}/edit`)}
+          className="bg-[#1e3a8a] hover:bg-[#2563eb] text-white"
+        >
           Edit Staff
         </Button>
       </div>
 
-      {/* Staff Information */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Profile Card */}
-        <Card className="p-6 bg-gradient-to-br from-teal-50 to-blue-50 border-teal-200">
-          <div className="text-center mb-6">
-            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-teal-500 to-blue-600 flex items-center justify-center text-white text-5xl font-bold mx-auto mb-4 shadow-lg">
-              {staff.full_name?.[0]?.toUpperCase() || '?'}
+      {/* Header card: profile photo + name + ACTIVE + meta + contact row */}
+      <Card className="p-6 bg-white border border-gray-200 shadow-sm">
+        <div className="flex flex-col sm:flex-row gap-6 items-start">
+          <div className="relative shrink-0">
+            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white text-4xl font-bold border-4 border-white shadow-lg">
+              {staffPhotoUrl ? (
+                <>
+                  <img
+                    src={staffPhotoUrl}
+                    alt={safeString(staff.full_name)}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                  <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6]">
+                    {staff.full_name?.[0]?.toUpperCase() || '?'}
+                  </span>
+                </>
+              ) : (
+                staff.full_name?.[0]?.toUpperCase() || '?'
+              )}
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">{safeString(staff.full_name)}</h2>
-            <p className="text-gray-600">Staff ID: {safeString(staff.staff_id)}</p>
-            {!!staff.employee_code && (
-              <p className="text-gray-500 text-sm mt-1">Employee Code: {safeString(staff.employee_code)}</p>
-            )}
-            <span className={`inline-block mt-3 px-4 py-1 rounded-full text-sm font-semibold ${
-              staff.is_active !== false
-                ? 'bg-green-100 text-green-700'
-                : 'bg-red-100 text-red-700'
-            }`}>
-              {staff.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
-            </span>
-          </div>
-          <div className="space-y-3 pt-6 border-t border-teal-200">
-            {!!staff.role && (
-              <div className="flex items-center gap-3 text-gray-700">
-                <Briefcase size={18} className="text-teal-600" />
-                <span>{safeString(staff.role)}</span>
-              </div>
-            )}
-            {!!staff.designation && (
-              <div className="flex items-center gap-3 text-gray-700">
-                <Award size={18} className="text-teal-600" />
-                <span>{safeString(staff.designation)}</span>
-              </div>
-            )}
-            {!!staff.department && (
-              <div className="flex items-center gap-3 text-gray-700">
-                <Building2 size={18} className="text-teal-600" />
-                <span>{safeString(staff.department)}</span>
-              </div>
-            )}
-            {!!staff.email && (
-              <div className="flex items-center gap-3 text-gray-700">
-                <Mail size={18} className="text-teal-600" />
-                <span className="truncate">{safeString(staff.email)}</span>
-              </div>
-            )}
-            {!!staff.phone && (
-              <div className="flex items-center gap-3 text-gray-700">
-                <Phone size={18} className="text-teal-600" />
-                <span>{safeString(staff.phone)}</span>
+            {isActive && (
+              <div className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-green-500 border-2 border-white flex items-center justify-center">
+                <CheckCircle2 size={14} className="text-white" />
               </div>
             )}
           </div>
-        </Card>
-
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Basic Information */}
-          <Card>
-            <div className="space-y-6">
-              <h2 className="text-xl font-bold text-black mb-4 flex items-center">
-                <User size={24} className="mr-2" />
-                Basic Information
-              </h2>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <label className="text-sm font-semibold text-gray-600">Staff ID</label>
-                  <p className="text-lg font-medium text-black mt-1">{staff.staff_id}</p>
-                </div>
-                {!!staff.employee_code && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">Employee Code</label>
-                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.employee_code)}</p>
-                  </div>
-                )}
-                <div>
-                  <label className="text-sm font-semibold text-gray-600">Full Name</label>
-                  <p className="text-lg font-medium text-black mt-1">{safeString(staff.full_name)}</p>
-                </div>
-                {!!staff.role && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">Role</label>
-                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.role)}</p>
-                  </div>
-                )}
-                {!!staff.designation && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">Designation</label>
-                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.designation)}</p>
-                  </div>
-                )}
-                {!!staff.department && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">Department</label>
-                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.department)}</p>
-                  </div>
-                )}
-                <div>
-                  <label className="text-sm font-semibold text-gray-600 flex items-center">
-                    <Calendar size={16} className="mr-1" />
-                    Date of Joining
-                  </label>
-                  <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.date_of_joining === 'string' ? staff.date_of_joining : undefined)}</p>
-                </div>
-                {!!staff.dop && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600 flex items-center">
-                      <Calendar size={16} className="mr-1" />
-                      Date of Promotion
-                    </label>
-                    <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.dop === 'string' ? staff.dop : undefined)}</p>
-                  </div>
-                )}
-                {!!staff.gender && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">Gender</label>
-                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.gender)}</p>
-                  </div>
-                )}
-                {!!staff.dob && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600 flex items-center">
-                      <Calendar size={16} className="mr-1" />
-                      Date of Birth
-                    </label>
-                    <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.dob === 'string' ? staff.dob : undefined)}</p>
-                  </div>
-                )}
-                {!!staff.blood_group && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600 flex items-center">
-                      <Heart size={16} className="mr-1" />
-                      Blood Group
-                    </label>
-                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.blood_group)}</p>
-                  </div>
-                )}
-                {!!staff.short_code && (
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600 flex items-center">
-                      <Hash size={16} className="mr-1" />
-                      Short Code
-                    </label>
-                    <p className="text-lg font-medium text-black mt-1">{safeString(staff.short_code)}</p>
-                  </div>
-                )}
-              </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h2 className="text-2xl font-bold text-gray-900">{safeString(staff.full_name)}</h2>
+              <span
+                className={`inline-flex items-center px-3 py-0.5 rounded-full text-xs font-semibold ${
+                  isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}
+              >
+                {isActive ? 'ACTIVE' : 'INACTIVE'}
+              </span>
             </div>
-          </Card>
-
-          {/* Contact Information */}
-          {(!!staff.email || !!staff.phone || !!staff.contact1 || !!staff.contact2) && (
-            <Card>
-              <div className="space-y-6">
-                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
-                  <Phone size={24} className="mr-2" />
-                  Contact Information
-                </h2>
-                <div className="grid md:grid-cols-2 gap-6">
-                  {!!staff.email && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Mail size={16} className="mr-1" />
-                        Email
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.email)}</p>
-                    </div>
-                  )}
-                  {!!staff.phone && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Phone size={16} className="mr-1" />
-                        Phone
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.phone)}</p>
-                    </div>
-                  )}
-                  {!!staff.contact1 && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Phone size={16} className="mr-1" />
-                        Primary Contact
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.contact1)}</p>
-                    </div>
-                  )}
-                  {!!staff.contact2 && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Phone size={16} className="mr-1" />
-                        Secondary Contact
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.contact2)}</p>
-                    </div>
-                  )}
-                </div>
+            <p className="text-gray-600 text-sm mb-3">
+              {safeString(staff.staff_id)}
+              {staff.role ? ` • ${safeString(staff.role)}` : ''}
+            </p>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-700">
+              {staff.designation ? (
+                <span className="flex items-center gap-1.5">
+                  <User size={16} className="text-[#1e3a8a]" />
+                  {safeString(staff.designation)}
+                </span>
+              ) : null}
+              {staff.email ? (
+                <a
+                  href={`mailto:${safeString(staff.email)}`}
+                  className="flex items-center gap-1.5 text-[#1e3a8a] hover:underline"
+                >
+                  <Mail size={16} />
+                  {safeString(staff.email)}
+                </a>
+              ) : null}
+              {staff.phone ? (
+                <span className="flex items-center gap-1.5">
+                  <Phone size={16} className="text-[#1e3a8a]" />
+                  {safeString(staff.phone)}
+                </span>
+              ) : null}
+            </div>
+            {houseInchargeOf.length > 0 && (
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <Home size={16} className="text-[#1e3a8a] shrink-0" />
+                <span className="text-sm text-gray-700">
+                  House Incharge: {houseInchargeOf.map((h) => h.house_name).join(', ')}
+                </span>
               </div>
-            </Card>
-          )}
+            )}
+          </div>
+        </div>
+      </Card>
 
-          {/* Employment Details */}
-          {(!!staff.employment_type || !!staff.qualification || (staff.experience_years !== null && staff.experience_years !== undefined) || !!staff.alma_mater || !!staff.major) && (
-            <Card>
-              <div className="space-y-6">
-                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
-                  <Briefcase size={24} className="mr-2" />
-                  Employment & Education Details
-                </h2>
-                <div className="grid md:grid-cols-2 gap-6">
-                  {!!staff.employment_type && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600">Employment Type</label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.employment_type)}</p>
-                    </div>
-                  )}
-                  {!!staff.qualification && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <GraduationCap size={16} className="mr-1" />
-                        Qualification
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.qualification)}</p>
-                    </div>
-                  )}
-                  {staff.experience_years !== null && staff.experience_years !== undefined && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Clock size={16} className="mr-1" />
-                        Experience
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{typeof staff.experience_years === 'number' ? String(staff.experience_years) : safeString(staff.experience_years)} years</p>
-                    </div>
-                  )}
-                  {!!staff.alma_mater && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <GraduationCap size={16} className="mr-1" />
-                        Alma Mater
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.alma_mater)}</p>
-                    </div>
-                  )}
-                  {!!staff.major && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600">Subject Specialization</label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.major)}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Card>
-          )}
+      {/* Tabs */}
+      <Card className="p-0 overflow-hidden border border-gray-200">
+        <div className="border-b border-gray-200 bg-gray-50">
+          <div className="flex gap-0 p-0">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-6 py-3 text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-white text-[#1e3a8a] border-b-2 border-[#1e3a8a]'
+                    : 'text-gray-600 hover:text-[#1e3a8a] hover:bg-white/70'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-          {/* Personal Details */}
-          {(!!staff.religion || !!staff.category || !!staff.nationality || !!staff.adhar_no || !!staff.rfid || !!staff.uuid) && (
-            <Card>
-              <div className="space-y-6">
-                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
-                  <FileText size={24} className="mr-2" />
-                  Personal & Identification Details
-                </h2>
-                <div className="grid md:grid-cols-2 gap-6">
-                  {!!staff.religion && (
+        <div className="p-6 bg-white">
+          {activeTab === 'overview' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Basic Information */}
+              <Card className="p-5 border border-gray-200 shadow-none">
+                <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <Info size={18} className="text-[#1e3a8a]" />
+                  Basic Information
+                </h3>
+                <dl className="space-y-3 text-sm">
+                  <div>
+                    <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Staff ID</dt>
+                    <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.staff_id)}</dd>
+                  </div>
+                  {staff.employee_code ? (
                     <div>
-                      <label className="text-sm font-semibold text-gray-600">Religion</label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.religion)}</p>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Staff Code</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.employee_code)}</dd>
                     </div>
-                  )}
-                  {!!staff.category && (
+                  ) : null}
+                  <div>
+                    <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Full Name</dt>
+                    <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.full_name)}</dd>
+                  </div>
+                  {staff.role ? (
                     <div>
-                      <label className="text-sm font-semibold text-gray-600">Category</label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.category)}</p>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Role</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.role)}</dd>
                     </div>
-                  )}
-                  {!!staff.nationality && (
+                  ) : null}
+                  <div>
+                    <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date of Joining</dt>
+                    <dd className="font-medium text-gray-900 mt-0.5">
+                      {formatDate(
+                        typeof staff.date_of_joining === 'string' ? staff.date_of_joining : (staff as { date_of_joining?: string }).date_of_joining
+                      )}
+                    </dd>
+                  </div>
+                  {staff.gender ? (
                     <div>
-                      <label className="text-sm font-semibold text-gray-600">Nationality</label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.nationality)}</p>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gender</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.gender)}</dd>
                     </div>
-                  )}
-                  {!!staff.adhar_no && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <CreditCard size={16} className="mr-1" />
-                        Aadhaar Number
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.adhar_no)}</p>
-                    </div>
-                  )}
-                  {!!staff.rfid && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Shield size={16} className="mr-1" />
-                        RFID Card Number
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">{safeString(staff.rfid)}</p>
-                    </div>
-                  )}
-                  {!!staff.uuid && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Hash size={16} className="mr-1" />
-                        UUID
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1 font-mono text-sm">{safeString(staff.uuid)}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Card>
-          )}
+                  ) : null}
+                </dl>
+              </Card>
 
-          {/* Address */}
-          {!!staff.address && (
-            <Card>
-              <div className="space-y-6">
-                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
-                  <MapPin size={24} className="mr-2" />
-                  Address
-                </h2>
-                <p className="text-gray-700 text-lg">{safeString(staff.address)}</p>
-              </div>
-            </Card>
-          )}
-
-          {/* Additional Information */}
-          {(!!staff.website || !!staff.created_at || !!staff.updated_at) && (
-            <Card>
-              <div className="space-y-6">
-                <h2 className="text-xl font-bold text-black mb-4 flex items-center">
-                  <Building2 size={24} className="mr-2" />
-                  Additional Information
-                </h2>
-                <div className="grid md:grid-cols-2 gap-6">
-                  {!!staff.website && (
+              {/* Employment & Education */}
+              <Card className="p-5 border border-gray-200 shadow-none">
+                <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <Briefcase size={18} className="text-[#1e3a8a]" />
+                  Employment & Education
+                </h3>
+                <dl className="space-y-3 text-sm">
+                  {staff.employment_type ? (
                     <div>
-                      <label className="text-sm font-semibold text-gray-600 flex items-center">
-                        <Globe size={16} className="mr-1" />
-                        Website
-                      </label>
-                      <p className="text-lg font-medium text-black mt-1">
-                        <a href={safeString(staff.website)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                          {safeString(staff.website)}
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Employment Type</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.employment_type)}</dd>
+                    </div>
+                  ) : null}
+                  {staff.qualification ? (
+                    <div>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Qualification</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.qualification)}</dd>
+                    </div>
+                  ) : null}
+                  {staff.experience_years !== null && staff.experience_years !== undefined ? (
+                    <div>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Experience</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">
+                        {typeof staff.experience_years === 'number' ? staff.experience_years : safeString(staff.experience_years)} Years
+                      </dd>
+                    </div>
+                  ) : null}
+                  {safeString((staff as Record<string, unknown>).specialization) ? (
+                    <div>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Specialization</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString((staff as Record<string, unknown>).specialization)}</dd>
+                    </div>
+                  ) : null}
+                  {staff.major ? (
+                    <div>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Major / Subject</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.major)}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              </Card>
+
+              {/* Identification & Address */}
+              <Card className="p-5 border border-gray-200 shadow-none">
+                <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <User size={18} className="text-[#1e3a8a]" />
+                  Identification & Address
+                </h3>
+                <dl className="space-y-3 text-sm">
+                  {staff.nationality ? (
+                    <div>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nationality</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.nationality)}</dd>
+                    </div>
+                  ) : null}
+                  {(staff.dob || (staff as { date_of_birth?: string }).date_of_birth) && (
+                    <div>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date of Birth</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">
+                        {formatDate(
+                          typeof staff.dob === 'string' ? staff.dob : (staff as { date_of_birth?: string }).date_of_birth
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                  {staff.address ? (
+                    <div>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Permanent Address</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.address)}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              </Card>
+
+              {/* Contact Details + Emergency */}
+              <Card className="p-5 border border-gray-200 shadow-none">
+                <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <Phone size={18} className="text-[#1e3a8a]" />
+                  Contact Details
+                </h3>
+                <dl className="space-y-3 text-sm">
+                  {staff.email ? (
+                    <div>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Personal Email</dt>
+                      <dd className="font-medium mt-0.5">
+                        <a href={`mailto:${safeString(staff.email)}`} className="text-[#1e3a8a] hover:underline">
+                          {safeString(staff.email)}
                         </a>
-                      </p>
+                      </dd>
                     </div>
-                  )}
-                  {!!staff.created_at && (
+                  ) : null}
+                  {staff.phone ? (
                     <div>
-                      <label className="text-sm font-semibold text-gray-600">Created At</label>
-                      <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.created_at === 'string' ? staff.created_at : undefined)}</p>
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mobile Number</dt>
+                      <dd className="font-medium text-gray-900 mt-0.5">{safeString(staff.phone)}</dd>
                     </div>
-                  )}
-                  {!!staff.updated_at && (
-                    <div>
-                      <label className="text-sm font-semibold text-gray-600">Last Updated</label>
-                      <p className="text-lg font-medium text-black mt-1">{formatDate(typeof staff.updated_at === 'string' ? staff.updated_at : undefined)}</p>
+                  ) : null}
+                  {(staff.contact1 || staff.contact2) ? (
+                    <div className="pt-3 border-t border-gray-100">
+                      <dt className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                        Emergency Contact
+                      </dt>
+                      <dd className="font-medium text-gray-900 text-sm space-y-1">
+                        {staff.contact1 ? <p>Phone: {safeString(staff.contact1)}</p> : null}
+                        {staff.contact2 ? <p>Alt: {safeString(staff.contact2)}</p> : null}
+                      </dd>
                     </div>
-                  )}
-                </div>
-              </div>
-            </Card>
+                  ) : null}
+                </dl>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === 'attendance' && (
+            <div className="text-center py-12 text-gray-500">
+              <Calendar size={48} className="mx-auto mb-3 text-gray-300" />
+              <p>Attendance data can be integrated here.</p>
+            </div>
+          )}
+          {activeTab === 'payroll' && (
+            <div className="text-center py-12 text-gray-500">
+              <CreditCard size={48} className="mx-auto mb-3 text-gray-300" />
+              <p>Payroll & salary information can be integrated here.</p>
+            </div>
+          )}
+          {activeTab === 'documents' && (
+            <div className="text-center py-12 text-gray-500">
+              <FileText size={48} className="mx-auto mb-3 text-gray-300" />
+              <p>Documents can be integrated here.</p>
+            </div>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

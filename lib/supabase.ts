@@ -88,6 +88,8 @@ export interface Staff {
   phone?: string;
   role?: string;
   school_code?: string;
+  photo_url?: string | null;
+  is_active?: boolean;
   [key: string]: unknown;
 }
 
@@ -101,6 +103,7 @@ export interface Student {
   phone?: string;
   school_code?: string;
   academic_year?: string;
+  photo_url?: string | null;
   [key: string]: unknown;
 }
 

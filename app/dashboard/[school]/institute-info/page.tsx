@@ -7,7 +7,7 @@ import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Save, X, CheckCircle, AlertCircle, Upload, Image as ImageIcon, Building2, Edit2, Plus, Trash2, Clock } from 'lucide-react';
+import { Save, X, CheckCircle, AlertCircle, Upload, Image as ImageIcon, Building2, Edit2, Plus, Trash2, Clock, UserCheck, Users, Search } from 'lucide-react';
 import type { AcceptedSchool } from '@/lib/supabase';
 
 export default function InstituteInfoPage({
@@ -39,19 +39,30 @@ export default function InstituteInfoPage({
   const [savingDays, setSavingDays] = useState(false);
   
   // Houses state
-  const [houses, setHouses] = useState<Array<{
+  type HouseRow = {
     id: string;
     house_name: string;
     house_color: string;
     description?: string;
-  }>>([]);
+    staff_incharge_id?: string | null;
+    student_incharge_1_id?: string | null;
+    student_incharge_2_id?: string | null;
+  };
+  const [houses, setHouses] = useState<HouseRow[]>([]);
   const [showHouseModal, setShowHouseModal] = useState(false);
-  const [editingHouse, setEditingHouse] = useState<{ id: string; house_name: string; house_color: string; description?: string } | null>(null);
+  const [editingHouse, setEditingHouse] = useState<(HouseRow & { description?: string }) | null>(null);
   const [newHouseName, setNewHouseName] = useState('');
   const [newHouseColor, setNewHouseColor] = useState('#6366f1');
   const [newHouseDescription, setNewHouseDescription] = useState('');
+  const [newHouseStaffInchargeId, setNewHouseStaffInchargeId] = useState<string>('');
+  const [newHouseStudentIncharge1Id, setNewHouseStudentIncharge1Id] = useState<string>('');
+  const [newHouseStudentIncharge2Id, setNewHouseStudentIncharge2Id] = useState<string>('');
   const [savingHouse, setSavingHouse] = useState(false);
-  
+  const [staffList, setStaffList] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [studentsList, setStudentsList] = useState<Array<{ id: string; student_name: string }>>([]);
+  const [houseInchargeStaffSearch, setHouseInchargeStaffSearch] = useState('');
+  const [houseInchargeStudentSearch, setHouseInchargeStudentSearch] = useState('');
+
   const [formData, setFormData] = useState<Partial<AcceptedSchool & { logo_url?: string }>>({
     school_name: '',
     school_code: '',
@@ -80,9 +91,30 @@ export default function InstituteInfoPage({
     if (schoolCode) {
       fetchWorkingDays();
       fetchHouses();
+      fetchStaffAndStudents();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
+
+  const fetchStaffAndStudents = async () => {
+    if (!schoolCode) return;
+    try {
+      const [staffRes, studentsRes] = await Promise.all([
+        fetch(`/api/staff?school_code=${encodeURIComponent(schoolCode)}&status=active`),
+        fetch(`/api/students?school_code=${encodeURIComponent(schoolCode)}&status=active`),
+      ]);
+      const staffData = await staffRes.json();
+      const studentsData = await studentsRes.json();
+      if (staffRes.ok && Array.isArray(staffData.data)) {
+        setStaffList(staffData.data.map((s: { id: string; full_name?: string }) => ({ id: s.id, full_name: s.full_name || '' })));
+      }
+      if (studentsRes.ok && Array.isArray(studentsData.data)) {
+        setStudentsList(studentsData.data.map((s: { id: string; student_name?: string }) => ({ id: s.id, student_name: s.student_name || '' })));
+      }
+    } catch (err) {
+      console.error('Error fetching staff/students for house incharges:', err);
+    }
+  };
 
   const fetchSchoolData = async () => {
     try {
@@ -332,20 +364,32 @@ export default function InstituteInfoPage({
     setNewHouseName('');
     setNewHouseColor('#6366f1');
     setNewHouseDescription('');
+    setNewHouseStaffInchargeId('');
+    setNewHouseStudentIncharge1Id('');
+    setNewHouseStudentIncharge2Id('');
     setShowHouseModal(true);
   };
 
-  const handleEditHouse = (house: typeof houses[0]) => {
+  const handleEditHouse = async (house: HouseRow) => {
     setEditingHouse({
       id: house.id,
       house_name: house.house_name,
       house_color: house.house_color,
       description: house.description || '',
+      staff_incharge_id: house.staff_incharge_id ?? undefined,
+      student_incharge_1_id: house.student_incharge_1_id ?? undefined,
+      student_incharge_2_id: house.student_incharge_2_id ?? undefined,
     });
     setNewHouseName(house.house_name);
     setNewHouseColor(house.house_color);
     setNewHouseDescription(house.description || '');
+    setNewHouseStaffInchargeId(house.staff_incharge_id || '');
+    setNewHouseStudentIncharge1Id(house.student_incharge_1_id || '');
+    setNewHouseStudentIncharge2Id(house.student_incharge_2_id || '');
+    setHouseInchargeStaffSearch('');
+    setHouseInchargeStudentSearch('');
     setShowHouseModal(true);
+    await fetchStaffAndStudents();
   };
 
   const handleSaveHouse = async () => {
@@ -359,7 +403,7 @@ export default function InstituteInfoPage({
       setError('');
 
       if (editingHouse) {
-        // Update existing house
+        // Update existing house (including incharges)
         const response = await fetch(`/api/institute/houses/${editingHouse.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -367,6 +411,9 @@ export default function InstituteInfoPage({
             house_name: newHouseName.trim(),
             house_color: newHouseColor,
             description: newHouseDescription.trim() || null,
+            staff_incharge_id: newHouseStaffInchargeId.trim() || null,
+            student_incharge_1_id: newHouseStudentIncharge1Id.trim() || null,
+            student_incharge_2_id: newHouseStudentIncharge2Id.trim() || null,
           }),
         });
 
@@ -886,7 +933,12 @@ export default function InstituteInfoPage({
 
             {houses.length > 0 && (
               <div className="mt-6 space-y-3">
-                {houses.map((house) => (
+                {houses.map((house) => {
+                  const staffName = house.staff_incharge_id ? staffList.find((s) => s.id === house.staff_incharge_id)?.full_name : null;
+                  const student1Name = house.student_incharge_1_id ? studentsList.find((s) => s.id === house.student_incharge_1_id)?.student_name : null;
+                  const student2Name = house.student_incharge_2_id ? studentsList.find((s) => s.id === house.student_incharge_2_id)?.student_name : null;
+                  const hasIncharges = staffName || student1Name || student2Name;
+                  return (
                   <motion.div
                     key={house.id}
                     initial={{ opacity: 0, y: 10 }}
@@ -895,13 +947,22 @@ export default function InstituteInfoPage({
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className="w-4 h-4 rounded-full"
+                        className="w-4 h-4 rounded-full shrink-0"
                         style={{ backgroundColor: house.house_color }}
                       />
                       <div>
                         <p className="font-semibold text-gray-900">{house.house_name}</p>
                         {house.description && (
                           <p className="text-xs text-gray-500">{house.description}</p>
+                        )}
+                        {hasIncharges && (
+                          <p className="text-xs text-gray-600 mt-1 flex items-center gap-2 flex-wrap">
+                            <Users size={12} className="shrink-0" />
+                            {staffName && <span>Staff: {staffName}</span>}
+                            {(student1Name || student2Name) && (
+                              <span>Students: {[student1Name, student2Name].filter(Boolean).join(', ')}</span>
+                            )}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -922,7 +983,8 @@ export default function InstituteInfoPage({
                       </button>
                     </div>
                   </motion.div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -985,18 +1047,89 @@ export default function InstituteInfoPage({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Description (Optional)
-                </label>
-                <textarea
-                  value={newHouseDescription}
-                  onChange={(e) => setNewHouseDescription(e.target.value)}
-                  placeholder="Enter house description..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  rows={3}
-                />
-              </div>
+             
+              {editingHouse && (
+                <>
+                  <div className="border-t border-gray-200 pt-4 mt-2">
+                    <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      <UserCheck size={16} />
+                      House Incharges
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Staff Incharge (1)</label>
+                        <div className="relative mb-1.5">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                          <input
+                            type="text"
+                            value={houseInchargeStaffSearch}
+                            onChange={(e) => setHouseInchargeStaffSearch(e.target.value)}
+                            placeholder="Search staff..."
+                            className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                        <select
+                          value={newHouseStaffInchargeId}
+                          onChange={(e) => setNewHouseStaffInchargeId(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        >
+                          <option value="">None</option>
+                          {staffList
+                            .filter((s) => !houseInchargeStaffSearch.trim() || (s.full_name || '').toLowerCase().includes(houseInchargeStaffSearch.trim().toLowerCase()))
+                            .map((s) => (
+                              <option key={s.id} value={s.id}>{s.full_name || s.id}</option>
+                            ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Student Incharge 1 & 2</label>
+                        <div className="relative mb-1.5">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                          <input
+                            type="text"
+                            value={houseInchargeStudentSearch}
+                            onChange={(e) => setHouseInchargeStudentSearch(e.target.value)}
+                            placeholder="Search students..."
+                            className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <span className="block text-xs text-gray-500 mb-0.5">Student Incharge 1</span>
+                            <select
+                              value={newHouseStudentIncharge1Id}
+                              onChange={(e) => setNewHouseStudentIncharge1Id(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            >
+                              <option value="">None</option>
+                              {studentsList
+                                .filter((s) => !houseInchargeStudentSearch.trim() || (s.student_name || '').toLowerCase().includes(houseInchargeStudentSearch.trim().toLowerCase()))
+                                .map((s) => (
+                                  <option key={s.id} value={s.id}>{s.student_name || s.id}</option>
+                                ))}
+                            </select>
+                          </div>
+                          <div>
+                            <span className="block text-xs text-gray-500 mb-0.5">Student Incharge 2</span>
+                            <select
+                              value={newHouseStudentIncharge2Id}
+                              onChange={(e) => setNewHouseStudentIncharge2Id(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            >
+                              <option value="">None</option>
+                              {studentsList
+                                .filter((s) => !houseInchargeStudentSearch.trim() || (s.student_name || '').toLowerCase().includes(houseInchargeStudentSearch.trim().toLowerCase()))
+                                .map((s) => (
+                                  <option key={s.id} value={s.id}>{s.student_name || s.id}</option>
+                                ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 mt-6">

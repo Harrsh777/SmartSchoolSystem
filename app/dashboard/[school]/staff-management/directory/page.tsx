@@ -12,9 +12,9 @@ import {
   Copy, 
   Edit, 
   UserX, 
+  UserCheck, 
   Filter, 
   Users, 
-  UserCheck, 
   Mail, 
   Phone,
   Briefcase,
@@ -38,14 +38,22 @@ export default function StaffDirectoryPage({
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState<'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'OTHERS' | 'ADMIN'>('TEACHING');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   
   // Helper to safely get string value
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
+  };
+
+  // Resolve staff photo URL (DB may use photo_url, profile_photo_url, or image_url)
+  const getStaffPhotoUrl = (member: Staff & { profile_photo_url?: string; image_url?: string }): string => {
+    const url = member.photo_url ?? member.profile_photo_url ?? member.image_url;
+    return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
   };
   
   const handleStaffClick = (staffId: string | undefined) => {
@@ -57,12 +65,15 @@ export default function StaffDirectoryPage({
   useEffect(() => {
     fetchStaff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode]);
+  }, [schoolCode, statusFilter]);
 
   const fetchStaff = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/staff?school_code=${schoolCode}`);
+      let url = `/api/staff?school_code=${schoolCode}`;
+      if (statusFilter === 'active') url += '&status=active';
+      if (statusFilter === 'inactive') url += '&status=inactive';
+      const response = await fetch(url);
       const result = await response.json();
       
       if (response.ok && result.data) {
@@ -72,6 +83,30 @@ export default function StaffDirectoryPage({
       console.error('Error fetching staff:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleActive = async (member: Staff) => {
+    if (!member.id) return;
+    const newActive = member.is_active !== false;
+    setTogglingId(member.id);
+    try {
+      const res = await fetch(`/api/staff/${member.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_code: schoolCode, is_active: !newActive }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await fetchStaff();
+      } else {
+        alert(data.error || 'Failed to update staff status');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update staff status');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -319,6 +354,29 @@ export default function StaffDirectoryPage({
         </div>
       </Card>
 
+      {/* Status filter: All | Active | Inactive (so deactivated staff are visible for reactivation) */}
+      <Card className="p-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-gray-900">Status:</span>
+          {(['all', 'active', 'inactive'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => { setStatusFilter(s); setCurrentPage(1); }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                statusFilter === s
+                  ? 'bg-[#1e3a8a] text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {s === 'all' ? 'All' : s === 'active' ? 'Active' : 'Inactive'}
+            </button>
+          ))}
+          <span className="text-sm text-gray-500 ml-2">
+            {statusFilter === 'inactive' ? 'Deactivated staff are listed here. Use Activate to make them active again.' : ''}
+          </span>
+        </div>
+      </Card>
+
       {/* Search and Actions */}
       <Card>
         <div className="flex items-center gap-4 flex-wrap">
@@ -392,7 +450,9 @@ export default function StaffDirectoryPage({
             <tbody className="divide-y divide-gray-200 bg-white">
               <AnimatePresence mode="wait">
                 {paginatedStaff.length > 0 ? (
-                  paginatedStaff.map((member, index) => (
+                  paginatedStaff.map((member, index) => {
+                    const photoUrl = getStaffPhotoUrl(member);
+                    return (
                     <motion.tr
                       key={member.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -414,16 +474,35 @@ export default function StaffDirectoryPage({
                           className="flex items-center gap-3 cursor-pointer"
                           onClick={() => handleStaffClick(member.id)}
                         >
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold shadow-md group-hover:scale-110 transition-transform">
-                            {(() => {
-                              const fullName = getString(member.full_name);
-                              return fullName ? fullName.charAt(0).toUpperCase() : '?';
-                            })()}
+                          <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold shadow-md group-hover:scale-110 transition-transform shrink-0 relative">
+                            {photoUrl ? (
+                              <>
+                                <img
+                                  src={photoUrl}
+                                  alt={getString(member.full_name)}
+                                  className="absolute inset-0 w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                    if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                                  }}
+                                />
+                                <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6]">
+                                  {getString(member.full_name).charAt(0).toUpperCase() || '?'}
+                                </span>
+                              </>
+                            ) : (
+                              getString(member.full_name).charAt(0).toUpperCase() || '?'
+                            )}
                           </div>
                           <div>
                             <p className="font-semibold text-gray-900 group-hover:text-[#1e3a8a] transition-colors">
                               {getString(member.full_name)}
                             </p>
+                            {member.is_active === false && (
+                              <span className="text-xs text-amber-600 font-medium">Inactive</span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -516,24 +595,47 @@ export default function StaffDirectoryPage({
                           >
                             <Edit size={16} />
                           </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const fullName = getString(member.full_name);
-                              if (confirm(`Are you sure you want to disable ${fullName}?`)) {
-                                // TODO: Implement disable functionality
-                                console.log('Disable staff:', member.id);
-                              }
-                            }}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Disable"
-                          >
-                            <UserX size={16} />
-                          </button>
+                          {member.is_active !== false ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const fullName = getString(member.full_name);
+                                if (confirm(`Deactivate ${fullName}? They will not appear in Active list and can be reactivated from the Inactive tab.`)) {
+                                  handleToggleActive(member);
+                                }
+                              }}
+                              disabled={togglingId === member.id}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Deactivate"
+                            >
+                              {togglingId === member.id ? (
+                                <span className="inline-block w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <UserX size={16} />
+                              )}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleActive(member);
+                              }}
+                              disabled={togglingId === member.id}
+                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Activate"
+                            >
+                              {togglingId === member.id ? (
+                                <span className="inline-block w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <UserCheck size={16} />
+                              )}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </motion.tr>
-                  ))
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={8} className="px-4 py-4">

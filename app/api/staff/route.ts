@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    const statusFilter = searchParams.get('status')?.toLowerCase(); // 'active' | 'inactive' | omit = all
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -13,12 +14,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch staff filtered by school_code
-    const { data: staff, error: staffError } = await supabase
+    let query = supabase
       .from('staff')
       .select('*')
       .eq('school_code', schoolCode)
       .order('created_at', { ascending: false });
+
+    if (statusFilter === 'active') {
+      query = query.eq('is_active', true);
+    } else if (statusFilter === 'inactive') {
+      query = query.eq('is_active', false);
+    }
+
+    const { data: staff, error: staffError } = await query;
 
     if (staffError) {
       console.error('Supabase error fetching staff:', staffError);
@@ -147,6 +155,7 @@ export async function POST(request: NextRequest) {
         alma_mater: staffData.alma_mater || null,
         major: staffData.major || null,
         website: staffData.website || null,
+        is_active: staffData.is_active !== false,
       }])
       .select()
       .single();

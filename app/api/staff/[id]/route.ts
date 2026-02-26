@@ -107,6 +107,7 @@ export async function PATCH(
     if (updateData.experience_years !== undefined) updateFields.experience_years = updateData.experience_years !== null && updateData.experience_years !== '' ? Number(updateData.experience_years) : null;
     if (updateData.gender !== undefined) updateFields.gender = updateData.gender || null;
     if (updateData.address !== undefined) updateFields.address = updateData.address || null;
+    if (updateData.is_active !== undefined) updateFields.is_active = Boolean(updateData.is_active);
 
     // Update staff (don't allow updating school_code)
     const { data: updatedStaff, error: updateError } = await supabase

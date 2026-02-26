@@ -81,6 +81,13 @@ export default function ViewStudentPage({
     }
   };
 
+  const getStudentPhotoUrl = (s: Student & { profile_photo_url?: string; image_url?: string }): string => {
+    const url = s.photo_url ?? s.profile_photo_url ?? s.image_url;
+    return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
+  };
+
+  const studentPhotoUrl = getStudentPhotoUrl(student);
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -110,6 +117,35 @@ export default function ViewStudentPage({
       >
         <Card>
           <div className="space-y-8">
+            {/* Student photo and name */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 pb-6 border-b border-gray-200">
+              <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white text-3xl font-bold relative shrink-0">
+                {studentPhotoUrl ? (
+                  <>
+                    <img
+                      src={studentPhotoUrl}
+                      alt={getString(student.student_name)}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                        if (fallback) fallback.style.display = 'flex';
+                      }}
+                    />
+                    <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800">
+                      {getString(student.student_name).charAt(0).toUpperCase() || '?'}
+                    </span>
+                  </>
+                ) : (
+                  getString(student.student_name).charAt(0).toUpperCase() || '?'
+                )}
+              </div>
+              <div className="text-center sm:text-left">
+                <h2 className="text-2xl font-bold text-black">{getString(student.student_name) || 'N/A'}</h2>
+                <p className="text-gray-600 mt-1">Admission: {getString(student.admission_no) || 'N/A'}</p>
+              </div>
+            </div>
             {/* Basic Information */}
             <div>
               <h2 className="text-xl font-bold text-black mb-6 flex items-center">

@@ -52,11 +52,7 @@ export default function StudentDirectoryPage({
   const [selectedSection, setSelectedSection] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [houses, setHouses] = useState<InstituteHouse[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkHouseModalOpen, setBulkHouseModalOpen] = useState(false);
-  const [bulkHouseValue, setBulkHouseValue] = useState('');
   const [updatingHouseId, setUpdatingHouseId] = useState<string | null>(null);
-  const [bulkAssigning, setBulkAssigning] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportClass, setExportClass] = useState('');
   const [exportSection, setExportSection] = useState('');
@@ -100,6 +96,22 @@ export default function StudentDirectoryPage({
   // Helper to safely get string value
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
+  };
+
+  // Resolve student photo URL (DB may use photo_url, profile_photo_url, or image_url)
+  const getStudentPhotoUrl = (s: Student & { profile_photo_url?: string; image_url?: string }): string => {
+    const url = s.photo_url ?? s.profile_photo_url ?? s.image_url;
+    return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
+  };
+
+  // Resolve avatar/cover color from student's house (default dark blue when no house)
+  const DEFAULT_AVATAR_COLOR = '#1e3a8a';
+  const getHouseColorForStudent = (houseName: unknown): string => {
+    const name = typeof houseName === 'string' ? houseName.trim() : '';
+    if (!name) return DEFAULT_AVATAR_COLOR;
+    const house = houses.find((h) => (h.house_name || '').trim() === name);
+    const color = house?.house_color;
+    return typeof color === 'string' && color.trim() !== '' ? color.trim() : DEFAULT_AVATAR_COLOR;
   };
 
   const fetchAcademicYears = useCallback(async () => {
@@ -271,52 +283,6 @@ export default function StudentDirectoryPage({
       alert('Failed to update house');
     } finally {
       setUpdatingHouseId(null);
-    }
-  };
-
-  const toggleSelect = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.size === filteredStudents.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredStudents.map((s) => s.id!).filter(Boolean)));
-    }
-  };
-
-  const bulkAssignHouse = async () => {
-    if (!bulkHouseValue.trim() || selectedIds.size === 0) return;
-    setBulkAssigning(true);
-    try {
-      let done = 0;
-      let failed = 0;
-      for (const id of selectedIds) {
-        const res = await fetch(`/api/students/${id}?school_code=${schoolCode}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ house: bulkHouseValue.trim() }),
-        });
-        if (res.ok) done++;
-        else failed++;
-      }
-      setBulkHouseModalOpen(false);
-      setBulkHouseValue('');
-      setSelectedIds(new Set());
-      fetchStudents();
-      alert(`House assigned: ${done} updated${failed ? `, ${failed} failed` : ''}.`);
-    } catch (err) {
-      console.error('Bulk assign house:', err);
-      alert('Failed to assign house for some students.');
-    } finally {
-      setBulkAssigning(false);
     }
   };
 
@@ -501,86 +467,8 @@ export default function StudentDirectoryPage({
           <p className="text-sm text-gray-600">
             Showing <span className="font-semibold text-blue-800">{filteredStudents.length}</span> students
           </p>
-          {houses.length > 0 && (
-            <div className="flex items-center gap-2">
-              {selectedIds.size > 0 && (
-                <>
-                  <span className="text-sm text-gray-600">
-                    <span className="font-semibold text-blue-800">{selectedIds.size}</span> selected
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelectedIds(new Set())}
-                    className="border-blue-200 text-blue-800"
-                  >
-                    Clear
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-blue-800 hover:bg-blue-900 text-white"
-                    onClick={() => setBulkHouseModalOpen(true)}
-                  >
-                    <Home size={16} className="mr-1.5" />
-                    Assign to house
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </Card>
-
-      {/* Bulk Assign House Modal */}
-      {bulkHouseModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !bulkAssigning && setBulkHouseModalOpen(false)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-gray-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Users size={20} className="text-blue-800" />
-                Assign to house
-              </h3>
-              <button type="button" onClick={() => !bulkAssigning && setBulkHouseModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={20} />
-              </button>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Assign <span className="font-semibold">{selectedIds.size}</span> student{selectedIds.size !== 1 ? 's' : ''} to a house.
-            </p>
-            <label className="block text-sm font-medium text-gray-700 mb-2">House</label>
-            <select
-              value={bulkHouseValue}
-              onChange={(e) => setBulkHouseValue(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white"
-            >
-              <option value="">Select house</option>
-              {houses.map((h) => (
-                <option key={h.id} value={h.house_name}>
-                  {h.house_name}
-                </option>
-              ))}
-            </select>
-            <div className="flex items-center gap-2 mt-6">
-              <Button variant="outline" onClick={() => !bulkAssigning && setBulkHouseModalOpen(false)} disabled={bulkAssigning}>
-                Cancel
-              </Button>
-              <Button
-                onClick={bulkAssignHouse}
-                disabled={!bulkHouseValue.trim() || bulkAssigning}
-                className="bg-blue-800 hover:bg-blue-900 text-white"
-              >
-                {bulkAssigning ? <Loader2 size={18} className="animate-spin mr-1" /> : <Home size={18} className="mr-1" />}
-                {bulkAssigning ? 'Assigning...' : 'Assign'}
-              </Button>
-            </div>
-          </motion.div>
-        </div>
-      )}
 
       {/* Export to Excel Modal */}
       {exportModalOpen && (
@@ -679,7 +567,10 @@ export default function StudentDirectoryPage({
       {/* Students Grid/List */}
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredStudents.map((student, index) => (
+          {filteredStudents.map((student, index) => {
+            const photoUrl = getStudentPhotoUrl(student);
+            const avatarColor = getHouseColorForStudent(student.house);
+            return (
             <motion.div
               key={student.id}
               initial={{ opacity: 0, y: 20 }}
@@ -692,22 +583,33 @@ export default function StudentDirectoryPage({
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    {houses.length > 0 && (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(student.id!)}
-                          onChange={() => {}}
-                          onClick={(e) => toggleSelect(e, student.id!)}
-                          className="rounded border-gray-300"
-                        />
-                      </div>
-                    )}
-                    <div className="w-16 h-16 rounded-full bg-blue-800 flex items-center justify-center text-white text-xl font-bold shadow-lg">
-                      {(() => {
-                        const name = getString(student.student_name);
-                        return name ? name.charAt(0).toUpperCase() : '?';
-                      })()}
+                    <div
+                      className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center text-white text-xl font-bold shadow-lg relative"
+                      style={{ backgroundColor: avatarColor }}
+                    >
+                      {photoUrl ? (
+                        <>
+                          <img
+                            src={photoUrl}
+                            alt={getString(student.student_name)}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                              if (fallback) {
+                                (fallback as HTMLElement).style.display = 'flex';
+                                (fallback as HTMLElement).style.backgroundColor = avatarColor;
+                              }
+                            }}
+                          />
+                          <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center" style={{ backgroundColor: avatarColor }}>
+                            {getString(student.student_name).charAt(0).toUpperCase() || '?'}
+                          </span>
+                        </>
+                      ) : (
+                        getString(student.student_name).charAt(0).toUpperCase() || '?'
+                      )}
                     </div>
                     <div>
                       <h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-800 transition-colors">
@@ -813,7 +715,8 @@ export default function StudentDirectoryPage({
                 </div>
               </Card>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <Card className="overflow-hidden border-blue-100">
@@ -821,17 +724,6 @@ export default function StudentDirectoryPage({
             <table className="w-full">
               <thead className="bg-blue-800 text-white">
                 <tr>
-                  {houses.length > 0 && (
-                    <th className="px-3 py-3 text-left">
-                      <input
-                        type="checkbox"
-                        checked={filteredStudents.length > 0 && selectedIds.size === filteredStudents.length}
-                        onChange={toggleSelectAll}
-                        className="rounded border-white/60 bg-white/10"
-                        aria-label="Select all"
-                      />
-                    </th>
-                  )}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Student</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Admission ID</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Class</th>
@@ -845,30 +737,44 @@ export default function StudentDirectoryPage({
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredStudents.length > 0 ? (
-                  filteredStudents.map((student) => (
+                  filteredStudents.map((student) => {
+                    const photoUrl = getStudentPhotoUrl(student);
+                    const avatarColor = getHouseColorForStudent(student.house);
+                    return (
                     <tr 
                       key={student.id} 
                       className="hover:bg-blue-50/50 transition-colors cursor-pointer"
                       onClick={() => handleStudentClick(student.id!)}
                     >
-                      {houses.length > 0 && (
-                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(student.id!)}
-                            onChange={() => {}}
-                            onClick={(e) => toggleSelect(e, student.id!)}
-                            className="rounded border-gray-300"
-                          />
-                        </td>
-                      )}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-blue-800 flex items-center justify-center text-white text-sm font-bold">
-                            {(() => {
-                              const name = getString(student.student_name);
-                              return name ? name.charAt(0).toUpperCase() : '?';
-                            })()}
+                          <div
+                            className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-bold relative"
+                            style={{ backgroundColor: avatarColor }}
+                          >
+                            {photoUrl ? (
+                              <>
+                                <img
+                                  src={photoUrl}
+                                  alt={getString(student.student_name)}
+                                  className="absolute inset-0 w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                    if (fallback) {
+                                      (fallback as HTMLElement).style.display = 'flex';
+                                      (fallback as HTMLElement).style.backgroundColor = avatarColor;
+                                    }
+                                  }}
+                                />
+                                <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center" style={{ backgroundColor: avatarColor }}>
+                                  {getString(student.student_name).charAt(0).toUpperCase() || '?'}
+                                </span>
+                              </>
+                            ) : (
+                              getString(student.student_name).charAt(0).toUpperCase() || '?'
+                            )}
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900">{getString(student.student_name) || 'N/A'}</div>
@@ -977,10 +883,11 @@ export default function StudentDirectoryPage({
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 ) : (
                   <tr>
-                    <td colSpan={houses.length > 0 ? 8 : 6} className="px-6 py-8 text-center">
+                    <td colSpan={houses.length > 0 ? 7 : 6} className="px-6 py-8 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <User className="text-gray-400" size={48} />
                         <p className="text-gray-600 font-medium">No students found</p>

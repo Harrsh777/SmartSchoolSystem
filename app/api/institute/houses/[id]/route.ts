@@ -9,7 +9,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { house_name, house_color, description, is_active } = body;
+    const { house_name, house_color, description, is_active, staff_incharge_id, student_incharge_1_id, student_incharge_2_id } = body;
 
     interface HouseUpdateData {
       updated_at: string;
@@ -17,6 +17,9 @@ export async function PATCH(
       house_color?: string;
       description?: string;
       is_active?: boolean;
+      staff_incharge_id?: string | null;
+      student_incharge_1_id?: string | null;
+      student_incharge_2_id?: string | null;
     }
 
     const supabase = getServiceRoleClient();
@@ -28,6 +31,9 @@ export async function PATCH(
     if (house_color !== undefined) updateData.house_color = house_color;
     if (description !== undefined) updateData.description = description;
     if (is_active !== undefined) updateData.is_active = is_active;
+    if (staff_incharge_id !== undefined) updateData.staff_incharge_id = staff_incharge_id === '' || staff_incharge_id == null ? null : staff_incharge_id;
+    if (student_incharge_1_id !== undefined) updateData.student_incharge_1_id = student_incharge_1_id === '' || student_incharge_1_id == null ? null : student_incharge_1_id;
+    if (student_incharge_2_id !== undefined) updateData.student_incharge_2_id = student_incharge_2_id === '' || student_incharge_2_id == null ? null : student_incharge_2_id;
 
     const { data, error } = await supabase
       .from('institute_houses')

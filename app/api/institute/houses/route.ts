@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       finalSchoolId = school.id;
     }
 
-    // Fetch houses
+    // Fetch houses (includes staff_incharge_id, student_incharge_1_id, student_incharge_2_id after migration)
     const { data: houses, error } = await supabase
       .from('institute_houses')
       .select('*')

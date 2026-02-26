@@ -3,7 +3,6 @@
 import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { 
@@ -98,10 +97,16 @@ export default function StudentDetailPage({
   const [loading, setLoading] = useState(true);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [feesLoading, setFeesLoading] = useState(false);
+  const [houseColor, setHouseColor] = useState<string | null>(null);
 
   // Helper to safely get string value
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
+  };
+
+  const getStudentPhotoUrl = (s: Student & { profile_photo_url?: string; image_url?: string }): string => {
+    const url = s.photo_url ?? s.profile_photo_url ?? s.image_url;
+    return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
   };
 
   const fetchStudent = useCallback(async () => {
@@ -126,6 +131,31 @@ export default function StudentDetailPage({
   useEffect(() => {
     fetchStudent();
   }, [fetchStudent]);
+
+  // Fetch house color when student has a house assigned
+  useEffect(() => {
+    const houseName = typeof student?.house === 'string' ? student.house.trim() : '';
+    if (!schoolCode || !houseName) {
+      setHouseColor(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/institute/houses?school_code=${encodeURIComponent(schoolCode)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled || !Array.isArray(data.data)) return;
+        const match = data.data.find((h: { house_name?: string }) => String(h?.house_name || '').trim() === houseName);
+        if (match && (match as { house_color?: string }).house_color) {
+          setHouseColor((match as { house_color: string }).house_color);
+        } else {
+          setHouseColor(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHouseColor(null);
+      });
+    return () => { cancelled = true; };
+  }, [schoolCode, student?.house]);
 
   useEffect(() => {
     if (student) {
@@ -275,6 +305,8 @@ export default function StudentDetailPage({
     { id: 'academic', label: 'Academic', icon: GraduationCap },
   ];
 
+  const studentPhotoUrl = getStudentPhotoUrl(student);
+
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
       {/* Header */}
@@ -294,8 +326,27 @@ export default function StudentDetailPage({
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg">
-                <User className="text-white" size={24} />
+              <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg relative">
+                {studentPhotoUrl ? (
+                  <>
+                    <img
+                      src={studentPhotoUrl}
+                      alt={getString(student.student_name)}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                        if (fallback) fallback.style.display = 'flex';
+                      }}
+                    />
+                    <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6]">
+                      <User className="text-white" size={24} />
+                    </span>
+                  </>
+                ) : (
+                  <User className="text-white" size={24} />
+                )}
               </div>
               {getString(student.student_name)}
             </h1>
@@ -414,19 +465,41 @@ export default function StudentDetailPage({
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-6"
               >
-                {/* Student Profile Card */}
+                {/* Student Profile Card - background uses house color when student has a house assigned */}
                 <div className="grid md:grid-cols-3 gap-6">
-                  <Card className="md:col-span-1 p-6 bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] text-white">
+                  <Card
+                    className="md:col-span-1 p-6 text-white"
+                    style={
+                      houseColor
+                        ? { background: `linear-gradient(to bottom right, ${houseColor}, ${houseColor})` }
+                        : { background: 'linear-gradient(to bottom right, #1e3a8a, #3B82F6)' }
+                    }
+                  >
                     <div className="text-center">
-                      <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-4 border-white/30 relative">
-                        {student.photo_url ? (
-                          <Image src={getString(student.photo_url)} alt={getString(student.student_name)} fill className="rounded-full object-cover" />
+                      <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-4 border-white/30 relative overflow-hidden">
+                        {studentPhotoUrl ? (
+                          <>
+                            <img
+                              src={studentPhotoUrl}
+                              alt={getString(student.student_name)}
+                              className="absolute inset-0 w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                if (fallback) fallback.style.display = 'flex';
+                              }}
+                            />
+                            <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-white/20">
+                              <User size={48} className="text-white" />
+                            </span>
+                          </>
                         ) : (
                           <User size={48} className="text-white" />
                         )}
                       </div>
                       <h2 className="text-2xl font-bold mb-1">{getString(student.student_name)}</h2>
-                      <p className="text-blue-100 mb-4">{getString(student.admission_no)}</p>
+                      <p className="text-white/90 mb-4">{getString(student.admission_no)}</p>
                       <div className="flex items-center justify-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg">
                         <School size={16} />
                         <span className="text-sm font-semibold">

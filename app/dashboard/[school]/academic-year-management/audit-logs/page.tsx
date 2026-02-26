@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { RefreshCw, Loader2, ArrowLeft } from 'lucide-react';

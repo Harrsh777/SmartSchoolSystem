@@ -41,6 +41,8 @@ export default function RouteStudentsPage({
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterClass, setFilterClass] = useState<string>('');
+  const [filterSection, setFilterSection] = useState<string>('');
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
 
@@ -55,6 +57,10 @@ export default function RouteStudentsPage({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoute]);
+
+  useEffect(() => {
+    setFilterSection('');
+  }, [filterClass]);
 
   const fetchData = async () => {
     try {
@@ -218,8 +224,24 @@ export default function RouteStudentsPage({
     }
   };
 
+  // Unique class and section options from students (sorted)
+  const classOptions = Array.from(new Set(students.map((s) => s.class).filter(Boolean))).sort((a, b) =>
+    String(a).localeCompare(String(b), undefined, { numeric: true })
+  );
+  const sectionOptions =
+    filterClass.length > 0
+      ? Array.from(
+          new Set(students.filter((s) => s.class === filterClass).map((s) => s.section).filter((x) => x != null && x !== ''))
+        ).sort((a, b) => String(a).localeCompare(String(b)))
+      : Array.from(new Set(students.map((s) => s.section).filter((x) => x != null && x !== ''))).sort((a, b) =>
+          String(a).localeCompare(String(b))
+        );
+
   const filteredStudents = students.filter((student) => {
+    if (filterClass && student.class !== filterClass) return false;
+    if (filterSection && student.section !== filterSection) return false;
     const matchesSearch =
+      !searchTerm ||
       student.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.admission_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
       `${student.class}-${student.section}`.toLowerCase().includes(searchTerm.toLowerCase());

@@ -78,6 +78,7 @@ import LibraryManagementModal from '@/components/library/LibraryManagementModal'
 import TransportManagementModal from '@/components/transport/TransportManagementModal';
 import LeaveManagementModal from '@/components/leave/LeaveManagementModal';
 import HelpModal from '@/components/help/HelpModal';
+import QuickActionsDropdown from '@/components/QuickActionsDropdown';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -649,6 +650,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
   const [notificationsDropdownOpen, setNotificationsDropdownOpen] = useState(false);
   const [, setSearchQuery] = useState('');
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+  const [showQuickActionsMenu, setShowQuickActionsMenu] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [menuOrder, setMenuOrder] = useState<string[]>([]);
@@ -1377,17 +1379,20 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
       if (searchDropdownOpen && !target.closest('.search-container')) {
         setSearchDropdownOpen(false);
       }
+      if (showQuickActionsMenu && !target.closest('.quick-actions-menu-container') && !target.closest('#quick-actions-navbar-button')) {
+        setShowQuickActionsMenu(false);
+      }
       // Close expanded menu sections when clicking outside
       if (!target.closest('.sidebar-menu-item')) {
         setExpandedSections({});
       }
     };
 
-    if (languageDropdownOpen || notificationsDropdownOpen || searchDropdownOpen || Object.keys(expandedSections).length > 0) {
+    if (languageDropdownOpen || notificationsDropdownOpen || searchDropdownOpen || showQuickActionsMenu || Object.keys(expandedSections).length > 0) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [languageDropdownOpen, notificationsDropdownOpen, searchDropdownOpen, expandedSections]);
+  }, [languageDropdownOpen, notificationsDropdownOpen, searchDropdownOpen, showQuickActionsMenu, expandedSections]);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleSearchItemClick = (item: typeof searchableMenuItems[0]) => {
@@ -1755,16 +1760,22 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
               <div className="relative quick-actions-menu-container">
                 <button
                   id="quick-actions-navbar-button"
-                  onClick={() => router.push(basePath)}
+                  onClick={() => setShowQuickActionsMenu((prev) => !prev)}
                   className="flex flex-col items-center gap-1 hover:opacity-80 transition-opacity"
                   aria-label="Quick Actions"
-                  title="Go to Dashboard for Quick Actions"
+                  aria-expanded={showQuickActionsMenu}
+                  title="Quick Actions"
                 >
                   <div className="w-10 h-10 rounded-full bg-[#F0F5F9] dark:bg-[#2F4156] flex items-center justify-center">
                     <ChevronUp className="text-[#2C3E50] dark:text-[#5A879A]" size={18} />
                   </div>
                   <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">Quick</span>
                 </button>
+                {showQuickActionsMenu && (
+                  <div className="absolute right-0 top-full mt-2 z-[100]">
+                    <QuickActionsDropdown basePath={basePath} onClose={() => setShowQuickActionsMenu(false)} />
+                  </div>
+                )}
               </div>
 
               {/* Notifications Button */}
