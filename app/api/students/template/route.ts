@@ -9,8 +9,6 @@ export async function GET(_request: NextRequest) {
       {
         'Admission No': 'STU001',
         'Student Name': 'John Doe',
-        'First Name': 'John',
-        'Last Name': 'Doe',
         'Class': '10',
         'Section': 'A',
         'Date of Birth': '15-05-2010',
@@ -42,8 +40,6 @@ export async function GET(_request: NextRequest) {
       {
         'Admission No': 'STU002',
         'Student Name': 'Jane Smith',
-        'First Name': 'Jane',
-        'Last Name': 'Smith',
         'Class': '10',
         'Section': 'B',
         'Date of Birth': '20-08-2010',
@@ -82,8 +78,6 @@ export async function GET(_request: NextRequest) {
     const colWidths = [
       { wch: 15 }, // Admission No
       { wch: 20 }, // Student Name
-      { wch: 15 }, // First Name
-      { wch: 15 }, // Last Name
       { wch: 10 }, // Class
       { wch: 10 }, // Section
       { wch: 15 }, // Date of Birth
@@ -120,13 +114,11 @@ export async function GET(_request: NextRequest) {
       [''],
       ['Required Fields (marked with *):'],
       ['- Admission No*: Unique admission number for each student'],
-      ['- Student Name*: Full name of the student (or use First Name + Last Name)'],
+      ['- Student Name*: Full name of the student'],
       ['- Class*: Class (e.g., 10, 9, 8, NUR, LKG, UKG)'],
       ['- Section*: Section (e.g., A, B, C)'],
       [''],
       ['Optional Fields:'],
-      ['- First Name: First name of the student'],
-      ['- Last Name: Last name of the student'],
       ['- Date of Birth: DD-MM-YYYY (e.g. 15-05-2010). YYYY-MM-DD also accepted'],
       ['- Gender: Male, Female, or Other'],
       ['- Email: Valid email address'],

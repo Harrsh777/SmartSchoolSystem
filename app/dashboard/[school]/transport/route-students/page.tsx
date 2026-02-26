@@ -371,9 +371,9 @@ export default function RouteStudentsPage({
 
         {selectedRoute && (
           <>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 flex-1">
-                <div className="relative flex-1 max-w-md">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+                <div className="relative flex-1 min-w-[200px] max-w-md">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                   <Input
                     value={searchTerm}
@@ -382,11 +382,35 @@ export default function RouteStudentsPage({
                     className="pl-10"
                   />
                 </div>
+                <select
+                  value={filterClass}
+                  onChange={(e) => setFilterClass(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] min-w-[140px]"
+                >
+                  <option value="">All Classes</option>
+                  {classOptions.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={filterSection}
+                  onChange={(e) => setFilterSection(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] min-w-[120px]"
+                >
+                  <option value="">All Sections</option>
+                  {sectionOptions.map((sec) => (
+                    <option key={sec} value={sec}>
+                      {sec}
+                    </option>
+                  ))}
+                </select>
               </div>
               <Button 
                 onClick={handleOpenModal} 
                 disabled={currentCount >= capacity}
-                className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                className="bg-green-600 hover:bg-green-700 disabled:opacity-50 shrink-0"
               >
                 <Plus size={18} className="mr-2" />
                 Add Students

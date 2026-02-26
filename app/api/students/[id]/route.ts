@@ -57,8 +57,8 @@ export async function PATCH(
   try {
     const { id } = await params;
     const searchParams = request.nextUrl.searchParams;
-    const schoolCode = searchParams.get('school_code');
     const body = await request.json();
+    const schoolCode = searchParams.get('school_code') ?? body?.school_code;
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -135,9 +135,37 @@ export async function PATCH(
       }
     }
 
-    // Prepare update data (exclude id and school_code from updates)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { id: _id, school_code: _schoolCode, ...updateData } = body;
+    // Whitelist of columns that can be updated (matches public.students table)
+    const allowedKeys = new Set([
+      'admission_no', 'student_name', 'first_name', 'last_name', 'middle_name', 'class', 'section',
+      'date_of_birth', 'gender', 'status', 'academic_year', 'roll_number', 'email', 'student_contact',
+      'parent_name', 'parent_phone', 'parent_email', 'father_name', 'father_occupation', 'father_contact',
+      'mother_name', 'mother_occupation', 'mother_contact', 'address', 'city', 'state', 'pincode', 'landmark',
+      'blood_group', 'aadhaar_number', 'religion', 'category', 'nationality', 'house', 'transport_type',
+      'date_of_admission', 'last_class', 'last_school_name', 'last_school_percentage', 'last_school_result',
+      'medium', 'schooling_type', 'rte', 'new_admission', 'photo_url',
+    ]);
+    const dateColumns = new Set(['date_of_birth', 'date_of_admission']);
+    const numericColumns = new Set(['last_school_percentage']);
+
+    const updateData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (key === 'id' || key === 'school_code' || key === 'school_id' || key === 'created_at') continue;
+      if (!allowedKeys.has(key)) continue;
+      if (dateColumns.has(key)) {
+        const v = value === '' || value == null ? null : (typeof value === 'string' ? value.trim() : value);
+        updateData[key] = v === '' ? null : v;
+      } else if (numericColumns.has(key)) {
+        if (value === '' || value == null) {
+          updateData[key] = null;
+        } else {
+          const n = Number(value);
+          updateData[key] = Number.isFinite(n) ? n : null;
+        }
+      } else {
+        updateData[key] = value === '' ? null : value;
+      }
+    }
 
     // Update student
     const { data: updatedStudent, error: updateError } = await supabase

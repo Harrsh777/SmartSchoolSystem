@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
       displayStaffId = (loginData as { staff_id: string }).staff_id;
     }
 
-    // Check if account is active
+    // Check if login record is active (staff_login.is_active)
     if (!loginData.is_active) {
       await createLoginAuditLog(request, {
         name: displayStaffId ?? staff_id,
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
         status: 'failed',
       });
       return NextResponse.json(
-        { error: 'Your account is inactive. Please contact your school administrator.' },
+        { error: "Can't log in because your account is deactivated by the school admin. Reach out to him." },
         { status: 403 }
       );
     }
@@ -177,6 +177,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Staff profile not found' },
         { status: 404 }
+      );
+    }
+
+    // Block login if staff is deactivated by school admin (staff.is_active === false)
+    if ((teacher as { is_active?: boolean }).is_active === false) {
+      await createLoginAuditLog(request, {
+        name: (teacher as { full_name?: string }).full_name ?? displayStaffId ?? staff_id,
+        role: 'Teacher',
+        loginType: 'teacher',
+        status: 'failed',
+      });
+      return NextResponse.json(
+        { error: "Can't log in because your account is deactivated by the school admin. Reach out to him." },
+        { status: 403 }
       );
     }
 

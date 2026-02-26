@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
         status: 'failed',
       });
       return NextResponse.json(
-        { error: 'Account is inactive. Please contact administrator.' },
+        { error: "Can't log in because your account is deactivated by the school admin. Reach out to him." },
         { status: 403 }
       );
     }
@@ -118,6 +118,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Staff record not found' },
         { status: 404 }
+      );
+    }
+
+    if (staffData.is_active === false) {
+      await createLoginAuditLog(request, {
+        name: staffData.full_name ?? staff_id,
+        role: 'Accountant',
+        loginType: 'accountant',
+        status: 'failed',
+      });
+      return NextResponse.json(
+        { error: "Can't log in because your account is deactivated by the school admin. Reach out to him." },
+        { status: 403 }
       );
     }
 

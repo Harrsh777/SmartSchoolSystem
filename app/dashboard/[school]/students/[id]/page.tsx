@@ -18,6 +18,7 @@ import {
   Users,
   CheckCircle2,
   XCircle,
+  X,
   AlertCircle,
   TrendingUp,
   Edit,
@@ -98,15 +99,11 @@ export default function StudentDetailPage({
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [feesLoading, setFeesLoading] = useState(false);
   const [houseColor, setHouseColor] = useState<string | null>(null);
+  const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
 
   // Helper to safely get string value
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
-  };
-
-  const getStudentPhotoUrl = (s: Student & { profile_photo_url?: string; image_url?: string }): string => {
-    const url = s.photo_url ?? s.profile_photo_url ?? s.image_url;
-    return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
   };
 
   const fetchStudent = useCallback(async () => {
@@ -305,7 +302,7 @@ export default function StudentDetailPage({
     { id: 'academic', label: 'Academic', icon: GraduationCap },
   ];
 
-  const studentPhotoUrl = getStudentPhotoUrl(student);
+  const photoApiUrl = `/api/students/${studentId}/photo?school_code=${encodeURIComponent(schoolCode)}`;
 
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
@@ -316,37 +313,29 @@ export default function StudentDetailPage({
         className="flex items-center justify-between"
       >
         <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/dashboard/${schoolCode}/students`)}
-            className="border-[#1e3a8a] text-[#1e3a8a] hover:bg-[#1e3a8a] hover:text-white"
-          >
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+        
           <div>
             <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg relative">
-                {studentPhotoUrl ? (
-                  <>
-                    <img
-                      src={studentPhotoUrl}
-                      alt={getString(student.student_name)}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
-                        if (fallback) fallback.style.display = 'flex';
-                      }}
-                    />
-                    <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6]">
-                      <User className="text-white" size={24} />
-                    </span>
-                  </>
-                ) : (
+              <div
+                className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg relative cursor-pointer hover:opacity-90 transition-opacity"
+                role="button"
+                onClick={() => setPhotoPreviewOpen(true)}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setPhotoPreviewOpen(true)}
+              >
+                <img
+                  src={photoApiUrl}
+                  alt={getString(student.student_name)}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+                <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6]">
                   <User className="text-white" size={24} />
-                )}
+                </span>
               </div>
               {getString(student.student_name)}
             </h1>
@@ -476,27 +465,26 @@ export default function StudentDetailPage({
                     }
                   >
                     <div className="text-center">
-                      <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-4 border-white/30 relative overflow-hidden">
-                        {studentPhotoUrl ? (
-                          <>
-                            <img
-                              src={studentPhotoUrl}
-                              alt={getString(student.student_name)}
-                              className="absolute inset-0 w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
-                                if (fallback) fallback.style.display = 'flex';
-                              }}
-                            />
-                            <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-white/20">
-                              <User size={48} className="text-white" />
-                            </span>
-                          </>
-                        ) : (
+                      <div
+                        className="w-24 h-24 mx-auto mb-4 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-4 border-white/30 relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+                        role="button"
+                        onClick={() => setPhotoPreviewOpen(true)}
+                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setPhotoPreviewOpen(true)}
+                      >
+                        <img
+                          src={photoApiUrl}
+                          alt={getString(student.student_name)}
+                          className="absolute inset-0 w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                        <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-white/20">
                           <User size={48} className="text-white" />
-                        )}
+                        </span>
                       </div>
                       <h2 className="text-2xl font-bold mb-1">{getString(student.student_name)}</h2>
                       <p className="text-white/90 mb-4">{getString(student.admission_no)}</p>
@@ -1045,6 +1033,38 @@ export default function StudentDetailPage({
           </AnimatePresence>
         </div>
       </Card>
+
+      {/* Photo preview modal */}
+      {photoPreviewOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+          onClick={() => setPhotoPreviewOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo preview"
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPhotoPreviewOpen(false)}
+              className="absolute -top-10 right-0 p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+              aria-label="Close"
+            >
+              <X size={24} />
+            </button>
+            <p className="text-white font-medium mb-2 truncate max-w-full">{getString(student.student_name) || 'Student'}</p>
+            <img
+              src={`/api/students/${studentId}/photo?school_code=${encodeURIComponent(schoolCode)}`}
+              alt={getString(student.student_name)}
+              className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

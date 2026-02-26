@@ -22,7 +22,8 @@ import {
   Building2,
   ArrowLeft,
   CheckCircle2,
-  Eye
+  Eye,
+  X
 } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
 import EmptyState from '@/components/ui/EmptyState';
@@ -44,15 +45,18 @@ export default function StaffDirectoryPage({
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null);
   
   // Helper to safely get string value
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
   };
 
-  // Resolve staff photo URL (DB may use photo_url, profile_photo_url, or image_url)
-  const getStaffPhotoUrl = (member: Staff & { profile_photo_url?: string; image_url?: string }): string => {
-    const url = member.photo_url ?? member.profile_photo_url ?? member.image_url;
+  // Resolve staff photo URL from DB (check all common column names)
+  const getStaffPhotoUrl = (member: Staff | Record<string, unknown>): string => {
+    const m = member as Record<string, unknown>;
+    const url =
+      m.photo_url ?? m.profile_photo_url ?? m.image_url ?? m.avatar_url ?? m.profile_photo ?? m.avatar ?? m.photo;
     return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
   };
   
@@ -474,14 +478,26 @@ export default function StaffDirectoryPage({
                           className="flex items-center gap-3 cursor-pointer"
                           onClick={() => handleStaffClick(member.id)}
                         >
-                          <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold shadow-md group-hover:scale-110 transition-transform shrink-0 relative">
+                          <div
+                            className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold shadow-md group-hover:scale-110 transition-transform shrink-0 relative"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (photoUrl) {
+                                setPhotoPreview({
+                                  url: `/api/staff/${member.id}/photo?school_code=${encodeURIComponent(schoolCode)}`,
+                                  name: getString(member.full_name),
+                                });
+                              }
+                            }}
+                          >
                             {photoUrl ? (
                               <>
                                 <img
-                                  src={photoUrl}
+                                  src={`/api/staff/${member.id}/photo?school_code=${encodeURIComponent(schoolCode)}`}
                                   alt={getString(member.full_name)}
                                   className="absolute inset-0 w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
+                                  loading="eager"
                                   onError={(e) => {
                                     e.currentTarget.style.display = 'none';
                                     const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
@@ -715,6 +731,38 @@ export default function StaffDirectoryPage({
           </div>
         )}
       </Card>
+
+      {/* Photo preview modal */}
+      {photoPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+          onClick={() => setPhotoPreview(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo preview"
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPhotoPreview(null)}
+              className="absolute -top-10 right-0 p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+              aria-label="Close"
+            >
+              <X size={24} />
+            </button>
+            <p className="text-white font-medium mb-2 truncate max-w-full">{photoPreview.name}</p>
+            <img
+              src={photoPreview.url}
+              alt={photoPreview.name}
+              className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

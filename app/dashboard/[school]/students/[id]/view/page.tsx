@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Building2 } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Building2, UsersRound } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 import { getString } from '@/lib/type-utils';
 
@@ -17,11 +17,20 @@ export default function ViewStudentPage({
   const { school: schoolCode, id: studentId } = use(params);
   const router = useRouter();
   const [student, setStudent] = useState<Student | null>(null);
+  const [siblings, setSiblings] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchStudent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentId, schoolCode]);
+
+  useEffect(() => {
+    if (!studentId || !schoolCode) return;
+    fetch(`/api/students/${studentId}/siblings?school_code=${encodeURIComponent(schoolCode)}`)
+      .then((res) => res.json())
+      .then((json) => { if (json.data) setSiblings(json.data); })
+      .catch(() => setSiblings([]));
   }, [studentId, schoolCode]);
 
   const fetchStudent = async () => {
@@ -81,25 +90,14 @@ export default function ViewStudentPage({
     }
   };
 
-  const getStudentPhotoUrl = (s: Student & { profile_photo_url?: string; image_url?: string }): string => {
-    const url = s.photo_url ?? s.profile_photo_url ?? s.image_url;
-    return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
-  };
-
-  const studentPhotoUrl = getStudentPhotoUrl(student);
+  const photoApiUrl = `/api/students/${studentId}/photo?school_code=${encodeURIComponent(schoolCode)}`;
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/dashboard/${schoolCode}/students`)}
-          >
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+         
           <div>
             <h1 className="text-3xl font-bold text-black mb-2">Student Details</h1>
             <p className="text-gray-600">View complete student information</p>
@@ -120,26 +118,20 @@ export default function ViewStudentPage({
             {/* Student photo and name */}
             <div className="flex flex-col sm:flex-row items-center gap-4 pb-6 border-b border-gray-200">
               <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white text-3xl font-bold relative shrink-0">
-                {studentPhotoUrl ? (
-                  <>
-                    <img
-                      src={studentPhotoUrl}
-                      alt={getString(student.student_name)}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
-                        if (fallback) fallback.style.display = 'flex';
-                      }}
-                    />
-                    <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800">
-                      {getString(student.student_name).charAt(0).toUpperCase() || '?'}
-                    </span>
-                  </>
-                ) : (
-                  getString(student.student_name).charAt(0).toUpperCase() || '?'
-                )}
+                <img
+                  src={photoApiUrl}
+                  alt={getString(student.student_name)}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+                <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800">
+                  {getString(student.student_name).charAt(0).toUpperCase() || '?'}
+                </span>
               </div>
               <div className="text-center sm:text-left">
                 <h2 className="text-2xl font-bold text-black">{getString(student.student_name) || 'N/A'}</h2>
@@ -247,6 +239,35 @@ export default function ViewStudentPage({
               }
               return null;
             })()}
+
+            {/* Siblings (matched by shared Father's/Mother's or Parent contact) */}
+            {siblings.length > 0 && (
+              <div className="border-t border-gray-200 pt-8">
+                <h2 className="text-xl font-bold text-black mb-2 flex items-center">
+                  <UsersRound size={24} className="mr-2" />
+                  Siblings
+                </h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Matched by shared Father&apos;s contact, Mother&apos;s contact, or Parent/Guardian phone or email.
+                </p>
+                <ul className="space-y-2">
+                  {siblings.map((s) => (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard/${schoolCode}/students/${s.id}/view`)}
+                        className="text-left w-full px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors flex items-center justify-between"
+                      >
+                        <span className="font-medium text-gray-900">{getString(s.student_name) || 'N/A'}</span>
+                        <span className="text-sm text-gray-600">
+                          {getString(s.class) || ''}{getString(s.section) ? ` · ${getString(s.section)}` : ''} · {getString(s.admission_no) || '—'}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Address */}
             {(() => {

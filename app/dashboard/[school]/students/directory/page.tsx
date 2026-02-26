@@ -16,13 +16,15 @@ import {
   GraduationCap,
   Eye,
   ChevronRight,
+  ChevronDown,
   Calendar,
   UserX,
   UserCheck,
   Home,
   Users,
   Loader2,
-  X
+  X,
+  School,
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
@@ -53,6 +55,9 @@ export default function StudentDirectoryPage({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [houses, setHouses] = useState<InstituteHouse[]>([]);
   const [updatingHouseId, setUpdatingHouseId] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null);
+  const [statusMenuStudentId, setStatusMenuStudentId] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportClass, setExportClass] = useState('');
   const [exportSection, setExportSection] = useState('');
@@ -60,6 +65,7 @@ export default function StudentDirectoryPage({
     'admission_no', 'student_name', 'class', 'section', 'house', 'roll_number', 'email', 'status',
   ]);
   const [exporting, setExporting] = useState(false);
+  const [statusCounts, setStatusCounts] = useState({ active: 0, deactivated: 0, transferred: 0, alumni: 0 });
 
   /** Columns that can be included in the Excel export */
   const EXPORT_COLUMN_OPTIONS: { key: string; label: string }[] = [
@@ -151,10 +157,42 @@ export default function StudentDirectoryPage({
     fetchHouses();
   }, [fetchHouses]);
 
+  const fetchCounts = useCallback(async () => {
+    try {
+      let url = `/api/students/counts?school_code=${encodeURIComponent(schoolCode)}`;
+      if (academicYear) url += `&academic_year=${encodeURIComponent(academicYear)}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (res.ok && json.data) {
+        setStatusCounts({
+          active: json.data.active ?? 0,
+          deactivated: json.data.deactivated ?? 0,
+          transferred: json.data.transferred ?? 0,
+          alumni: json.data.alumni ?? 0,
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching student counts:', err);
+    }
+  }, [schoolCode, academicYear]);
+
   useEffect(() => {
     fetchStudents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode, selectedStatus, academicYear]);
+
+  useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
+
+  useEffect(() => {
+    const closeStatusMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (statusMenuStudentId && !target.closest('[data-status-menu]')) setStatusMenuStudentId(null);
+    };
+    document.addEventListener('click', closeStatusMenu);
+    return () => document.removeEventListener('click', closeStatusMenu);
+  }, [statusMenuStudentId]);
 
   const fetchStudents = async () => {
     try {
@@ -199,16 +237,10 @@ export default function StudentDirectoryPage({
   };
 
   const statusTabs: Array<{ id: StudentStatus; label: string; count: number }> = [
-    { id: 'active', label: 'Active', count: students.filter(s => getString(s.status) === 'active').length },
-    { id: 'deactivated', label: 'Deactivated', count: students.filter(s => {
-      const status = getString(s.status);
-      return status === 'inactive' || status === 'deactivated';
-    }).length },
-    { id: 'transferred', label: 'Transferred', count: students.filter(s => getString(s.status) === 'transferred').length },
-    { id: 'alumni', label: 'Alumni', count: students.filter(s => {
-      const status = getString(s.status);
-      return status === 'graduated' || status === 'alumni';
-    }).length },
+    { id: 'active', label: 'Active', count: statusCounts.active },
+    { id: 'deactivated', label: 'Deactivated', count: statusCounts.deactivated },
+    { id: 'transferred', label: 'Transferred', count: statusCounts.transferred },
+    { id: 'alumni', label: 'Alumni', count: statusCounts.alumni },
   ];
 
   const uniqueClasses: string[] = Array.from(
@@ -238,26 +270,52 @@ export default function StudentDirectoryPage({
     );
   }
 
-  const handleToggleStatus = async (e: React.MouseEvent, studentId: string, currentStatus: string) => {
+  const normalizeStatus = (s: string): string => {
+    const v = getString(s).toLowerCase();
+    if (v === 'inactive' || v === 'deactivated') return 'deactivated';
+    if (v === 'graduated' || v === 'alumni') return 'alumni';
+    return v || 'active';
+  };
+
+  const handleChangeStatus = async (e: React.MouseEvent, studentId: string, newStatus: StudentStatus) => {
     e.stopPropagation();
-    const newStatus = getString(currentStatus) === 'active' ? 'deactivated' : 'active';
-    if (!confirm(`Are you sure you want to ${newStatus === 'active' ? 'activate' : 'deactivate'} this student?`)) return;
+    setStatusMenuStudentId(null);
+    const dbStatus = newStatus === 'deactivated' ? 'deactivated' : newStatus;
+    const labels: Record<StudentStatus, string> = {
+      active: 'activate',
+      deactivated: 'deactivate',
+      transferred: 'mark as Transferred',
+      alumni: 'mark as Alumni',
+      deleted: 'mark as deleted',
+    };
+    if (!confirm(`Are you sure you want to ${labels[newStatus]} this student?`)) return;
+    setStatusUpdatingId(studentId);
     try {
-      const res = await fetch(`/api/students/${studentId}?school_code=${schoolCode}`, {
+      const res = await fetch(`/api/students/${studentId}?school_code=${encodeURIComponent(schoolCode)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: dbStatus }),
       });
       const data = await res.json();
       if (res.ok && data.data) {
-        fetchStudents();
+        await fetchStudents();
+        await fetchCounts();
       } else {
         alert(data.error || 'Failed to update student status');
       }
     } catch (err) {
       console.error('Error updating status:', err);
       alert('Failed to update student status');
+    } finally {
+      setStatusUpdatingId(null);
     }
+  };
+
+  const handleToggleStatus = (e: React.MouseEvent, studentId: string, currentStatus: string) => {
+    e.stopPropagation();
+    const norm = normalizeStatus(currentStatus);
+    const newStatus = norm === 'active' ? 'deactivated' : 'active';
+    handleChangeStatus(e, studentId, newStatus);
   };
 
   const updateStudentHouse = async (e: React.ChangeEvent<HTMLSelectElement>, studentId: string) => {
@@ -568,7 +626,6 @@ export default function StudentDirectoryPage({
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredStudents.map((student, index) => {
-            const photoUrl = getStudentPhotoUrl(student);
             const avatarColor = getHouseColorForStudent(student.house);
             return (
             <motion.div
@@ -586,30 +643,30 @@ export default function StudentDirectoryPage({
                     <div
                       className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center text-white text-xl font-bold shadow-lg relative"
                       style={{ backgroundColor: avatarColor }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPhotoPreview({ url: `/api/students/${student.id}/photo?school_code=${encodeURIComponent(schoolCode)}`, name: getString(student.student_name) || 'Student' });
+                      }}
+                      role="button"
                     >
-                      {photoUrl ? (
-                        <>
-                          <img
-                            src={photoUrl}
-                            alt={getString(student.student_name)}
-                            className="absolute inset-0 w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                              const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
-                              if (fallback) {
-                                (fallback as HTMLElement).style.display = 'flex';
-                                (fallback as HTMLElement).style.backgroundColor = avatarColor;
-                              }
-                            }}
-                          />
-                          <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center" style={{ backgroundColor: avatarColor }}>
-                            {getString(student.student_name).charAt(0).toUpperCase() || '?'}
-                          </span>
-                        </>
-                      ) : (
-                        getString(student.student_name).charAt(0).toUpperCase() || '?'
-                      )}
+                      <img
+                        src={`/api/students/${student.id}/photo?school_code=${encodeURIComponent(schoolCode)}`}
+                        alt={getString(student.student_name)}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                          if (fallback) {
+                            fallback.style.display = 'flex';
+                            (fallback as HTMLElement).style.backgroundColor = avatarColor;
+                          }
+                        }}
+                      />
+                      <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center" style={{ backgroundColor: avatarColor }}>
+                        {getString(student.student_name).charAt(0).toUpperCase() || '?'}
+                      </span>
                     </div>
                     <div>
                       <h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-800 transition-colors">
@@ -665,52 +722,72 @@ export default function StudentDirectoryPage({
                   )}
                 </div>
 
-                <div className="pt-4 border-t border-gray-200 flex items-center justify-between">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                <div className="pt-4 border-t border-gray-200 flex items-center justify-between gap-2 flex-wrap">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
                     (() => {
-                      const status = getString(student.status);
-                      return status === 'active' 
+                      const status = normalizeStatus(getString(student.status));
+                      return status === 'active'
                         ? 'bg-green-100 text-green-700'
-                        : status === 'inactive' || status === 'deactivated'
+                        : status === 'deactivated'
                         ? 'bg-red-100 text-red-700'
+                        : status === 'transferred'
+                        ? 'bg-indigo-100 text-indigo-700'
+                        : status === 'alumni'
+                        ? 'bg-amber-100 text-amber-800'
                         : 'bg-gray-100 text-gray-700';
                     })()
                   }`}>
-                    {(() => {
-                      const status = getString(student.status);
-                      return status ? status.toUpperCase() : 'ACTIVE';
-                    })()}
+                    {normalizeStatus(getString(student.status)).toUpperCase()}
                   </span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStudentClick(student.id!);
-                      }}
-                      className="px-4 py-1.5 bg-blue-800 text-white rounded-lg hover:bg-blue-900 transition-colors text-sm font-medium flex items-center gap-1"
+                      onClick={(e) => { e.stopPropagation(); handleStudentClick(student.id!); }}
+                      className="px-3 py-1.5 bg-blue-800 text-white rounded-lg hover:bg-blue-900 transition-colors text-sm font-medium flex items-center gap-1"
                     >
                       <Eye size={14} />
                       View
                     </button>
-                    {getString(student.status) === 'active' ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/${schoolCode}/students/${student.id}/edit`); }}
+                      className="p-1.5 text-blue-700 hover:bg-blue-100 rounded-lg"
+                      title="Edit"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <div className="relative" data-status-menu>
                       <button
-                        onClick={(e) => handleToggleStatus(e, student.id!, getString(student.status))}
-                        className="p-1.5 text-amber-700 hover:bg-amber-100 rounded-lg"
-                        title="Deactivate"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatusMenuStudentId(statusMenuStudentId === student.id ? null : student.id!);
+                        }}
+                        disabled={statusUpdatingId === student.id}
+                        className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-0.5 disabled:opacity-50"
+                        title="Change status"
                       >
-                        <UserX size={16} />
+                        {statusUpdatingId === student.id ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
+                        <span className="text-xs font-medium hidden sm:inline">Status</span>
                       </button>
-                    ) : (
-                      (getString(student.status) === 'deactivated' || getString(student.status) === 'inactive') && (
-                        <button
-                          onClick={(e) => handleToggleStatus(e, student.id!, getString(student.status))}
-                          className="p-1.5 text-green-700 hover:bg-green-100 rounded-lg"
-                          title="Activate"
-                        >
-                          <UserCheck size={16} />
-                        </button>
-                      )
-                    )}
+                      {statusMenuStudentId === student.id && (
+                        <div className="absolute right-0 top-full mt-1 py-1.5 bg-white rounded-lg shadow-lg border border-gray-200 z-20 min-w-[180px]">
+                          {normalizeStatus(getString(student.status)) !== 'active' && (
+                            <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'active')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-green-700 hover:bg-green-50">
+                              <UserCheck size={16} /> Activate
+                            </button>
+                          )}
+                          {normalizeStatus(getString(student.status)) !== 'deactivated' && (
+                            <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'deactivated')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-amber-700 hover:bg-amber-50">
+                              <UserX size={16} /> Deactivate
+                            </button>
+                          )}
+                          <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'transferred')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-indigo-700 hover:bg-indigo-50">
+                            <School size={16} /> Mark as Transferred
+                          </button>
+                          <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'alumni')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-amber-800 hover:bg-amber-50">
+                            <GraduationCap size={16} /> Mark as Alumni
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -738,7 +815,6 @@ export default function StudentDirectoryPage({
               <tbody className="divide-y divide-gray-200">
                 {filteredStudents.length > 0 ? (
                   filteredStudents.map((student) => {
-                    const photoUrl = getStudentPhotoUrl(student);
                     const avatarColor = getHouseColorForStudent(student.house);
                     return (
                     <tr 
@@ -751,30 +827,30 @@ export default function StudentDirectoryPage({
                           <div
                             className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-bold relative"
                             style={{ backgroundColor: avatarColor }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPhotoPreview({ url: `/api/students/${student.id}/photo?school_code=${encodeURIComponent(schoolCode)}`, name: getString(student.student_name) || 'Student' });
+                            }}
+                            role="button"
                           >
-                            {photoUrl ? (
-                              <>
-                                <img
-                                  src={photoUrl}
-                                  alt={getString(student.student_name)}
-                                  className="absolute inset-0 w-full h-full object-cover"
-                                  referrerPolicy="no-referrer"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                    const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
-                                    if (fallback) {
-                                      (fallback as HTMLElement).style.display = 'flex';
-                                      (fallback as HTMLElement).style.backgroundColor = avatarColor;
-                                    }
-                                  }}
-                                />
-                                <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center" style={{ backgroundColor: avatarColor }}>
-                                  {getString(student.student_name).charAt(0).toUpperCase() || '?'}
-                                </span>
-                              </>
-                            ) : (
-                              getString(student.student_name).charAt(0).toUpperCase() || '?'
-                            )}
+                            <img
+                              src={`/api/students/${student.id}/photo?school_code=${encodeURIComponent(schoolCode)}`}
+                              alt={getString(student.student_name)}
+                              className="absolute inset-0 w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                if (fallback) {
+                                  fallback.style.display = 'flex';
+                                  (fallback as HTMLElement).style.backgroundColor = avatarColor;
+                                }
+                              }}
+                            />
+                            <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center" style={{ backgroundColor: avatarColor }}>
+                              {getString(student.student_name).charAt(0).toUpperCase() || '?'}
+                            </span>
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900">{getString(student.student_name) || 'N/A'}</div>
@@ -825,61 +901,71 @@ export default function StudentDirectoryPage({
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
                           (() => {
-                            const status = getString(student.status);
-                            return status === 'active' 
+                            const status = normalizeStatus(getString(student.status));
+                            return status === 'active'
                               ? 'bg-green-100 text-green-700'
-                              : status === 'inactive' || status === 'deactivated'
+                              : status === 'deactivated'
                               ? 'bg-red-100 text-red-700'
+                              : status === 'transferred'
+                              ? 'bg-indigo-100 text-indigo-700'
+                              : status === 'alumni'
+                              ? 'bg-amber-100 text-amber-800'
                               : 'bg-gray-100 text-gray-700';
                           })()
                         }`}>
-                          {(() => {
-                            const status = getString(student.status);
-                            return status ? status.toUpperCase() : 'ACTIVE';
-                          })()}
+                          {normalizeStatus(getString(student.status)).toUpperCase()}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1.5">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStudentClick(student.id!);
-                            }}
+                            onClick={(e) => { e.stopPropagation(); handleStudentClick(student.id!); }}
                             className="p-1.5 text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
                             title="View Details"
                           >
                             <Eye size={16} />
                           </button>
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(`/dashboard/${schoolCode}/students/${student.id}/edit`);
-                            }}
+                            onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/${schoolCode}/students/${student.id}/edit`); }}
                             className="p-1.5 text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
                             title="Edit"
                           >
                             <Edit size={16} />
                           </button>
-                          {getString(student.status) === 'active' ? (
+                          <div className="relative" data-status-menu>
                             <button
-                              onClick={(e) => handleToggleStatus(e, student.id!, getString(student.status))}
-                              className="p-1.5 text-amber-700 hover:bg-amber-100 rounded-lg transition-colors"
-                              title="Deactivate"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setStatusMenuStudentId(statusMenuStudentId === student.id ? null : student.id!);
+                              }}
+                              disabled={statusUpdatingId === student.id}
+                              className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-0.5 disabled:opacity-50"
+                              title="Change status"
                             >
-                              <UserX size={16} />
+                              {statusUpdatingId === student.id ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
+                              <span className="text-xs font-medium">Status</span>
                             </button>
-                          ) : (
-                            (getString(student.status) === 'deactivated' || getString(student.status) === 'inactive') && (
-                              <button
-                                onClick={(e) => handleToggleStatus(e, student.id!, getString(student.status))}
-                                className="p-1.5 text-green-700 hover:bg-green-100 rounded-lg transition-colors"
-                                title="Activate"
-                              >
-                                <UserCheck size={16} />
-                              </button>
-                            )
-                          )}
+                            {statusMenuStudentId === student.id && (
+                              <div className="absolute right-0 top-full mt-1 py-1.5 bg-white rounded-lg shadow-lg border border-gray-200 z-20 min-w-[180px]">
+                                {normalizeStatus(getString(student.status)) !== 'active' && (
+                                  <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'active')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-green-700 hover:bg-green-50">
+                                    <UserCheck size={16} /> Activate
+                                  </button>
+                                )}
+                                {normalizeStatus(getString(student.status)) !== 'deactivated' && (
+                                  <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'deactivated')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-amber-700 hover:bg-amber-50">
+                                    <UserX size={16} /> Deactivate
+                                  </button>
+                                )}
+                                <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'transferred')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-indigo-700 hover:bg-indigo-50">
+                                  <School size={16} /> Mark as Transferred
+                                </button>
+                                <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'alumni')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-amber-800 hover:bg-amber-50">
+                                  <GraduationCap size={16} /> Mark as Alumni
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -900,6 +986,38 @@ export default function StudentDirectoryPage({
             </table>
           </div>
         </Card>
+      )}
+
+      {/* Photo preview modal */}
+      {photoPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+          onClick={() => setPhotoPreview(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo preview"
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPhotoPreview(null)}
+              className="absolute -top-10 right-0 p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+              aria-label="Close"
+            >
+              <X size={24} />
+            </button>
+            <p className="text-white font-medium mb-2 truncate max-w-full">{photoPreview.name}</p>
+            <img
+              src={photoPreview.url}
+              alt={photoPreview.name}
+              className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
       )}
     </div>
   );

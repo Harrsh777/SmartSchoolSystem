@@ -16,6 +16,7 @@ import {
   Info,
   CheckCircle2,
   Home,
+  X,
 } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
 
@@ -32,6 +33,7 @@ export default function ViewStaffPage({
   const [loading, setLoading] = useState(true);
   const [houseInchargeOf, setHouseInchargeOf] = useState<HouseIncharge[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'attendance' | 'payroll' | 'documents'>('overview');
+  const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
 
   useEffect(() => {
     fetchStaff();
@@ -108,8 +110,10 @@ export default function ViewStaffPage({
     }
   };
 
-  const getStaffPhotoUrl = (s: Staff & { profile_photo_url?: string; image_url?: string }): string => {
-    const url = s.photo_url ?? s.profile_photo_url ?? s.image_url;
+  const getStaffPhotoUrl = (s: Staff | Record<string, unknown>): string => {
+    const m = s as Record<string, unknown>;
+    const url =
+      m.photo_url ?? m.profile_photo_url ?? m.image_url ?? m.avatar_url ?? m.profile_photo ?? m.avatar ?? m.photo;
     return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
   };
 
@@ -160,14 +164,21 @@ export default function ViewStaffPage({
       <Card className="p-6 bg-white border border-gray-200 shadow-sm">
         <div className="flex flex-col sm:flex-row gap-6 items-start">
           <div className="relative shrink-0">
-            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white text-4xl font-bold border-4 border-white shadow-lg">
+            <div
+              role={staffPhotoUrl ? 'button' : undefined}
+              tabIndex={staffPhotoUrl ? 0 : undefined}
+              className={`w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white text-4xl font-bold border-4 border-white shadow-lg ${staffPhotoUrl ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
+              onClick={() => staffPhotoUrl && setPhotoPreviewOpen(true)}
+              onKeyDown={(e) => staffPhotoUrl && (e.key === 'Enter' || e.key === ' ') && setPhotoPreviewOpen(true)}
+            >
               {staffPhotoUrl ? (
                 <>
                   <img
-                    src={staffPhotoUrl}
+                    src={`/api/staff/${staffId}/photo?school_code=${encodeURIComponent(schoolCode)}`}
                     alt={safeString(staff.full_name)}
                     className="absolute inset-0 w-full h-full object-cover"
                     referrerPolicy="no-referrer"
+                    loading="eager"
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                       const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
@@ -438,6 +449,38 @@ export default function ViewStaffPage({
           )}
         </div>
       </Card>
+
+      {/* Photo preview modal */}
+      {photoPreviewOpen && staffPhotoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+          onClick={() => setPhotoPreviewOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo preview"
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPhotoPreviewOpen(false)}
+              className="absolute -top-10 right-0 p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+              aria-label="Close"
+            >
+              <X size={24} />
+            </button>
+            <p className="text-white font-medium mb-2 truncate max-w-full">{safeString(staff.full_name)}</p>
+            <img
+              src={`/api/staff/${staffId}/photo?school_code=${encodeURIComponent(schoolCode)}`}
+              alt={safeString(staff.full_name)}
+              className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -698,17 +698,17 @@ export default function DashboardPage({
     quick: [
       { label: 'Student-wise Fee', path: '/fees/student-wise', icon: IndianRupee, color: '#F97316' },
       { label: 'Create Diary', path: '/homework', icon: BookMarked, color: '#F97316' },
-      { label: 'Notice / Circular', path: '/communication/notices', icon: FileText, color: '#F97316' },
+      { label: 'Notice / Circular', path: '/communication', icon: FileText, color: '#F97316' },
       { label: 'Post An Event', path: '/calendar/events', icon: CalendarDays, color: '#F97316' },
       { label: 'Manage Expense', path: '/expense-income', icon: TrendingUp, color: '#F97316' },
-      { label: 'Salary Slip', path: '/staff-management/salary', icon: FileText, color: '#F97316' },
+      { label: 'Salary Slip', path: '/expense-income', icon: FileText, color: '#F97316' },
     ],
     admin: [
       { label: 'Institute Info', path: '/institute-info', icon: Building2, color: '#F97316', subItems: [] },
-      { label: 'Storage Used', path: '/settings/storage', icon: Database, color: '#F97316', subItems: [] },
-      { label: 'Download Statistics', path: '#', icon: TrendingDown, color: '#F97316', subItems: [] },
+      { label: 'Storage Used', path: '/settings', icon: Database, color: '#F97316', subItems: [] },
+      { label: 'Download Statistics', path: '/reports', icon: TrendingDown, color: '#F97316', subItems: [] },
       { label: 'Admin Role Management', path: '/settings/roles', icon: Shield, color: '#F97316', subItems: [] },
-      { label: 'Staff Management', path: '/staff-management', icon: UserCheck, color: '#F97316', subItems: [
+      { label: 'Staff Management', path: '/staff-management/directory', icon: UserCheck, color: '#F97316', subItems: [
         { label: 'Add Staff', path: '/staff-management/add', icon: UserPlus },
         { label: 'Staff Directory', path: '/staff-management/directory', icon: Users },
         { label: 'Staff Attendance', path: '/staff-management/attendance', icon: Calendar },
@@ -717,14 +717,14 @@ export default function DashboardPage({
       ]},
       { label: 'I Card/ Bus Pass/ Admit Card', path: '/certificates', icon: FileText, color: '#F97316', subItems: [] },
       { label: 'Password Management', path: '/password', icon: Key, color: '#F97316', subItems: [] },
-      { label: 'Student Management', path: '/students', icon: Users, color: '#F97316', subItems: [
+      { label: 'Student Management', path: '/students/directory', icon: Users, color: '#F97316', subItems: [
         { label: 'Add Student', path: '/students/add', icon: UserPlus },
         { label: 'Student Directory', path: '/students/directory', icon: Users },
         { label: 'Student Attendance', path: '/students/attendance', icon: Calendar },
         { label: 'Bulk Import Students', path: '/students/bulk-import', icon: Upload },
         { label: 'Student Siblings', path: '/students/siblings', icon: UsersRound },
       ]},
-      { label: 'Event & Holiday Management', path: '/calendar', icon: CalendarDays, color: '#F97316', subItems: [
+      { label: 'Event & Holiday Management', path: '/calendar/events', icon: CalendarDays, color: '#F97316', subItems: [
         { label: 'Academic Calendar', path: '/calendar/academic', icon: CalendarDays },
         { label: 'Events', path: '/calendar/events', icon: CalendarDays },
       ]},
@@ -753,14 +753,14 @@ export default function DashboardPage({
       ]},
       { label: 'Examinations', path: '/examinations', icon: FileText, color: '#F97316', subItems: [
         { label: 'Create Examination', path: '/examinations/create', icon: FileText },
-        { label: 'Exam Schedule', path: '/examinations/[examId]/schedule', icon: Calendar },
-        { label: 'View Marks', path: '/examinations/[examId]/marks', icon: FileCheck },
+        { label: 'Exam Schedule', path: '/examinations', icon: Calendar },
+        { label: 'View Marks', path: '/examinations/marks-entry', icon: FileCheck },
       ]},
       { label: 'Digital Diary', path: '/homework', icon: BookMarked, color: '#F97316', subItems: [] },
       { label: 'Copy Checking', path: '/copy-checking', icon: FileText, color: '#F97316', subItems: [] },
       { label: 'Certificate Management', path: '/certificates', icon: Award, color: '#F97316', subItems: [
         { label: 'Certificate Dashboard', path: '/certificates', icon: Award },
-        { label: 'New Certificate', path: '/certificates#new', icon: Award },
+        { label: 'New Certificate', path: '/certificates/new', icon: Award },
       ]},
     ],
     transport: [

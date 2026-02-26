@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 export async function GET(
   request: NextRequest,
@@ -109,8 +110,9 @@ export async function PATCH(
     if (updateData.address !== undefined) updateFields.address = updateData.address || null;
     if (updateData.is_active !== undefined) updateFields.is_active = Boolean(updateData.is_active);
 
-    // Update staff (don't allow updating school_code)
-    const { data: updatedStaff, error: updateError } = await supabase
+    // Update staff (use service role so RLS cannot block deactivate/activate)
+    const serviceClient = getServiceRoleClient();
+    const { data: updatedStaff, error: updateError } = await serviceClient
       .from('staff')
       .update(updateFields)
       .eq('id', id)
