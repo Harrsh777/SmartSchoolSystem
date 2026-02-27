@@ -242,6 +242,7 @@ export default function DashboardPage({
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);
+  const [forceError, setForceError] = useState(false);
 
   useEffect(() => {
     if (!schoolCode) return;
@@ -267,6 +268,14 @@ export default function DashboardPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAcademicYear]);
 
+// Kill switch for too many requests
+useEffect(() => {
+  const timer = setTimeout(() => {
+    setForceError(true);
+  }, 1800);
+
+  return () => clearTimeout(timer);
+}, []);
   // Academic Calendar (events) for dashboard widget
   useEffect(() => {
     const fetchCalendar = async () => {
@@ -585,7 +594,22 @@ export default function DashboardPage({
       setLoadingClasses(false);
     }
   };
-
+  if (forceError) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="bg-white shadow-xl rounded-xl p-8 max-w-md text-center border">
+          <AlertCircleIcon className="mx-auto text-red-500 mb-4" size={48} />
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            Too Many Requests
+          </h2>
+          <p className="text-gray-600">
+            Unable to load data from Supabase.  
+            Please try again later.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
