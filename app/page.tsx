@@ -18,6 +18,15 @@ import FeaturesPage from '@/components/scroll';
 import FAQSection from '@/components/FAQ';
 
 export default function EduCoreLanding() {
+
+  return (
+    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center text-white">
+    <h1 className="text-7xl font-bold tracking-widest mb-4">404</h1>
+    <p className="text-lg text-gray-400 mb-6">Page Not Found</p>
+    <p className="text-sm text-gray-500">We're currently resolving a deployment issue.</p>
+  </div>
+  );
+
   const [scrolled, setScrolled] = useState(false);
   const heroRef = useRef(null);
 

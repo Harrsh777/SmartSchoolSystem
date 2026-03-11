@@ -22,7 +22,7 @@ import { getString } from '@/lib/type-utils';
 
 export default function StaffDirectoryPage() {
   const router = useRouter();
-  const [teacher, setTeacher] = useState<Staff | null>(null);
+  const [, setTeacher] = useState<Staff | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');

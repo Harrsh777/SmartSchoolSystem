@@ -7,7 +7,6 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { 
-  ArrowLeft, 
   CalendarX,
   Search,
   CheckCircle2,
@@ -40,7 +39,6 @@ export default function StaffLeavePage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'requests' | 'history'>('requests');
   const [staffLeaves, setStaffLeaves] = useState<StaffLeave[]>([]);
   const [loading, setLoading] = useState(false);

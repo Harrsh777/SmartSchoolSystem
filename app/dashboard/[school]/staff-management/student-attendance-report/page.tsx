@@ -208,16 +208,6 @@ export default function StudentAttendanceReportPage({
     });
   };
 
-  const selectAllDownloadStaff = () => {
-    if (downloadSelectedIds.size === staff.length) {
-      setDownloadSelectedIds(new Set());
-      setDownloadAllStaff(true);
-    } else {
-      setDownloadSelectedIds(new Set(staff.map((s) => s.id)));
-      setDownloadAllStaff(false);
-    }
-  };
-
   const handleDownloadReport = async () => {
     setDownloadError('');
     const from = downloadDateFrom;
