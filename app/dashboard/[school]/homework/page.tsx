@@ -201,13 +201,7 @@ export default function DigitalDiaryPage({
           </h1>
           <p className="text-gray-600">Manage homework and notices</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => router.push(`/dashboard/${schoolCode}`)}
-        >
-          <ArrowLeft size={18} className="mr-2" />
-          Back
-        </Button>
+       
       </div>
 
       {/* Academic Year Selector and Action Buttons */}

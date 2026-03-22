@@ -295,39 +295,41 @@ export default function PasswordPage({
           </h1>
           <p className="text-[#64748B]">View password status for students and staff</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="outline"
+            size="sm"
             onClick={handleGenerateNewPasswords}
             disabled={generatingPasswords}
-            className="border-[#2F6FED] text-[#2F6FED] hover:bg-[#EAF1FF]"
+            className="border-[#2F6FED] text-[#2F6FED] hover:bg-[#EAF1FF] !px-3 !py-1.5 text-xs"
           >
             {generatingPasswords ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#2F6FED] mr-2" />
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#2F6FED] mr-1.5" />
                 Generating...
               </>
             ) : (
               <>
-                <Key size={18} className="mr-2" />
+                <Key size={14} className="mr-1.5 shrink-0" />
                 Generate New Passwords
               </>
             )}
           </Button>
           <Button
             variant="outline"
+            size="sm"
             onClick={handleShowPasswords}
             disabled={generatingPasswords}
-            className="border-[#2F6FED] text-[#2F6FED] hover:bg-[#EAF1FF]"
+            className="border-[#2F6FED] text-[#2F6FED] hover:bg-[#EAF1FF] !px-3 !py-1.5 text-xs"
           >
             {showPasswords ? (
               <>
-                <EyeOff size={18} className="mr-2" />
+                <EyeOff size={14} className="mr-1.5 shrink-0" />
                 Hide Passwords
               </>
             ) : (
               <>
-                <Eye size={18} className="mr-2" />
+                <Eye size={14} className="mr-1.5 shrink-0" />
                 Show Passwords
               </>
             )}

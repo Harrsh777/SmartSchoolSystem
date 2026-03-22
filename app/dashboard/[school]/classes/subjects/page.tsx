@@ -168,14 +168,7 @@ export default function SubjectsPage({
         className="flex items-center justify-between"
       >
         <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/dashboard/${schoolCode}/classes`)}
-            className="border-[#E5E7EB] text-[#64748B] hover:bg-[#F1F5F9]"
-          >
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+          
           <div>
             <h1 className="text-3xl font-bold text-[#0F172A] mb-2 flex items-center gap-3">
               <BookOpen size={32} className="text-[#2F6FED]" />

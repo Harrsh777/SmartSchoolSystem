@@ -7,7 +7,6 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { 
-  ArrowLeft, 
   Search,
   FileText,
   Users,
@@ -425,14 +424,7 @@ export default function MarksEntryPage({
         >
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <Button
-                variant="outline"
-                onClick={() => router.push(`/dashboard/${schoolCode}/marks`)}
-                className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
-              >
-                <ArrowLeft size={18} className="mr-2" />
-                Back
-              </Button>
+             
               <div className="w-14 h-14 rounded-xl bg-[#2C3E50] dark:bg-[#4A707A] flex items-center justify-center soft-shadow">
                 <FileText className="text-white" size={28} />
               </div>

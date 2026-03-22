@@ -10,6 +10,53 @@ import Input from '@/components/ui/Input';
 import { Save, X, CheckCircle, AlertCircle, Upload, Image as ImageIcon, Building2, Edit2, Plus, Trash2, Clock, UserCheck, Users, Search } from 'lucide-react';
 import type { AcceptedSchool } from '@/lib/supabase';
 
+type HouseStaffOption = { id: string; full_name: string; staff_id?: string };
+type HouseStudentOption = {
+  id: string;
+  student_name: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  admission_no?: string | null;
+  roll_number?: string | null;
+  class?: string | null;
+  section?: string | null;
+};
+
+function formatStudentInchargeLabel(s: HouseStudentOption): string {
+  const name = (s.student_name || '').trim();
+  if (name) return name;
+  const combined = [s.first_name, s.last_name].filter(Boolean).join(' ').trim();
+  if (combined) return combined;
+  const adm = s.admission_no != null ? String(s.admission_no).trim() : '';
+  if (adm) return adm;
+  return s.id;
+}
+
+function staffMatchesHouseSearch(s: HouseStaffOption, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = `${s.full_name || ''} ${s.staff_id || ''}`.toLowerCase();
+  return hay.includes(q);
+}
+
+function studentMatchesHouseSearch(s: HouseStudentOption, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    s.student_name,
+    s.first_name,
+    s.last_name,
+    s.admission_no,
+    s.roll_number,
+    s.class,
+    s.section,
+  ]
+    .map((x) => (x != null ? String(x) : ''))
+    .join(' ')
+    .toLowerCase();
+  return hay.includes(q);
+}
+
 export default function InstituteInfoPage({
   params,
 }: {
@@ -58,10 +105,12 @@ export default function InstituteInfoPage({
   const [newHouseStudentIncharge1Id, setNewHouseStudentIncharge1Id] = useState<string>('');
   const [newHouseStudentIncharge2Id, setNewHouseStudentIncharge2Id] = useState<string>('');
   const [savingHouse, setSavingHouse] = useState(false);
-  const [staffList, setStaffList] = useState<Array<{ id: string; full_name: string }>>([]);
-  const [studentsList, setStudentsList] = useState<Array<{ id: string; student_name: string }>>([]);
+  const [staffList, setStaffList] = useState<HouseStaffOption[]>([]);
+  const [studentsList, setStudentsList] = useState<HouseStudentOption[]>([]);
   const [houseInchargeStaffSearch, setHouseInchargeStaffSearch] = useState('');
-  const [houseInchargeStudentSearch, setHouseInchargeStudentSearch] = useState('');
+  const [houseInchargeStudentSearch1, setHouseInchargeStudentSearch1] = useState('');
+  const [houseInchargeStudentSearch2, setHouseInchargeStudentSearch2] = useState('');
+  const [houseRosterError, setHouseRosterError] = useState('');
 
   const [formData, setFormData] = useState<Partial<AcceptedSchool & { logo_url?: string }>>({
     school_name: '',
@@ -98,21 +147,71 @@ export default function InstituteInfoPage({
 
   const fetchStaffAndStudents = async () => {
     if (!schoolCode) return;
+    setHouseRosterError('');
     try {
+      // All staff / all student statuses so existing incharges still resolve after someone is marked inactive.
       const [staffRes, studentsRes] = await Promise.all([
-        fetch(`/api/staff?school_code=${encodeURIComponent(schoolCode)}&status=active`),
-        fetch(`/api/students?school_code=${encodeURIComponent(schoolCode)}&status=active`),
+        fetch(`/api/staff?school_code=${encodeURIComponent(schoolCode)}`),
+        fetch(`/api/students?school_code=${encodeURIComponent(schoolCode)}&status=all`),
       ]);
       const staffData = await staffRes.json();
       const studentsData = await studentsRes.json();
+      let staffOk = false;
+      let studentsOk = false;
       if (staffRes.ok && Array.isArray(staffData.data)) {
-        setStaffList(staffData.data.map((s: { id: string; full_name?: string }) => ({ id: s.id, full_name: s.full_name || '' })));
+        staffOk = true;
+        setStaffList(
+          staffData.data.map((s: { id: string; full_name?: string; staff_id?: string }) => ({
+            id: s.id,
+            full_name: s.full_name || '',
+            staff_id: s.staff_id || '',
+          }))
+        );
       }
       if (studentsRes.ok && Array.isArray(studentsData.data)) {
-        setStudentsList(studentsData.data.map((s: { id: string; student_name?: string }) => ({ id: s.id, student_name: s.student_name || '' })));
+        studentsOk = true;
+        setStudentsList(
+          studentsData.data.map(
+            (s: {
+              id: string;
+              student_name?: string;
+              first_name?: string | null;
+              last_name?: string | null;
+              admission_no?: string | null;
+              roll_number?: string | null;
+              class?: string | null;
+              section?: string | null;
+            }) => ({
+              id: s.id,
+              student_name: s.student_name || '',
+              first_name: s.first_name,
+              last_name: s.last_name,
+              admission_no: s.admission_no,
+              roll_number: s.roll_number,
+              class: s.class,
+              section: s.section,
+            })
+          )
+        );
+      }
+      if (!staffOk) {
+        console.error('House incharge staff list failed:', staffData?.error || staffRes.status);
+      }
+      if (!studentsOk) {
+        console.error('House incharge student list failed:', studentsData?.error || studentsRes.status);
+      }
+      if (!staffOk || !studentsOk) {
+        setHouseRosterError(
+          !studentsOk && studentsData?.error
+            ? String(studentsData.error)
+            : !staffOk && staffData?.error
+              ? String(staffData.error)
+              : 'Could not load full staff or student lists for house incharges.'
+        );
       }
     } catch (err) {
       console.error('Error fetching staff/students for house incharges:', err);
+      setHouseRosterError('Could not load staff or student lists.');
     }
   };
 
@@ -367,6 +466,10 @@ export default function InstituteInfoPage({
     setNewHouseStaffInchargeId('');
     setNewHouseStudentIncharge1Id('');
     setNewHouseStudentIncharge2Id('');
+    setHouseInchargeStaffSearch('');
+    setHouseInchargeStudentSearch1('');
+    setHouseInchargeStudentSearch2('');
+    setHouseRosterError('');
     setShowHouseModal(true);
   };
 
@@ -387,7 +490,8 @@ export default function InstituteInfoPage({
     setNewHouseStudentIncharge1Id(house.student_incharge_1_id || '');
     setNewHouseStudentIncharge2Id(house.student_incharge_2_id || '');
     setHouseInchargeStaffSearch('');
-    setHouseInchargeStudentSearch('');
+    setHouseInchargeStudentSearch1('');
+    setHouseInchargeStudentSearch2('');
     setShowHouseModal(true);
     await fetchStaffAndStudents();
   };
@@ -935,8 +1039,10 @@ export default function InstituteInfoPage({
               <div className="mt-6 space-y-3">
                 {houses.map((house) => {
                   const staffName = house.staff_incharge_id ? staffList.find((s) => s.id === house.staff_incharge_id)?.full_name : null;
-                  const student1Name = house.student_incharge_1_id ? studentsList.find((s) => s.id === house.student_incharge_1_id)?.student_name : null;
-                  const student2Name = house.student_incharge_2_id ? studentsList.find((s) => s.id === house.student_incharge_2_id)?.student_name : null;
+                  const student1Row = house.student_incharge_1_id ? studentsList.find((s) => s.id === house.student_incharge_1_id) : undefined;
+                  const student2Row = house.student_incharge_2_id ? studentsList.find((s) => s.id === house.student_incharge_2_id) : undefined;
+                  const student1Name = student1Row ? formatStudentInchargeLabel(student1Row) : null;
+                  const student2Name = student2Row ? formatStudentInchargeLabel(student2Row) : null;
                   const hasIncharges = staffName || student1Name || student2Name;
                   return (
                   <motion.div
@@ -1055,6 +1161,14 @@ export default function InstituteInfoPage({
                       <UserCheck size={16} />
                       House Incharges
                     </h4>
+                    {houseRosterError ? (
+                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2">
+                        {houseRosterError}
+                      </p>
+                    ) : null}
+                    <p className="text-xs text-gray-500 mb-2">
+                      Search narrows each list; your current selection stays visible even if it does not match the search.
+                    </p>
                     <div className="space-y-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Staff Incharge (1)</label>
@@ -1075,27 +1189,33 @@ export default function InstituteInfoPage({
                         >
                           <option value="">None</option>
                           {staffList
-                            .filter((s) => !houseInchargeStaffSearch.trim() || (s.full_name || '').toLowerCase().includes(houseInchargeStaffSearch.trim().toLowerCase()))
+                            .filter(
+                              (s) =>
+                                staffMatchesHouseSearch(s, houseInchargeStaffSearch) ||
+                                s.id === newHouseStaffInchargeId
+                            )
                             .map((s) => (
-                              <option key={s.id} value={s.id}>{s.full_name || s.id}</option>
+                              <option key={s.id} value={s.id}>
+                                {s.full_name || s.staff_id || s.id}
+                              </option>
                             ))}
                         </select>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Student Incharge 1 & 2</label>
-                        <div className="relative mb-1.5">
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                          <input
-                            type="text"
-                            value={houseInchargeStudentSearch}
-                            onChange={(e) => setHouseInchargeStudentSearch(e.target.value)}
-                            placeholder="Search students..."
-                            className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          />
-                        </div>
                         <div className="space-y-2">
                           <div>
                             <span className="block text-xs text-gray-500 mb-0.5">Student Incharge 1</span>
+                            <div className="relative mb-1.5">
+                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                              <input
+                                type="text"
+                                value={houseInchargeStudentSearch1}
+                                onChange={(e) => setHouseInchargeStudentSearch1(e.target.value)}
+                                placeholder="Search students..."
+                                className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              />
+                            </div>
                             <select
                               value={newHouseStudentIncharge1Id}
                               onChange={(e) => setNewHouseStudentIncharge1Id(e.target.value)}
@@ -1103,14 +1223,30 @@ export default function InstituteInfoPage({
                             >
                               <option value="">None</option>
                               {studentsList
-                                .filter((s) => !houseInchargeStudentSearch.trim() || (s.student_name || '').toLowerCase().includes(houseInchargeStudentSearch.trim().toLowerCase()))
+                                .filter(
+                                  (s) =>
+                                    studentMatchesHouseSearch(s, houseInchargeStudentSearch1) ||
+                                    s.id === newHouseStudentIncharge1Id
+                                )
                                 .map((s) => (
-                                  <option key={s.id} value={s.id}>{s.student_name || s.id}</option>
+                                  <option key={s.id} value={s.id}>
+                                    {formatStudentInchargeLabel(s)}
+                                  </option>
                                 ))}
                             </select>
                           </div>
                           <div>
                             <span className="block text-xs text-gray-500 mb-0.5">Student Incharge 2</span>
+                            <div className="relative mb-1.5">
+                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                              <input
+                                type="text"
+                                value={houseInchargeStudentSearch2}
+                                onChange={(e) => setHouseInchargeStudentSearch2(e.target.value)}
+                                placeholder="Search students..."
+                                className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              />
+                            </div>
                             <select
                               value={newHouseStudentIncharge2Id}
                               onChange={(e) => setNewHouseStudentIncharge2Id(e.target.value)}
@@ -1118,9 +1254,15 @@ export default function InstituteInfoPage({
                             >
                               <option value="">None</option>
                               {studentsList
-                                .filter((s) => !houseInchargeStudentSearch.trim() || (s.student_name || '').toLowerCase().includes(houseInchargeStudentSearch.trim().toLowerCase()))
+                                .filter(
+                                  (s) =>
+                                    studentMatchesHouseSearch(s, houseInchargeStudentSearch2) ||
+                                    s.id === newHouseStudentIncharge2Id
+                                )
                                 .map((s) => (
-                                  <option key={s.id} value={s.id}>{s.student_name || s.id}</option>
+                                  <option key={s.id} value={s.id}>
+                                    {formatStudentInchargeLabel(s)}
+                                  </option>
                                 ))}
                             </select>
                           </div>

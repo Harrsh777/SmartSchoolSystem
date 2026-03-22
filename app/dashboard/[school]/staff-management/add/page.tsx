@@ -228,13 +228,7 @@ export default function AddStaffPage({
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0 mb-6">
         <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/dashboard/${schoolCode}/staff-management/directory`)}
-          >
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+         
           <div>
             <h1 className="text-3xl font-bold text-black mb-2">Add Staff</h1>
             <p className="text-gray-600">Add a new staff member to your school</p>

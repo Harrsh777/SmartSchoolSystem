@@ -139,13 +139,7 @@ export default function ExaminationDashboardPage({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/dashboard/${schoolCode}/examinations`)}
-          >
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+        
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Examination Dashboard</h1>
             <p className="text-gray-600">View all examinations - previous, ongoing, and upcoming</p>

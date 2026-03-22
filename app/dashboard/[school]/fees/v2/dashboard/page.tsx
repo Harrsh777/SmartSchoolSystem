@@ -5,7 +5,22 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { IndianRupee, TrendingUp, AlertCircle, Clock, ArrowRight, Loader2, Calendar, Users, ChevronDown, ChevronUp, CreditCard, FileText } from 'lucide-react';
+import {
+  IndianRupee,
+  TrendingUp,
+  AlertCircle,
+  Clock,
+  ArrowRight,
+  Loader2,
+  Calendar,
+  Users,
+  ChevronDown,
+  ChevronUp,
+  CreditCard,
+  FileText,
+  Tags,
+  Layers,
+} from 'lucide-react';
 
 interface DashboardStats {
   today_collection: number;
@@ -227,33 +242,66 @@ export default function FeesDashboardPage({
         </motion.div>
       </div>
 
-      {/* Quick Actions */}
-      <Card>
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Button
+      {/* Quick Actions — tile layout (Button is not flex; avoids broken justify-between) */}
+      <Card className="overflow-hidden">
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-slate-900">Quick actions</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Common fee workflows</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <button
+            type="button"
             onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/collection`)}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white justify-between"
+            className="group flex min-h-[5.25rem] items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-600 p-4 text-left text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
           >
-            <span>Collect Payment</span>
-            <ArrowRight size={18} />
-          </Button>
-          <Button
-            variant="outline"
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20">
+              <CreditCard className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold leading-tight">Collect payment</span>
+              <span className="mt-0.5 block text-xs font-normal text-indigo-100 leading-snug">
+                Record fees & receipts
+              </span>
+            </span>
+            <ArrowRight
+              className="h-5 w-5 shrink-0 text-indigo-200 transition-transform group-hover:translate-x-0.5"
+              aria-hidden
+            />
+          </button>
+          <button
+            type="button"
             onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-heads`)}
-            className="w-full justify-between"
+            className="group flex min-h-[5.25rem] items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:border-indigo-200 hover:bg-slate-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
           >
-            <span>Manage Fee Heads</span>
-            <ArrowRight size={18} />
-          </Button>
-          <Button
-            variant="outline"
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 group-hover:bg-indigo-100">
+              <Tags className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-slate-900 leading-tight">Manage fee heads</span>
+              <span className="mt-0.5 block text-xs text-slate-500 leading-snug">Categories & charge types</span>
+            </span>
+            <ArrowRight
+              className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-600"
+              aria-hidden
+            />
+          </button>
+          <button
+            type="button"
             onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures`)}
-            className="w-full justify-between"
+            className="group flex min-h-[5.25rem] items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:border-indigo-200 hover:bg-slate-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:col-span-2 lg:col-span-1"
           >
-            <span>Fee Structures</span>
-            <ArrowRight size={18} />
-          </Button>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 group-hover:bg-indigo-100">
+              <Layers className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-slate-900 leading-tight">Fee structures</span>
+              <span className="mt-0.5 block text-xs text-slate-500 leading-snug">Class-wise fee setup</span>
+            </span>
+            <ArrowRight
+              className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-600"
+              aria-hidden
+            />
+          </button>
         </div>
       </Card>
 
@@ -273,6 +321,7 @@ export default function FeesDashboardPage({
             variant="outline"
             size="sm"
             onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures/create`)}
+            className="inline-flex items-center gap-1.5 shrink-0"
           >
             Create structure
           </Button>
@@ -313,7 +362,7 @@ export default function FeesDashboardPage({
                         size="sm"
                         variant="outline"
                         onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures/${s.id}`)}
-                        className="text-indigo-600 border-indigo-300 hover:bg-indigo-50"
+                        className="inline-flex items-center justify-center min-w-[4.5rem] text-indigo-600 border-indigo-300 hover:bg-indigo-50"
                       >
                         View
                       </Button>
@@ -330,7 +379,8 @@ export default function FeesDashboardPage({
             <p className="text-sm mt-1">Create a structure from Fee Structures or the button above</p>
             <Button
               variant="outline"
-              className="mt-4"
+              size="sm"
+              className="mt-4 inline-flex items-center justify-center"
               onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures/create`)}
             >
               Create fee structure
@@ -488,9 +538,10 @@ export default function FeesDashboardPage({
               variant="outline"
               size="sm"
               onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/collection`)}
+              className="inline-flex items-center gap-2 shrink-0"
             >
-              Collect Payment
-              <ArrowRight size={16} className="ml-2" />
+              Collect payment
+              <ArrowRight size={16} className="shrink-0" aria-hidden />
             </Button>
           </div>
           
@@ -536,9 +587,9 @@ export default function FeesDashboardPage({
                             size="sm"
                             variant="outline"
                             onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/collection`)}
-                            className="text-indigo-600 border-indigo-300 hover:bg-indigo-50"
+                            className="inline-flex items-center justify-center gap-1.5 text-indigo-600 border-indigo-300 hover:bg-indigo-50 min-w-[5.5rem]"
                           >
-                            <FileText size={14} className="mr-1" />
+                            <FileText size={14} className="shrink-0" aria-hidden />
                             Collect
                           </Button>
                         </td>

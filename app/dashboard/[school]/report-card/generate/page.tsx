@@ -184,10 +184,7 @@ export default function ReportCardGeneratePage({
           <Button variant="outline" onClick={() => router.push(`/dashboard/${schoolCode}/report-card/dashboard`)} className="border-[#1e3a8a] text-[#1e3a8a]">
             Dashboard
           </Button>
-          <Button variant="outline" onClick={() => router.push(`/dashboard/${schoolCode}/report-card`)} className="border-[#1e3a8a] text-[#1e3a8a]">
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+         
         </div>
       </motion.div>
 
