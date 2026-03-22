@@ -594,22 +594,7 @@ useEffect(() => {
       setLoadingClasses(false);
     }
   };
-  if (forceError) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="bg-white shadow-xl rounded-xl p-8 max-w-md text-center border">
-          <AlertCircleIcon className="mx-auto text-red-500 mb-4" size={48} />
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">
-            Too Many Requests
-          </h2>
-          <p className="text-gray-600">
-            Unable to load data from Supabase.  
-            Please try again later.
-          </p>
-        </div>
-      </div>
-    );
-  }
+
 
   if (loading) {
     return (
@@ -1024,15 +1009,15 @@ useEffect(() => {
                   </div>
               </motion.div>
             )}
-            <div className="relative download-menu-container">
-            <Button
-              onClick={() => setShowDownloadMenu(!showDownloadMenu)}
-              className="flex items-center gap-2 bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E3A8A] hover:to-[#2F6FED] text-white shadow-lg shadow-[#2F6FED]/30"
-            >
-              <Download size={18} />
-              Download Statistics
-              <ChevronDown size={16} className={`transition-transform ${showDownloadMenu ? 'rotate-180' : ''}`} />
-            </Button>
+          <div className="relative download-menu-container">
+  <Button
+    onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+    className="flex items-center gap-1.5 bg-gradient-to-r from-[#1E3A8A] to-[#2F6FED] hover:from-[#1E3A8A] hover:to-[#2F6FED] text-white shadow-md shadow-[#2F6FED]/30 text-s px-3 py-1.5 h-auto"
+  >
+  
+    Download Statistics
+    <ChevronDown size={12} className={`transition-transform ${showDownloadMenu ? 'rotate-180' : ''}`} />
+  </Button>
             {showDownloadMenu && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
