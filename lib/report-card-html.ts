@@ -86,6 +86,7 @@ export interface ReportCardTemplateConfig {
   header?: { school_name_color?: string; font_size?: number; sub_title?: string; show_affiliation?: boolean; show_email?: boolean; show_contact?: boolean };
   labels?: Record<string, string>;
   branding?: { primary_color?: string; accent_color?: string; font_family?: string };
+  watermark?: { enabled?: boolean; size?: number; opacity?: number };
   sections?: {
     show_student_profile?: boolean;
     show_marks_table?: boolean;
@@ -173,7 +174,7 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
   const isPass = overallPct >= 33;
 
   // Check if multi-exam mode (term-wise display)
-  const isMultiExam = multiExamMarks && multiExamMarks.length > 0 && examsList && examsList.length > 1;
+  const isMultiExam = (multiExamMarks?.length ?? 0) > 0 && (examsList?.length ?? 0) > 1;
 
   // Horizontal grading scale items (smaller)
   const gradeScaleItems = gradeScales
@@ -694,8 +695,8 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
         ${showAttendance && attendance ? `
         <div class="summary-item">
           <div class="summary-label">${labels.attendance || 'Attendance'}</div>
-          <div class="summary-value">${attendance.present}/${attendance.total}</div>
-          <div class="summary-label">${attendance.percentage.toFixed(1)}%</div>
+          <div class="summary-value">${attendance?.present ?? 0}/${attendance?.total ?? 0}</div>
+          <div class="summary-label">${attendance?.percentage?.toFixed(1) ?? '0.0'}%</div>
         </div>` : ''}
         <div class="summary-item">
           <div class="summary-label">Grand Total</div>
@@ -709,7 +710,7 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
       </div>
       ` : ''}
 
-      ${showCoScholastic && coScholastic && coScholastic.length > 0 ? `
+      ${showCoScholastic && (coScholastic?.length ?? 0) > 0 ? `
       <div class="part-title">${sectionCoScholastic}</div>
       <table>
         <thead>
