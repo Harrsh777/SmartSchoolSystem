@@ -289,6 +289,23 @@ export default function CreateExaminationPage({
     }));
   };
 
+  /** Copy max marks, pass marks, and weightage from the first subject row to all others in this class/section. */
+  const handleApplyFirstRowMarksToAll = (classSubjectIndex: number) => {
+    setClassSubjects(prev => prev.map((cs, idx) => {
+      if (idx !== classSubjectIndex || cs.subjects.length < 2) return cs;
+      const first = cs.subjects[0];
+      return {
+        ...cs,
+        subjects: cs.subjects.map((s) => ({
+          ...s,
+          max_marks: first.max_marks,
+          pass_marks: first.pass_marks,
+          weightage: first.weightage,
+        })),
+      };
+    }));
+  };
+
   const handleStep3Next = () => {
     // Validate all classes have at least one subject
     const hasEmpty = classSubjects.some(cs => cs.subjects.length === 0);
@@ -685,21 +702,35 @@ export default function CreateExaminationPage({
                       </h3>
                       
                       <div className="mb-4">
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                           <label className="block text-sm font-medium text-gray-700">
                             Add Subject
                           </label>
-                          {subjects.filter(s => !cs.subjects.find(sub => sub.subject_id === s.id)).length > 0 && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleSelectAllSubjects(csIndex)}
-                              className="text-xs"
-                            >
-                              Select All Subjects
-                            </Button>
-                          )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {cs.subjects.length >= 2 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleApplyFirstRowMarksToAll(csIndex)}
+                                className="text-xs"
+                                title="Apply the first row's Max / Pass / Weightage to every subject below"
+                              >
+                                Same for everyone
+                              </Button>
+                            )}
+                            {subjects.filter(s => !cs.subjects.find(sub => sub.subject_id === s.id)).length > 0 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleSelectAllSubjects(csIndex)}
+                                className="text-xs"
+                              >
+                                Select All Subjects
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         <select
                           onChange={(e) => {

@@ -64,7 +64,7 @@ function generatePreviewHTML(cfg: Config): string {
   const watermarkSize = (watermark.size as number) || 500;
   const watermarkOpacity = (watermark.opacity as number) || 0.08;
 
-  // Sample data for preview
+  // Sample data for preview (CBSE-style term columns; derived from same shape as before where possible)
   const sampleMarks = [
     { subject: 'English', max: 100, obtained: 85, pct: '85.0%', grade: 'A' },
     { subject: 'Mathematics', max: 100, obtained: 92, pct: '92.0%', grade: 'A+' },
@@ -72,22 +72,43 @@ function generatePreviewHTML(cfg: Config): string {
     { subject: 'Social Studies', max: 100, obtained: 88, pct: '88.0%', grade: 'A' },
     { subject: 'Hindi', max: 100, obtained: 75, pct: '75.0%', grade: 'B+' },
   ];
+  const extraSubjects = ['General Knowledge', 'Computer', 'Sanskrit'] as const;
+  const allSubjects = [
+    ...sampleMarks,
+    ...extraSubjects.map((subject, idx) => ({
+      subject,
+      max: 100,
+      obtained: 72 + idx * 2,
+      pct: `${72 + idx * 2}.0%`,
+      grade: 'B',
+    })),
+  ];
 
-  const marksRows = sampleMarks.map((m, i) => `
+  const marksRows = allSubjects
+    .map((m) => {
+      const fa1 = Math.min(25, Math.round(m.obtained * 0.22));
+      const sa1 = Math.min(75, Math.round(m.obtained * 0.58));
+      const t1 = fa1 + sa1;
+      const g1 = m.grade;
+      const fa2 = Math.min(25, Math.round(m.obtained * 0.24));
+      const sa2 = Math.min(75, Math.round(m.obtained * 0.5));
+      const ia = Math.min(25, Math.round(m.obtained * 0.2));
+      const t2 = fa2 + sa2 + ia;
+      const g2 = m.grade;
+      const gt = t1 + t2;
+      const fg = m.grade;
+      return `
     <tr>
-      <td style="text-align: center;">${i + 1}</td>
-      <td><strong>${m.subject}</strong></td>
-      <td style="text-align: center;">${m.max}</td>
-      <td style="text-align: center;"><strong>${m.obtained}</strong></td>
-      <td style="text-align: center;">${m.pct}</td>
-      <td style="text-align: center;"><strong style="color: ${primaryColor};">${m.grade}</strong></td>
-    </tr>
-  `).join('');
+      <td class="td-subj">${m.subject}</td>
+      <td class="td-num">${fa1}</td><td class="td-num">${sa1}</td><td class="td-num">${t1}</td><td class="td-c">${g1}</td>
+      <td class="td-num">${fa2}</td><td class="td-num">${sa2}</td><td class="td-num">${ia}</td><td class="td-num">${t2}</td><td class="td-c">${g2}</td>
+      <td class="td-num">${gt}</td><td class="td-c"><strong>${fg}</strong></td>
+    </tr>`;
+    })
+    .join('');
 
   const coScholasticRows = `
-    <tr><td>Work Education</td><td class="text-center">A</td><td class="text-center">A</td></tr>
-    <tr><td>Art Education</td><td class="text-center">B</td><td class="text-center">A</td></tr>
-    <tr><td>Health & Physical Education</td><td class="text-center">A</td><td class="text-center">A</td></tr>
+    <tr><td class="td-left">Art and Craft</td><td class="td-c">A</td><td class="td-c">A</td></tr>
   `;
 
   return `<!DOCTYPE html>
@@ -96,411 +117,353 @@ function generatePreviewHTML(cfg: Config): string {
   <meta charset="UTF-8">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      font-family: ${fontFamily}; 
-      padding: 20px; 
-      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); 
-      color: #000; 
+    @media print {
+      body { padding: 0; background: #fff; }
+      .sample-badge { border: 1px solid #000; }
     }
-    .report-card { 
-      max-width: 900px; 
-      margin: 0 auto; 
-      background: white;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-      border-radius: 12px;
-      overflow: hidden;
+    body {
+      font-family: ${fontFamily};
+      padding: 16px;
+      background: #e5e5e5;
+      color: #000;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .report-card {
+      width: 1120px;
+      max-width: 100%;
+      margin: 0 auto;
+      background: #fff;
       position: relative;
+      border: 1px solid #000;
+    }
+    .sample-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 4px 8px;
+      border: 1px solid #000;
+      background: #fff;
+      z-index: 5;
     }
     ${showWatermark ? `
+    .wm-wrap { position: relative; }
     .watermark {
       position: absolute;
-      top: 50%;
       left: 50%;
+      top: 42%;
       transform: translate(-50%, -50%);
-      width: ${watermarkSize * 0.5}px;
-      height: ${watermarkSize * 0.5}px;
+      width: ${watermarkSize * 0.45}px;
+      height: ${watermarkSize * 0.45}px;
       opacity: ${watermarkOpacity};
       pointer-events: none;
       z-index: 0;
-      background: linear-gradient(135deg, ${primaryColor}, ${accentColor});
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #bbb;
+      font-size: 14px;
+      font-weight: 700;
+      border: 1px solid #ddd;
+    }
+    .wm-body { position: relative; z-index: 1; }
+    ` : '.wm-wrap { } .wm-body { }'}
+    .pink-strip {
+      background: ${primaryColor};
+      color: #fff;
+      padding: 14px 20px;
+      border-bottom: 1px solid #000;
+    }
+    .strip-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .logo-circle {
+      width: ${leftLogoSize * 0.72}px;
+      height: ${leftLogoSize * 0.72}px;
+      min-width: ${leftLogoSize * 0.72}px;
+      border: 2px solid #fff;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-size: 20px;
-      font-weight: bold;
-    }
-    .content {
-      position: relative;
-      z-index: 1;
-    }
-    ` : ''}
-    .header-border {
-      height: 8px;
-      background: linear-gradient(90deg, ${primaryColor} 0%, ${accentColor} 100%);
-    }
-    .header { 
-      display: flex; 
-      align-items: flex-start; 
-      justify-content: space-between; 
-      padding: 25px 30px;
-      background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-      border-bottom: 3px solid ${primaryColor};
-    }
-    .logo-left { 
-      width: ${leftLogoSize * 0.7}px; 
-      height: ${leftLogoSize * 0.7}px; 
-      background: linear-gradient(135deg, ${primaryColor}, ${accentColor}); 
-      border-radius: 50%; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      font-size: 10px; 
-      color: white;
-      font-weight: bold;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
-    .logo-right { 
-      width: ${rightLogoSize * 0.7}px; 
-      height: ${rightLogoSize * 0.7}px; 
-      background: linear-gradient(135deg, ${accentColor}, ${primaryColor}); 
-      border-radius: 50%; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      font-size: 10px; 
-      color: white;
-      font-weight: bold;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
-    .header-center { text-align: center; flex: 1; padding: 0 20px; }
-    .school-name { 
-      color: ${schoolNameColor}; 
-      font-size: ${schoolNameFontSize * 0.8}px; 
-      font-weight: 900; 
-      margin-bottom: 4px;
-      letter-spacing: 1px;
-      text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-    }
-    .subtitle { font-size: 12px; color: #555; font-weight: 600; margin: 2px 0; }
-    .contact-info { font-size: 10px; color: #666; margin: 2px 0; }
-    .session-badge { 
-      display: inline-block;
-      background: linear-gradient(135deg, ${primaryColor}, ${accentColor});
-      color: white;
-      padding: 6px 20px;
-      border-radius: 20px;
-      font-weight: bold;
-      font-size: 11px;
-      margin-top: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    }
-    .content { padding: 30px; }
-    .section-title { 
-      font-size: 13px; 
-      font-weight: 800; 
-      color: white;
-      background: linear-gradient(135deg, ${primaryColor}, ${accentColor});
-      margin: 20px -30px 15px;
-      padding: 10px 30px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    .part-title { 
-      font-size: 12px; 
-      font-weight: 700; 
-      color: ${accentColor}; 
-      margin: 15px 0 8px;
-      padding-bottom: 4px;
-      border-bottom: 2px solid ${accentColor};
-    }
-    .profile-grid { 
-      display: grid; 
-      grid-template-columns: 1fr 1fr; 
-      gap: 8px 25px; 
-      margin-bottom: 15px; 
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 8px;
-      border-left: 4px solid ${primaryColor};
-    }
-    .profile-item { 
-      display: flex; 
-      gap: 8px; 
-      font-size: 11px;
-      align-items: baseline;
-    }
-    .profile-label { 
-      font-weight: 700; 
-      min-width: 130px; 
-      color: #555;
-    }
-    .profile-value { color: #000; }
-    table { 
-      width: 100%; 
-      border-collapse: collapse; 
-      margin-bottom: 15px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    th, td { border: 1px solid #ddd; padding: 10px 8px; font-size: 11px; }
-    th { 
-      background: ${headerBgColor}; 
-      font-weight: 700; 
-      text-align: left;
-      color: #333;
-      text-transform: uppercase;
-      font-size: 10px;
-      letter-spacing: 0.5px;
-    }
-    tr:nth-child(even) { background: #f9fafb; }
-    tr:hover { background: #f0f4f8; }
-    .text-center { text-align: center; }
-    .summary-box {
-      display: flex;
-      gap: 30px;
-      background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-      padding: 15px 20px;
-      border-radius: 8px;
-      margin: 15px 0;
-      border: 2px solid ${primaryColor};
-      align-items: center;
-      justify-content: center;
-    }
-    .summary-item {
-      text-align: center;
-    }
-    .summary-label {
-      font-size: 10px;
-      color: #666;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-    .summary-value {
-      font-size: 18px;
-      font-weight: 800;
-      color: ${primaryColor};
-      margin-top: 2px;
-    }
-    .remarks-box {
-      background: #fffef7;
-      border: 2px dashed ${accentColor};
-      border-radius: 8px;
-      padding: 20px;
-      min-height: 80px;
-      margin: 15px 0;
-      position: relative;
-    }
-    .remarks-label {
-      position: absolute;
-      top: -10px;
-      left: 15px;
-      background: white;
-      padding: 0 8px;
-      font-weight: 700;
-      font-size: 10px;
-      color: ${accentColor};
-      text-transform: uppercase;
-    }
-    .remarks-content {
-      font-size: 11px;
-      color: #333;
-      font-style: italic;
-      line-height: 1.6;
-    }
-    .result-box {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: linear-gradient(135deg, #d4edda, #c3e6cb);
-      border: 2px solid #28a745;
-      border-radius: 8px;
-      padding: 12px 20px;
-      margin: 15px 0;
-    }
-    .result-item {
-      font-size: 11px;
-    }
-    .result-label {
-      font-weight: 700;
-      color: #155724;
-    }
-    .result-value {
-      font-weight: 800;
-      color: #28a745;
-      font-size: 13px;
-    }
-    .signatures { 
-      display: flex; 
-      justify-content: space-around; 
-      margin-top: 40px;
-      padding-top: 20px;
-      border-top: 2px solid #e9ecef;
-    }
-    .sig-block { text-align: center; }
-    .sig-line { 
-      width: 150px; 
-      border-bottom: 2px solid #333; 
-      margin: 50px auto 8px;
-    }
-    .sig-label {
-      font-size: 10px;
-      font-weight: 700;
-      color: ${primaryColor};
-      text-transform: uppercase;
-    }
-    .grade-scale { 
-      margin-top: 15px;
-      background: #f8f9fa;
-      padding: 10px 12px;
-      border-radius: 6px;
-      border-left: 3px solid ${accentColor};
-    }
-    .grade-scale-title {
       font-size: 9px;
       font-weight: 700;
-      color: ${accentColor};
-      margin-bottom: 6px;
-      text-transform: uppercase;
+      color: #fff;
+      background: rgba(255,255,255,0.12);
     }
-    .grade-scale-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
+    .logo-circle.right {
+      width: ${rightLogoSize * 0.72}px;
+      height: ${rightLogoSize * 0.72}px;
+      min-width: ${rightLogoSize * 0.72}px;
     }
-    .grade-item {
-      background: white;
-      border: 1px solid #dee2e6;
-      border-radius: 4px;
-      padding: 3px 6px;
+    .strip-center {
+      flex: 1;
       text-align: center;
-      min-width: 40px;
+      padding: 0 12px;
     }
-    .grade-letter {
-      font-size: 11px;
+    .strip-school {
+      font-size: ${Math.min(26, Math.max(16, schoolNameFontSize))}px;
       font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      line-height: 1.15;
+      color: ${schoolNameColor};
+    }
+    .strip-line {
+      font-size: 10px;
+      line-height: 1.35;
+      margin-top: 4px;
+      color: #fff;
+      opacity: 0.95;
+    }
+    .strip-sub {
+      font-size: 10px;
+      margin-top: 2px;
+      color: #fff;
+      opacity: 0.9;
+    }
+    .annual-line {
+      text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 10px 12px 12px;
+      border-bottom: 1px solid #000;
+      background: #fff;
+    }
+    .body-pad { padding: 12px 16px 18px; }
+    .section-h {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin: 10px 0 6px;
+      border-bottom: 1px solid ${primaryColor};
+      padding-bottom: 2px;
       color: ${primaryColor};
     }
-    .grade-range {
-      font-size: 7px;
-      color: #666;
+    .student-wrap {
+      display: flex;
+      gap: 14px;
+      align-items: stretch;
+      margin-bottom: 10px;
+      border: 1px solid #000;
+      padding: 8px 10px;
     }
-    .instructions { 
-      margin-top: 20px; 
+    .student-cols {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 28px;
       font-size: 10px;
-      background: #fff3cd;
-      border-left: 4px solid #ffc107;
-      padding: 12px 15px;
-      border-radius: 6px;
     }
-    .instructions strong {
-      color: #856404;
-      display: block;
-      margin-bottom: 6px;
-      font-size: 11px;
+    .kv { display: flex; gap: 6px; line-height: 1.35; }
+    .kv b { min-width: 108px; font-weight: 700; }
+    .photo-box {
+      width: 88px;
+      min-width: 88px;
+      border: 1px solid #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: #666;
+      text-align: center;
+      padding: 4px;
     }
-    .instructions-text {
-      color: #856404;
-      line-height: 1.6;
+    .tbl-wrap { position: relative; margin-bottom: 8px; }
+    table.marks {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+      border: 1px solid #000;
     }
-    .sample-badge { 
-      position: absolute; 
-      top: 15px; 
-      right: 15px; 
-      background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
-      color: white; 
-      padding: 6px 12px; 
-      border-radius: 20px; 
-      font-size: 10px; 
-      font-weight: 800;
-      box-shadow: 0 4px 10px rgba(255,107,107,0.3);
-      z-index: 10;
-      text-transform: uppercase;
-      letter-spacing: 1px;
+    table.marks th, table.marks td {
+      border: 1px solid #000;
+      padding: 3px 4px;
+      vertical-align: middle;
     }
+    table.marks th {
+      font-weight: 700;
+      text-align: center;
+      background: #fff;
+    }
+    .td-subj { text-align: left; font-weight: 600; }
+    .td-num { text-align: center; }
+    .td-c { text-align: center; font-weight: 600; }
+    .tr-max td { font-weight: 700; background: #f5f5f5; }
+    .scale-row td {
+      font-size: 9px;
+      line-height: 1.3;
+      padding: 4px 6px;
+    }
+    .summary-row {
+      display: flex;
+      border: 1px solid #000;
+      margin-bottom: 8px;
+      font-size: 10px;
+    }
+    .summary-cell {
+      flex: 1;
+      border-right: 1px solid #000;
+      padding: 6px 8px;
+      text-align: center;
+    }
+    .summary-cell:last-child { border-right: 0; }
+    .summary-cell .lbl { font-weight: 700; display: block; margin-bottom: 2px; }
+    table.cos {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+      border: 1px solid #000;
+      margin-bottom: 8px;
+    }
+    table.cos th, table.cos td {
+      border: 1px solid #000;
+      padding: 4px 6px;
+    }
+    table.cos th { font-weight: 700; text-align: center; background: #fff; }
+    .td-left { text-align: left; }
+    .remark-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      font-size: 10px;
+      border: 1px solid #000;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      min-height: 48px;
+    }
+    .remark-main { flex: 1; }
+    .remark-sig { width: 200px; text-align: center; font-size: 9px; padding-top: 20px; border-left: 1px solid #ccc; padding-left: 12px; }
+    .sig-underline { border-bottom: 1px solid #000; min-height: 28px; margin-bottom: 4px; }
+    .foot-sigs {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: 10px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #000;
+    }
+    .foot-sigs .col { flex: 1; text-align: center; }
+    .foot-sigs .col.date { text-align: left; flex: 0.9; }
+    .foot-sigs .col.prin { text-align: right; flex: 0.9; }
+    .sig-line-f {
+      border-bottom: 1px solid #000;
+      min-height: 36px;
+      margin: 0 auto 4px;
+      max-width: 220px;
+    }
+    .inst-box {
+      margin-top: 10px;
+      font-size: 9px;
+      border: 1px solid #000;
+      padding: 8px 10px;
+      line-height: 1.45;
+    }
+    .inst-box strong { display: block; margin-bottom: 4px; font-size: 10px; }
+    .att-inline { font-size: 9px; margin-bottom: 6px; border: 1px solid #000; padding: 4px 8px; }
   </style>
 </head>
 <body>
   <div class="report-card">
-    <div class="sample-badge">SAMPLE PREVIEW</div>
-    ${showWatermark ? '<div class="watermark">LOGO</div>' : ''}
-    <div class="header-border"></div>
-    <div class="header">
-      <div class="logo-left">LOGO</div>
-      <div class="header-center">
-        <div class="contact-info">School Code: SCH001 | Affiliation No: ${affiliation}</div>
-        <div class="school-name">DEMO PUBLIC SCHOOL</div>
-        <div class="subtitle">${subTitle}</div>
-        <div class="contact-info">(Affiliated to C.B.S.E New Delhi)</div>
-        <div class="contact-info">${schoolAddress}</div>
-        <div class="contact-info">Email: ${schoolEmail} | Phone: ${schoolPhone}</div>
-        <div class="session-badge">${reportTitle} | ${academicYear}</div>
-      </div>
-      ${showRightLogo ? '<div class="logo-right">LOGO</div>' : '<div style="width: 60px;"></div>'}
-    </div>
+    <div class="sample-badge">Sample preview</div>
 
-    <div class="content">
+    <div class="pink-strip">
+      <div class="strip-row">
+        <div class="logo-circle">LOGO</div>
+        <div class="strip-center">
+          <div class="strip-school">DEMO PUBLIC SCHOOL</div>
+          <div class="strip-line">Email: ${schoolEmail} | Affiliation No: ${affiliation} | Phone: ${schoolPhone}</div>
+          <div class="strip-line">${schoolAddress}</div>
+          <div class="strip-sub">${subTitle} · ${reportTitle}</div>
+        </div>
+        ${showRightLogo ? '<div class="logo-circle right">LOGO</div>' : '<div class="logo-circle right" style="visibility:hidden;border-color:transparent;background:transparent"></div>'}
+      </div>
+    </div>
+    <div class="annual-line">ANNUAL REPORT – ${academicYear}</div>
+
+    <div class="body-pad wm-wrap">
+      ${showWatermark ? '<div class="watermark">LOGO</div>' : ''}
+      <div class="wm-body">
+
       ${showStudentProfile ? `
-      <div class="section-title">📋 ${sectionStudentProfile}</div>
-      <div class="profile-grid">
-        <div class="profile-item"><span class="profile-label">Student Name:</span> <span class="profile-value">John Doe</span></div>
-        <div class="profile-item"><span class="profile-label">Class & Section:</span> <span class="profile-value">10-A</span></div>
-        <div class="profile-item"><span class="profile-label">${(labels.father_name as string) || "Father's Name"}:</span> <span class="profile-value">Mr. Robert Doe</span></div>
-        <div class="profile-item"><span class="profile-label">${(labels.mother_name as string) || "Mother's Name"}:</span> <span class="profile-value">Mrs. Jane Doe</span></div>
-        <div class="profile-item"><span class="profile-label">Address:</span> <span class="profile-value">456 Sample Street, Delhi</span></div>
-        <div class="profile-item"><span class="profile-label">Admission No:</span> <span class="profile-value">ADM2024001</span></div>
-        <div class="profile-item"><span class="profile-label">Contact No:</span> <span class="profile-value">9876543210</span></div>
-        <div class="profile-item"><span class="profile-label">Roll Number:</span> <span class="profile-value">15</span></div>
+      <div class="section-h">${sectionStudentProfile}</div>
+      <div class="student-wrap">
+        <div class="student-cols">
+          <div class="kv"><b>Admission No.</b><span>ADM2024001</span></div>
+          <div class="kv"><b>Roll No.</b><span>15</span></div>
+          <div class="kv"><b>Student Name</b><span>John Doe</span></div>
+          <div class="kv"><b>Class</b><span>Grade-10 10-A</span></div>
+          <div class="kv"><b>${(labels.father_name as string) || "Father's Name"}</b><span>Mr. Robert Doe</span></div>
+          <div class="kv"><b>Contact No.</b><span>${schoolPhone}</span></div>
+          <div class="kv"><b>${(labels.mother_name as string) || "Mother's Name"}</b><span>Mrs. Jane Doe</span></div>
+          <div class="kv"><b>Date of Birth</b><span>01/01/2010</span></div>
+        </div>
+        <div class="photo-box">Passport<br/>photo</div>
       </div>
       ` : ''}
 
       ${showMarksTable ? `
-      <div class="section-title">📊 ${sectionAcademicPerformance}</div>
-      <div class="part-title">${sectionScholastic} (${examName})</div>
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 60px; text-align: center;">S.No</th>
-            <th>Subject</th>
-            <th style="width: 100px; text-align: center;">Max Marks</th>
-            <th style="width: 120px; text-align: center;">Marks Obtained</th>
-            <th style="width: 100px; text-align: center;">Percentage</th>
-            <th style="width: 80px; text-align: center;">Grade</th>
-          </tr>
-        </thead>
-        <tbody>${marksRows}</tbody>
-      </table>
+      <div class="section-h">${sectionScholastic} — ${examName}</div>
+      <div class="tbl-wrap">
+        <table class="marks" cellspacing="0" cellpadding="0">
+          <thead>
+            <tr>
+              <th rowspan="2" style="min-width:88px;">Subject</th>
+              <th colspan="4">Term-I</th>
+              <th colspan="5">Term-II</th>
+              <th rowspan="2">Grand Total<br/>(250)</th>
+              <th rowspan="2">Grade</th>
+            </tr>
+            <tr>
+              <th>F.A.-1</th><th>S.A.-1</th><th>Total</th><th>Grade</th>
+              <th>F.A.-2</th><th>S.A.-2</th><th>I.A./PR.</th><th>Total</th><th>Grade</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="tr-max">
+              <td class="td-subj">Maximum Marks</td>
+              <td class="td-num">25</td><td class="td-num">75</td><td class="td-num">100</td><td class="td-c"></td>
+              <td class="td-num">25</td><td class="td-num">75</td><td class="td-num">25</td><td class="td-num">200</td><td class="td-c"></td>
+              <td class="td-num">250</td><td class="td-c"></td>
+            </tr>
+            ${marksRows}
+            ${showGradingScale ? `
+            <tr class="scale-row">
+              <td colspan="12"><strong>Grading Scale:</strong> A1(91%-100%), A2(81%-90%), B1(71%-80%), B2(61%-70%), C1(51%-60%), C2(41%-50%), D(33%-40%), E1(0%-32%)</td>
+            </tr>` : ''}
+          </tbody>
+        </table>
+      </div>
 
-      <div class="summary-box">
-        ${showAttendance ? `
-        <div class="summary-item">
-          <div class="summary-label">${(labels.attendance as string) || 'Attendance'}</div>
-          <div class="summary-value">180/200</div>
-          <div class="summary-label">90.0%</div>
-        </div>` : ''}
-        <div class="summary-item">
-          <div class="summary-label">Grand Total</div>
-          <div class="summary-value">418/500</div>
-          <div class="summary-label">83.6%</div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-label">Overall Grade</div>
-          <div class="summary-value">A</div>
-        </div>
+      ${showAttendance ? `<div class="att-inline"><strong>${(labels.attendance as string) || 'Attendance'} (sample):</strong> 180 / 200 (90%)</div>` : ''}
+
+      <div class="summary-row">
+        <div class="summary-cell"><span class="lbl">Overall Marks</span>1008 / 2000</div>
+        <div class="summary-cell"><span class="lbl">Percentage</span>50.4%</div>
+        <div class="summary-cell"><span class="lbl">Grade</span>B1</div>
+        <div class="summary-cell"><span class="lbl">Rank</span>—</div>
       </div>
       ` : ''}
 
       ${showCoScholastic ? `
-      <div class="part-title">${sectionCoScholastic}</div>
-      <table>
+      <div class="section-h">${sectionCoScholastic}</div>
+      <table class="cos" cellspacing="0" cellpadding="0">
         <thead>
           <tr>
-            <th>Co-Scholastic Area</th>
-            <th style="width: 120px; text-align: center;">Term-1 Grade</th>
-            <th style="width: 120px; text-align: center;">Term-2 Grade</th>
+            <th style="text-align:left;">Activity</th>
+            <th>Term-I</th>
+            <th>Term-II</th>
           </tr>
         </thead>
         <tbody>${coScholasticRows}</tbody>
@@ -508,91 +471,42 @@ function generatePreviewHTML(cfg: Config): string {
       ` : ''}
 
       ${showRemarks ? `
-      <div class="remarks-box">
-        <div class="remarks-label">${sectionRemarks}</div>
-        <div class="remarks-content">
-          ${customRemarks || 'Excellent performance throughout the academic year. Shows great enthusiasm in learning and participates actively in class discussions.'}
+      <div class="remark-row">
+        <div class="remark-main">
+          <strong>Remark:</strong>
+          ${customRemarks || 'GOOD — Excellent performance throughout the academic year. Participates actively in class.'}
         </div>
-        <div style="margin-top: 12px; border-top: 1px dashed #ccc; padding-top: 8px;">
-          <div style="font-size: 9px; color: #666; margin-bottom: 4px;">Teacher's Handwritten Remarks:</div>
-          <div style="min-height: 35px; border-bottom: 1px solid #ddd; margin-bottom: 6px;"></div>
-          <div style="min-height: 1px; border-bottom: 1px solid #ddd;"></div>
-        </div>
-      </div>
-      ` : ''}
-
-      <div class="result-box">
-        <div class="result-item">
-          <span class="result-label">Result:</span> 
-          <span class="result-value">✓ PASS</span>
-        </div>
-        <div class="result-item">
-          <span class="result-label">Rank:</span> 
-          <span class="result-value">3rd</span>
-        </div>
-        <div class="result-item">
-          <span class="result-label">Promoted To:</span> 
-          <span class="result-value">${promotedTo}</span>
-        </div>
-        <div class="result-item">
-          <span class="result-label">Result Date:</span> 
-          <span class="result-value">15 Mar 2025</span>
-        </div>
-      </div>
-
-      <div class="signatures">
-        <div class="sig-block">
-          <div class="sig-line"></div>
-          <div class="sig-label">Class Teacher</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line"></div>
-          <div class="sig-label">Principal</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line"></div>
-          <div class="sig-label">Parent / Guardian</div>
-        </div>
-      </div>
-
-      ${showGradingScale ? `
-      <div class="grade-scale">
-        <div class="grade-scale-title">📌 Grading Scale</div>
-        <div class="grade-scale-grid">
-          <div class="grade-item">
-            <div class="grade-letter">A+</div>
-            <div class="grade-range">91-100</div>
-          </div>
-          <div class="grade-item">
-            <div class="grade-letter">A</div>
-            <div class="grade-range">81-90</div>
-          </div>
-          <div class="grade-item">
-            <div class="grade-letter">B+</div>
-            <div class="grade-range">71-80</div>
-          </div>
-          <div class="grade-item">
-            <div class="grade-letter">B</div>
-            <div class="grade-range">61-70</div>
-          </div>
-          <div class="grade-item">
-            <div class="grade-letter">C</div>
-            <div class="grade-range">51-60</div>
-          </div>
-          <div class="grade-item">
-            <div class="grade-letter">D</div>
-            <div class="grade-range">33-50</div>
-          </div>
+        <div class="remark-sig">
+          <div class="sig-underline"></div>
+          <span>${sectionRemarks}</span>
         </div>
       </div>
       ` : ''}
+
+      <div class="foot-sigs">
+        <div class="col date">Date: _______________</div>
+        <div class="col">
+          <div class="sig-line-f"></div>
+          <div>Class Teacher&apos;s Signature</div>
+        </div>
+        <div class="col prin">
+          <div class="sig-line-f"></div>
+          <div>Principal&apos;s Signature</div>
+        </div>
+      </div>
+
+      <div style="font-size:9px;margin-top:8px;padding:4px 0;border-top:1px solid #000;">
+        <strong>Result:</strong> PASS · <strong>Promoted To:</strong> ${promotedTo} · <strong>Result date (sample):</strong> 15 Mar 2025
+      </div>
 
       ${showInstructions ? `
-      <div class="instructions">
-        <strong>⚠️ ${sectionInstructions}</strong>
-        <div class="instructions-text">${instructions}</div>
+      <div class="inst-box">
+        <strong>${sectionInstructions}</strong>
+        <div>${instructions}</div>
       </div>
       ` : ''}
+
+      </div>
     </div>
   </div>
 </body>

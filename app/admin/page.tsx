@@ -1546,6 +1546,15 @@ export default function AdminDashboard() {
     window.open(`/api/admin/login-audit?${params.toString()}`, '_blank');
   };
 
+  const resolveUserSchoolCode = (user: Record<string, unknown>): string => {
+    const direct = user.school_code;
+    if (typeof direct === 'string' && direct.trim()) return direct.trim();
+    const schools = user.accepted_schools as Array<{ school_code?: string }> | undefined;
+    const first = schools?.[0]?.school_code;
+    if (typeof first === 'string' && first.trim()) return first.trim();
+    return '';
+  };
+
   const updateUserStatus = async (userType: string, identifier: string, schoolCode: string, isActive: boolean) => {
     try {
       const response = await fetch('/api/admin/users', {
@@ -1560,10 +1569,16 @@ export default function AdminDashboard() {
       });
       const result = await response.json();
       if (response.ok) {
-        fetchUsers();
-        alert(`User ${isActive ? 'activated' : 'deactivated'} successfully!`);
+        await fetchUsers();
+        if (result.created_login && result.generated_password) {
+          alert(
+            `User activated. A login record was created (there was none before).\n\nTemporary password: ${result.generated_password}\n\nCopy and share it securely.`
+          );
+        } else {
+          alert(`User ${isActive ? 'activated' : 'deactivated'} successfully!`);
+        }
       } else {
-        alert(result.error || 'Failed to update user status');
+        alert(result.error || result.details || 'Failed to update user status');
       }
     } catch (error) {
       console.error('Error updating user status:', error);
@@ -5216,14 +5231,22 @@ CREATE INDEX idx_audit_logs_severity ON audit_logs(severity);`}</code></pre>
                               </td>
                               <td className="px-4 py-3">
                                 <Button
+                                  type="button"
                                   size="sm"
                                   variant={(user.status as string) === 'active' ? 'outline' : 'primary'}
-                                  onClick={() => updateUserStatus(
-                                    user.user_type as string,
-                                    user.identifier as string,
-                                    user.school_code as string,
-                                    (user.status as string) !== 'active'
-                                  )}
+                                  onClick={() => {
+                                    const code = resolveUserSchoolCode(user);
+                                    if (!code) {
+                                      alert('Cannot update: school code is missing for this user.');
+                                      return;
+                                    }
+                                    updateUserStatus(
+                                      user.user_type as string,
+                                      String(user.identifier ?? ''),
+                                      code,
+                                      (user.status as string) !== 'active'
+                                    );
+                                  }}
                                 >
                                   {user.status === 'active' ? 'Deactivate' : 'Activate'}
                                 </Button>

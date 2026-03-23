@@ -17,6 +17,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { school_code, password } = body;
+    const normalizedSchoolCode =
+      typeof school_code === 'string' && school_code.trim() ? school_code.trim().toUpperCase() : '';
 
     if (!school_code || !password) {
       return NextResponse.json(
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest) {
         role: 'School Admin',
         loginType: 'school',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: 'Invalid school code or password' },
@@ -53,6 +56,7 @@ export async function POST(request: NextRequest) {
         role: 'School Admin',
         loginType: 'school',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || school.school_code?.toUpperCase(),
       });
       return NextResponse.json(
         { error: 'This school is on hold. Please contact admin.' },
@@ -77,6 +81,7 @@ export async function POST(request: NextRequest) {
         role: 'School Admin',
         loginType: 'school',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || school.school_code?.toUpperCase(),
       });
       return NextResponse.json(
         { error: 'Invalid school code or password' },
@@ -87,7 +92,6 @@ export async function POST(request: NextRequest) {
     // Return school data (excluding password for security)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...schoolData } = school;
-    const normalizedSchoolCode = school.school_code?.toUpperCase() ?? '';
 
     // Create server-side session (stored in public.sessions)
     const { sessionToken, expiresAt } = await createSession({
@@ -104,6 +108,7 @@ export async function POST(request: NextRequest) {
       role: 'School Admin',
       loginType: 'school',
       status: 'success',
+      schoolCode: normalizedSchoolCode,
     });
     const response = NextResponse.json(
       {

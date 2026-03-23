@@ -22,6 +22,20 @@ CREATE INDEX IF NOT EXISTS idx_login_audit_status ON login_audit_log(status);
 CREATE INDEX IF NOT EXISTS idx_login_audit_ip ON login_audit_log(ip_address);
 ```
 
+### School-scoped audit (school dashboard)
+
+Run once so **per-school sign-in history** works on **Academic Year → Audit Logs** and `/api/school/login-audit`:
+
+```sql
+ALTER TABLE login_audit_log
+  ADD COLUMN IF NOT EXISTS school_code TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_login_audit_school_login_at
+  ON login_audit_log (school_code, login_at DESC);
+```
+
+New sign-in attempts from this codebase populate `school_code` automatically. Older rows may have `NULL` until users sign in again.
+
 - **user_id**: Who logged in (optional on failed attempts).
 - **name**: Human-readable identifier (school_code, staff_id, admission_no, or "Unknown").
 - **role**: School Admin / Teacher / Student / Accountant / UNKNOWN.

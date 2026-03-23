@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -42,12 +42,20 @@ export default function ReportCardDashboardPage({
   const fetchReportCards = async () => {
     setLoading(true);
     try {
+      // Always load all cards for the school; class/section filters are applied client-side.
+      // Server-side filters caused "empty dashboard" after generate when a stale filter value
+      // (or class label mismatch) did not match the newly saved rows.
       const params = new URLSearchParams({ school_code: schoolCode });
-      if (classFilter) params.set('class_name', classFilter);
-      if (sectionFilter) params.set('section', sectionFilter);
-      const res = await fetch(`/api/marks/report-card/list?${params}`);
+      const res = await fetch(`/api/marks/report-card/list?${params.toString()}`, {
+        cache: 'no-store',
+      });
       const data = await res.json();
-      setReportCards(data.data || []);
+      if (!res.ok) {
+        console.error('Report card list failed:', data?.error || res.status);
+        setReportCards([]);
+        return;
+      }
+      setReportCards(Array.isArray(data.data) ? data.data : []);
     } catch {
       setReportCards([]);
     } finally {
@@ -58,16 +66,37 @@ export default function ReportCardDashboardPage({
   useEffect(() => {
     fetchReportCards();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode, classFilter, sectionFilter]);
+  }, [schoolCode]);
 
-  const filteredCards = reportCards.filter(
-    (c) =>
-      (c.student_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.admission_no || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const isFirstClassFilterEffect = useRef(true);
+  useEffect(() => {
+    if (isFirstClassFilterEffect.current) {
+      isFirstClassFilterEffect.current = false;
+      return;
+    }
+    setSectionFilter('');
+  }, [classFilter]);
+
+  const q = searchQuery.trim().toLowerCase();
+  const filteredCards = reportCards.filter((c) => {
+    if (classFilter && (c.class_name || '') !== classFilter) return false;
+    if (sectionFilter && (c.section || '') !== sectionFilter) return false;
+    if (!q) return true;
+    return (
+      (c.student_name || '').toLowerCase().includes(q) ||
+      (c.admission_no || '').toLowerCase().includes(q)
+    );
+  });
 
   const classes = [...new Set(reportCards.map((c) => c.class_name).filter(Boolean))].sort();
-  const sections = [...new Set(reportCards.map((c) => c.section).filter(Boolean))].sort();
+  const sections = [
+    ...new Set(
+      reportCards
+        .filter((c) => !classFilter || (c.class_name || '') === classFilter)
+        .map((c) => c.section)
+        .filter(Boolean)
+    ),
+  ].sort();
 
   const handleView = (id: string) => {
     window.open(`/api/marks/report-card/${id}?_t=${Date.now()}`, '_blank', 'noopener,noreferrer');
@@ -218,8 +247,27 @@ export default function ReportCardDashboardPage({
         ) : filteredCards.length === 0 ? (
           <div className="py-12 text-center">
             <FileText size={48} className="mx-auto text-gray-300" />
-            <p className="mt-4 text-gray-500 font-medium">No report cards found</p>
-            <p className="text-sm text-gray-400 mt-1">Generate report cards to see them here</p>
+            <p className="mt-4 text-gray-500 font-medium">
+              {reportCards.length > 0 ? 'No report cards match your filters' : 'No report cards found'}
+            </p>
+            <p className="text-sm text-gray-400 mt-1">
+              {reportCards.length > 0
+                ? 'Try clearing class, section, or search — or generate new cards.'
+                : 'Generate report cards to see them here'}
+            </p>
+            {reportCards.length > 0 && (classFilter || sectionFilter || searchQuery.trim()) ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setClassFilter('');
+                  setSectionFilter('');
+                  setSearchQuery('');
+                }}
+                className="mt-4 mr-2 border-[#1e3a8a] text-[#1e3a8a]"
+              >
+                Clear filters
+              </Button>
+            ) : null}
             <Button onClick={() => router.push(`/dashboard/${schoolCode}/report-card/generate`)} className="mt-4 bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
               <Plus size={18} className="mr-2" />
               Generate Report Card

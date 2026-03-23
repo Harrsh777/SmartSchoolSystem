@@ -76,12 +76,14 @@ export async function fetchReportCardData(
       .select(`*, subject:subjects(id, name, color)`)
       .eq('exam_id', examId)
       .eq('student_id', studentId)
+      .eq('school_code', schoolCode)
       .order('created_at', { ascending: true }),
     supabase
       .from('student_exam_summary')
       .select('*')
       .eq('exam_id', examId)
       .eq('student_id', studentId)
+      .eq('school_code', schoolCode)
       .maybeSingle(),
     supabase
       .from('grade_scales')
@@ -151,6 +153,7 @@ export async function fetchReportCardData(
     const { data: co } = await supabase
       .from('term_co_scholastic')
       .select('*')
+      .eq('school_code', schoolCode)
       .eq('student_id', studentId)
       .limit(5);
     if (co?.length) {
@@ -187,6 +190,7 @@ export async function fetchReportCardData(
       address: student.address || student.school_address,
       student_contact: student.student_contact || student.phone || student.mobile,
       roll_number: student.roll_number,
+      photo_url: student.photo_url || null,
     },
     exam: {
       exam_name: exam.exam_name || exam.name || '',
@@ -266,6 +270,7 @@ export async function fetchReportCardDataMultiExam(
     .select(`*, subject:subjects(id, name, color)`)
     .in('exam_id', examIds)
     .eq('student_id', studentId)
+    .eq('school_code', schoolCode)
     .order('exam_id', { ascending: true })
     .order('created_at', { ascending: true });
 
@@ -412,6 +417,31 @@ export async function fetchReportCardDataMultiExam(
     attendance = { present, total, percentage: total > 0 ? (present / total) * 100 : 0 };
   }
 
+  let coScholastic: Array<{ name: string; term1_grade?: string; term2_grade?: string }> | null = null;
+  try {
+    const { data: co } = await supabase
+      .from('term_co_scholastic')
+      .select('*')
+      .eq('school_code', schoolCode)
+      .eq('student_id', studentId)
+      .order('added_at', { ascending: false })
+      .limit(5);
+
+    if (co?.length) {
+      coScholastic = [
+        {
+          name: 'Work Education or Pre Vocational Education',
+          term1_grade: (co[0] as { discipline_grade?: string }).discipline_grade,
+          term2_grade: (co[0] as { work_habits_grade?: string }).work_habits_grade,
+        },
+        { name: 'Art Education', term1_grade: undefined, term2_grade: undefined },
+        { name: 'Health & Physical Education', term1_grade: undefined, term2_grade: undefined },
+      ];
+    }
+  } catch {
+    coScholastic = null;
+  }
+
   return {
     school: {
       school_name: school.school_name || '',
@@ -435,6 +465,7 @@ export async function fetchReportCardDataMultiExam(
       address: student.address || student.school_address,
       student_contact: student.student_contact || student.phone || student.mobile,
       roll_number: student.roll_number,
+      photo_url: student.photo_url || null,
     },
     exam: {
       exam_name: combinedExamName,
@@ -451,7 +482,7 @@ export async function fetchReportCardDataMultiExam(
       grade: gradeScales.length ? getGradeFromPct(overallPct) : '-',
     },
     attendance,
-    coScholastic: null,
+    coScholastic,
     gradeScales,
     result: overallPct >= 33 ? 'Pass' : 'Fail',
     promoted_to: student.class ? `${student.class}-${student.section || 'A'}` : undefined,

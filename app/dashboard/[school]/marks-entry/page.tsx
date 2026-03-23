@@ -68,6 +68,66 @@ interface ExistingMark {
   max_marks: number;
 }
 
+function normClassLabel(v: unknown): string {
+  return String(v ?? '').trim();
+}
+
+function classSectionLabelsMatch(
+  row: { class?: unknown; section?: unknown },
+  className: string,
+  section: string
+): boolean {
+  return (
+    normClassLabel(row.class).toLowerCase() === normClassLabel(className).toLowerCase() &&
+    normClassLabel(row.section).toLowerCase() === normClassLabel(section).toLowerCase()
+  );
+}
+
+function buildMatchingClassIds(
+  rows: { id: unknown; class: string; section: string }[],
+  className: string,
+  section: string
+): Set<string> {
+  const set = new Set<string>();
+  for (const r of rows) {
+    if (classSectionLabelsMatch(r, className, section)) {
+      set.add(String(r.id));
+    }
+  }
+  return set;
+}
+
+function classMappingMatchesSelection(
+  cm: Record<string, unknown>,
+  matchingClassIds: Set<string>,
+  className: string,
+  section: string
+): boolean {
+  if (matchingClassIds.has(String(cm.class_id))) return true;
+  const nested = cm.class as { class?: unknown; section?: unknown } | undefined;
+  if (nested && classSectionLabelsMatch(nested, className, section)) return true;
+  return false;
+}
+
+function resolveExamClassIdForSelection(
+  classMappings: Record<string, unknown>[],
+  matchingClassIds: Set<string>,
+  className: string,
+  section: string,
+  fallbackClassId: string
+): string {
+  for (const cm of classMappings) {
+    if (matchingClassIds.has(String(cm.class_id))) return String(cm.class_id);
+  }
+  for (const cm of classMappings) {
+    const nested = cm.class as { class?: unknown; section?: unknown } | undefined;
+    if (nested && classSectionLabelsMatch(nested, className, section)) {
+      return String(cm.class_id);
+    }
+  }
+  return fallbackClassId;
+}
+
 export default function MarksEntryPage({
   params,
 }: {
@@ -164,8 +224,9 @@ export default function MarksEntryPage({
         return;
       }
 
-      const classItem = classesData.data.find((c: { class: string; section: string }) => 
-        c.class === selectedClass && c.section === selectedSection
+      const classRows = classesData.data as { id: string; class: string; section: string }[];
+      const classItem = classRows.find((c) =>
+        classSectionLabelsMatch(c, selectedClass, selectedSection)
       );
       if (!classItem || !classItem.id) {
         setError(`No class found for ${selectedClass}-${selectedSection}. Please check your selection.`);
@@ -174,8 +235,9 @@ export default function MarksEntryPage({
         return;
       }
 
-      const classId = classItem.id;
-      setSelectedClassId(classId);
+      const matchingClassIds = buildMatchingClassIds(classRows, selectedClass, selectedSection);
+      const fallbackClassId = String(classItem.id);
+      setSelectedClassId(fallbackClassId);
       setError(''); // Clear previous errors
 
       // Then fetch exams for this class using the new v2 API
@@ -194,50 +256,44 @@ export default function MarksEntryPage({
         setExams([]);
         return;
       }
-      
-      console.log('Fetched exams:', result.data.length, 'exams');
-      console.log('Looking for classId:', classId, 'type:', typeof classId);
-      if (result.data.length > 0) {
-        console.log('Sample exam class_mappings:', JSON.stringify(result.data[0]?.class_mappings, null, 2));
-      }
-      
-      // Filter exams that have this class mapped
+
+      // Match any classes row for this class+section (exams may map to a different academic_year id)
       const examsForClass = (result.data as Record<string, unknown>[]).filter((exam: Record<string, unknown>) => {
         const classMappings = exam.class_mappings as Record<string, unknown>[] | undefined;
-        if (!classMappings || !Array.isArray(classMappings)) {
-          console.log('Exam', exam.id, 'has no class_mappings or not an array');
-          return false;
+        if (classMappings && Array.isArray(classMappings) && classMappings.length > 0) {
+          return classMappings.some((cm) =>
+            classMappingMatchesSelection(cm, matchingClassIds, selectedClass, selectedSection)
+          );
         }
-        const hasClass = classMappings.some((cm: Record<string, unknown>) => {
-          // Compare as strings to handle UUID comparison
-          const matches = String(cm.class_id) === String(classId);
-          if (!matches && result.data.length <= 5) {
-            console.log('Exam', exam.id, 'class_mapping class_id:', cm.class_id, 'type:', typeof cm.class_id, 'does not match', classId, 'type:', typeof classId);
-          }
-          return matches;
-        });
-        if (hasClass) {
-          console.log('Exam', exam.id, 'matches class', classId);
-        }
-        return hasClass;
+        const rootClassId = exam.class_id != null ? String(exam.class_id) : '';
+        return Boolean(rootClassId && matchingClassIds.has(rootClassId));
       });
-      
-      console.log('Filtered exams for class:', examsForClass.length);
-      
+
       // Transform to match expected format
       const transformedExams: Exam[] = examsForClass.map((exam: Record<string, unknown>): Exam => {
-        // Get subject mappings for this specific class
+        const classMappings = (exam.class_mappings as Record<string, unknown>[] | undefined) || [];
+        const resolvedClassId =
+          classMappings.length > 0
+            ? resolveExamClassIdForSelection(
+                classMappings,
+                matchingClassIds,
+                selectedClass,
+                selectedSection,
+                fallbackClassId
+              )
+            : exam.class_id != null
+              ? String(exam.class_id)
+              : fallbackClassId;
+
         const subjectMappings = exam.subject_mappings as Record<string, unknown>[] | undefined;
         const classSubjectMappings = subjectMappings?.filter((sm: Record<string, unknown>) => {
-          // Check if this subject mapping is for the selected class
-          // Subject mappings are linked to class via exam_subject_mappings.class_id
-          return String(sm.class_id) === String(classId);
+          return String(sm.class_id) === String(resolvedClassId);
         }) || [];
-        
+
         return {
           id: exam.id as string,
           name: (exam.exam_name as string) || (exam.name as string),
-          class_id: classId,
+          class_id: resolvedClassId,
           exam_subjects: classSubjectMappings.map((sm: Record<string, unknown>) => {
             const subjectId = String(sm.subject_id || '');
             const subject = sm.subject as Record<string, unknown> | undefined;
@@ -260,12 +316,7 @@ export default function MarksEntryPage({
           }),
         };
       });
-      
-      console.log('Transformed exams:', transformedExams.length);
-      if (transformedExams.length > 0) {
-        console.log('First transformed exam:', JSON.stringify(transformedExams[0], null, 2));
-      }
-      
+
       setExams(transformedExams);
       if (transformedExams.length === 0) {
         setError(`No examinations found for ${selectedClass}-${selectedSection}. Please create an examination first.`);
@@ -685,6 +736,7 @@ export default function MarksEntryPage({
                 onChange={(e) => {
                   setSelectedSection(e.target.value);
                   setSelectedExam('');
+                  setSelectedClassId('');
                   setExams([]);
                   setError('');
                 }}
@@ -703,7 +755,12 @@ export default function MarksEntryPage({
               </label>
               <select
                 value={selectedExam}
-                onChange={(e) => setSelectedExam(e.target.value)}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedExam(id);
+                  const ex = exams.find((x) => x.id === id);
+                  if (ex?.class_id) setSelectedClassId(ex.class_id);
+                }}
                 disabled={!selectedClass || !selectedSection}
                 className="w-full px-4 py-2 border border-input rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-[#2C3E50]/20 dark:focus:ring-[#4A707A]/30 disabled:bg-muted disabled:cursor-not-allowed"
               >

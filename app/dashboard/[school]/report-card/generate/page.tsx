@@ -157,6 +157,7 @@ export default function ReportCardGeneratePage({
       
       // If at least one was generated, navigate to dashboard
       if (data.generated && data.generated.length > 0) {
+        router.refresh();
         router.push(`/dashboard/${schoolCode}/report-card/dashboard`);
       } else {
         throw new Error('No report cards were generated. ' + (data.errors?.[0]?.error || 'Unknown error'));

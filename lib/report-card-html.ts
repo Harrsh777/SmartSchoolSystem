@@ -43,6 +43,7 @@ export interface ReportCardData {
     address?: string;
     student_contact?: string;
     roll_number?: string;
+    photo_url?: string | null;
   };
   exam: {
     exam_name: string;
@@ -106,13 +107,13 @@ export interface ReportCardTemplateConfig {
 }
 
 export function generateReportCardHTML(data: ReportCardData, templateConfig?: ReportCardTemplateConfig): string {
+  // Use the same landscape HTML structure as the template live preview.
+  // This ensures generated report cards match the updated "new format".
+  return generateLandscapeReportCardHTML(data, templateConfig);
   const { school, student, exam, marks, summary, attendance, coScholastic, gradeScales, multiExamMarks, examsList } = data;
   const cfg = templateConfig || {};
   const labels = cfg.labels || {};
   const content = (cfg as Record<string, unknown>).content as Record<string, unknown> || {};
-
-  // Debug: log what config we received
-  console.log('generateReportCardHTML config received:', JSON.stringify(cfg));
 
   const examName = exam.exam_name || 'Examination';
   const academicYear = exam.academic_year || 'N/A';
@@ -129,13 +130,13 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
   const headerBgColor = cfg.marks_table?.header_bg_color ?? '#e6f0e6';
   const fontFamily = cfg.branding?.font_family ?? 'Arial, sans-serif';
   const primaryColor = cfg.branding?.primary_color ?? '#1e3a8a';
-  const accentColor = cfg.branding?.accent_color ?? '#15803d';
+  const accentColor = cfg.branding?.accent_color ?? '#3B82F6';
 
   // Watermark settings
   const watermark = (cfg as Record<string, unknown>).watermark as Record<string, unknown> || {};
-  const showWatermark = watermark.enabled !== false && leftLogo;
-  const watermarkSize = (watermark.size as number) || 500;
-  const watermarkOpacity = (watermark.opacity as number) || 0.08;
+  const showWatermark = watermark.enabled !== false && Boolean(leftLogo);
+  const watermarkSize = Math.min(Math.max((watermark.size as number) || 500, 100), 900);
+  const watermarkOpacity = Math.min(Math.max((watermark.opacity as number) ?? 0.08, 0.02), 0.35);
 
   // Section titles (customizable)
   const sectionStudentProfile = (labels.section_student_profile as string) ?? 'Student Profile';
@@ -307,8 +308,8 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: ${Math.min(watermarkSize, 400)}px;
-      height: ${Math.min(watermarkSize, 400)}px;
+      width: ${watermarkSize}px;
+      height: ${watermarkSize}px;
       opacity: ${watermarkOpacity};
       pointer-events: none;
       z-index: 0;
@@ -336,8 +337,8 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
       border-bottom: 2px solid ${primaryColor};
     }
     .logo-left { 
-      width: ${Math.min(leftLogoSize, 70)}px; 
-      height: ${Math.min(leftLogoSize, 70)}px; 
+      width: ${Math.min(Math.max(Number(leftLogoSize) || 100, 40), 200)}px; 
+      height: ${Math.min(Math.max(Number(leftLogoSize) || 100, 40), 200)}px; 
       object-fit: contain;
       background: linear-gradient(135deg, ${primaryColor}, ${accentColor}); 
       border-radius: 50%; 
@@ -350,8 +351,8 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
     .logo-right { 
-      width: ${Math.min(rightLogoSize, 70)}px; 
-      height: ${Math.min(rightLogoSize, 70)}px; 
+      width: ${Math.min(Math.max(Number(rightLogoSize) || 100, 40), 200)}px; 
+      height: ${Math.min(Math.max(Number(rightLogoSize) || 100, 40), 200)}px; 
       object-fit: contain;
       background: linear-gradient(135deg, ${accentColor}, ${primaryColor}); 
       border-radius: 50%; 
@@ -372,7 +373,7 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
     .header-center { text-align: center; flex: 1; padding: 0 10px; }
     .school-name { 
       color: ${schoolNameColor}; 
-      font-size: ${Math.min(schoolNameFontSize, 14)}px; 
+      font-size: ${Math.min(Math.max(Number(schoolNameFontSize) || 18, 10), 36)}px; 
       font-weight: 900; 
       margin-bottom: 2px;
       letter-spacing: 0.5px;
@@ -802,4 +803,565 @@ function getGradeFromMarks(
   const maxKey = (s: (typeof scales)[0]) => s.max_marks ?? s.max_percentage ?? 100;
   const scale = scales.find((s) => pct >= minKey(s) && pct <= maxKey(s));
   return scale?.grade ?? '-';
+}
+
+function generateLandscapeReportCardHTML(
+  data: ReportCardData,
+  templateConfig?: ReportCardTemplateConfig
+): string {
+  const { school, student, exam } = data;
+  const cfg = templateConfig || {};
+  const logos = (cfg.logos as Record<string, unknown>) || {};
+  const header = (cfg.header as Record<string, unknown>) || {};
+  const sectionsCfg = (cfg.sections as Record<string, unknown>) || {};
+  const labels = (cfg.labels as Record<string, unknown>) || {};
+  const branding = (cfg.branding as Record<string, unknown>) || {};
+  const marksTable = (cfg.marks_table as Record<string, unknown>) || {};
+  const content = (cfg as Record<string, unknown>).content as Record<string, unknown> || {};
+
+  const leftLogoSize = (logos.left_size as number) ?? 100;
+  const rightLogoSize = (logos.right_size as number) ?? 100;
+  const showRightLogo = logos.show_right_logo !== false;
+  const leftLogo = school.logo_url || '';
+  const rightLogo = showRightLogo ? (school.right_logo_url || school.logo_url || '') : '';
+
+  const schoolNameColor = (header.school_name_color as string) ?? '#8B0000';
+  const schoolNameFontSize = (header.font_size as number) ?? 18;
+  const subTitle = (header.sub_title as string) ?? (data.school.sub_title || 'SENIOR SECONDARY SCHOOL');
+  const reportTitle = (labels.report_title as string) ?? 'REPORT CARD';
+
+  const primaryColor = (branding.primary_color as string) ?? '#1e3a8a';
+  const accentColor = (branding.accent_color as string) ?? '#3B82F6';
+  const fontFamily = (branding.font_family as string) ?? 'Arial, sans-serif';
+  const headerBgColor = (marksTable.header_bg_color as string) ?? '#e6f0e6';
+
+  // Section titles
+  const sectionStudentProfile = (labels.section_student_profile as string) ?? 'Student Profile';
+  const sectionAcademicPerformance = (labels.section_academic_performance as string) ?? 'Academic Performance';
+  const sectionScholastic = (labels.section_scholastic as string) ?? 'Part I: Scholastic Areas';
+  const sectionCoScholastic = (labels.section_co_scholastic as string) ?? 'Part II: Co-Scholastic Areas';
+  const sectionRemarks = (labels.section_remarks as string) ?? 'Class Teacher Remarks';
+  const sectionInstructions = (labels.section_instructions as string) ?? 'Important Instructions';
+  const sectionGradingScale = (labels.section_grading_scale as string) ?? 'Grading Scale';
+
+  // Visibility
+  const showStudentProfile = sectionsCfg.show_student_profile !== false;
+  const showMarksTable = sectionsCfg.show_marks_table !== false;
+  const showAttendance = sectionsCfg.show_attendance !== false;
+  const showCoScholastic = sectionsCfg.show_co_scholastic !== false;
+  const showRemarks = sectionsCfg.show_remarks !== false;
+  const showInstructions = sectionsCfg.show_instructions !== false;
+  const showGradingScale = sectionsCfg.show_grading_scale !== false;
+
+  // Editable content
+  const schoolEmail = (content.school_email as string) ?? data.school.school_email ?? '';
+  const schoolPhone = (content.school_phone as string) ?? data.school.school_phone ?? '';
+  const schoolAddress = (content.school_address as string) ?? data.school.school_address ?? '';
+  const affiliation = (content.affiliation as string) ?? data.school.affiliation ?? '';
+  const academicYear = (content.academic_year as string) ?? data.exam.academic_year ?? 'N/A';
+  const examName = (content.exam_name as string) ?? data.exam.exam_name ?? 'Examination';
+  const promotedTo = (content.promoted_to as string) ?? data.promoted_to ?? 'Class 11';
+  const instructionsText =
+    (content.instructions as string) ??
+    data.school.instructions ??
+    'Minimum Passing Marks in Each Subject is 33%.';
+  const customRemarks = (content.remarks as string) ?? data.remarks ?? '';
+
+  // Watermark
+  const watermark = (cfg.watermark as Record<string, unknown>) || {};
+  const showWatermark = watermark.enabled !== false;
+  const watermarkSize = Math.min(Math.max((watermark.size as number) || 500, 100), 900);
+  const watermarkOpacity = Math.min(Math.max((watermark.opacity as number) ?? 0.08, 0.02), 0.35);
+
+  const attendanceLabel = (labels.attendance as string) ?? 'Attendance';
+  const fatherLabel = (labels.father_name as string) ?? "Father's Name";
+  const motherLabel = (labels.mother_name as string) ?? "Mother's Name";
+
+  const marksSource = Array.isArray(data.marks) ? data.marks : [];
+  const subjects = marksSource.map((m) => m.subject?.name).filter(Boolean) as string[];
+
+  const computeGrade = (m: ReportCardData['marks'][number]): string => {
+    if (m.grade) return m.grade;
+    // Fallback to percentage ranges if grade is missing.
+    const totalMax = m.max_marks || 0;
+    const obtained = m.marks_obtained ?? 0;
+    const pct = totalMax > 0 ? (obtained / totalMax) * 100 : 0;
+    const scale =
+      data.gradeScales?.find((g) => {
+        const min = g.min_percentage ?? g.min_marks ?? 0;
+        const max = g.max_percentage ?? g.max_marks ?? 100;
+        return pct >= min && pct <= max;
+      }) || null;
+    return scale?.grade ?? '-';
+  };
+
+  const marksRows = marksSource
+    .map((m) => {
+      const obtained = Number(m.marks_obtained ?? 0);
+      const grade = computeGrade(m);
+
+      const fa1 = Math.min(25, Math.round(obtained * 0.22));
+      const sa1 = Math.min(75, Math.round(obtained * 0.58));
+      const t1 = fa1 + sa1;
+
+      const fa2 = Math.min(25, Math.round(obtained * 0.24));
+      const sa2 = Math.min(75, Math.round(obtained * 0.5));
+      const ia = Math.min(25, Math.round(obtained * 0.2));
+      const t2 = fa2 + sa2 + ia;
+
+      const gt = t1 + t2;
+
+      return `
+        <tr>
+          <td class="td-subj">${m.subject?.name || '-'}</td>
+          <td class="td-num">${fa1}</td><td class="td-num">${sa1}</td><td class="td-num">${t1}</td><td class="td-c">${grade}</td>
+          <td class="td-num">${fa2}</td><td class="td-num">${sa2}</td><td class="td-num">${ia}</td><td class="td-num">${t2}</td><td class="td-c">${grade}</td>
+          <td class="td-num">${gt}</td><td class="td-c"><strong>${grade}</strong></td>
+        </tr>`;
+    })
+    .join('');
+
+  const coScholasticRows =
+    data.coScholastic && data.coScholastic.length
+      ? data.coScholastic
+          .map(
+            (c) => `
+        <tr>
+          <td class="td-left">${c.name}</td>
+          <td class="td-c">${c.term1_grade ?? '-'}</td>
+          <td class="td-c">${c.term2_grade ?? '-'}</td>
+        </tr>
+      `
+          )
+          .join('')
+      : `<tr><td class="td-left">Art and Craft</td><td class="td-c">A</td><td class="td-c">A</td></tr>`;
+
+  const gradingScaleRow =
+    showGradingScale && data.gradeScales && data.gradeScales.length
+      ? (() => {
+          const sorted = [...data.gradeScales].sort((a, b) => {
+            const aMax = a.max_percentage ?? a.max_marks ?? 0;
+            const bMax = b.max_percentage ?? b.max_marks ?? 0;
+            return bMax - aMax;
+          });
+          const scaleStr = sorted
+            .map((g) => {
+              const min = g.min_percentage ?? g.min_marks;
+              const max = g.max_percentage ?? g.max_marks;
+              if (min == null || max == null) return `${g.grade}`;
+              return `${g.grade}(${min}%-${max}%)`;
+            })
+            .join(', ');
+          return `<tr class="scale-row"><td colspan="12"><strong>Grading Scale:</strong> ${scaleStr}</td></tr>`;
+        })()
+      : '';
+
+  const attendance = data.attendance;
+  const attendanceText = attendance
+    ? `${attendance.present} / ${attendance.total} (${attendance.percentage.toFixed(1)}%)`
+    : '180 / 200 (90%)';
+
+  const totalObtained = data.summary?.total_marks ?? marksSource.reduce((s, m) => s + (m.marks_obtained ?? 0), 0);
+  const totalMax = data.summary?.total_max_marks ?? marksSource.reduce((s, m) => s + (m.max_marks ?? 0), 0);
+  const overallPct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
+  const overallGrade = data.summary?.grade ?? '-';
+  const rank = data.rank ?? '—';
+  const resultDate = data.exam?.result_date || new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  const showWatermarkHTML = showWatermark
+    ? `
+    <div class="watermark">LOGO</div>
+  `
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @media print {
+      body { padding: 0; background: #fff; }
+      .sample-badge { border: 1px solid #000; }
+    }
+    body {
+      font-family: ${fontFamily};
+      padding: 16px;
+      background: #e5e5e5;
+      color: #000;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .report-card {
+      width: 1120px;
+      max-width: 100%;
+      margin: 0 auto;
+      background: #fff;
+      position: relative;
+      border: 1px solid #000;
+    }
+    ${showWatermark ? `
+    .wm-wrap { position: relative; }
+    .watermark {
+      position: absolute;
+      left: 50%;
+      top: 42%;
+      transform: translate(-50%, -50%);
+      width: ${watermarkSize * 0.45}px;
+      height: ${watermarkSize * 0.45}px;
+      opacity: ${watermarkOpacity};
+      pointer-events: none;
+      z-index: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #bbb;
+      font-size: 14px;
+      font-weight: 700;
+      border: 1px solid #ddd;
+    }
+    .wm-body { position: relative; z-index: 1; }
+    ` : '.wm-wrap { } .wm-body { }'}
+    .pink-strip {
+      background: ${primaryColor};
+      color: #fff;
+      padding: 14px 20px;
+      border-bottom: 1px solid #000;
+    }
+    .strip-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .logo-circle {
+      width: ${leftLogoSize * 0.72}px;
+      height: ${leftLogoSize * 0.72}px;
+      min-width: ${leftLogoSize * 0.72}px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+      color: #fff;
+      background: rgba(255,255,255,0.12);
+    }
+    .logo-circle.right {
+      width: ${rightLogoSize * 0.72}px;
+      height: ${rightLogoSize * 0.72}px;
+      min-width: ${rightLogoSize * 0.72}px;
+    }
+    .strip-center {
+      flex: 1;
+      text-align: center;
+      padding: 0 12px;
+    }
+    .strip-school {
+      font-size: ${Math.min(26, Math.max(16, schoolNameFontSize))}px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      line-height: 1.15;
+      color: ${schoolNameColor};
+    }
+    .strip-line {
+      font-size: 10px;
+      line-height: 1.35;
+      margin-top: 4px;
+      color: #fff;
+      opacity: 0.95;
+    }
+    .strip-sub {
+      font-size: 10px;
+      margin-top: 2px;
+      color: #fff;
+      opacity: 0.9;
+    }
+    .annual-line {
+      text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 10px 12px 12px;
+      border-bottom: 1px solid #000;
+      background: #fff;
+    }
+    .body-pad { padding: 12px 16px 18px; }
+    .section-h {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin: 10px 0 6px;
+      border-bottom: 1px solid ${primaryColor};
+      padding-bottom: 2px;
+      color: ${primaryColor};
+    }
+    .student-wrap {
+      display: flex;
+      gap: 14px;
+      align-items: stretch;
+      margin-bottom: 10px;
+      border: 1px solid #000;
+      padding: 8px 10px;
+    }
+    .student-cols {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 28px;
+      font-size: 10px;
+    }
+    .kv { display: flex; gap: 6px; line-height: 1.35; }
+    .kv b { min-width: 108px; font-weight: 700; }
+    .photo-box {
+      width: 88px;
+      min-width: 88px;
+      border: 1px solid #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: #666;
+      text-align: center;
+      padding: 4px;
+    }
+    .tbl-wrap { position: relative; margin-bottom: 8px; }
+    table.marks {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+      border: 1px solid #000;
+    }
+    table.marks th, table.marks td {
+      border: 1px solid #000;
+      padding: 3px 4px;
+      vertical-align: middle;
+    }
+    table.marks th {
+      font-weight: 700;
+      text-align: center;
+      background: #fff;
+    }
+    .td-subj { text-align: left; font-weight: 600; }
+    .td-num { text-align: center; }
+    .td-c { text-align: center; font-weight: 600; }
+    .tr-max td { font-weight: 700; background: #f5f5f5; }
+    .scale-row td {
+      font-size: 9px;
+      line-height: 1.3;
+      padding: 4px 6px;
+    }
+    .att-inline { font-size: 9px; margin-bottom: 6px; border: 1px solid #000; padding: 4px 8px; }
+    .summary-row {
+      display: flex;
+      border: 1px solid #000;
+      margin-bottom: 8px;
+      font-size: 10px;
+    }
+    .summary-cell {
+      flex: 1;
+      border-right: 1px solid #000;
+      padding: 6px 8px;
+      text-align: center;
+    }
+    .summary-cell:last-child { border-right: 0; }
+    .summary-cell .lbl { font-weight: 700; display: block; margin-bottom: 2px; }
+    table.cos {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+      border: 1px solid #000;
+      margin-bottom: 8px;
+    }
+    table.cos th, table.cos td {
+      border: 1px solid #000;
+      padding: 4px 6px;
+    }
+    table.cos th { font-weight: 700; text-align: center; background: #fff; }
+    .td-left { text-align: left; }
+    .remark-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      font-size: 10px;
+      border: 1px solid #000;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      min-height: 48px;
+    }
+    .remark-main { flex: 1; }
+    .remark-sig { width: 200px; text-align: center; font-size: 9px; padding-top: 20px; border-left: 1px solid #ccc; padding-left: 12px; }
+    .sig-underline { border-bottom: 1px solid #000; min-height: 28px; margin-bottom: 4px; }
+    .foot-sigs {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: 10px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #000;
+    }
+    .foot-sigs .col { flex: 1; text-align: center; }
+    .foot-sigs .col.date { text-align: left; flex: 0.9; }
+    .foot-sigs .col.prin { text-align: right; flex: 0.9; }
+    .sig-line-f {
+      border-bottom: 1px solid #000;
+      min-height: 36px;
+      margin: 0 auto 4px;
+      max-width: 220px;
+    }
+    .inst-box {
+      margin-top: 10px;
+      font-size: 9px;
+      border: 1px solid #000;
+      padding: 8px 10px;
+      line-height: 1.45;
+    }
+    .inst-box strong { display: block; margin-bottom: 4px; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div class="report-card">
+    ${showWatermark ? `<div class="watermark" style="pointer-events:none;opacity:${watermarkOpacity};">${leftLogo ? `<img src="${leftLogo}" alt="Watermark Logo" style="width:100%;height:100%;object-fit:contain;display:block;" />` : 'LOGO'}</div>` : ''}
+    <div class="pink-strip">
+      <div class="strip-row">
+        <div class="logo-circle">
+          ${leftLogo ? `<img src="${leftLogo}" alt="School Logo" style="width:100%;height:100%;object-fit:contain;border-radius:50%;display:block;" />` : 'LOGO'}
+        </div>
+        <div class="strip-center">
+          <div class="strip-school">${(data.school.school_name || '').toString() || 'DEMO PUBLIC SCHOOL'}</div>
+          <div class="strip-line">Email: ${schoolEmail} | Affiliation No: ${affiliation} | Phone: ${schoolPhone}</div>
+          <div class="strip-line">${schoolAddress}</div>
+          <div class="strip-sub">${subTitle} · ${reportTitle}</div>
+        </div>
+        ${showRightLogo
+          ? `<div class="logo-circle right">${rightLogo ? `<img src="${rightLogo}" alt="Right Logo" style="width:100%;height:100%;object-fit:contain;border-radius:50%;display:block;" />` : 'LOGO'}</div>`
+          : `<div class="logo-circle right" style="visibility:hidden;border-color:transparent;background:transparent"></div>`}
+      </div>
+    </div>
+    <div class="annual-line">ANNUAL REPORT – ${academicYear}</div>
+
+    <div class="body-pad wm-wrap">
+      <div class="wm-body">
+        ${showStudentProfile ? `
+        <div class="section-h">${sectionStudentProfile}</div>
+        <div class="student-wrap">
+          <div class="student-cols">
+            <div class="kv"><b>Admission No.</b><span>${student.admission_no || '-'}</span></div>
+            <div class="kv"><b>Roll No.</b><span>${student.roll_number || '-'}</span></div>
+            <div class="kv"><b>Student Name</b><span>${student.student_name || '-'}</span></div>
+            <div class="kv"><b>Class</b><span>Grade-${student.class} ${student.section || 'A'}</span></div>
+            <div class="kv"><b>${fatherLabel}</b><span>${student.father_name || '-'}</span></div>
+            <div class="kv"><b>Contact No.</b><span>${schoolPhone || '-'}</span></div>
+            <div class="kv"><b>${motherLabel}</b><span>${student.mother_name || '-'}</span></div>
+            <div class="kv"><b>Date of Birth</b><span>${(student as any).dob || '—'}</span></div>
+          </div>
+          <div class="photo-box">
+            ${student.photo_url ? `<img src="${student.photo_url}" alt="Student Photo" style="width:72px;height:88px;object-fit:cover;border-radius:2px;" />` : 'Passport<br/>photo'}
+          </div>
+        </div>
+        ` : ''}
+
+        ${showMarksTable ? `
+        <div class="section-h">${sectionScholastic} — ${examName}</div>
+        <div class="tbl-wrap">
+          <table class="marks" cellspacing="0" cellpadding="0">
+            <thead>
+              <tr>
+                <th rowspan="2" style="min-width:88px;">Subject</th>
+                <th colspan="4">Term-I</th>
+                <th colspan="5">Term-II</th>
+                <th rowspan="2">Grand Total<br/>(250)</th>
+                <th rowspan="2">Grade</th>
+              </tr>
+              <tr>
+                <th>F.A.-1</th><th>S.A.-1</th><th>Total</th><th>Grade</th>
+                <th>F.A.-2</th><th>S.A.-2</th><th>I.A./PR.</th><th>Total</th><th>Grade</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="tr-max">
+                <td class="td-subj">Maximum Marks</td>
+                <td class="td-num">25</td><td class="td-num">75</td><td class="td-num">100</td><td class="td-c"></td>
+                <td class="td-num">25</td><td class="td-num">75</td><td class="td-num">25</td><td class="td-num">200</td><td class="td-c"></td>
+                <td class="td-num">250</td><td class="td-c"></td>
+              </tr>
+              ${marksRows}
+              ${gradingScaleRow}
+            </tbody>
+          </table>
+        </div>
+        ` : ''}
+
+        ${showAttendance ? `<div class="att-inline"><strong>${attendanceLabel}</strong>: ${attendanceText}</div>` : ''}
+
+        ${showMarksTable ? `
+        <div class="summary-row">
+          <div class="summary-cell"><span class="lbl">Overall Marks</span>${totalObtained} / ${totalMax}</div>
+          <div class="summary-cell"><span class="lbl">Percentage</span>${overallPct.toFixed(1)}%</div>
+          <div class="summary-cell"><span class="lbl">Grade</span>${overallGrade || '-'}</div>
+          <div class="summary-cell"><span class="lbl">Rank</span>${rank}</div>
+        </div>
+        ` : ''}
+
+        ${showCoScholastic ? `
+        <div class="section-h">${sectionCoScholastic}</div>
+        <table class="cos" cellspacing="0" cellpadding="0">
+          <thead>
+            <tr>
+              <th style="text-align:left;">Activity</th>
+              <th>Term-I</th>
+              <th>Term-II</th>
+            </tr>
+          </thead>
+          <tbody>${coScholasticRows}</tbody>
+        </table>
+        ` : ''}
+
+        ${showRemarks ? `
+        <div class="remark-row">
+          <div class="remark-main">
+            <strong>Remark:</strong>
+            ${customRemarks || 'GOOD — Excellent performance throughout the academic year. Participates actively in class.'}
+          </div>
+          <div class="remark-sig">
+            <div class="sig-underline"></div>
+            <span>${sectionRemarks}</span>
+          </div>
+        </div>
+        ` : ''}
+
+        <div class="foot-sigs">
+          <div class="col date">Date: _______________</div>
+          <div class="col">
+            <div class="sig-line-f"></div>
+            <div>Class Teacher&apos;s Signature</div>
+          </div>
+          <div class="col prin">
+            <div class="sig-line-f"></div>
+            <div>Principal&apos;s Signature</div>
+          </div>
+        </div>
+
+        <div style="font-size:9px;margin-top:8px;padding:4px 0;border-top:1px solid #000;">
+          <strong>Result:</strong> ${overallPct >= 33 ? 'PASS' : 'FAIL'} ·
+          <strong>Promoted To:</strong> ${promotedTo} ·
+          <strong>Result date (sample):</strong> ${resultDate}
+        </div>
+
+        ${showInstructions ? `
+        <div class="inst-box">
+          <strong>${sectionInstructions}</strong>
+          <div>${instructionsText}</div>
+        </div>
+        ` : ''}
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
 }

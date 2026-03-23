@@ -9,7 +9,8 @@ import { getServiceRoleClient } from '@/lib/supabase-admin';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const schoolCode = searchParams.get('school_code');
+    const schoolCodeRaw = searchParams.get('school_code');
+    const schoolCode = schoolCodeRaw?.trim() || '';
     const classFilter = searchParams.get('class_name');
     const sectionFilter = searchParams.get('section');
     const examFilter = searchParams.get('exam_id');

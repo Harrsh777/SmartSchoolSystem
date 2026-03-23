@@ -25,11 +25,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizedSchoolCode = String(school_code).trim().toUpperCase();
+
     // Step 0: Check if school is on hold
     const { data: school, error: schoolError } = await supabase
       .from('accepted_schools')
       .select('is_hold')
-      .eq('school_code', school_code.toUpperCase())
+      .eq('school_code', normalizedSchoolCode)
       .single();
 
     if (!schoolError && school && school.is_hold) {
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest) {
         role: 'Student',
         loginType: 'student',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'This school is on hold. Please contact admin.' },
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
     const { data: loginData, error: loginError } = await supabase
       .from('student_login')
       .select('*')
-      .eq('school_code', school_code.toUpperCase())
+      .eq('school_code', normalizedSchoolCode)
       .eq('admission_no', admission_no)
       .single();
 
@@ -59,6 +62,7 @@ export async function POST(request: NextRequest) {
         role: 'Student',
         loginType: 'student',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'Invalid credentials' },
@@ -73,6 +77,7 @@ export async function POST(request: NextRequest) {
         role: 'Student',
         loginType: 'student',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'Your account is inactive. Please contact your school administrator.' },
@@ -89,6 +94,7 @@ export async function POST(request: NextRequest) {
         role: 'Student',
         loginType: 'student',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'Invalid credentials' },
@@ -100,7 +106,7 @@ export async function POST(request: NextRequest) {
     const { data: student, error: studentError } = await supabase
       .from('students')
       .select('*')
-      .eq('school_code', school_code.toUpperCase())
+      .eq('school_code', normalizedSchoolCode)
       .eq('admission_no', admission_no)
       .single();
 
@@ -110,6 +116,7 @@ export async function POST(request: NextRequest) {
         role: 'Student',
         loginType: 'student',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'Student profile not found' },
@@ -125,6 +132,7 @@ export async function POST(request: NextRequest) {
         role: 'Student',
         loginType: 'student',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'Your account is inactive. Please contact your school administrator.' },
@@ -138,7 +146,6 @@ export async function POST(request: NextRequest) {
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...studentProfile } = student as StudentWithPassword;
-    const normalizedSchoolCode = school_code.toUpperCase();
 
     // Log success first (so we record even if createSession fails)
     await createLoginAuditLog(request, {
@@ -147,6 +154,7 @@ export async function POST(request: NextRequest) {
       role: 'Student',
       loginType: 'student',
       status: 'success',
+      schoolCode: normalizedSchoolCode,
     });
 
     // Create server-side session (stored in public.sessions)

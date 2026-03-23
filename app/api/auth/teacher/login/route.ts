@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     const school_code = typeof body.school_code === 'string' ? body.school_code.trim() : '';
     const staff_id = typeof body.staff_id === 'string' ? body.staff_id.trim() : '';
     const password = typeof body.password === 'string' ? body.password : '';
+    const normalizedSchoolCode = school_code ? school_code.toUpperCase() : '';
 
     if (!school_code || !staff_id || !password) {
       await createLoginAuditLog(request, {
@@ -26,14 +27,13 @@ export async function POST(request: NextRequest) {
         role: 'Teacher',
         loginType: 'teacher',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: 'School code, staff ID, and password are required' },
         { status: 400 }
       );
     }
-
-    const normalizedSchoolCode = school_code.toUpperCase();
 
     // Step 0: Check if school is on hold
     const { data: school, error: schoolError } = await supabase
@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
         role: 'Teacher',
         loginType: 'teacher',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: 'This school is on hold. Please contact admin.' },
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
         role: 'Teacher',
         loginType: 'teacher',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: 'Invalid credentials' },
@@ -111,6 +113,7 @@ export async function POST(request: NextRequest) {
         role: 'Teacher',
         loginType: 'teacher',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: 'Invalid credentials' },
@@ -129,6 +132,7 @@ export async function POST(request: NextRequest) {
         role: 'Teacher',
         loginType: 'teacher',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: "Can't log in because your account is deactivated by the school admin. Reach out to him." },
@@ -152,6 +156,7 @@ export async function POST(request: NextRequest) {
         role: 'Teacher',
         loginType: 'teacher',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: 'Invalid credentials' },
@@ -173,6 +178,7 @@ export async function POST(request: NextRequest) {
         role: 'Teacher',
         loginType: 'teacher',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: 'Staff profile not found' },
@@ -187,6 +193,7 @@ export async function POST(request: NextRequest) {
         role: 'Teacher',
         loginType: 'teacher',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: "Can't log in because your account is deactivated by the school admin. Reach out to him." },
@@ -216,6 +223,7 @@ export async function POST(request: NextRequest) {
       role: 'Teacher',
       loginType: 'teacher',
       status: 'success',
+      schoolCode: normalizedSchoolCode,
     });
     const response = NextResponse.json({
       success: true,

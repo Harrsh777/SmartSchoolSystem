@@ -12,6 +12,8 @@ export interface LoginAuditPayload {
   role: string;
   loginType?: LoginType;
   status: LoginAuditStatus;
+  /** When set, row is scoped to this school (requires DB column `school_code` on login_audit_log). */
+  schoolCode?: string | null;
 }
 
 /** Dedupe window: skip insert if same identity+ip+status already logged within this many ms. */
@@ -30,7 +32,12 @@ export async function createLoginAuditLog(
   const userAgent = getUserAgent(request);
   const name = String(payload.name || 'Unknown').slice(0, 500);
   const status = payload.status === 'success' ? 'success' : 'failed';
-  const row = {
+  const schoolNorm =
+    payload.schoolCode != null && String(payload.schoolCode).trim() !== ''
+      ? String(payload.schoolCode).trim().toUpperCase()
+      : null;
+
+  const row: Record<string, unknown> = {
     user_id: payload.userId ?? null,
     name,
     role: String(payload.role || 'Unknown').slice(0, 100),
@@ -40,6 +47,9 @@ export async function createLoginAuditLog(
     login_at: new Date().toISOString(),
     status,
   };
+  if (schoolNorm) {
+    row.school_code = schoolNorm;
+  }
   try {
     const client = (() => {
       try {
@@ -56,24 +66,43 @@ export async function createLoginAuditLog(
       .gte('login_at', since)
       .limit(1);
     if (row.ip_address != null && row.ip_address !== '') {
-      dedupeQuery = dedupeQuery.eq('ip_address', row.ip_address);
+      dedupeQuery = dedupeQuery.eq('ip_address', row.ip_address as string);
+    }
+    if (schoolNorm) {
+      dedupeQuery = dedupeQuery.eq('school_code', schoolNorm);
     }
     if (row.user_id) {
-      dedupeQuery = dedupeQuery.eq('user_id', row.user_id);
+      dedupeQuery = dedupeQuery.eq('user_id', row.user_id as string);
     } else {
       dedupeQuery = dedupeQuery.eq('name', name);
     }
     const dedupeRes = await dedupeQuery;
-    if (dedupeRes.count != null && dedupeRes.count > 0) {
+    if (
+      !dedupeRes.error &&
+      dedupeRes.count != null &&
+      dedupeRes.count > 0
+    ) {
       return;
     }
-    const { data, error } = await client.from('login_audit_log').insert(row).select('id').maybeSingle();
+    let { data, error } = await client.from('login_audit_log').insert(row).select('id').maybeSingle();
+    if (
+      error &&
+      schoolNorm &&
+      /school_code|column|schema cache/i.test(`${error.message || ''} ${(error as { details?: string }).details || ''}`)
+    ) {
+      const { school_code: _sc, ...withoutSchool } = row;
+      ({ data, error } = await client
+        .from('login_audit_log')
+        .insert(withoutSchool)
+        .select('id')
+        .maybeSingle());
+    }
     if (error) {
       console.error('[LoginAudit] insert failed:', error.code, error.message, error.details);
       return;
     }
     if (data?.id) {
-      console.info('[LoginAudit] logged:', row.role, row.status, row.name?.slice(0, 30));
+      console.info('[LoginAudit] logged:', row.role, row.status, name.slice(0, 30));
     }
   } catch (err) {
     console.error('[LoginAudit] insert threw:', err);

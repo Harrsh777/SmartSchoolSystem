@@ -17,6 +17,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { school_code, staff_id, password } = body;
+    const normalizedSchoolCode =
+      typeof school_code === 'string' && school_code.trim() ? school_code.trim().toUpperCase() : '';
 
     if (!school_code || !staff_id || !password) {
       await createLoginAuditLog(request, {
@@ -24,6 +26,7 @@ export async function POST(request: NextRequest) {
         role: 'Accountant',
         loginType: 'accountant',
         status: 'failed',
+        schoolCode: normalizedSchoolCode || undefined,
       });
       return NextResponse.json(
         { error: 'School code, staff ID, and password are required' },
@@ -44,6 +47,7 @@ export async function POST(request: NextRequest) {
         role: 'Accountant',
         loginType: 'accountant',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'This school is on hold. Please contact admin.' },
@@ -65,6 +69,7 @@ export async function POST(request: NextRequest) {
         role: 'Accountant',
         loginType: 'accountant',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'Invalid credentials' },
@@ -78,6 +83,7 @@ export async function POST(request: NextRequest) {
         role: 'Accountant',
         loginType: 'accountant',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: "Can't log in because your account is deactivated by the school admin. Reach out to him." },
@@ -93,6 +99,7 @@ export async function POST(request: NextRequest) {
         role: 'Accountant',
         loginType: 'accountant',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'Invalid credentials' },
@@ -114,6 +121,7 @@ export async function POST(request: NextRequest) {
         role: 'Accountant',
         loginType: 'accountant',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'Staff record not found' },
@@ -127,6 +135,7 @@ export async function POST(request: NextRequest) {
         role: 'Accountant',
         loginType: 'accountant',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: "Can't log in because your account is deactivated by the school admin. Reach out to him." },
@@ -142,6 +151,7 @@ export async function POST(request: NextRequest) {
         role: 'Accountant',
         loginType: 'accountant',
         status: 'failed',
+        schoolCode: normalizedSchoolCode,
       });
       return NextResponse.json(
         { error: 'Access denied. Only accountants can access this portal.' },
@@ -179,7 +189,6 @@ export async function POST(request: NextRequest) {
       school_name: schoolData.school_name,
       school_code: schoolData.school_code,
     };
-    const normalizedSchoolCode = school_code.toUpperCase();
 
     // Create server-side session (stored in public.sessions)
     const { sessionToken, expiresAt } = await createSession({
@@ -196,6 +205,7 @@ export async function POST(request: NextRequest) {
       role: 'Accountant',
       loginType: 'accountant',
       status: 'success',
+      schoolCode: normalizedSchoolCode,
     });
     const response = NextResponse.json({
       message: 'Login successful',

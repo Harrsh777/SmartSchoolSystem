@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 /**
  * GET /api/academic-year-management/audit?school_code=XXX&limit=50&offset=0
@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'School code is required' }, { status: 400 });
     }
 
+    const supabase = getServiceRoleClient();
     const { data, error } = await supabase
       .from('academic_year_audit_log')
       .select('*')

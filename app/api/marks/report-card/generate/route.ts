@@ -17,7 +17,8 @@ export async function POST(request: NextRequest) {
       ? exam_ids
       : exam_id ? [exam_id] : [];
 
-    if (!school_code || examIds.length === 0 || !student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+    const schoolCodeNorm = String(school_code ?? '').trim();
+    if (!schoolCodeNorm || examIds.length === 0 || !student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
       return NextResponse.json(
         { error: 'school_code, exam_id or exam_ids, and student_ids (non-empty array) are required' },
         { status: 400 }
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
       const { data: schoolTemplate } = await supabase
         .from('report_card_templates')
         .select('id, name, config')
-        .eq('school_code', school_code)
+        .eq('school_code', schoolCodeNorm)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -79,8 +80,8 @@ export async function POST(request: NextRequest) {
     for (const studentId of student_ids) {
       try {
         const data = examIds.length === 1
-          ? await fetchReportCardData(school_code, studentId, primaryExamId)
-          : await fetchReportCardDataMultiExam(school_code, studentId, examIds);
+          ? await fetchReportCardData(schoolCodeNorm, studentId, primaryExamId)
+          : await fetchReportCardDataMultiExam(schoolCodeNorm, studentId, examIds);
 
         if (!data) {
           errors.push({ student_id: studentId, error: 'Student or exam not found' });
@@ -90,15 +91,17 @@ export async function POST(request: NextRequest) {
         const html = generateReportCardHTML(data, templateConfig);
 
         const now = new Date().toISOString();
+        const className = String(data.student.class ?? '').trim();
+        const section = String(data.student.section ?? '').trim();
         // Build payload - only include columns that exist in the table
         const upsertPayload: Record<string, unknown> = {
-          school_code,
+          school_code: schoolCodeNorm,
           student_id: studentId,
           exam_id: primaryExamId,
           student_name: data.student.student_name,
           admission_no: data.student.admission_no,
-          class_name: data.student.class,
-          section: data.student.section,
+          class_name: className,
+          section,
           academic_year: data.exam.academic_year,
           html_content: html,
           updated_at: now,
@@ -111,7 +114,7 @@ export async function POST(request: NextRequest) {
         const { data: existing } = await supabase
           .from('report_cards')
           .select('id')
-          .eq('school_code', school_code)
+          .eq('school_code', schoolCodeNorm)
           .eq('student_id', studentId)
           .eq('exam_id', primaryExamId)
           .maybeSingle();
