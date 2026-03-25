@@ -90,13 +90,18 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Process data
-    const schools = schoolsResult.data || [];
-    const students = studentsResult.data || [];
-    const staff = staffResult.data || [];
-    const classes = classesResult.data || [];
-    const exams = examsResult.data || [];
-    const fees = feesResult.data || [];
-    const signups = signupsResult.data || [];
+    type CreatedAtRow = { created_at?: string | null };
+    type CodeRow = CreatedAtRow & { school_code?: string | null };
+    type SchoolRow = CodeRow & { is_hold?: boolean | null };
+    type StatusRow = CreatedAtRow & { status?: string | null };
+
+    const schools = (schoolsResult.data as SchoolRow[] | null | undefined) || [];
+    const students = (studentsResult.data as CodeRow[] | null | undefined) || [];
+    const staff = (staffResult.data as CodeRow[] | null | undefined) || [];
+    const classes = (classesResult.data as Array<{ school_code?: string | null }> | null | undefined) || [];
+    const exams = (examsResult.data as CodeRow[] | null | undefined) || [];
+    const fees = (feesResult.data as Array<{ amount?: string | number | null; school_code?: string | null }> | null | undefined) || [];
+    const signups = (signupsResult.data as StatusRow[] | null | undefined) || [];
 
     // Calculate growth trends (monthly)
     const monthlyGrowth = calculateMonthlyGrowth(schools, students, staff, signups);
@@ -105,8 +110,8 @@ export async function GET(request: NextRequest) {
     const totalRevenue = fees.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0);
 
     // School status breakdown
-    const activeSchools = schools.filter(s => !s.is_hold).length;
-    const onHoldSchools = schools.filter(s => s.is_hold).length;
+    const activeSchools = schools.filter((s) => !Boolean(s.is_hold)).length;
+    const onHoldSchools = schools.filter((s) => Boolean(s.is_hold)).length;
 
     // Signup status breakdown
     const pendingSignups = signups.filter(s => s.status === 'pending').length;
@@ -133,7 +138,7 @@ export async function GET(request: NextRequest) {
         },
         growth: {
           monthly: monthlyGrowth,
-          newSchools: schools.filter(s => new Date(s.created_at) >= startDate).length,
+          newSchools: schools.filter((s) => s.created_at && new Date(s.created_at) >= startDate).length,
           newStudents: students.length,
           newStaff: staff.length,
         },
@@ -157,10 +162,10 @@ export async function GET(request: NextRequest) {
 }
 
 function calculateMonthlyGrowth(
-  schools: Array<{ created_at: string }>,
-  students: Array<{ created_at: string }>,
-  staff: Array<{ created_at: string }>,
-  signups: Array<{ created_at: string }>
+  schools: Array<{ created_at?: string | null }>,
+  students: Array<{ created_at?: string | null }>,
+  staff: Array<{ created_at?: string | null }>,
+  signups: Array<{ created_at?: string | null }>
 ) {
   const months: Record<string, { schools: number; students: number; staff: number; signups: number }> = {};
 
@@ -173,13 +178,15 @@ function calculateMonthlyGrowth(
       months[monthKey] = { schools: 0, students: 0, staff: 0, signups: 0 };
     }
 
-    if (schools.includes(item as { created_at: string })) {
+    // Note: we can’t reliably use `includes()` with object identity across arrays,
+    // but this is enough for a lightweight analytics visualization.
+    if (item && schools.some((s) => s === item)) {
       months[monthKey].schools++;
-    } else if (students.includes(item as { created_at: string })) {
+    } else if (item && students.some((s) => s === item)) {
       months[monthKey].students++;
-    } else if (staff.includes(item as { created_at: string })) {
+    } else if (item && staff.some((s) => s === item)) {
       months[monthKey].staff++;
-    } else if (signups.includes(item as { created_at: string })) {
+    } else if (item && signups.some((s) => s === item)) {
       months[monthKey].signups++;
     }
   });
@@ -190,39 +197,47 @@ function calculateMonthlyGrowth(
 }
 
 function calculateSchoolActivity(
-  students: Array<{ school_code: string }>,
-  staff: Array<{ school_code: string }>,
-  exams: Array<{ school_code: string }>,
-  fees: Array<{ school_code: string; amount: unknown }>
+  students: Array<{ school_code?: string | null }>,
+  staff: Array<{ school_code?: string | null }>,
+  exams: Array<{ school_code?: string | null }>,
+  fees: Array<{ school_code?: string | null; amount?: unknown }>
 ) {
   const activity: Record<string, { students: number; staff: number; exams: number; revenue: number }> = {};
 
   students.forEach((s) => {
-    if (!activity[s.school_code]) {
-      activity[s.school_code] = { students: 0, staff: 0, exams: 0, revenue: 0 };
+    const code = s.school_code;
+    if (!code) return;
+    if (!activity[code]) {
+      activity[code] = { students: 0, staff: 0, exams: 0, revenue: 0 };
     }
-    activity[s.school_code].students++;
+    activity[code].students++;
   });
 
   staff.forEach((s) => {
-    if (!activity[s.school_code]) {
-      activity[s.school_code] = { students: 0, staff: 0, exams: 0, revenue: 0 };
+    const code = s.school_code;
+    if (!code) return;
+    if (!activity[code]) {
+      activity[code] = { students: 0, staff: 0, exams: 0, revenue: 0 };
     }
-    activity[s.school_code].staff++;
+    activity[code].staff++;
   });
 
   exams.forEach((e) => {
-    if (!activity[e.school_code]) {
-      activity[e.school_code] = { students: 0, staff: 0, exams: 0, revenue: 0 };
+    const code = e.school_code;
+    if (!code) return;
+    if (!activity[code]) {
+      activity[code] = { students: 0, staff: 0, exams: 0, revenue: 0 };
     }
-    activity[e.school_code].exams++;
+    activity[code].exams++;
   });
 
   fees.forEach((f) => {
-    if (!activity[f.school_code]) {
-      activity[f.school_code] = { students: 0, staff: 0, exams: 0, revenue: 0 };
+    const code = f.school_code;
+    if (!code) return;
+    if (!activity[code]) {
+      activity[code] = { students: 0, staff: 0, exams: 0, revenue: 0 };
     }
-    activity[f.school_code].revenue += Number(f.amount) || 0;
+    activity[code].revenue += Number(f.amount) || 0;
   });
 
   return Object.entries(activity)

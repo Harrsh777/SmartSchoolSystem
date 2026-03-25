@@ -83,9 +83,14 @@ export async function GET(
       );
     }
 
+    // Keep showing already-paid fees even if the fee structure was deactivated.
+    // (Deactivation should stop NEW unpaid dues from appearing in collection,
+    // but it should not hide the student's paid history in statements.)
     let feesToUse = (fees || []).filter((fee) => {
       const structure = fee.fee_structure as { is_active?: boolean } | null;
-      return structure?.is_active !== false;
+      const isStructureActive = structure?.is_active !== false;
+      const paidAmount = Number(fee.paid_amount || 0);
+      return isStructureActive || paidAmount > 0;
     });
 
     if (academicYear) {

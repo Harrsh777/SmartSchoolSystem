@@ -48,6 +48,8 @@ interface FeeStructure {
   grace_period_days: number;
   is_active: boolean;
   activated_at: string | null;
+  fees_generated?: boolean;
+  fees_generated_at?: string | null;
   items?: FeeStructureItem[];
   created_at: string;
 }
@@ -231,18 +233,30 @@ export default function FeeStructuresPage({
       if (response.ok) {
         const feesGenerated = result.data?.fees_generated ?? 0;
         const studentsProcessed = result.data?.students_processed ?? 0;
+        const insertionErrors = result.data?.errors ?? 0;
         
         if (feesGenerated === 0) {
-          // Show more detailed message when no fees were generated
-          const details = result.details ? 
-            `\n\nSearched for:\n- Class: "${result.details.class_name}"\n- Section: "${result.details.section || 'all'}"\n- Academic Year: "${result.details.academic_year || 'all'}"\n- School Code: "${result.details.school_code}"` : 
-            '';
-          
-          const debugInfo = result.debug ? 
-            `\n\nStudents in school: ${result.debug.total_students_in_school}\nClasses found: ${result.debug.sample_classes_found?.join(', ') || 'none'}\nSections found: ${result.debug.sample_sections_found?.join(', ') || 'none'}` : 
-            '';
-          
-          setError(result.message || `No students found matching the fee structure criteria.${details}${debugInfo}\n\nPlease verify that:\n1. Students exist with the exact class and section values\n2. The class and section values match exactly (case-sensitive)\n3. Students belong to the correct school`);
+          // With `upsert ... ignoreDuplicates`, it's normal that no new rows are created
+          // if fees were already generated earlier.
+          if (insertionErrors === 0) {
+            setSuccess(
+              `✅ Fees are already generated for this structure.\n\n📊 Summary:\n- New fee records created: 0\n- Students processed: ${studentsProcessed}\n- Months generated: ${result.data?.months_generated || 0}`
+            );
+          } else {
+            // Backward compatible: show detailed error when Supabase actually failed to insert.
+            const details = result.details
+              ? `\n\nSearched for:\n- Class: "${result.details.class_name}"\n- Section: "${result.details.section || 'all'}"\n- Academic Year: "${result.details.academic_year || 'all'}"\n- School Code: "${result.details.school_code}"`
+              : '';
+
+            const debugInfo = result.debug
+              ? `\n\nStudents in school: ${result.debug.total_students_in_school}\nClasses found: ${result.debug.sample_classes_found?.join(', ') || 'none'}\nSections found: ${result.debug.sample_sections_found?.join(', ') || 'none'}`
+              : '';
+
+            setError(
+              result.message ||
+                `No new fee records created (errors: ${insertionErrors}).${details}${debugInfo}\n\nPlease verify that:\n1. Students exist with the exact class and section values\n2. The class and section values match exactly (case-sensitive)\n3. Students belong to the correct school`
+            );
+          }
         } else {
           // Success message with detailed information
           let successMsg = `✅ Student fees generated successfully!\n\n📊 Summary:\n- Fee records created: ${feesGenerated}\n- Students processed: ${studentsProcessed}\n- Months generated: ${result.data?.months_generated || 0}`;
@@ -493,6 +507,18 @@ export default function FeeStructuresPage({
                                       <XCircle size={10} /> Inactive
                                     </span>
                                   )}
+                                  {structure.fees_generated ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-700 rounded-full">
+                                      <Calendar size={10} />
+                                      Fees generated
+                                      {structure.fees_generated_at && (
+                                        <span className="text-indigo-600">
+                                          {' '}
+                                          ({new Date(structure.fees_generated_at).toLocaleDateString('en-IN')})
+                                        </span>
+                                      )}
+                                    </span>
+                                  ) : null}
                                 </div>
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {!structure.is_active ? (

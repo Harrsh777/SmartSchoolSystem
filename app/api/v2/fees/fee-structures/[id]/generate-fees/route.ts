@@ -14,6 +14,13 @@ export async function POST(
     const { id } = await params;
     const supabase = getServiceRoleClient();
 
+    const formatDateYYYYMMDD = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
     // Get structure first to get school_code for permission check
     const { data: structure, error: structureError } = await supabase
       .from('fee_structures')
@@ -280,8 +287,9 @@ export async function POST(
           school_code: student.school_code || normalizedSchoolCode,
           student_id: student.id,
           fee_structure_id: id,
-          due_month: new Date(month.getFullYear(), month.getMonth(), 1).toISOString().split('T')[0],
-          due_date: dueDate.toISOString().split('T')[0],
+          // Use local date parts to avoid UTC `toISOString()` shifting the day/month.
+          due_month: formatDateYYYYMMDD(new Date(month.getFullYear(), month.getMonth(), 1)),
+          due_date: formatDateYYYYMMDD(dueDate),
           base_amount: totalBaseAmount,
         });
       }
@@ -297,20 +305,28 @@ export async function POST(
 
     for (let i = 0; i < feeRecords.length; i += BATCH_SIZE) {
       const batch = feeRecords.slice(i, i + BATCH_SIZE);
-      const { data: insertedData, error: insertError } = await supabase
+      const { data: upsertedData, error: upsertError } = await supabase
         .from('student_fees')
-        .insert(batch)
+        .upsert(batch, {
+          // Unique constraint: (student_id, fee_structure_id, due_month)
+          onConflict: 'student_id,fee_structure_id,due_month',
+          // If the row already exists, skip it instead of throwing 23505.
+          ignoreDuplicates: true,
+        })
         .select('id, student_id, fee_structure_id, due_month');
 
-      if (insertError) {
-        console.error(`Error inserting batch ${i / BATCH_SIZE + 1}:`, insertError);
+      if (upsertError) {
+        console.error(`Error upserting batch ${i / BATCH_SIZE + 1}:`, upsertError);
         console.error('Batch data:', batch.slice(0, 2)); // Log first 2 records of failed batch
         errors += batch.length;
       } else {
-        inserted += batch.length;
-        console.log(`Successfully inserted batch ${i / BATCH_SIZE + 1}: ${batch.length} records`);
-        if (insertedData && insertedData.length > 0) {
-          console.log('Sample inserted record:', insertedData[0]);
+        const newlyInsertedCount = upsertedData?.length ?? 0;
+        inserted += newlyInsertedCount;
+        console.log(
+          `Upsert batch ${i / BATCH_SIZE + 1}: attempted=${batch.length}, inserted=${newlyInsertedCount}`
+        );
+        if (upsertedData && upsertedData.length > 0) {
+          console.log('Sample upserted record:', upsertedData[0]);
         }
       }
     }

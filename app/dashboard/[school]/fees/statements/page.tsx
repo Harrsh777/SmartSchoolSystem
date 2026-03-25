@@ -66,6 +66,17 @@ interface PaymentRecord {
   }>;
 }
 
+interface PendingFeeStudent {
+  id: string;
+  student_name: string;
+  admission_no: string;
+  class: string;
+  section: string;
+  pending_amount: number;
+  late_fee_amount: number;
+  due_date: string;
+}
+
 interface FeeStatement {
   student: Student;
   summary: {
@@ -97,6 +108,9 @@ export default function FeeStatementsPage({
   const [loading, setLoading] = useState(false);
   const [selectedFees, setSelectedFees] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
+
+  const [recentPending, setRecentPending] = useState<PendingFeeStudent[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(false);
 
   useEffect(() => {
     fetchClasses();
@@ -162,6 +176,38 @@ export default function FeeStatementsPage({
       setLoading(false);
     }
   };
+
+  const fetchRecentPending = async () => {
+    try {
+      setLoadingRecent(true);
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        limit: '5',
+      });
+      if (selectedClass) params.set('class', selectedClass);
+      if (selectedSection) params.set('section', selectedSection);
+      if (academicYear) params.set('academic_year', academicYear);
+
+      const res = await fetch(`/api/v2/fees/students/pending?${params.toString()}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.data)) {
+        setRecentPending(data.data as PendingFeeStudent[]);
+      } else {
+        setRecentPending([]);
+      }
+    } catch (err) {
+      console.error('Error fetching recent fee statements:', err);
+      setRecentPending([]);
+    } finally {
+      setLoadingRecent(false);
+    }
+  };
+
+  useEffect(() => {
+    // Show something immediately on the page (instead of only after searching).
+    fetchRecentPending();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolCode, selectedClass, selectedSection, academicYear]);
 
   const handleStudentSelect = (student: Student) => {
     setSelectedStudent(student);
@@ -794,9 +840,65 @@ export default function FeeStatementsPage({
       )}
 
       {!selectedStudent && !loading && (
-        <Card className="p-12 text-center">
-          <IndianRupee className="mx-auto text-gray-400 mb-4" size={48} />
-          <p className="text-gray-500">Search for a student to view their fee statement</p>
+        <Card className="p-8">
+          {loadingRecent ? (
+            <div className="flex flex-col items-center justify-center py-10">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#2F6FED]" />
+              <p className="mt-4 text-gray-600">Loading recent fee statements...</p>
+            </div>
+          ) : recentPending.length > 0 ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Recent Fee Statements</h3>
+                  <p className="text-sm text-gray-600">Students with pending/overdue fees</p>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {recentPending.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() =>
+                      handleStudentSelect({
+                        id: s.id,
+                        student_name: s.student_name,
+                        admission_no: s.admission_no,
+                        class: s.class,
+                        section: s.section,
+                      })
+                    }
+                    className="w-full p-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-left transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-gray-900">{s.student_name}</div>
+                        <div className="text-sm text-gray-600">
+                          {s.admission_no} • {s.class}-{s.section}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Due: {s.due_date ? new Date(s.due_date).toLocaleDateString('en-IN') : '—'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold text-gray-900">Pending: ₹{s.pending_amount.toLocaleString('en-IN')}</div>
+                        <div className="text-xs text-gray-500">{s.late_fee_amount > 0 ? `Late fees included` : ''}</div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-sm text-gray-500">
+                Or use the search above to view any student’s complete fee history.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <IndianRupee className="mx-auto text-gray-400 mb-4" size={48} />
+              <p className="text-gray-500">No recent pending fee statements found. Search for a student above.</p>
+            </div>
+          )}
         </Card>
       )}
     </div>

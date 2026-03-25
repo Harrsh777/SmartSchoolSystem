@@ -65,7 +65,44 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ data: structures || [] }, { status: 200 });
+    // Add "fees generated" metadata for UI.
+    // We treat "generated" as: at least 1 row exists in `student_fees` for that structure.
+    const structuresWithMeta = (structures || []).map((s) => ({
+      ...s,
+      fees_generated: false,
+      fees_generated_at: null as string | null,
+    }));
+
+    if (structuresWithMeta.length > 0) {
+      const structureIds = structuresWithMeta.map(s => s.id);
+
+      const { data: studentFeesRows } = await supabase
+        .from('student_fees')
+        .select('fee_structure_id, created_at')
+        .in('fee_structure_id', structureIds);
+
+      const metaById = new Map<string, { count: number; maxCreatedAt: string }>();
+      (studentFeesRows || []).forEach((row: any) => {
+        const sid = String(row.fee_structure_id);
+        const createdAt = row.created_at ? String(row.created_at) : '';
+        if (!sid) return;
+        const existing = metaById.get(sid) || { count: 0, maxCreatedAt: '' };
+        existing.count += 1;
+        if (createdAt && (!existing.maxCreatedAt || createdAt > existing.maxCreatedAt)) {
+          existing.maxCreatedAt = createdAt;
+        }
+        metaById.set(sid, existing);
+      });
+
+      structuresWithMeta.forEach((s) => {
+        const m = metaById.get(s.id);
+        if (!m) return;
+        s.fees_generated = m.count > 0;
+        s.fees_generated_at = m.maxCreatedAt || null;
+      });
+    }
+
+    return NextResponse.json({ data: structuresWithMeta }, { status: 200 });
   } catch (error) {
     console.error('Error in GET /api/v2/fees/fee-structures:', error);
     return NextResponse.json(

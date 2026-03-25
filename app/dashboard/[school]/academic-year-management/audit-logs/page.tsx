@@ -4,7 +4,7 @@ import { use, useState, useEffect, useCallback } from 'react';
 
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { RefreshCw, Loader2, ArrowLeft } from 'lucide-react';
+import { RefreshCw, Loader2} from 'lucide-react';
 
 interface AuditEntry {
   id: string;
@@ -41,7 +41,6 @@ export default function AuditLogsPage({ params }: { params: Promise<{ school: st
     fetchAudit();
   }, [fetchAudit]);
 
-  const base = schoolCode ? `/dashboard/${schoolCode}/academic-year-management` : '';
 
   return (
     <div className="space-y-4">

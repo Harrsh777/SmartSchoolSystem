@@ -60,16 +60,16 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const updateData: { status: string; admin_response?: string; updated_at?: string } = {
+    // Supabase table typings are not available here, so keep the payload
+    // flexible to avoid `never` inference errors during build.
+    const updateData: Record<string, unknown> = {
       status,
       updated_at: new Date().toISOString(),
     };
 
-    if (admin_response) {
-      updateData.admin_response = admin_response;
-    }
+    if (admin_response) updateData.admin_response = admin_response;
 
-    const supabase = getSupabase();
+    const supabase = getSupabase() as any;
     const { data, error } = await supabase
       .from('help_queries')
       .update(updateData)

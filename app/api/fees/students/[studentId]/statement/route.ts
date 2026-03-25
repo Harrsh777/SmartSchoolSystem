@@ -46,6 +46,7 @@ export async function GET(
           name,
           class_name,
           section,
+          academic_year,
           late_fee_type,
           late_fee_value,
           grace_period_days
@@ -55,15 +56,7 @@ export async function GET(
       .eq('school_code', normalizedSchoolCode)
       .order('due_month', { ascending: true });
 
-    // Filter by academic year if provided (based on due_month)
-    if (academicYear) {
-      const [startYear, endYear] = academicYear.split('-');
-      const startDate = `${startYear}-04-01`; // April 1st
-      const endDate = `${endYear}-03-31`; // March 31st
-      feesQuery = feesQuery.gte('due_month', startDate).lte('due_month', endDate);
-    }
-
-    const { data: studentFees, error: feesError } = await feesQuery;
+    const { data: studentFeesRaw, error: feesError } = await feesQuery;
 
     if (feesError) {
       console.error('Error fetching student fees:', feesError);
@@ -72,6 +65,15 @@ export async function GET(
         { status: 500 }
       );
     }
+
+    // Filter by academic year using the fee structure's academic_year.
+    // This avoids issues caused by `due_month` being date-shifted due to UTC/local conversions.
+    const studentFeesFiltered = academicYear
+      ? (studentFeesRaw || []).filter((fee: any) => {
+          const ay = String(fee?.fee_structure?.academic_year ?? '').trim();
+          return ay === academicYear;
+        })
+      : (studentFeesRaw || []);
 
     // Calculate late fee and process fees
     const today = new Date();
@@ -82,7 +84,7 @@ export async function GET(
     let totalPending = 0;
     let overdueAmount = 0;
 
-    const processedFees = ((studentFees || []) as Record<string, unknown>[]).map((fee: Record<string, unknown>) => {
+    const processedFees = ((studentFeesFiltered || []) as Record<string, unknown>[]).map((fee: Record<string, unknown>) => {
       const baseAmount = Number(fee.base_amount || 0);
       const paidAmount = Number(fee.paid_amount || 0);
       const adjustmentAmount = Number(fee.adjustment_amount || 0);

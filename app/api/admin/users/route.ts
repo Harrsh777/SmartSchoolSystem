@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
 
-    const supabase = getServiceRoleClient();
+    const supabase = getServiceRoleClient() as any;
 
     const users: Array<Record<string, unknown>> = [];
     let totalCount = 0;
@@ -46,12 +46,15 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false });
 
       if (!studentError && students) {
-        users.push(...students.map(s => ({
-          ...s,
-          user_type: 'student',
-          name: s.student_name,
-          identifier: s.admission_no,
-        })));
+        const studentRows = students as any[];
+        users.push(
+          ...studentRows.map((s) => ({
+            ...(s as Record<string, unknown>),
+            user_type: 'student',
+            name: (s as any).student_name,
+            identifier: (s as any).admission_no,
+          }))
+        );
         totalCount += studentCount || 0;
       }
     }
@@ -84,12 +87,15 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false });
 
       if (!staffError && staff) {
-        users.push(...staff.map(s => ({
-          ...s,
-          user_type: 'staff',
-          name: s.full_name,
-          identifier: s.staff_id,
-        })));
+        const staffRows = staff as any[];
+        users.push(
+          ...staffRows.map((s) => ({
+            ...(s as Record<string, unknown>),
+            user_type: 'staff',
+            name: (s as any).full_name,
+            identifier: (s as any).staff_id,
+          }))
+        );
         totalCount += staffCount || 0;
       }
     }
@@ -102,18 +108,18 @@ export async function GET(request: NextRequest) {
           const { data: login } = await supabase
             .from('student_login')
             .select('is_active')
-            .eq('admission_no', user.identifier)
-            .eq('school_code', user.school_code)
+            .eq('admission_no', user.identifier as string)
+            .eq('school_code', user.school_code as string)
             .maybeSingle();
-          isActive = Boolean(login?.is_active);
+          isActive = Boolean((login as any)?.is_active);
         } else if (user.user_type === 'staff') {
           const { data: login } = await supabase
             .from('staff_login')
             .select('is_active')
-            .eq('staff_id', user.identifier)
-            .eq('school_code', user.school_code)
+            .eq('staff_id', user.identifier as string)
+            .eq('school_code', user.school_code as string)
             .maybeSingle();
-          isActive = Boolean(login?.is_active);
+          isActive = Boolean((login as any)?.is_active);
         }
 
         return {
@@ -159,7 +165,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const supabase = getServiceRoleClient();
+    const supabase = getServiceRoleClient() as any;
     const schoolNorm = String(school_code).trim().toUpperCase();
     const identNorm = String(identifier).trim();
 
