@@ -37,7 +37,7 @@ export async function GET(
     }
 
     // Fetch student fees with fee structure details
-    let feesQuery = supabase
+    const feesQuery = supabase
       .from('student_fees')
       .select(`
         *,
