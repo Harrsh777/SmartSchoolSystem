@@ -75,6 +75,7 @@ export default function FeeStructuresPage({
   } | null>(null);
   const [deactivating, setDeactivating] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [groupActionKey, setGroupActionKey] = useState<string | null>(null);
 
   const fetchStructures = useCallback(async () => {
     try {
@@ -295,14 +296,19 @@ export default function FeeStructuresPage({
     return MONTHS.find(m => m.value === monthNumber)?.label || `Month ${monthNumber}`;
   };
 
-  // Base name for grouping: remove trailing " - A", " - B" etc. so multi-class structures group as one
+  // Base name for grouping:
+  // - remove trailing section suffixes like " - A"
+  // - remove trailing quarter/month tokens like "Q1", "Q2", "M1"
   const getBaseName = (name: string) => {
-    return name.replace(/\s*-\s*[A-Z]\s*$/i, '').trim() || name;
+    return name
+      .replace(/\s*-\s*[A-Z]\s*$/i, '')
+      .replace(/\s*[-–]?\s*(Q[1-4]|M[0-9]{1,2}|MONTH\s*[0-9]{1,2})\s*$/i, '')
+      .trim() || name;
   };
 
   const getGroupKey = (s: FeeStructure) => {
     const base = getBaseName(s.name);
-    return `${base}|${s.start_month}|${s.end_month}|${s.frequency}`;
+    return `${base}|${s.academic_year || ''}`;
   };
 
   // Group structures so one logical structure (same name base + period + frequency) appears once
@@ -323,6 +329,58 @@ export default function FeeStructuresPage({
   }, [structures]);
 
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  const runGroupAction = async (
+    groupKey: string,
+    groupStructures: FeeStructure[],
+    action: 'activate' | 'deactivate'
+  ) => {
+    const target = action === 'activate'
+      ? groupStructures.filter((s) => !s.is_active)
+      : groupStructures.filter((s) => s.is_active);
+
+    if (target.length === 0) {
+      setError(`All entries are already ${action === 'activate' ? 'active' : 'inactive'}.`);
+      return;
+    }
+
+    const confirmText =
+      action === 'activate'
+        ? `Activate all ${target.length} entries in this structure group?`
+        : `Deactivate all ${target.length} entries in this structure group?`;
+    if (!confirm(confirmText)) return;
+
+    try {
+      setGroupActionKey(groupKey);
+      setError('');
+      setSuccess('');
+      const staffId = sessionStorage.getItem('staff_id') || '';
+
+      for (const structure of target) {
+        const endpoint = `/api/v2/fees/fee-structures/${structure.id}/${action}`;
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'x-staff-id': staffId },
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json.error || `Failed to ${action} ${structure.name}`);
+        }
+      }
+
+      setSuccess(
+        action === 'activate'
+          ? 'Whole structure group activated successfully'
+          : 'Whole structure group deactivated successfully'
+      );
+      fetchStructures();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to ${action} structure group`);
+    } finally {
+      setGroupActionKey(null);
+    }
+  };
 
   const filteredGroups = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -433,6 +491,7 @@ export default function FeeStructuresPage({
             const first = group.structures[0];
             const activeCount = group.structures.filter((s) => s.is_active).length;
             const totalAmount = getTotalAmount(first);
+            const isGroupBusy = groupActionKey === group.key;
 
             return (
               <motion.div
@@ -485,6 +544,33 @@ export default function FeeStructuresPage({
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="pt-4 mt-4 border-t border-gray-200 space-y-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white p-3">
+                            <p className="text-xs text-gray-600">
+                              Group controls: activate/deactivate all quarter or month entries together.
+                            </p>
+                            <div className="flex items-center gap-2">
+                              {activeCount < group.structures.length ? (
+                                <Button
+                                  onClick={() => runGroupAction(group.key, group.structures, 'activate')}
+                                  disabled={isGroupBusy}
+                                  className="bg-green-600 hover:bg-green-700 text-white text-xs py-1.5 px-2"
+                                  size="sm"
+                                >
+                                  {isGroupBusy ? <Loader2 size={14} className="animate-spin" /> : 'Activate Whole Structure'}
+                                </Button>
+                              ) : null}
+                              {activeCount > 0 ? (
+                                <Button
+                                  onClick={() => runGroupAction(group.key, group.structures, 'deactivate')}
+                                  disabled={isGroupBusy}
+                                  className="bg-red-600 hover:bg-red-700 text-white text-xs py-1.5 px-2"
+                                  size="sm"
+                                >
+                                  {isGroupBusy ? <Loader2 size={14} className="animate-spin" /> : 'Deactivate Whole Structure'}
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
                           {group.structures.map((structure) => (
                             <div
                               key={structure.id}

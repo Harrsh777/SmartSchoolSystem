@@ -50,6 +50,19 @@ interface ExamSchedule {
   end_time: string;
 }
 
+interface TermOption {
+  id: string;
+  name: string;
+  class_id: string;
+  section: string;
+  serial?: number;
+  exams?: Array<{ id?: string; exam_name: string; serial?: number }>;
+}
+interface TermStructureOption {
+  id: string;
+  name: string;
+}
+
 export default function CreateExaminationPage({
   params,
 }: {
@@ -60,6 +73,11 @@ export default function CreateExaminationPage({
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [terms, setTerms] = useState<TermOption[]>([]);
+  const [selectedTermId, setSelectedTermId] = useState('');
+  const [structures, setStructures] = useState<TermStructureOption[]>([]);
+  const [selectedStructureId, setSelectedStructureId] = useState('');
+  const [selectedTemplateExam, setSelectedTemplateExam] = useState('');
 
   // Step 1: Exam Metadata
   const [examMetadata, setExamMetadata] = useState({
@@ -108,12 +126,83 @@ export default function CreateExaminationPage({
       if (subjectsRes.ok && subjectsData.data) {
         setSubjects(subjectsData.data);
       }
+
+      const sRes = await fetch(`/api/term-structures?school_code=${schoolCode}`);
+      const sJson = await sRes.json();
+      if (sRes.ok && Array.isArray(sJson.data)) {
+        setStructures(sJson.data);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Term selection supports single class-section mapping.
+    // For multi-class exam creation, keep term as unassigned (backward compatible).
+    const loadTerms = async () => {
+      if (selectedClasses.length !== 1 || selectedClasses[0].sections.length !== 1) {
+        setTerms([]);
+      setSelectedTermId('');
+        return;
+      }
+      const sectionId = selectedClasses[0].sections[0];
+      const sectionRow = classes.find((c) => c.id === sectionId);
+      if (!sectionRow) {
+        setTerms([]);
+        setSelectedTermId('');
+        return;
+      }
+      const response = await fetch(
+        `/api/terms?school_code=${schoolCode}&class_id=${encodeURIComponent(sectionId)}&section=${encodeURIComponent(sectionRow.section)}`
+      );
+      const result = await response.json();
+      if (response.ok && Array.isArray(result.data)) {
+        setTerms(result.data);
+        if (selectedTermId && !result.data.some((t: TermOption) => t.id === selectedTermId)) {
+          setSelectedTermId('');
+        }
+      } else {
+        setTerms([]);
+        setSelectedTermId('');
+      }
+    };
+    loadTerms();
+  }, [selectedClasses, classes, schoolCode, selectedTermId]);
+
+  useEffect(() => {
+    const loadStructureDetail = async () => {
+      if (!selectedStructureId) {
+        setTerms([]);
+        setSelectedTermId('');
+        return;
+      }
+      const res = await fetch(
+        `/api/term-structures/${selectedStructureId}?school_code=${encodeURIComponent(schoolCode)}`
+      );
+      const json = await res.json();
+      const t = (json.data?.terms || []) as TermOption[];
+      setTerms(t);
+      if (selectedTermId && !t.some((x) => x.id === selectedTermId)) setSelectedTermId('');
+    };
+    loadStructureDetail();
+  }, [selectedStructureId, schoolCode, selectedTermId]);
+
+  useEffect(() => {
+    if (!selectedTermId) {
+      setSelectedTemplateExam('');
+      return;
+    }
+    const term = terms.find((t) => t.id === selectedTermId);
+    if (!term) {
+      setSelectedTemplateExam('');
+      return;
+    }
+    const firstExam = term.exams && term.exams.length > 0 ? term.exams[0].exam_name : '';
+    setSelectedTemplateExam(firstExam || '');
+  }, [selectedTermId, terms]);
 
   // Step 1: Validate and Save Metadata
   const handleStep1Next = () => {
@@ -373,6 +462,29 @@ export default function CreateExaminationPage({
       return;
     }
 
+    // Prevent overlapping schedules for same class-section and date.
+    const byKey = new Map<string, Array<{ start: string; end: string }>>();
+    for (const s of examSchedules) {
+      const key = `${s.sectionId}|${s.exam_date}`;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key)!.push({ start: s.start_time, end: s.end_time });
+    }
+    for (const [, slots] of byKey) {
+      const sorted = [...slots].sort((a, b) => a.start.localeCompare(b.start));
+      for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i].start < sorted[i - 1].end) {
+          setErrors({ schedule: 'Schedule conflict: overlapping exam times found for same class-section/date' });
+          return;
+        }
+      }
+    }
+
+    // Term is required when exactly one class-section is selected (recommended flow).
+    if (selectedClasses.length === 1 && selectedClasses[0].sections.length === 1 && !selectedTermId) {
+      setErrors({ schedule: 'Please select a term for this class and section' });
+      return;
+    }
+
     try {
       setSaving(true);
       setErrors({});
@@ -400,6 +512,7 @@ export default function CreateExaminationPage({
           start_date: examMetadata.start_date,
           end_date: examMetadata.end_date,
           description: examMetadata.description || null,
+          term_id: selectedTermId || null,
           class_mappings: selectedClasses,
           class_subjects: classSubjects,
           schedules: examSchedules,
@@ -554,6 +667,83 @@ export default function CreateExaminationPage({
                   {errors.academic_year && (
                     <p className="mt-1 text-sm text-red-600">{errors.academic_year}</p>
                   )}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                  <label className="block text-sm font-semibold text-slate-800 mb-1">
+                    Structure Flow: Structure → Term → Examination
+                  </label>
+                  <p className="text-xs text-slate-600 mb-3">
+                    Choose a structure first, then a term, and then an examination template to auto-fill exam name.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-slate-600">Step 1: Term Structure</p>
+                      <select
+                        value={selectedStructureId}
+                        onChange={(e) => {
+                          setSelectedStructureId(e.target.value);
+                          setSelectedTermId('');
+                          setSelectedTemplateExam('');
+                        }}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
+                      >
+                        <option value="">Choose term structure</option>
+                        {structures.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-slate-600">Step 2: Term</p>
+                      <select
+                        value={selectedTermId}
+                        onChange={(e) => {
+                          setSelectedTermId(e.target.value);
+                          setSelectedTemplateExam('');
+                        }}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100"
+                        disabled={!selectedStructureId}
+                      >
+                        <option value="">
+                          {selectedStructureId ? 'Choose term (or keep unassigned)' : 'Select structure first'}
+                        </option>
+                        {terms.map((term) => (
+                          <option key={term.id} value={term.id}>
+                            {term.serial ? `${term.serial}. ` : ''}
+                            {term.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-slate-600">Step 3: Examination Template</p>
+                      <select
+                        value={selectedTemplateExam}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSelectedTemplateExam(v);
+                          if (v) setExamMetadata((prev) => ({ ...prev, exam_name: v }));
+                        }}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100"
+                        disabled={!selectedTermId}
+                      >
+                        <option value="">
+                          {selectedTermId ? 'Choose examination template' : 'Select term first'}
+                        </option>
+                        {(terms.find((t) => t.id === selectedTermId)?.exams || []).map((ex, idx) => (
+                          <option key={`${ex.exam_name}-${idx}`} value={ex.exam_name}>
+                            {ex.serial ? `${ex.serial}. ` : ''}
+                            {ex.exam_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

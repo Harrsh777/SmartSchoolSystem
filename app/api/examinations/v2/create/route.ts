@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
       start_date,
       end_date,
       description,
+      term_id,
       class_mappings,
       class_subjects,
       schedules,
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
       description: description || null,
       is_published: false,
       created_by: created_by || null,
+      term_id: term_id || null,
     };
 
     let examination: { id: string; exam_name?: string; status?: string; [key: string]: unknown } | null = null;

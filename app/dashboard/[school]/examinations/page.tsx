@@ -130,6 +130,22 @@ export default function ExaminationsPage({
       color: 'from-[#6B9BB8] to-[#7DB5D3]',
     },
     {
+      id: 'terms',
+      title: 'Add Term Structure',
+      description: 'Create class-section specific terms like Term 1, Unit Test, FA-1',
+      icon: BookOpen,
+      path: `/dashboard/${schoolCode}/examinations/terms`,
+      color: 'from-[#4A707A] to-[#5A7A95]',
+    },
+    {
+      id: 'structure',
+      title: 'Exam Structure View',
+      description: 'View term-wise exam schedule, subjects, marks, date and time',
+      icon: Users,
+      path: `/dashboard/${schoolCode}/examinations/structure`,
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
+    },
+    {
       id: 'grade-scale',
       title: 'Grade Scale',
       description: 'Configure grade scales and grading systems',

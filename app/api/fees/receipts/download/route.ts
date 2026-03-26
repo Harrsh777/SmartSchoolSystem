@@ -176,30 +176,34 @@ function generateReceiptHTML(
       box-sizing: border-box;
     }
     @page {
-      size: A5;
-      margin: 0;
+      size: A4 landscape;
+      margin: 8mm;
     }
     body {
       font-family: 'Arial', sans-serif;
       padding: 0;
       background: #f5f5f5;
-      width: 148mm; /* A5 width */
-      min-height: 210mm; /* A5 height */
+      width: 100%;
     }
     .page-container {
-      width: 148mm;
-      min-height: 210mm;
+      width: 100%;
+      min-height: calc(100vh - 16mm);
       background: white;
-      padding: 15mm;
-      page-break-after: always;
+      padding: 6mm;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
-    .page-container:last-child {
-      page-break-after: auto;
+    .copies-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8mm;
+      align-items: start;
     }
     .receipt-container {
       width: 100%;
       background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 5mm;
     }
     .copy-label {
       text-align: center;
@@ -347,33 +351,27 @@ function generateReceiptHTML(
       body {
         background: white;
         padding: 0;
-        width: 148mm;
       }
       .page-container {
         box-shadow: none;
-        padding: 15mm;
-        page-break-after: always;
-      }
-      .page-container:last-child {
-        page-break-after: auto;
+        padding: 0;
+        min-height: auto;
       }
     }
   </style>
 </head>
 <body>
-  <!-- School Copy -->
   <div class="page-container">
-    <div class="receipt-container">
-      <div class="copy-label">SCHOOL COPY</div>
-      ${receiptContent}
-    </div>
-  </div>
+    <div class="copies-grid">
+      <div class="receipt-container">
+        <div class="copy-label">SCHOOL COPY</div>
+        ${receiptContent}
+      </div>
 
-  <!-- Student Copy -->
-  <div class="page-container">
-    <div class="receipt-container">
-      <div class="copy-label">STUDENT COPY</div>
-      ${receiptContent}
+      <div class="receipt-container">
+        <div class="copy-label">STUDENT COPY</div>
+        ${receiptContent}
+      </div>
     </div>
   </div>
 </body>

@@ -37,6 +37,11 @@ export async function GET(request: NextRequest) {
             name,
             color
           )
+        ),
+        exam_schedules:exam_schedules (
+          exam_date,
+          start_time,
+          end_time
         )
       `)
       .eq('school_code', schoolCode)
@@ -50,7 +55,34 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data: examinations || [] }, { status: 200 });
+    const examRows = examinations || [];
+    const termIds = Array.from(
+      new Set(
+        examRows
+          .map((e) => (e as Record<string, unknown>).term_id)
+          .filter((id) => Boolean(id))
+          .map((id) => String(id))
+      )
+    );
+
+    let termMap = new Map<string, { id: string; name?: string; serial?: number; class_id?: string; section?: string }>();
+    if (termIds.length > 0) {
+      const { data: terms } = await supabase
+        .from('exam_terms')
+        .select('id,name,serial,class_id,section')
+        .in('id', termIds);
+      termMap = new Map((terms || []).map((t) => [String(t.id), t]));
+    }
+
+    const withTerms = examRows.map((exam) => {
+      const termId = (exam as Record<string, unknown>).term_id;
+      return {
+        ...exam,
+        term: termId ? termMap.get(String(termId)) || null : null,
+      };
+    });
+
+    return NextResponse.json({ data: withTerms }, { status: 200 });
   } catch (error) {
     console.error('Error fetching examinations:', error);
     return NextResponse.json(

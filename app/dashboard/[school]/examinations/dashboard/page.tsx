@@ -16,6 +16,12 @@ interface Exam {
   status: 'draft' | 'active' | 'completed' | 'cancelled';
   description?: string;
   created_at: string;
+  term_id?: string | null;
+  term?: {
+    id: string;
+    name?: string;
+    serial?: number;
+  } | null;
   class_mappings?: Array<{
     class_id: string;
     class: {
@@ -33,6 +39,12 @@ interface Exam {
   }>;
 }
 
+interface TermOption {
+  id: string;
+  name: string;
+  serial?: number;
+}
+
 export default function ExaminationDashboardPage({
   params,
 }: {
@@ -44,9 +56,12 @@ export default function ExaminationDashboardPage({
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'upcoming' | 'ongoing' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [terms, setTerms] = useState<TermOption[]>([]);
+  const [termFilter, setTermFilter] = useState<'all' | 'unassigned' | string>('all');
 
   useEffect(() => {
     fetchExams();
+    fetchTerms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
@@ -63,6 +78,18 @@ export default function ExaminationDashboardPage({
       console.error('Error fetching exams:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTerms = async () => {
+    try {
+      const response = await fetch(`/api/terms?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (response.ok && Array.isArray(result.data)) {
+        setTerms(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching terms:', error);
     }
   };
 
@@ -116,8 +143,34 @@ export default function ExaminationDashboardPage({
       );
     }
 
+    // Filter by term
+    if (termFilter === 'unassigned') {
+      return !exam.term_id;
+    }
+    if (termFilter !== 'all') {
+      return String(exam.term_id || '') === termFilter;
+    }
+
     return true;
   });
+
+  const assignTermToExam = async (examId: string, termId: string) => {
+    try {
+      const response = await fetch(`/api/examinations/${examId}/term`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ term_id: termId || null }),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        alert(err.error || 'Failed to assign term');
+        return;
+      }
+      fetchExams();
+    } catch (error) {
+      console.error('Error assigning term:', error);
+    }
+  };
 
   const upcomingExams = exams.filter(e => getExamStatus(e) === 'upcoming');
   const ongoingExams = exams.filter(e => getExamStatus(e) === 'ongoing');
@@ -218,6 +271,19 @@ export default function ExaminationDashboardPage({
             </div>
           </div>
           <div className="flex gap-2">
+            <select
+              value={termFilter}
+              onChange={(e) => setTermFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg"
+            >
+              <option value="all">All Terms</option>
+              <option value="unassigned">No Term Assigned</option>
+              {terms.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.serial ? `${t.serial}. ` : ''}{t.name}
+                </option>
+              ))}
+            </select>
             {(['all', 'upcoming', 'ongoing', 'completed'] as const).map((filterOption) => (
               <button
                 key={filterOption}
@@ -279,6 +345,12 @@ export default function ExaminationDashboardPage({
 
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center gap-2 text-gray-700">
+                        <span className="font-medium">Term:</span>
+                        <span>
+                          {exam.term?.name ? `${exam.term.serial ? `${exam.term.serial}. ` : ''}${exam.term.name}` : 'No Term Assigned'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-700">
                         <Calendar size={16} className="text-gray-500" />
                         <span>
                           {new Date(exam.start_date).toLocaleDateString('en-US', {
@@ -313,6 +385,21 @@ export default function ExaminationDashboardPage({
                     </div>
 
                     <div className="pt-4 border-t border-gray-200">
+                      <div className="mb-2">
+                        <select
+                          className="w-full px-2 py-1 border border-gray-300 rounded"
+                          value={exam.term_id || ''}
+                          onChange={(e) => assignTermToExam(exam.id, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <option value="">No Term Assigned</option>
+                          {terms.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.serial ? `${t.serial}. ` : ''}{t.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <Button
                         variant="outline"
                         size="sm"

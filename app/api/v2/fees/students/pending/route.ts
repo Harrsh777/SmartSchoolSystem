@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
       pending_amount: number;
       late_fee_amount: number;
       due_date: string;
+      latest_due_date: string;
     }>();
 
     (pendingFees || []).forEach((fee) => {
@@ -141,15 +142,25 @@ export async function GET(request: NextRequest) {
           pending_amount: 0,
           late_fee_amount: 0,
           due_date: fee.due_date,
+          latest_due_date: fee.due_date || '',
         });
       }
 
       const data = studentMap.get(student.id)!;
-      data.pending_amount += totalDue;
-      data.late_fee_amount += lateFee;
+      const feeDueDate = fee.due_date || '';
+      const prevLatest = data.latest_due_date ? new Date(data.latest_due_date) : null;
+      const currentDue = feeDueDate ? new Date(feeDueDate) : null;
 
-      if (fee.due_date && new Date(fee.due_date) < new Date(data.due_date)) {
-        data.due_date = fee.due_date;
+      if (!prevLatest || (currentDue && currentDue > prevLatest)) {
+        // Newer period found -> reset total to show only that most recent period
+        data.latest_due_date = feeDueDate;
+        data.pending_amount = totalDue;
+        data.late_fee_amount = lateFee;
+        data.due_date = feeDueDate;
+      } else if (currentDue && prevLatest && currentDue.getTime() === prevLatest.getTime()) {
+        // Same latest period -> accumulate across heads/rows in same period
+        data.pending_amount += totalDue;
+        data.late_fee_amount += lateFee;
       }
     });
 

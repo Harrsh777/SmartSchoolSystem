@@ -47,6 +47,7 @@ interface Exam {
   id: string;
   name: string;
   class_id: string;
+  term_id?: string | null;
   exam_subjects: Array<{
     id: string;
     subject_id: string;
@@ -63,6 +64,12 @@ interface ExistingMark {
   subject_id: string;
   marks_obtained: number;
   max_marks: number;
+}
+
+interface TermOption {
+  id: string;
+  name: string;
+  serial?: number;
 }
 
 function normClassLabel(v: unknown): string {
@@ -135,8 +142,10 @@ export default function MarksEntryPage({
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
+  const [selectedTerm, setSelectedTerm] = useState('');
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
+  const [terms, setTerms] = useState<TermOption[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -231,6 +240,16 @@ export default function MarksEntryPage({
       setSelectedClassId(fallbackClassId);
       setError(''); // Clear previous errors
 
+      const termRes = await fetch(
+        `/api/terms?school_code=${schoolCode}&class_id=${encodeURIComponent(fallbackClassId)}&section=${encodeURIComponent(selectedSection)}`
+      );
+      const termData = await termRes.json();
+      if (termRes.ok && Array.isArray(termData.data)) {
+        setTerms(termData.data);
+      } else {
+        setTerms([]);
+      }
+
       // Then fetch exams for this class using the new v2 API
       const response = await fetch(`/api/examinations/v2/list?school_code=${schoolCode}`);
       const result = await response.json();
@@ -283,6 +302,7 @@ export default function MarksEntryPage({
           id: exam.id as string,
           name: (exam.exam_name as string) || (exam.name as string),
           class_id: resolvedClassId,
+          term_id: exam.term_id ? String(exam.term_id) : null,
           exam_subjects: classSubjectMappings.map((sm: Record<string, unknown>): Exam['exam_subjects'][0] => {
             const subjectId = String(sm.subject_id || '');
             const subject = sm.subject as Record<string, unknown> | null | undefined;
@@ -658,6 +678,12 @@ export default function MarksEntryPage({
     ? (classes.find(c => c.class === selectedClass)?.sections || [])
     : [];
 
+  const visibleExams = exams.filter((exam) => {
+    if (selectedTerm === 'unassigned') return !exam.term_id;
+    if (selectedTerm) return String(exam.term_id || '') === selectedTerm;
+    return true;
+  });
+
   return (
     <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
       <div className="p-4 sm:p-6 lg:p-8 space-y-6">
@@ -720,7 +746,7 @@ export default function MarksEntryPage({
 
         {/* Filters */}
         <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <BookOpen size={14} className="inline mr-1" />
@@ -765,6 +791,28 @@ export default function MarksEntryPage({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Term
+              </label>
+              <select
+                value={selectedTerm}
+                onChange={(e) => {
+                  setSelectedTerm(e.target.value);
+                  setSelectedExam('');
+                }}
+                disabled={!selectedClass || !selectedSection}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+              >
+                <option value="">All Terms</option>
+                <option value="unassigned">No Term Assigned</option>
+                {terms.map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {term.serial ? `${term.serial}. ` : ''}{term.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Examination
               </label>
               <select
@@ -772,15 +820,17 @@ export default function MarksEntryPage({
                 onChange={(e) => {
                   const id = e.target.value;
                   setSelectedExam(id);
-                  const ex = exams.find((x) => x.id === id);
+                  const ex = visibleExams.find((x) => x.id === id);
                   if (ex?.class_id) setSelectedClassId(ex.class_id);
                 }}
                 disabled={!selectedClass || !selectedSection}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
               >
                 <option value="">Select Exam</option>
-                {exams.map(exam => (
-                  <option key={exam.id} value={exam.id}>{exam.name}</option>
+                {visibleExams.map(exam => (
+                  <option key={exam.id} value={exam.id}>
+                    {exam.name}{!exam.term_id ? ' (No Term Assigned)' : ''}
+                  </option>
                 ))}
               </select>
             </div>

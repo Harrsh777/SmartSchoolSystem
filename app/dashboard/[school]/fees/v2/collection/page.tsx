@@ -342,6 +342,7 @@ export default function PaymentCollectionPage({
   );
 
   const totalDue = studentFees.reduce((sum, f) => sum + f.total_due, 0);
+  const totalDueForDisplay = selectedStudent ? selectedStudent.pending_amount : totalDue;
   const totalAllocated = Object.values(allocations).reduce((sum, amt) => sum + amt, 0);
   const totalPaid = studentFees.reduce((sum, f) => sum + f.paid_amount, 0);
 
@@ -518,10 +519,10 @@ export default function PaymentCollectionPage({
               <Card className="p-4">
                 <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-1">
                   <IndianRupee size={18} />
-                  <span className="text-xs font-medium uppercase tracking-wide">Total Due</span>
+                  <span className="text-xs font-medium uppercase tracking-wide">Recent Period Due</span>
                 </div>
                 <p className="text-lg font-bold text-red-600 dark:text-red-400">
-                  {feesLoading ? '—' : formatCurrency(totalDue)}
+                  {feesLoading ? '—' : formatCurrency(totalDueForDisplay)}
                 </p>
               </Card>
               <Card className="p-4">
@@ -738,7 +739,7 @@ export default function PaymentCollectionPage({
                           Allocated {formatCurrency(totalAllocated)}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-slate-400">
-                          Total Due {formatCurrency(totalDue)}
+                          Total Due (all visible rows) {formatCurrency(totalDue)}
                         </p>
                       </div>
 
