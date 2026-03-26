@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 
 type Step = 1 | 2 | 3 | 4;
-type ExamMode = 'single' | 'multiple';
 
 export default function ReportCardGeneratePage({
   params,
@@ -31,16 +30,17 @@ export default function ReportCardGeneratePage({
   const [step, setStep] = useState<Step>(1);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
-  const [examMode, setExamMode] = useState<ExamMode>('single');
-  const [selectedExam, setSelectedExam] = useState('');
-  const [selectedExams, setSelectedExams] = useState<Set<string>>(new Set());
+  const [selectedStructureId, setSelectedStructureId] = useState('');
+  const [selectedTerms, setSelectedTerms] = useState<Set<string>>(new Set());
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
   const [classes, setClasses] = useState<Array<{ id: string; class: string; section: string }>>([]);
-  const [exams, setExams] = useState<Array<{ id: string; exam_name: string; academic_year?: string; class_mappings?: Array<{ class: { id: string; class: string; section: string } }> }>>([]);
+  const [exams, setExams] = useState<Array<{ id: string; exam_name: string; term_id?: string | null; academic_year?: string; class_mappings?: Array<{ class: { id: string; class: string; section: string } }> }>>([]);
+  const [structures, setStructures] = useState<Array<{ id: string; name: string }>>([]);
+  const [structureTerms, setStructureTerms] = useState<Array<{ id: string; name: string; serial?: number }>>([]);
   const [students, setStudents] = useState<Array<{ id: string; student_name: string; admission_no: string; class: string; section: string }>>([]);
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; description?: string }>>([]);
 
@@ -54,23 +54,32 @@ export default function ReportCardGeneratePage({
       return mc && mc.class === selectedClass && mc.section === selectedSection;
     })
   );
+  const termsForClass = structureTerms.filter((t) =>
+    examsForClass.some((e) => String(e.term_id || '') === String(t.id))
+  );
+  const resolvedExamIds = examsForClass
+    .filter((e) => selectedTerms.has(String(e.term_id || '')))
+    .map((e) => e.id);
 
   useEffect(() => {
     const run = async () => {
       setLoading(true);
       try {
-        const [examsRes, classesRes, templatesRes] = await Promise.all([
+        const [examsRes, classesRes, templatesRes, structuresRes] = await Promise.all([
           fetch(`/api/examinations/v2/list?school_code=${schoolCode}`),
           fetch(`/api/classes?school_code=${schoolCode}`),
           fetch(`/api/report-card/templates?school_code=${schoolCode}`),
+          fetch(`/api/term-structures?school_code=${schoolCode}`),
         ]);
         const examsJson = await examsRes.json();
         const classesJson = await classesRes.json();
         const templatesJson = await templatesRes.json();
+        const structuresJson = await structuresRes.json();
 
         if (examsRes.ok && examsJson.data) setExams(examsJson.data);
         if (classesRes.ok && classesJson.data) setClasses(classesJson.data);
         if (templatesRes.ok && templatesJson.data) setTemplates(templatesJson.data);
+        if (structuresRes.ok && structuresJson.data) setStructures(structuresJson.data);
       } catch {
         // ignore
       } finally {
@@ -79,6 +88,22 @@ export default function ReportCardGeneratePage({
     };
     run();
   }, [schoolCode]);
+
+  useEffect(() => {
+    const loadStructureTerms = async () => {
+      if (!selectedStructureId) {
+        setStructureTerms([]);
+        setSelectedTerms(new Set());
+        return;
+      }
+      const res = await fetch(`/api/term-structures/${selectedStructureId}?school_code=${encodeURIComponent(schoolCode)}`);
+      const json = await res.json();
+      const terms = (json.data?.terms || []) as Array<{ id: string; name: string; serial?: number }>;
+      setStructureTerms(terms);
+      setSelectedTerms(new Set());
+    };
+    loadStructureTerms();
+  }, [selectedStructureId, schoolCode]);
 
   useEffect(() => {
     if (step === 4 && (selectedClass || selectedSection)) {
@@ -107,8 +132,8 @@ export default function ReportCardGeneratePage({
     });
   };
 
-  const toggleExam = (id: string) => {
-    setSelectedExams((prev) => {
+  const toggleTerm = (id: string) => {
+    setSelectedTerms((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -121,18 +146,18 @@ export default function ReportCardGeneratePage({
     else setSelectedStudents(new Set(students.map((s) => s.id)));
   };
 
-  const selectAllExams = () => {
-    if (selectedExams.size === examsForClass.length) setSelectedExams(new Set());
-    else setSelectedExams(new Set(examsForClass.map((e) => e.id)));
+  const selectAllTerms = () => {
+    if (selectedTerms.size === termsForClass.length) setSelectedTerms(new Set());
+    else setSelectedTerms(new Set(termsForClass.map((t) => t.id)));
   };
 
   const canProceedStep1 = selectedClass && selectedSection;
-  const canProceedStep2 = examMode === 'single' ? selectedExam : selectedExams.size > 0;
+  const canProceedStep2 = selectedStructureId && selectedTerms.size > 0 && resolvedExamIds.length > 0;
   const canGenerate = selectedStudents.size > 0;
 
   const handleGenerate = async () => {
     if (!canGenerate) return;
-    const ids = examMode === 'single' ? (selectedExam ? [selectedExam] : []) : Array.from(selectedExams);
+    const ids = resolvedExamIds;
     if (ids.length === 0) return;
     setGenerating(true);
     try {
@@ -179,7 +204,7 @@ export default function ReportCardGeneratePage({
             </div>
             Generate Report Card
           </h1>
-          <p className="text-gray-600">Select class, exam(s), and students. Combine Half Yearly + Final for term-wise report.</p>
+          <p className="text-gray-600">Select class, structure terms, and students to generate report cards from actual exam data.</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={() => router.push(`/dashboard/${schoolCode}/report-card/dashboard`)} className="border-[#1e3a8a] text-[#1e3a8a]">
@@ -237,7 +262,7 @@ export default function ReportCardGeneratePage({
             </div>
             <Button onClick={() => setStep(2)} disabled={!canProceedStep1 || loading} className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
               {loading ? <Loader2 size={18} className="animate-spin mr-2" /> : null}
-              Next: Select Exam(s)
+              Next: Select Structure & Terms
             </Button>
           </motion.div>
         )}
@@ -246,58 +271,47 @@ export default function ReportCardGeneratePage({
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <Calendar size={24} className="text-[#1e3a8a]" />
-              Step 2: Select Examination(s)
+              Step 2: Select Structure & Term(s)
             </h2>
             <p className="text-sm text-gray-600">
-              Choose single exam or multiple (e.g. Half Yearly + Final) to combine into one report card.
+              Pick a term structure first, then select one or more terms. All exams mapped under selected terms will be included.
             </p>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" checked={examMode === 'single'} onChange={() => { setExamMode('single'); setSelectedExams(new Set()); }} />
-                <span>Single Exam</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" checked={examMode === 'multiple'} onChange={() => { setExamMode('multiple'); setSelectedExam(''); }} />
-                <span>Multiple Exams (Combine)</span>
-              </label>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Term Structure</label>
+              <select
+                value={selectedStructureId}
+                onChange={(e) => setSelectedStructureId(e.target.value)}
+                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
+              >
+                <option value="">Select Structure</option>
+                {structures.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {examMode === 'single' ? (
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Examination</label>
-                <select
-                  value={selectedExam}
-                  onChange={(e) => setSelectedExam(e.target.value)}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
-                >
-                  <option value="">Select Examination</option>
-                  {examsForClass.map((exam) => (
-                    <option key={exam.id} value={exam.id}>
-                      {exam.exam_name} {exam.academic_year ? `(${exam.academic_year})` : ''}
-                    </option>
-                  ))}
-                </select>
+            <div>
+              <div className="flex justify-between border-b pb-2 mb-2">
+                <button onClick={selectAllTerms} className="text-sm font-medium text-[#1e3a8a] hover:underline" disabled={!selectedStructureId}>
+                  {selectedTerms.size === termsForClass.length && termsForClass.length > 0 ? 'Deselect All' : 'Select All'}
+                </button>
+                <span className="text-sm text-gray-500">{selectedTerms.size} of {termsForClass.length} selected</span>
               </div>
-            ) : (
-              <div>
-                <div className="flex justify-between border-b pb-2 mb-2">
-                  <button onClick={selectAllExams} className="text-sm font-medium text-[#1e3a8a] hover:underline">
-                    {selectedExams.size === examsForClass.length ? 'Deselect All' : 'Select All'}
-                  </button>
-                  <span className="text-sm text-gray-500">{selectedExams.size} of {examsForClass.length} selected</span>
-                </div>
-                <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
-                  {examsForClass.map((exam) => (
-                    <label key={exam.id} className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
-                      {selectedExams.has(exam.id) ? <CheckSquare size={22} className="text-[#1e3a8a]" /> : <Square size={22} className="text-gray-400" />}
-                      <span>{exam.exam_name} {exam.academic_year ? `(${exam.academic_year})` : ''}</span>
-                      <input type="checkbox" checked={selectedExams.has(exam.id)} onChange={() => toggleExam(exam.id)} className="sr-only" />
-                    </label>
-                  ))}
-                  {examsForClass.length === 0 && <div className="p-4 text-gray-500 text-center">No exams for this class/section</div>}
-                </div>
+              <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
+                {termsForClass.map((term) => (
+                  <label key={term.id} className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
+                    {selectedTerms.has(term.id) ? <CheckSquare size={22} className="text-[#1e3a8a]" /> : <Square size={22} className="text-gray-400" />}
+                    <span>{term.serial ? `${term.serial}. ` : ''}{term.name}</span>
+                    <input type="checkbox" checked={selectedTerms.has(term.id)} onChange={() => toggleTerm(term.id)} className="sr-only" />
+                  </label>
+                ))}
+                {!selectedStructureId && <div className="p-4 text-gray-500 text-center">Select a structure first</div>}
+                {selectedStructureId && termsForClass.length === 0 && <div className="p-4 text-gray-500 text-center">No terms with exams for this class/section</div>}
               </div>
-            )}
+              <p className="text-xs text-gray-600 mt-2">Selected terms include {resolvedExamIds.length} exam(s) for report card calculation.</p>
+            </div>
 
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setStep(1)}>Back</Button>

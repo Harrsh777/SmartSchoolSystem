@@ -73,6 +73,7 @@ interface TermOption {
   id: string;
   name: string;
   serial?: number;
+  structure_id?: string | null;
 }
 
 function normClassLabel(v: unknown): string {
@@ -145,10 +146,12 @@ export default function MarksEntryPage({
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
+  const [selectedStructure, setSelectedStructure] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('');
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [terms, setTerms] = useState<TermOption[]>([]);
+  const [structures, setStructures] = useState<Array<{ id: string; name: string }>>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -178,6 +181,21 @@ export default function MarksEntryPage({
       }
     };
     fetchClasses();
+  }, [schoolCode]);
+
+  useEffect(() => {
+    const fetchStructures = async () => {
+      try {
+        const res = await fetch(`/api/term-structures?school_code=${schoolCode}`);
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.data)) {
+          setStructures(data.data);
+        }
+      } catch {
+        setStructures([]);
+      }
+    };
+    fetchStructures();
   }, [schoolCode]);
 
   // Update sections when class changes
@@ -668,10 +686,19 @@ export default function MarksEntryPage({
     : [];
 
   const visibleExams = exams.filter((exam) => {
+    if (selectedStructure) {
+      const allowedTermIds = new Set(
+        terms.filter((t) => String(t.structure_id || '') === selectedStructure).map((t) => t.id)
+      );
+      if (exam.term_id && !allowedTermIds.has(String(exam.term_id))) return false;
+    }
     if (selectedTerm === 'unassigned') return !exam.term_id;
     if (selectedTerm) return String(exam.term_id || '') === selectedTerm;
     return true;
   });
+  const visibleTerms = selectedStructure
+    ? terms.filter((t) => String(t.structure_id || '') === selectedStructure)
+    : terms;
 
   return (
     <div className="min-h-screen bg-background">
@@ -729,7 +756,7 @@ export default function MarksEntryPage({
 
         {/* Filters */}
         <Card className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-2">
                 <BookOpen size={14} className="inline mr-1" />
@@ -777,6 +804,26 @@ export default function MarksEntryPage({
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-2">
+                Structure
+              </label>
+              <select
+                value={selectedStructure}
+                onChange={(e) => {
+                  setSelectedStructure(e.target.value);
+                  setSelectedTerm('');
+                  setSelectedExam('');
+                }}
+                disabled={!selectedClass || !selectedSection}
+                className="w-full px-4 py-2 border border-input rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-[#2C3E50]/20 dark:focus:ring-[#4A707A]/30 disabled:bg-muted disabled:cursor-not-allowed"
+              >
+                <option value="">All Structures</option>
+                {structures.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">
                 Term
               </label>
               <select
@@ -790,7 +837,7 @@ export default function MarksEntryPage({
               >
                 <option value="">All Terms</option>
                 <option value="unassigned">No Term Assigned</option>
-                {terms.map((term) => (
+                {visibleTerms.map((term) => (
                   <option key={term.id} value={term.id}>
                     {term.serial ? `${term.serial}. ` : ''}{term.name}
                   </option>

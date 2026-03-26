@@ -7,7 +7,7 @@ import Button from '@/components/ui/Button';
 
 type ClassRow = { id: string; class: string; section: string };
 type EditorRow = { serial: number; name: string };
-type TermExamRow = { serial: number; exam_name: string };
+type TermExamRow = { serial: number; exam_name: string; weightage: number };
 type EditorTerm = { serial: number; name: string; exams: TermExamRow[] };
 type Structure = { id: string; name: string; created_at?: string };
 
@@ -20,8 +20,9 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
   const [structures, setStructures] = useState<Structure[]>([]);
   const [selectedStructureId, setSelectedStructureId] = useState('');
   const [newStructureName, setNewStructureName] = useState('');
-  const [rows, setRows] = useState<EditorTerm[]>([{ serial: 1, name: '', exams: [{ serial: 1, exam_name: '' }] }]);
+  const [rows, setRows] = useState<EditorTerm[]>([{ serial: 1, name: '', exams: [{ serial: 1, exam_name: '', weightage: 0 }] }]);
   const [saving, setSaving] = useState(false);
+  const [deletingStructureId, setDeletingStructureId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const stepItems = [
@@ -67,10 +68,14 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
         name: String(t.name || ''),
         exams:
           (t.exams || []).length > 0
-            ? (t.exams || []).map((e: any) => ({ serial: Number(e.serial || 1), exam_name: String(e.exam_name || '') }))
-            : [{ serial: 1, exam_name: '' }],
+            ? (t.exams || []).map((e: any) => ({
+                serial: Number(e.serial || 1),
+                exam_name: String(e.exam_name || ''),
+                weightage: Number(e.weightage || 0),
+              }))
+            : [{ serial: 1, exam_name: '', weightage: 0 }],
       }));
-      setRows(termRows.length > 0 ? termRows : [{ serial: 1, name: '', exams: [{ serial: 1, exam_name: '' }] }]);
+      setRows(termRows.length > 0 ? termRows : [{ serial: 1, name: '', exams: [{ serial: 1, exam_name: '', weightage: 0 }] }]);
     };
     loadStructure();
   }, [selectedStructureId, schoolCode, classes]);
@@ -101,7 +106,7 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
   };
 
   const addRow = () =>
-    setRows((prev) => [...prev, { serial: prev.length + 1, name: '', exams: [{ serial: 1, exam_name: '' }] }]);
+    setRows((prev) => [...prev, { serial: prev.length + 1, name: '', exams: [{ serial: 1, exam_name: '', weightage: 0 }] }]);
   const removeRow = (index: number) => setRows((prev) => prev.filter((_, i) => i !== index));
   const updateRow = (index: number, patch: Partial<EditorTerm>) =>
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -109,7 +114,7 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
     setRows((prev) =>
       prev.map((t, i) =>
         i === termIndex
-          ? { ...t, exams: [...t.exams, { serial: t.exams.length + 1, exam_name: '' }] }
+          ? { ...t, exams: [...t.exams, { serial: t.exams.length + 1, exam_name: '', weightage: 0 }] }
           : t
       )
     );
@@ -130,6 +135,19 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
           : t
       )
     );
+  const totalStructureWeightage = useMemo(
+    () =>
+      rows.reduce(
+        (acc, t) =>
+          acc +
+          (t.exams || []).reduce(
+            (sum, ex) => sum + (String(ex.exam_name || '').trim() ? Number(ex.weightage || 0) : 0),
+            0
+          ),
+        0
+      ),
+    [rows]
+  );
 
   const createStructure = async () => {
     if (!newStructureName.trim()) return;
@@ -170,6 +188,18 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
       setMsg('Please add at least one valid term row');
       return;
     }
+    const invalidExamWeightage = cleanRows.some((t) =>
+      (t.exams || []).some((e) => String(e.exam_name || '').trim() && Number(e.weightage || 0) < 0)
+    );
+    if (invalidExamWeightage) {
+      setMsg('Exam weightage cannot be negative');
+      return;
+    }
+    if (Math.abs(totalStructureWeightage - 100) > 0.0001) {
+      setMsg(`Total exam weightage must be exactly 100%. Current: ${totalStructureWeightage.toFixed(2)}%`);
+      return;
+    }
+
     setSaving(true);
     setMsg('');
     try {
@@ -177,7 +207,13 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
       const termsPayload = cleanRows.map((t) => ({
         serial: t.serial,
         name: t.name,
-        exams: (t.exams || []).filter((e) => String(e.exam_name || '').trim()),
+        exams: (t.exams || [])
+          .filter((e) => String(e.exam_name || '').trim())
+          .map((e) => ({
+            serial: Number(e.serial || 1),
+            exam_name: String(e.exam_name || '').trim(),
+            weightage: Number(e.weightage || 0),
+          })),
       }));
       const res = await fetch(`/api/term-structures/${selectedStructureId}`, {
         method: 'PUT',
@@ -196,6 +232,35 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
       setMsg('Structure saved successfully');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteStructure = async (structureId: string, structureName: string) => {
+    const warning = `Delete structure "${structureName}"?\n\nThis will remove mapped sections, terms, and template exams under it.\n\nThis action is blocked if real examinations are already linked.`;
+    if (!confirm(warning)) return;
+    setDeletingStructureId(structureId);
+    setMsg('');
+    try {
+      const res = await fetch(
+        `/api/term-structures/${structureId}?school_code=${encodeURIComponent(schoolCode)}`,
+        { method: 'DELETE' }
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        setMsg(json.error || 'Failed to delete structure');
+        return;
+      }
+      const next = structures.filter((s) => s.id !== structureId);
+      setStructures(next);
+      if (selectedStructureId === structureId) {
+        setSelectedStructureId(next[0]?.id || '');
+        setSelectedSections(new Set());
+        setRows([{ serial: 1, name: '', exams: [{ serial: 1, exam_name: '', weightage: 0 }] }]);
+        setStep(1);
+      }
+      setMsg('Structure deleted successfully');
+    } finally {
+      setDeletingStructureId(null);
     }
   };
 
@@ -323,7 +388,18 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
 
       {step === 4 && (
         <Card className="p-4 md:p-5 space-y-4">
-          <h2 className="font-semibold text-slate-900">Add Examinations Under Terms</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-semibold text-slate-900">Add Examinations Under Terms</h2>
+            <span
+              className={`text-xs px-2 py-1 rounded-full border ${
+                Math.abs(totalStructureWeightage - 100) <= 0.0001
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}
+            >
+              Total Weightage: {totalStructureWeightage.toFixed(2)}%
+            </span>
+          </div>
           {rows.map((row, index) => (
             <div key={index} className="border border-slate-200 rounded-xl p-3 space-y-2 bg-white">
               <p className="font-semibold text-slate-800">{row.serial}. {row.name || 'Untitled Term'}</p>
@@ -338,10 +414,20 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
                     placeholder="S"
                   />
                   <input
-                    className="col-span-8 border border-slate-300 rounded-lg px-2 py-2"
+                    className="col-span-6 border border-slate-300 rounded-lg px-2 py-2"
                     value={ex.exam_name}
                     onChange={(e) => updateExamRow(index, examIndex, { exam_name: e.target.value })}
                     placeholder="Exam Name (e.g., First Term, Mid Term)"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    className="col-span-2 border border-slate-300 rounded-lg px-2 py-2"
+                    value={ex.weightage}
+                    onChange={(e) => updateExamRow(index, examIndex, { weightage: Number(e.target.value || 0) })}
+                    placeholder="%"
                   />
                   <Button className="col-span-2" variant="outline" onClick={() => removeExamRow(index, examIndex)}>
                     Del
@@ -384,20 +470,31 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
         <h3 className="font-semibold mb-3 text-slate-900">Saved Structures</h3>
         <div className="space-y-2">
           {structures.map((s) => (
-            <button
+            <div
               key={s.id}
-              onClick={() => {
-                setSelectedStructureId(s.id);
-                setStep(2);
-              }}
-              className={`w-full text-left px-3 py-2.5 border rounded-xl transition ${
+              className={`w-full px-3 py-2.5 border rounded-xl transition flex items-center justify-between gap-3 ${
                 selectedStructureId === s.id
                   ? 'border-[#5A7A95] bg-[#5A7A95]/8 text-slate-900'
-                  : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
+                  : 'border-slate-200 bg-white text-slate-700'
               }`}
             >
-              {s.name}
-            </button>
+              <button
+                onClick={() => {
+                  setSelectedStructureId(s.id);
+                  setStep(2);
+                }}
+                className="text-left flex-1"
+              >
+                {s.name}
+              </button>
+              <Button
+                variant="outline"
+                onClick={() => deleteStructure(s.id, s.name)}
+                disabled={deletingStructureId === s.id}
+              >
+                {deletingStructureId === s.id ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
           ))}
           {structures.length === 0 ? <p className="text-sm text-gray-500">No structures yet.</p> : null}
         </div>

@@ -150,9 +150,13 @@ create table if not exists public.exam_term_exams (
   term_id uuid not null references public.exam_terms(id) on delete cascade,
   exam_name text not null,
   serial integer not null default 1,
+  weightage numeric(5,2) not null default 0 check (weightage >= 0 and weightage <= 100),
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+alter table public.exam_term_exams
+  add column if not exists weightage numeric(5,2) not null default 0;
 
 create unique index if not exists uq_exam_term_exams_term_name
   on public.exam_term_exams (term_id, lower(exam_name));

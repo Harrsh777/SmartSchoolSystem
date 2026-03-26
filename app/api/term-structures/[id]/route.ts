@@ -34,7 +34,7 @@ export async function GET(
       .order('serial', { ascending: true });
 
     const termIds = (terms || []).map((t) => t.id);
-    let examsByTerm: Record<string, Array<{ id: string; exam_name: string; serial: number }>> = {};
+    let examsByTerm: Record<string, Array<{ id: string; exam_name: string; serial: number; weightage: number }>> = {};
     if (termIds.length > 0) {
       const { data: termExams } = await supabase
         .from('exam_term_exams')
@@ -45,9 +45,14 @@ export async function GET(
       examsByTerm = (termExams || []).reduce((acc, row) => {
         const key = String(row.term_id);
         if (!acc[key]) acc[key] = [];
-        acc[key].push({ id: row.id, exam_name: row.exam_name, serial: row.serial });
+        acc[key].push({
+          id: row.id,
+          exam_name: row.exam_name,
+          serial: row.serial,
+          weightage: Number(row.weightage || 0),
+        });
         return acc;
-      }, {} as Record<string, Array<{ id: string; exam_name: string; serial: number }>>);
+      }, {} as Record<string, Array<{ id: string; exam_name: string; serial: number; weightage: number }>>);
     }
 
     return NextResponse.json(
@@ -77,7 +82,11 @@ export async function PUT(
     const body = await request.json();
     const schoolCode = String(body.school_code || '').trim();
     const mappings = (body.mappings || []) as Array<{ class_id: string; section: string }>;
-    const terms = (body.terms || []) as Array<{ name: string; serial: number; exams: Array<{ exam_name: string; serial: number }> }>;
+    const terms = (body.terms || []) as Array<{
+      name: string;
+      serial: number;
+      exams: Array<{ exam_name: string; serial: number; weightage?: number }>;
+    }>;
 
     if (!schoolCode) return NextResponse.json({ error: 'school_code is required' }, { status: 400 });
 
@@ -92,6 +101,21 @@ export async function PUT(
 
     if (terms.length > 0 && mappings.length === 0) {
       return NextResponse.json({ error: 'Map at least one class-section before adding terms' }, { status: 400 });
+    }
+    const totalWeightage = terms.reduce(
+      (acc, t) =>
+        acc +
+        (t.exams || []).reduce(
+          (sum, ex) => sum + (String(ex.exam_name || '').trim() ? Number(ex.weightage || 0) : 0),
+          0
+        ),
+      0
+    );
+    if (terms.length > 0 && Math.abs(totalWeightage - 100) > 0.0001) {
+      return NextResponse.json(
+        { error: `Total exam weightage across this structure must be exactly 100. Current: ${totalWeightage}` },
+        { status: 400 }
+      );
     }
 
     // Replace mappings
@@ -141,7 +165,7 @@ export async function PUT(
         is_deleted: false,
       }));
       const { data: insertedTerms } = await supabase.from('exam_terms').insert(termRows).select();
-      const examRows: Array<{ term_id: string; exam_name: string; serial: number; is_active: boolean }> = [];
+      const examRows: Array<{ term_id: string; exam_name: string; serial: number; weightage: number; is_active: boolean }> = [];
       (insertedTerms || []).forEach((term, idx) => {
         const original = terms[idx];
         (original.exams || []).forEach((ex) => {
@@ -150,6 +174,7 @@ export async function PUT(
               term_id: term.id,
               exam_name: String(ex.exam_name).trim(),
               serial: Number(ex.serial || 1),
+              weightage: Number(ex.weightage || 0),
               is_active: true,
             });
           }
@@ -159,6 +184,73 @@ export async function PUT(
         await supabase.from('exam_term_exams').insert(examRows);
       }
     }
+
+    return NextResponse.json({ data: { success: true } }, { status: 200 });
+  } catch (e) {
+    return NextResponse.json(
+      { error: 'Internal server error', details: e instanceof Error ? e.message : 'Unknown' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const schoolCode = request.nextUrl.searchParams.get('school_code');
+    if (!schoolCode) return NextResponse.json({ error: 'school_code is required' }, { status: 400 });
+
+    const { data: structure, error: structureErr } = await supabase
+      .from('exam_term_structures')
+      .select('id,school_code,is_deleted')
+      .eq('id', id)
+      .eq('school_code', schoolCode)
+      .eq('is_deleted', false)
+      .single();
+
+    if (structureErr || !structure) {
+      return NextResponse.json({ error: 'Structure not found' }, { status: 404 });
+    }
+
+    // Prevent deletion when any examination is already linked to structure terms.
+    const { data: terms } = await supabase
+      .from('exam_terms')
+      .select('id')
+      .eq('structure_id', id)
+      .eq('is_deleted', false);
+    const termIds = (terms || []).map((t) => t.id);
+    if (termIds.length > 0) {
+      const { data: linkedExams } = await supabase
+        .from('examinations')
+        .select('id')
+        .in('term_id', termIds)
+        .limit(1);
+      if (linkedExams && linkedExams.length > 0) {
+        return NextResponse.json(
+          { error: 'Cannot delete this structure because examinations are already linked to its terms.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Soft-delete structure and linked term hierarchy.
+    await supabase
+      .from('exam_term_structures')
+      .update({ is_deleted: true, is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    await supabase
+      .from('exam_term_structure_mappings')
+      .update({ is_active: false })
+      .eq('structure_id', id);
+
+    await supabase
+      .from('exam_terms')
+      .update({ is_deleted: true, is_active: false, updated_at: new Date().toISOString() })
+      .eq('structure_id', id);
 
     return NextResponse.json({ data: { success: true } }, { status: 200 });
   } catch (e) {

@@ -896,31 +896,43 @@ function generateLandscapeReportCardHTML(
     return scale?.grade ?? '-';
   };
 
-  const marksRows = marksSource
-    .map((m) => {
-      const obtained = Number(m.marks_obtained ?? 0);
-      const grade = computeGrade(m);
-
-      const fa1 = Math.min(25, Math.round(obtained * 0.22));
-      const sa1 = Math.min(75, Math.round(obtained * 0.58));
-      const t1 = fa1 + sa1;
-
-      const fa2 = Math.min(25, Math.round(obtained * 0.24));
-      const sa2 = Math.min(75, Math.round(obtained * 0.5));
-      const ia = Math.min(25, Math.round(obtained * 0.2));
-      const t2 = fa2 + sa2 + ia;
-
-      const gt = t1 + t2;
-
-      return `
-        <tr>
-          <td class="td-subj">${m.subject?.name || '-'}</td>
-          <td class="td-num">${fa1}</td><td class="td-num">${sa1}</td><td class="td-num">${t1}</td><td class="td-c">${grade}</td>
-          <td class="td-num">${fa2}</td><td class="td-num">${sa2}</td><td class="td-num">${ia}</td><td class="td-num">${t2}</td><td class="td-c">${grade}</td>
-          <td class="td-num">${gt}</td><td class="td-c"><strong>${grade}</strong></td>
-        </tr>`;
-    })
-    .join('');
+  const isMultiExamLandscape = Array.isArray(data.multiExamMarks) && data.multiExamMarks.length > 0 && Array.isArray(data.examsList) && data.examsList.length > 0;
+  const multiExams = data.examsList || [];
+  const marksRows = isMultiExamLandscape
+    ? (data.multiExamMarks || [])
+        .map((row) => {
+          const examCells = multiExams
+            .map((e) => {
+              const examMark = row.exams.find((em) => em.exam_id === e.id);
+              const obtained = examMark?.marks_obtained;
+              return `<td class="td-num">${obtained == null ? '-' : obtained}</td><td class="td-c">${examMark?.grade || '-'}</td>`;
+            })
+            .join('');
+          return `
+            <tr>
+              <td class="td-subj">${row.subject?.name || '-'}</td>
+              ${examCells}
+              <td class="td-num">${row.overall_marks_obtained == null ? '-' : row.overall_marks_obtained}</td>
+              <td class="td-c"><strong>${row.overall_grade || '-'}</strong></td>
+            </tr>`;
+        })
+        .join('')
+    : marksSource
+        .map((m) => {
+          const max = Number(m.max_marks || 0);
+          const obtained = m.marks_obtained == null ? null : Number(m.marks_obtained);
+          const pct = max > 0 && obtained != null ? (obtained / max) * 100 : 0;
+          const grade = computeGrade(m);
+          return `
+            <tr>
+              <td class="td-subj">${m.subject?.name || '-'}</td>
+              <td class="td-num">${max}</td>
+              <td class="td-num">${obtained == null ? '-' : obtained}</td>
+              <td class="td-num">${obtained == null ? '-' : pct.toFixed(1) + '%'}</td>
+              <td class="td-c"><strong>${grade}</strong></td>
+            </tr>`;
+        })
+        .join('');
 
   const coScholasticRows =
     data.coScholastic && data.coScholastic.length
@@ -1272,25 +1284,27 @@ function generateLandscapeReportCardHTML(
         <div class="tbl-wrap">
           <table class="marks" cellspacing="0" cellpadding="0">
             <thead>
-              <tr>
-                <th rowspan="2" style="min-width:88px;">Subject</th>
-                <th colspan="4">Term-I</th>
-                <th colspan="5">Term-II</th>
-                <th rowspan="2">Grand Total<br/>(250)</th>
-                <th rowspan="2">Grade</th>
-              </tr>
-              <tr>
-                <th>F.A.-1</th><th>S.A.-1</th><th>Total</th><th>Grade</th>
-                <th>F.A.-2</th><th>S.A.-2</th><th>I.A./PR.</th><th>Total</th><th>Grade</th>
-              </tr>
+              ${
+                isMultiExamLandscape
+                  ? `<tr>
+                      <th rowspan="2" style="min-width:88px;">Subject</th>
+                      ${multiExams.map((e) => `<th colspan="2">${e.name}</th>`).join('')}
+                      <th rowspan="2">Overall</th>
+                      <th rowspan="2">Grade</th>
+                    </tr>
+                    <tr>
+                      ${multiExams.map(() => '<th>Marks</th><th>Grade</th>').join('')}
+                    </tr>`
+                  : `<tr>
+                      <th style="min-width:88px;">Subject</th>
+                      <th>Max Marks</th>
+                      <th>Marks Obtained</th>
+                      <th>Percentage</th>
+                      <th>Grade</th>
+                    </tr>`
+              }
             </thead>
             <tbody>
-              <tr class="tr-max">
-                <td class="td-subj">Maximum Marks</td>
-                <td class="td-num">25</td><td class="td-num">75</td><td class="td-num">100</td><td class="td-c"></td>
-                <td class="td-num">25</td><td class="td-num">75</td><td class="td-num">25</td><td class="td-num">200</td><td class="td-c"></td>
-                <td class="td-num">250</td><td class="td-c"></td>
-              </tr>
               ${marksRows}
               ${gradingScaleRow}
             </tbody>

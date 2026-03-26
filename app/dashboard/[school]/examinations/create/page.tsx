@@ -37,7 +37,6 @@ interface ClassSubject {
     subject_name: string;
     max_marks: number;
     pass_marks: number;
-    weightage: number;
   }>;
 }
 
@@ -310,7 +309,6 @@ export default function CreateExaminationPage({
             subject_name: subject.name,
             max_marks: 100,
             pass_marks: 33,
-            weightage: 0,
           }],
         };
       }
@@ -332,7 +330,6 @@ export default function CreateExaminationPage({
           subject_name: subject.name,
           max_marks: 100,
           pass_marks: 33,
-          weightage: 0,
         }));
         
         return {
@@ -359,7 +356,7 @@ export default function CreateExaminationPage({
   const handleSubjectChange = (
     classSubjectIndex: number,
     subjectIndex: number,
-    field: 'max_marks' | 'pass_marks' | 'weightage',
+    field: 'max_marks' | 'pass_marks',
     value: number
   ) => {
     setClassSubjects(prev => prev.map((cs, idx) => {
@@ -378,7 +375,7 @@ export default function CreateExaminationPage({
     }));
   };
 
-  /** Copy max marks, pass marks, and weightage from the first subject row to all others in this class/section. */
+  /** Copy max marks and pass marks from the first subject row to all others in this class/section. */
   const handleApplyFirstRowMarksToAll = (classSubjectIndex: number) => {
     setClassSubjects(prev => prev.map((cs, idx) => {
       if (idx !== classSubjectIndex || cs.subjects.length < 2) return cs;
@@ -389,7 +386,6 @@ export default function CreateExaminationPage({
           ...s,
           max_marks: first.max_marks,
           pass_marks: first.pass_marks,
-          weightage: first.weightage,
         })),
       };
     }));
@@ -961,7 +957,7 @@ export default function CreateExaminationPage({
                                   Remove
                                 </button>
                               </div>
-                              <div className="grid grid-cols-3 gap-4">
+                              <div className="grid grid-cols-2 gap-4">
                                 <div>
                                   <label className="block text-xs text-gray-600 mb-1">Max Marks</label>
                                   <Input
@@ -979,17 +975,6 @@ export default function CreateExaminationPage({
                                     onChange={(e) => handleSubjectChange(csIndex, sIndex, 'pass_marks', parseInt(e.target.value) || 0)}
                                     min="0"
                                     max={subject.max_marks - 1}
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs text-gray-600 mb-1">Weightage (%)</label>
-                                  <Input
-                                    type="number"
-                                    value={subject.weightage}
-                                    onChange={(e) => handleSubjectChange(csIndex, sIndex, 'weightage', parseFloat(e.target.value) || 0)}
-                                    min="0"
-                                    max="100"
-                                    step="0.1"
                                   />
                                 </div>
                               </div>
