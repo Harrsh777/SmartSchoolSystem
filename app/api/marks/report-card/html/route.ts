@@ -190,7 +190,13 @@ export async function fetchReportCardData(
       address: student.address || student.school_address,
       student_contact: student.student_contact || student.phone || student.mobile,
       roll_number: student.roll_number,
-      photo_url: student.photo_url || null,
+      photo_url:
+        student.photo_url ||
+        (student as { student_photo_url?: string }).student_photo_url ||
+        (student as { student_photo?: string }).student_photo ||
+        (student as { profile_photo_url?: string }).profile_photo_url ||
+        (student as { avatar_url?: string }).avatar_url ||
+        null,
     },
     exam: {
       exam_name: exam.exam_name || exam.name || '',
@@ -253,6 +259,18 @@ export async function fetchReportCardDataMultiExam(
 
   if (!exams || exams.length === 0) return null;
 
+  const termIds = Array.from(new Set((exams as Array<{ term_id?: string | null }>).map((e) => e.term_id).filter(Boolean))) as string[];
+  const termMetaById = new Map<string, { name: string; serial?: number }>();
+  if (termIds.length > 0) {
+    const { data: termRows } = await supabase
+      .from('exam_terms')
+      .select('id, name, serial')
+      .in('id', termIds);
+    (termRows || []).forEach((t: { id: string; name?: string; serial?: number }) => {
+      termMetaById.set(String(t.id), { name: String(t.name || 'Term'), serial: t.serial });
+    });
+  }
+
   type ExamRecord = { id: string; academic_year?: string; exam_name?: string; name?: string; start_date?: string };
   const firstExam = exams[0] as ExamRecord;
   const examNames = exams.map((e: ExamRecord) => e.exam_name || e.name || '').filter(Boolean);
@@ -263,6 +281,9 @@ export async function fetchReportCardDataMultiExam(
     id: e.id,
     name: e.exam_name || e.name || 'Exam',
     max_marks_per_subject: 100, // Default, will be overridden per subject if needed
+    term_id: (e as { term_id?: string | null }).term_id || null,
+    term_name: termMetaById.get(String((e as { term_id?: string | null }).term_id || ''))?.name || ((e as { term_id?: string | null }).term_id ? 'Term' : 'Unassigned'),
+    term_serial: termMetaById.get(String((e as { term_id?: string | null }).term_id || ''))?.serial,
   }));
 
   const { data: allMarks } = await supabase
@@ -322,7 +343,16 @@ export async function fetchReportCardDataMultiExam(
 
   const bySubject: Record<string, {
     subject: { name: string };
-    exams: Record<string, { exam_id: string; exam_name: string; marks_obtained: number | null; max_marks: number; grade?: string }>;
+    exams: Record<string, {
+      exam_id: string;
+      exam_name: string;
+      term_id?: string | null;
+      term_name?: string;
+      term_serial?: number;
+      marks_obtained: number | null;
+      max_marks: number;
+      grade?: string;
+    }>;
     overall_max_marks: number;
     overall_marks_obtained: number | null;
   }> = {};
@@ -350,6 +380,9 @@ export async function fetchReportCardDataMultiExam(
     bySubject[subId].exams[examId] = {
       exam_id: examId,
       exam_name: examName,
+      term_id: (examInfo as { term_id?: string | null })?.term_id || null,
+      term_name: termMetaById.get(String((examInfo as { term_id?: string | null })?.term_id || ''))?.name || ((examInfo as { term_id?: string | null })?.term_id ? 'Term' : 'Unassigned'),
+      term_serial: termMetaById.get(String((examInfo as { term_id?: string | null })?.term_id || ''))?.serial,
       marks_obtained: obtained,
       max_marks: max,
       grade: getGradeFromPct(pct),
@@ -367,6 +400,26 @@ export async function fetchReportCardDataMultiExam(
     const overallPct = m.overall_max_marks > 0 && m.overall_marks_obtained != null 
       ? (m.overall_marks_obtained / m.overall_max_marks) * 100 
       : 0;
+    const termTotals = new Map<string, { term_id: string; term_name: string; term_serial?: number; total_obtained: number; total_max: number }>();
+    examIds.forEach((eid) => {
+      const examData = m.exams[eid];
+      if (!examData) return;
+      const termId = String(examData.term_id || 'unassigned');
+      const existing = termTotals.get(termId) || {
+        term_id: termId,
+        term_name: examData.term_name || (termId === 'unassigned' ? 'Unassigned' : 'Term'),
+        term_serial: examData.term_serial,
+        total_obtained: 0,
+        total_max: 0,
+      };
+      existing.total_max += Number(examData.max_marks || 0);
+      existing.total_obtained += Number(examData.marks_obtained || 0);
+      termTotals.set(termId, existing);
+    });
+    const termTotalsList = Array.from(termTotals.values()).map((tt) => ({
+      ...tt,
+      grade: tt.total_max > 0 ? getGradeFromPct((tt.total_obtained / tt.total_max) * 100) : '-',
+    }));
     return {
       subject: m.subject,
       exams: examIds.map(eid => {
@@ -380,6 +433,7 @@ export async function fetchReportCardDataMultiExam(
           grade: '-',
         };
       }),
+      term_totals: termTotalsList,
       overall_max_marks: m.overall_max_marks,
       overall_marks_obtained: m.overall_marks_obtained,
       overall_grade: getGradeFromPct(overallPct),
@@ -465,7 +519,13 @@ export async function fetchReportCardDataMultiExam(
       address: student.address || student.school_address,
       student_contact: student.student_contact || student.phone || student.mobile,
       roll_number: student.roll_number,
-      photo_url: student.photo_url || null,
+      photo_url:
+        student.photo_url ||
+        (student as { student_photo_url?: string }).student_photo_url ||
+        (student as { student_photo?: string }).student_photo ||
+        (student as { profile_photo_url?: string }).profile_photo_url ||
+        (student as { avatar_url?: string }).avatar_url ||
+        null,
     },
     exam: {
       exam_name: combinedExamName,

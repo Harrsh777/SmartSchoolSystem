@@ -49,6 +49,7 @@ import {
   ClipboardList,
   LogIn,
   Download,
+  Trash2,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { AnimatePresence } from 'framer-motion';
@@ -829,6 +830,13 @@ export default function AdminDashboard() {
   const [holdingSchoolId, setHoldingSchoolId] = useState<string | null>(null);
   const [holdingSchoolName, setHoldingSchoolName] = useState('');
   const [isHolding, setIsHolding] = useState(false);
+  const [showDeleteSchoolModal, setShowDeleteSchoolModal] = useState(false);
+  const [deleteSchoolId, setDeleteSchoolId] = useState<string | null>(null);
+  const [deleteSchoolSource, setDeleteSchoolSource] = useState<'pending' | 'accepted' | 'rejected' | null>(null);
+  const [deleteSchoolExpectedName, setDeleteSchoolExpectedName] = useState('');
+  const [deleteSchoolNameInput, setDeleteSchoolNameInput] = useState('');
+  const [deleteSchoolError, setDeleteSchoolError] = useState('');
+  const [deletingSchool, setDeletingSchool] = useState(false);
   
   // Data states for admin views
   interface StudentData {
@@ -1797,6 +1805,77 @@ export default function AdminDashboard() {
     }
   };
 
+  const closeDeleteSchoolModal = () => {
+    setShowDeleteSchoolModal(false);
+    setDeleteSchoolId(null);
+    setDeleteSchoolSource(null);
+    setDeleteSchoolExpectedName('');
+    setDeleteSchoolNameInput('');
+    setDeleteSchoolError('');
+  };
+
+  const normalizeDeleteSchoolName = (s: string) => s.trim().replace(/\s+/g, ' ');
+
+  const openDeleteSchoolModal = (
+    id: string,
+    name: string,
+    source: 'pending' | 'accepted' | 'rejected'
+  ) => {
+    setDeleteSchoolId(id);
+    setDeleteSchoolExpectedName(name);
+    setDeleteSchoolSource(source);
+    setDeleteSchoolNameInput('');
+    setDeleteSchoolError('');
+    setShowDeleteSchoolModal(true);
+  };
+
+  const handleDeleteSchool = async () => {
+    if (!deleteSchoolId || !deleteSchoolSource) return;
+    if (
+      normalizeDeleteSchoolName(deleteSchoolNameInput) !==
+      normalizeDeleteSchoolName(deleteSchoolExpectedName)
+    ) {
+      setDeleteSchoolError(
+        'The name you typed does not match. Enter the school name exactly as shown on the card (same spelling, spaces, and capitalization).'
+      );
+      return;
+    }
+    setDeletingSchool(true);
+    setDeleteSchoolError('');
+    try {
+      const response = await fetch('/api/admin/schools/record', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: deleteSchoolId,
+          source: deleteSchoolSource,
+          confirm_name: deleteSchoolNameInput,
+        }),
+      });
+      const result = await safeParseJson(response);
+      if (response.ok) {
+        closeDeleteSchoolModal();
+        await fetchAllSchools();
+        const overviewResponse = await fetch('/api/admin/overview');
+        const overviewResult = await safeParseJson(overviewResponse);
+        if (overviewResponse.ok && overviewResult.data) {
+          setOverview(overviewResult.data as AdminOverview);
+        }
+        alert(String(result.message || 'School deleted.'));
+      } else {
+        setDeleteSchoolError(
+          [String(result.error || 'Failed to delete'), result.details ? String(result.details) : '']
+            .filter(Boolean)
+            .join('\n')
+        );
+      }
+    } catch (e) {
+      setDeleteSchoolError(e instanceof Error ? e.message : 'Request failed');
+    } finally {
+      setDeletingSchool(false);
+    }
+  };
+
   const handleEmployeeInputChange = (field: string, value: string | string[]) => {
     setEmployeeForm((prev) => ({ ...prev, [field]: value }));
     if (employeeErrors[field]) {
@@ -1876,6 +1955,7 @@ export default function AdminDashboard() {
 
   interface SchoolWithStatus extends Record<string, unknown> {
     _status?: string;
+    _source?: 'pending' | 'accepted' | 'rejected';
     status?: string;
     rejection_reason?: string;
     school_name?: string;
@@ -1891,6 +1971,9 @@ export default function AdminDashboard() {
     const schoolName = 'school_name' in school ? String(school.school_name || '') : '';
     const schoolCode = 'school_code' in school ? String(school.school_code || '') : '';
     const schoolId = 'id' in school ? String(school.id || '') : '';
+    const recordSource: 'pending' | 'accepted' | 'rejected' | null =
+      schoolWithStatus._source ??
+      (isPending ? 'pending' : isAccepted ? 'accepted' : isRejectedStatus ? 'rejected' : null);
 
     return (
       <motion.div
@@ -1958,7 +2041,7 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
-            <div className="flex items-center space-x-2 ml-4">
+            <div className="flex flex-wrap items-center gap-2 ml-4">
               {(isPending || status === 'pending') && (
                 <>
                   <Button
@@ -2010,6 +2093,18 @@ export default function AdminDashboard() {
                     {(school as AcceptedSchool).is_hold ? 'On Hold' : 'Hold School'}
                   </Button>
                 </>
+              )}
+              {recordSource && schoolId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openDeleteSchoolModal(schoolId, schoolName, recordSource)}
+                  disabled={updatingId === schoolId || deletingSchool}
+                  className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40"
+                >
+                  <Trash2 size={18} className="mr-2" />
+                  Delete
+                </Button>
               )}
             </div>
           </div>
@@ -5513,6 +5608,97 @@ CREATE INDEX idx_audit_logs_severity ON audit_logs(severity);`}</code></pre>
               </div>
             </div>
           </motion.div>
+            </div>
+          )}
+
+          {showDeleteSchoolModal && deleteSchoolId && deleteSchoolSource && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl max-w-md w-full p-8"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Delete school</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      This permanently removes this record. Type the school name exactly to confirm.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeDeleteSchoolModal}
+                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    disabled={deletingSchool}
+                  >
+                    <X size={24} className="text-gray-600 dark:text-gray-400" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <p className="text-sm text-red-800 dark:text-red-300">
+                      You are deleting:{' '}
+                      <span className="font-semibold break-words">{deleteSchoolExpectedName}</span>
+                    </p>
+                  </div>
+
+                  {deleteSchoolError && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <p className="text-sm text-red-700 dark:text-red-400 whitespace-pre-line">{deleteSchoolError}</p>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Type the school name to confirm
+                    </label>
+                    <Input
+                      type="text"
+                      value={deleteSchoolNameInput}
+                      onChange={(e) => {
+                        setDeleteSchoolNameInput(e.target.value);
+                        setDeleteSchoolError('');
+                      }}
+                      placeholder={deleteSchoolExpectedName}
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={closeDeleteSchoolModal}
+                      disabled={deletingSchool}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className="flex-1 bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
+                      onClick={handleDeleteSchool}
+                      disabled={
+                        deletingSchool ||
+                        normalizeDeleteSchoolName(deleteSchoolNameInput) !==
+                          normalizeDeleteSchoolName(deleteSchoolExpectedName)
+                      }
+                    >
+                      {deletingSchool ? (
+                        <>
+                          <Loader2 size={18} className="mr-2 animate-spin" />
+                          Deleting…
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 size={18} className="mr-2" />
+                          Delete permanently
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
             </div>
           )}
 

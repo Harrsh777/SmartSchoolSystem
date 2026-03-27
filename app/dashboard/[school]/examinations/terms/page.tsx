@@ -627,7 +627,7 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
               {structures.map((s) => (
                 <div
                   key={s.id}
-                  className={`w-full px-3 py-2.5 border rounded-xl transition flex items-center justify-between gap-3 ${
+                  className={`w-full px-3 py-2 border rounded-xl transition flex items-center justify-between gap-3 ${
                     selectedStructureId === s.id
                       ? 'border-violet-400 bg-violet-50 text-slate-900'
                       : 'border-slate-200 bg-white text-slate-700'
@@ -642,28 +642,34 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
                   >
                     {s.name}
                   </button>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => {
                         setSelectedStructureId(s.id);
                         setStep(2);
                         setMsg('Editing selected structure');
                       }}
+                      className="h-8 px-2.5 text-xs"
                     >
                       Edit
                     </Button>
                     <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => duplicateStructure(s)}
                       disabled={duplicatingStructureId === s.id}
+                      className="h-8 px-2.5 text-xs"
                     >
                       {duplicatingStructureId === s.id ? 'Duplicating...' : 'Duplicate'}
                     </Button>
                     <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => deleteStructure(s.id, s.name)}
                       disabled={deletingStructureId === s.id}
+                      className="h-8 px-2.5 text-xs"
                     >
                       {deletingStructureId === s.id ? 'Deleting...' : 'Delete'}
                     </Button>

@@ -6,6 +6,9 @@
 export interface ExamMarksData {
   exam_id: string;
   exam_name: string;
+  term_id?: string | null;
+  term_name?: string;
+  term_serial?: number;
   marks_obtained: number | null;
   max_marks: number;
   grade?: string;
@@ -14,6 +17,14 @@ export interface ExamMarksData {
 export interface MultiExamSubjectMarks {
   subject: { name: string };
   exams: ExamMarksData[];
+  term_totals?: Array<{
+    term_id: string;
+    term_name: string;
+    term_serial?: number;
+    total_obtained: number;
+    total_max: number;
+    grade?: string;
+  }>;
   overall_max_marks: number;
   overall_marks_obtained: number | null;
   overall_grade?: string;
@@ -61,7 +72,7 @@ export interface ReportCardData {
   }>;
   // For multiple exams (term-wise display)
   multiExamMarks?: MultiExamSubjectMarks[];
-  examsList?: Array<{ id: string; name: string; max_marks_per_subject: number }>;
+  examsList?: Array<{ id: string; name: string; max_marks_per_subject: number; term_id?: string | null; term_name?: string; term_serial?: number }>;
   summary: {
     total_marks?: number;
     total_max_marks?: number;
@@ -810,7 +821,7 @@ function generateLandscapeReportCardHTML(
   data: ReportCardData,
   templateConfig?: ReportCardTemplateConfig
 ): string {
-  const { school, student, exam } = data;
+  const { school, student, } = data;
   const cfg = templateConfig || {};
   const logos = (cfg.logos as Record<string, unknown>) || {};
   const header = (cfg.header as Record<string, unknown>) || {};
@@ -832,10 +843,7 @@ function generateLandscapeReportCardHTML(
   const reportTitle = (labels.report_title as string) ?? 'REPORT CARD';
 
   const primaryColor = (branding.primary_color as string) ?? '#1e3a8a';
-  const accentColor = (branding.accent_color as string) ?? '#3B82F6';
   const fontFamily = (branding.font_family as string) ?? 'Arial, sans-serif';
-  const headerBgColor = (marksTable.header_bg_color as string) ?? '#e6f0e6';
-
   // Section titles
   const sectionStudentProfile = (labels.section_student_profile as string) ?? 'Student Profile';
   const sectionAcademicPerformance = (labels.section_academic_performance as string) ?? 'Academic Performance';
@@ -898,23 +906,36 @@ function generateLandscapeReportCardHTML(
 
   const isMultiExamLandscape = Array.isArray(data.multiExamMarks) && data.multiExamMarks.length > 0 && Array.isArray(data.examsList) && data.examsList.length > 0;
   const multiExams = data.examsList || [];
+  const groupedTermMeta = isMultiExamLandscape
+    ? multiExams.reduce((acc, e) => {
+        const key = String(e.term_id || 'unassigned');
+        if (!acc.find((x) => x.term_id === key)) {
+          acc.push({
+            term_id: key,
+            term_name: e.term_name || (key === 'unassigned' ? 'Unassigned' : 'Term'),
+            term_serial: e.term_serial,
+          });
+        }
+        return acc;
+      }, [] as Array<{ term_id: string; term_name: string; term_serial?: number }>)
+    : [];
   const marksRows = isMultiExamLandscape
     ? (data.multiExamMarks || [])
         .map((row) => {
-          const examCells = multiExams
-            .map((e) => {
-              const examMark = row.exams.find((em) => em.exam_id === e.id);
-              const obtained = examMark?.marks_obtained;
-              return `<td class="td-num">${obtained == null ? '-' : obtained}</td><td class="td-c">${examMark?.grade || '-'}</td>`;
+          const termCells = groupedTermMeta
+            .map((t) => {
+              const termExams = multiExams.filter((e) => String(e.term_id || 'unassigned') === t.term_id);
+              const examCells = termExams
+                .map((e) => {
+                  const examMark = row.exams.find((em) => em.exam_id === e.id);
+                  return `<td class="td-num">${examMark?.marks_obtained == null ? '-' : examMark.marks_obtained}</td>`;
+                })
+                .join('');
+              const termTotal = (row.term_totals || []).find((x) => String(x.term_id) === String(t.term_id));
+              return `${examCells}<td class="td-num"><strong>${termTotal ? `${termTotal.total_obtained}` : '-'}</strong></td><td class="td-c"><strong>${termTotal?.grade || '-'}</strong></td>`;
             })
             .join('');
-          return `
-            <tr>
-              <td class="td-subj">${row.subject?.name || '-'}</td>
-              ${examCells}
-              <td class="td-num">${row.overall_marks_obtained == null ? '-' : row.overall_marks_obtained}</td>
-              <td class="td-c"><strong>${row.overall_grade || '-'}</strong></td>
-            </tr>`;
+          return `<tr><td class="td-subj">${row.subject?.name || '-'}</td>${termCells}<td class="td-num"><strong>${row.overall_marks_obtained == null ? '-' : row.overall_marks_obtained}</strong></td><td class="td-c"><strong>${row.overall_grade || '-'}</strong></td></tr>`;
         })
         .join('')
     : marksSource
@@ -972,7 +993,7 @@ function generateLandscapeReportCardHTML(
   const attendance = data.attendance;
   const attendanceText = attendance
     ? `${attendance.present} / ${attendance.total} (${attendance.percentage.toFixed(1)}%)`
-    : '180 / 200 (90%)';
+    : '0 / 0 (0.0%)';
 
   const totalObtained = data.summary?.total_marks ?? marksSource.reduce((s, m) => s + (m.marks_obtained ?? 0), 0);
   const totalMax = data.summary?.total_max_marks ?? marksSource.reduce((s, m) => s + (m.max_marks ?? 0), 0);
@@ -980,11 +1001,40 @@ function generateLandscapeReportCardHTML(
   const overallGrade = data.summary?.grade ?? '-';
   const rank = data.rank ?? '—';
   const resultDate = data.exam?.result_date || new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const autoRemark = (() => {
+    if (overallPct >= 91) return 'Outstanding performance. Keep up the exceptional consistency and leadership.';
+    if (overallPct >= 81) return 'Excellent result with strong subject understanding. Continue the good momentum.';
+    if (overallPct >= 71) return 'Very good performance. Focus on precision to move into top grade bands.';
+    if (overallPct >= 61) return 'Good performance overall. Regular revision can improve scores further.';
+    if (overallPct >= 51) return 'Satisfactory progress. Needs better consistency in core subjects.';
+    if (overallPct >= 41) return 'Average performance. More guided practice is recommended.';
+    if (overallPct >= 33) return 'Pass. Requires focused effort and structured study support.';
+    return 'Below passing benchmark. Immediate academic intervention is recommended.';
+  })();
 
-  const showWatermarkHTML = showWatermark
-    ? `
-    <div class="watermark">LOGO</div>
-  `
+  const maxMarksRowMulti = isMultiExamLandscape
+    ? (() => {
+        const termCells = groupedTermMeta
+          .map((t) => {
+            const termExams = multiExams.filter((e) => String(e.term_id || 'unassigned') === t.term_id);
+            const examMaxCells = termExams
+              .map((e) => {
+                const sample = (data.multiExamMarks || []).find((r) => (r.exams || []).some((ex) => ex.exam_id === e.id));
+                const examData = sample?.exams?.find((ex) => ex.exam_id === e.id);
+                return `<td class="td-num"><strong>${Number(examData?.max_marks || 0)}</strong></td>`;
+              })
+              .join('');
+            const termMax = termExams.reduce((sum, e) => {
+              const sample = (data.multiExamMarks || []).find((r) => (r.exams || []).some((ex) => ex.exam_id === e.id));
+              const examData = sample?.exams?.find((ex) => ex.exam_id === e.id);
+              return sum + Number(examData?.max_marks || 0);
+            }, 0);
+            return `${examMaxCells}<td class="td-num"><strong>${termMax}</strong></td><td class="td-c"></td>`;
+          })
+          .join('');
+        const grandMax = Number((data.multiExamMarks || [])[0]?.overall_max_marks || 0);
+        return `<tr class="tr-max"><td class="td-subj">Maximum Marks</td>${termCells}<td class="td-num"><strong>${grandMax}</strong></td><td class="td-c"></td></tr>`;
+      })()
     : '';
 
   return `<!DOCTYPE html>
@@ -1271,7 +1321,7 @@ function generateLandscapeReportCardHTML(
             <div class="kv"><b>${fatherLabel}</b><span>${student.father_name || '-'}</span></div>
             <div class="kv"><b>Contact No.</b><span>${schoolPhone || '-'}</span></div>
             <div class="kv"><b>${motherLabel}</b><span>${student.mother_name || '-'}</span></div>
-            <div class="kv"><b>Date of Birth</b><span>${(student as any).dob || '—'}</span></div>
+            <div class="kv"><b>Date of Birth</b><span>${(student as any).dob || (student as any).date_of_birth || '—'}</span></div>
           </div>
           <div class="photo-box">
             ${student.photo_url ? `<img src="${student.photo_url}" alt="Student Photo" style="width:72px;height:88px;object-fit:cover;border-radius:2px;" />` : 'Passport<br/>photo'}
@@ -1280,7 +1330,7 @@ function generateLandscapeReportCardHTML(
         ` : ''}
 
         ${showMarksTable ? `
-        <div class="section-h">${sectionScholastic} — ${examName}</div>
+        <div class="section-h">${isMultiExamLandscape ? `${sectionScholastic} — ${multiExams.map((e) => e.name).join(' + ')}` : `${sectionScholastic} — ${examName}`}</div>
         <div class="tbl-wrap">
           <table class="marks" cellspacing="0" cellpadding="0">
             <thead>
@@ -1288,12 +1338,20 @@ function generateLandscapeReportCardHTML(
                 isMultiExamLandscape
                   ? `<tr>
                       <th rowspan="2" style="min-width:88px;">Subject</th>
-                      ${multiExams.map((e) => `<th colspan="2">${e.name}</th>`).join('')}
-                      <th rowspan="2">Overall</th>
-                      <th rowspan="2">Grade</th>
+                      ${groupedTermMeta.map((t) => {
+                        const termExams = multiExams.filter((e) => String(e.term_id || 'unassigned') === t.term_id);
+                        const span = termExams.length + 2;
+                        const label = `${t.term_serial ? `${t.term_serial}. ` : ''}${t.term_name}`;
+                        return `<th colspan="${span}">${label}</th>`;
+                      }).join('')}
+                      <th colspan="2">Grand Total</th>
                     </tr>
                     <tr>
-                      ${multiExams.map(() => '<th>Marks</th><th>Grade</th>').join('')}
+                      ${groupedTermMeta.map((t) => {
+                        const termExams = multiExams.filter((e) => String(e.term_id || 'unassigned') === t.term_id);
+                        return `${termExams.map((e) => `<th>${e.name}</th>`).join('')}<th>Total</th><th>Grade</th>`;
+                      }).join('')}
+                      <th>Total</th><th>Grade</th>
                     </tr>`
                   : `<tr>
                       <th style="min-width:88px;">Subject</th>
@@ -1305,6 +1363,7 @@ function generateLandscapeReportCardHTML(
               }
             </thead>
             <tbody>
+              ${isMultiExamLandscape ? maxMarksRowMulti : ''}
               ${marksRows}
               ${gradingScaleRow}
             </tbody>
@@ -1323,25 +1382,11 @@ function generateLandscapeReportCardHTML(
         </div>
         ` : ''}
 
-        ${showCoScholastic ? `
-        <div class="section-h">${sectionCoScholastic}</div>
-        <table class="cos" cellspacing="0" cellpadding="0">
-          <thead>
-            <tr>
-              <th style="text-align:left;">Activity</th>
-              <th>Term-I</th>
-              <th>Term-II</th>
-            </tr>
-          </thead>
-          <tbody>${coScholasticRows}</tbody>
-        </table>
-        ` : ''}
-
         ${showRemarks ? `
         <div class="remark-row">
           <div class="remark-main">
             <strong>Remark:</strong>
-            ${customRemarks || 'GOOD — Excellent performance throughout the academic year. Participates actively in class.'}
+            ${customRemarks || data.remarks || autoRemark}
           </div>
           <div class="remark-sig">
             <div class="sig-underline"></div>

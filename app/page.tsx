@@ -16,16 +16,27 @@ import {
 } from 'react-icons/md';
 import FeaturesPage from '@/components/scroll';
 import FAQSection from '@/components/FAQ';
+import Background from '@/components/background';
 
 export default function EduCoreLanding() {
 
 
   const [scrolled, setScrolled] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const heroRef = useRef(null);
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
+    const handleScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 20);
+
+      const doc = document.documentElement;
+      const totalScrollable = doc.scrollHeight - window.innerHeight;
+      const progress = totalScrollable > 0 ? Math.min(1, Math.max(0, y / totalScrollable)) : 0;
+      setScrollProgress(progress);
+    };
     window.addEventListener('scroll', handleScroll);
+    handleScroll();
 
     // Smooth scroll handler for anchor links
     const handleAnchorClick = (e: MouseEvent) => {
@@ -213,7 +224,7 @@ export default function EduCoreLanding() {
       `}</style>
 
       {/* Scroll Progress Indicator */}
-      <div className="scroll-progress" style={{ transform: `scaleX(${scrolled ? 0.5 : 0})` }} />
+      <div className="scroll-progress" style={{ transform: `scaleX(${scrollProgress})` }} />
 
       {/* Floating Contact Button */}
       <button 
@@ -232,7 +243,7 @@ export default function EduCoreLanding() {
       </button>
 
       {/* Navbar */}
-      <nav className={`fixed w-full z-50 transition-all duration-500 ${scrolled ? 'glass-card py-3 sm:py-4 shadow-xl' : 'bg-transparent py-4 sm:py-6'}`}>
+      <nav className={`fixed w-full z-50 transition-all duration-500 ${scrolled ? 'bg-[#14072e]/70 backdrop-blur-xl border-b border-white/10 py-0.5 sm:py-1 shadow-2xl' : 'bg-[#14072e]/30 backdrop-blur-md border-b border-white/5 py-4 sm:py-6'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-2 sm:space-x-3 group cursor-pointer">
@@ -246,31 +257,31 @@ export default function EduCoreLanding() {
             <div className="hidden lg:flex items-center space-x-8 xl:space-x-10">
               <a
                 href="#solutions"
-                className="relative text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-[#667eea] dark:hover:text-white transition-colors group"
+                className="relative text-sm font-semibold text-white dark:text-gray-300 hover:text-[#ffffff] dark:hover:text-white transition-colors group"
               >
                 Solutions
-                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#667eea] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
+                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#fffff] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
               </a>
               <a
                 href="#analytics"
-                className="relative text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-[#667eea] dark:hover:text-white transition-colors group"
+                className="relative text-sm font-semibold text-white dark:text-gray-300 hover:text-[#fffff] dark:hover:text-white transition-colors group"
               >
                 Analytics
-                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#667eea] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
+                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#fffff] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
               </a>
               <a
                 href="#testimonials"
-                className="relative text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-[#667eea] dark:hover:text-white transition-colors group"
+                className="relative text-sm font-semibold text-white dark:text-gray-300 hover:text-[#fffff] dark:hover:text-white transition-colors group"
               >
                 Success Stories
-                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#667eea] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
+                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#fffff] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
               </a>
               <a
                 href="#pricing"
-                className="relative text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-[#667eea] dark:hover:text-white transition-colors group"
+                className="relative text-sm font-semibold text-white dark:text-gray-300 hover:text-[#fffff] dark:hover:text-white transition-colors group"
               >
                 Pricing
-                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#667eea] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
+                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#fffff] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
               </a>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
@@ -295,101 +306,99 @@ export default function EduCoreLanding() {
       </nav>
 
       {/* Hero Section */}
-      <section ref={heroRef} className="relative overflow-hidden min-h-screen flex items-center pt-20 sm:pt-24 pb-12 sm:pb-16 md:pb-20 lg:pb-32" style={{ paddingTop: '5rem', paddingBottom: '4rem' }}>
-        {/* Animated Background */}
+      <section ref={heroRef} className="relative overflow-hidden min-h-screen flex items-center pt-24 pb-14">
         <div className="absolute inset-0 z-0">
-          <div className="absolute top-0 right-0 w-[300px] h-[300px] sm:w-[400px] sm:h-[400px] lg:w-[600px] lg:h-[600px] bg-gradient-to-br from-purple-400/20 via-pink-400/15 to-blue-400/10 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
-          <div className="absolute bottom-0 left-0 w-[350px] h-[350px] sm:w-[500px] sm:h-[500px] lg:w-[700px] lg:h-[700px] bg-gradient-to-br from-teal-300/20 via-emerald-300/15 to-cyan-300/10 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] sm:w-[350px] sm:h-[350px] lg:w-[500px] lg:h-[500px] bg-gradient-to-br from-orange-300/15 via-rose-300/10 to-yellow-300/10 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
+          <Background className="opacity-95" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(154,82,255,0.35),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(42,191,255,0.22),transparent_40%)]" />
         </div>
 
-        {/* Floating Particles */}
-
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 sm:gap-16 lg:gap-20 items-center">
-            <div className="relative animate-fade-in-up text-center lg:text-left">
-             
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.1] mb-6 sm:mb-8 lg:mb-10">
-                <span className="gradient-text block mb-3 sm:mb-4">Empower</span>
-                <span className="text-gray-800 dark:text-white block">
-                  The Future of  
-                  <span className="italic relative ml-2 sm:ml-4 lg:ml-8">
-                    Learning
-                    <svg className="absolute w-full h-3 sm:h-4 -bottom-1 sm:-bottom-2 left-0 text-purple-300/50" fill="currentColor" viewBox="0 0 200 12">
-                      <path d="M2,7 C25,10 68,9 197,4 C197,4 112,0 2,7 Z"></path>
-                    </svg>
-                  </span>
-                  <br/>
-                </span>
-              </h1>
-              <p className="text-base sm:text-lg text-gray-600 dark:text-gray-300 mb-8 sm:mb-10 lg:mb-12 max-w-xl mx-auto lg:mx-0 leading-relaxed font-light">
-                Orchestrate seamless administrative excellence. From admissions to alumni management, our intelligent ERP creates a thriving ecosystem for elite institutions.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start">
-  <Link
-    href="/signup"
-    className="px-6 sm:px-7 py-3 sm:py-3.5 rounded-full bg-gradient-to-r from-[#667eea] via-[#764ba2] to-[#f093fb] text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 group flex items-center justify-center gap-2 animate-pulse-glow text-sm sm:text-base"
-  >
-    Start Your Journey
-    <FiArrowRight className="text-sm group-hover:translate-x-1.5 transition-transform" />
-  </Link>
-
-  <a
-    href="#features"
-    className="px-6 sm:px-7 py-3 sm:py-3.5 rounded-full glass-card text-gray-700 dark:text-gray-300 font-semibold hover:shadow-md transition-all duration-300 group flex items-center justify-center gap-2 sm:gap-2.5 border border-gray-200 dark:border-gray-700 text-sm sm:text-base"
-  >
-    <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-[#667eea]/10 to-[#764ba2]/10 flex items-center justify-center group-hover:scale-105 transition-transform">
-      <FiPlay className="text-[#667eea] text-xs" />
-    </span>
-    View Ecosystem
-  </a>
-</div>
-
-
-             
+          <div className="text-center mt-5 mb-10">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight">
+              Powerful Tools for Effective
+              <br />
+              School Management
+            </h1>
+            <p className="mt-5 text-base sm:text-lg text-white/75 max-w-3xl mx-auto">
+              Your complete SaaS platform for academic operations, finance, attendance, communication, and growth.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/signup"
+                className="px-7 py-3.5 rounded-full bg-gradient-to-r from-[#8b5cf6] to-[#a855f7] text-white font-semibold shadow-[0_10px_30px_rgba(139,92,246,0.45)] hover:scale-[1.02] transition-all duration-300 flex items-center gap-2"
+              >
+                Get started
+                <FiArrowRight className="text-sm" />
+              </Link>
+              <a
+                href="#features"
+                className="px-7 py-3.5 rounded-full border border-white/25 bg-white/5 text-white font-semibold hover:bg-white/10 transition-all duration-300 flex items-center gap-2"
+              >
+                <FiPlay className="text-sm" />
+                See How it works
+              </a>
             </div>
-            <div className="relative lg:h-[700px] flex items-center justify-center mt-8 lg:mt-0">
-              <div className="relative w-full h-[400px] sm:h-[500px] lg:h-[600px] rounded-2xl sm:rounded-[2rem] lg:rounded-[3rem] overflow-hidden shadow-3xl border-4 sm:border-8 border-white dark:border-gray-800 transform hover:scale-[1.02] transition-transform duration-700">
-             <div className="relative w-full h-full overflow-hidden arch-mask shadow-3xl border-4 sm:border-8 border-white dark:border-gray-800 transform hover:scale-[1.02] transition-transform duration-700">
-  <Image
-    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFa3dNasg7Aga3UD0gDJzOWyzsDLEOeLBXCT3eUJJLnTBu6atm7leU-XMefrEhqizy1qXgDJE9VQJpBFZtKHkARwV4XVDloZ6G-OfDd5ekzjToMdTo3CIdDLqTnI7FeKh5f0J2x4UYlpUcPI0PPt_6yHaw64ssWQml8cXpOtadpEcKjM9yOklEDekSKN5XQpDwIUnHajGbbxvStgNSUAfWwot2cxkmeqB51EVggpnWFFDOyKaAXS7-VenzuF88Aspbuf66S7yYB2LN"
-    alt="Happy diverse children using tablets"
-    fill
-    className="object-cover"
-    priority
-  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent"></div>
-                  <div className="absolute bottom-4 sm:bottom-6 lg:bottom-10 left-1/2 -translate-x-1/2 w-[85%] sm:w-[90%] glass-card p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-2xl border border-white/20 backdrop-blur-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 sm:gap-4">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#667eea]/20 to-[#764ba2]/20 backdrop-blur-sm flex items-center justify-center border border-white/20">
-                          <MdAutoGraph className="text-lg sm:text-xl lg:text-2xl text-[#667eea]" />
-                        </div>
-                        <div>
-                          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 font-medium">Student Engagement</p>
-                          <p className="text-lg sm:text-xl lg:text-2xl font-bold gradient-text">+45% <span className="text-xs sm:text-sm font-normal text-gray-500">vs last term</span></p>
-                        </div>
-                      </div>
-                      <div className="hidden sm:block">
-                        <div className="flex items-end gap-1 h-12 sm:h-16">
-                          {[...Array(5)].map((_, i) => (
-                            <div
-                              key={i}
-                              className="w-2 sm:w-3 rounded-t-lg bg-gradient-to-t from-[#667eea] to-[#764ba2]"
-                              style={{ height: `${20 + i * 10}px` }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+          </div>
+
+          <div className="max-w-6xl mx-auto overflow-x-auto pb-2">
+            <div className="flex items-stretch gap-4 min-w-max">
+            <div className="w-[240px] sm:w-[260px] rounded-[32px] overflow-hidden shadow-2xl ring-1 ring-white/50 h-[220px] relative group shrink-0">
+              <Image
+                src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=3840&q=90"
+                alt="Students in campus discussion"
+                fill
+                className="object-cover group-hover:scale-105 transition-transform duration-700"
+                priority
+                unoptimized
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/15 to-transparent" />
+              <p className="absolute left-4 bottom-4 text-white text-sm font-semibold tracking-wide">Smart Campus Workflows</p>
+            </div>
+
+          
+
+            <div className="w-[320px] sm:w-[360px] rounded-[40px] overflow-hidden shadow-2xl ring-1 ring-white/60 h-[220px] relative group shrink-0">
+              <Image
+                src="https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&w=3840&q=90"
+                alt="Classroom collaboration"
+                fill
+                className="object-cover group-hover:scale-105 transition-transform duration-700"
+                priority
+                unoptimized
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
+              <div className="absolute bottom-4 left-4 rounded-full bg-white/90 text-slate-900 text-xs font-semibold px-3 py-1.5">
+                260% workflow efficiency
               </div>
+            </div>
+
+            <div className="w-[280px] sm:w-[300px] rounded-[32px] overflow-hidden shadow-2xl ring-1 ring-white/50 h-[220px] relative group shrink-0">
+              <Image
+                src="https://images.unsplash.com/photo-1513258496099-48168024aec0?auto=format&fit=crop&w=3840&q=90"
+                alt="Digital classroom with tablets"
+                fill
+                className="object-cover group-hover:scale-105 transition-transform duration-700"
+                unoptimized
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent" />
+            </div>
+
+            <div className="w-[260px] sm:w-[280px] rounded-[32px] overflow-hidden shadow-2xl ring-1 ring-white/50 h-[220px] relative group shrink-0">
+              <Image
+                src="https://images.unsplash.com/photo-1588072432836-e10032774350?auto=format&fit=crop&w=3840&q=90"
+                alt="Student learning online"
+                fill
+                className="object-cover group-hover:scale-105 transition-transform duration-700"
+                unoptimized
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+              <div className="absolute bottom-4 right-4 rounded-full bg-white/90 text-slate-900 text-xs font-semibold px-3 py-1.5">
+                98% admin satisfaction
+              </div>
+            </div>
             </div>
           </div>
         </div>
-        
       </section>
 
       {/* Logo Section */}
@@ -516,7 +525,7 @@ export default function EduCoreLanding() {
                             className="w-8 sm:w-12 lg:w-16 rounded-t-lg sm:rounded-t-xl bg-gradient-to-t from-white/30 to-white/10 backdrop-blur-sm transition-all duration-300 group-hover:opacity-100"
                             style={{ height: `${20 + i * 12}px` }}
                           >
-                            <div className="absolute -top-6 sm:-top-8 left-1/2 -translate-x-1/2 bg-white text-gray-800 text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                            <div className="absolute -top-6 sm:-top-8 left-1/2 -translate-x-1/2 bg-white text-gray-800 text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-0.5 sm:py-0.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                               {quarter}
                             </div>
                           </div>

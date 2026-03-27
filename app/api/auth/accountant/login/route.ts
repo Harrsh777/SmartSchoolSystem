@@ -215,7 +215,12 @@ export async function POST(request: NextRequest) {
       },
     }, { status: 200 });
     setAuthCookie(response, 'accountant', undefined, SESSION_MAX_AGE);
-    setSessionIdCookie(response, sessionToken, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+    setSessionIdCookie(
+      response,
+      sessionToken,
+      Math.floor((expiresAt.getTime() - Date.now()) / 1000),
+      'accountant'
+    );
     return response;
   } catch (error) {
     console.error('Error in accountant login:', error);

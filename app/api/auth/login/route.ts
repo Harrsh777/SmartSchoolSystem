@@ -119,7 +119,13 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
     setAuthCookie(response, 'school', normalizedSchoolCode, SESSION_MAX_AGE);
-    setSessionIdCookie(response, sessionToken, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+    setSessionIdCookie(
+      response,
+      sessionToken,
+      Math.floor((expiresAt.getTime() - Date.now()) / 1000),
+      'school',
+      normalizedSchoolCode
+    );
     return response;
   } catch (error) {
     console.error('Error during login:', error);

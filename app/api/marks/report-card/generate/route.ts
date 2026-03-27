@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     const generated: Array<{ id: string; student_id: string; student_name: string }> = [];
     const errors: Array<{ student_id: string; error: string }> = [];
 
-    for (const studentId of student_ids) {
+    const processStudent = async (studentId: string) => {
       try {
         const data = examIds.length === 1
           ? await fetchReportCardData(schoolCodeNorm, studentId, primaryExamId)
@@ -85,15 +85,13 @@ export async function POST(request: NextRequest) {
 
         if (!data) {
           errors.push({ student_id: studentId, error: 'Student or exam not found' });
-          continue;
+          return;
         }
 
         const html = generateReportCardHTML(data, templateConfig);
-
         const now = new Date().toISOString();
         const className = String(data.student.class ?? '').trim();
         const section = String(data.student.section ?? '').trim();
-        // Build payload - only include columns that exist in the table
         const upsertPayload: Record<string, unknown> = {
           school_code: schoolCodeNorm,
           student_id: studentId,
@@ -107,10 +105,7 @@ export async function POST(request: NextRequest) {
           updated_at: now,
         };
 
-        // Try insert first (simpler, avoids upsert constraint issues)
         let insertedId: string | null = null;
-
-        // Check if record exists
         const { data: existing } = await supabase
           .from('report_cards')
           .select('id')
@@ -120,7 +115,6 @@ export async function POST(request: NextRequest) {
           .maybeSingle();
 
         if (existing?.id) {
-          // Update existing (set updated_at so list shows latest first)
           const { error: updateErr } = await supabase
             .from('report_cards')
             .update({
@@ -133,23 +127,20 @@ export async function POST(request: NextRequest) {
               updated_at: now,
             })
             .eq('id', existing.id);
-
           if (updateErr) {
             errors.push({ student_id: studentId, error: updateErr.message });
-            continue;
+            return;
           }
           insertedId = existing.id;
         } else {
-          // Insert new
           const { data: inserted, error: insertErr } = await supabase
             .from('report_cards')
             .insert(upsertPayload)
             .select('id')
             .single();
-
           if (insertErr) {
             errors.push({ student_id: studentId, error: insertErr.message });
-            continue;
+            return;
           }
           insertedId = inserted?.id || null;
         }
@@ -164,6 +155,12 @@ export async function POST(request: NextRequest) {
       } catch (e) {
         errors.push({ student_id: studentId, error: (e as Error).message });
       }
+    };
+
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < student_ids.length; i += BATCH_SIZE) {
+      const batch = student_ids.slice(i, i + BATCH_SIZE);
+      await Promise.allSettled(batch.map((studentId) => processStudent(studentId)));
     }
 
     console.log(`Report card generation complete: ${generated.length} generated, ${errors.length} errors`);

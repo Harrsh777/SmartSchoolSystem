@@ -231,7 +231,13 @@ export async function POST(request: NextRequest) {
       message: 'Login successful',
     }, { status: 200 });
     setAuthCookie(response, 'teacher', normalizedSchoolCode, SESSION_MAX_AGE);
-    setSessionIdCookie(response, sessionToken, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+    setSessionIdCookie(
+      response,
+      sessionToken,
+      Math.floor((expiresAt.getTime() - Date.now()) / 1000),
+      'teacher',
+      normalizedSchoolCode
+    );
     return response;
   } catch (error) {
     console.error('Teacher login error:', error);

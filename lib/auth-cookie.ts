@@ -13,6 +13,16 @@ export const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
 
 export type AuthRole = 'school' | 'teacher' | 'student' | 'accountant';
 
+function resolveCookiePath(role: AuthRole, schoolCode?: string): string {
+  if (role === 'school') {
+    const code = String(schoolCode || '').trim().toUpperCase();
+    return code ? `/dashboard/${code}` : '/dashboard';
+  }
+  if (role === 'teacher') return '/teacher';
+  if (role === 'student') return '/student';
+  return '/accountant';
+}
+
 /**
  * Build cookie value: "school:SCH001" | "teacher" | "student" | "accountant"
  */
@@ -33,10 +43,11 @@ export function setAuthCookie(
   maxAge: number = SESSION_MAX_AGE
 ): void {
   const value = buildAuthCookieValue(role, schoolCode);
+  const cookiePath = resolveCookiePath(role, schoolCode);
   const isProd = process.env.NODE_ENV === 'production';
   const cookieParts = [
     `${AUTH_COOKIE_NAME}=${encodeURIComponent(value)}`,
-    `Path=/`,
+    `Path=${cookiePath}`,
     `Max-Age=${maxAge}`,
     `SameSite=Lax`,
     `HttpOnly`,
@@ -50,11 +61,20 @@ export function setAuthCookie(
 /**
  * Clear auth cookie (use in logout API and on login failure if needed).
  */
-export function clearAuthCookie(response: Response): void {
+export function clearAuthCookie(response: Response, schoolCode?: string): void {
+  // Clear legacy root-scoped cookie
   response.headers.append(
     'Set-Cookie',
     `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly`
   );
+  // Clear role-scoped cookies
+  response.headers.append('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/dashboard; Max-Age=0; SameSite=Lax; HttpOnly`);
+  response.headers.append('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/teacher; Max-Age=0; SameSite=Lax; HttpOnly`);
+  response.headers.append('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/student; Max-Age=0; SameSite=Lax; HttpOnly`);
+  response.headers.append('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/accountant; Max-Age=0; SameSite=Lax; HttpOnly`);
+  if (schoolCode) {
+    response.headers.append('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/dashboard/${String(schoolCode).toUpperCase()}; Max-Age=0; SameSite=Lax; HttpOnly`);
+  }
 }
 
 /**
@@ -64,12 +84,15 @@ export function clearAuthCookie(response: Response): void {
 export function setSessionIdCookie(
   response: Response,
   sessionToken: string,
-  maxAge: number = SESSION_MAX_AGE
+  maxAge: number = SESSION_MAX_AGE,
+  role?: AuthRole,
+  schoolCode?: string
 ): void {
+  const cookiePath = role ? resolveCookiePath(role, schoolCode) : '/';
   const isProd = process.env.NODE_ENV === 'production';
   const cookieParts = [
     `${SESSION_ID_COOKIE_NAME}=${encodeURIComponent(sessionToken)}`,
-    `Path=/`,
+    `Path=${cookiePath}`,
     `Max-Age=${maxAge}`,
     `SameSite=Lax`,
     `HttpOnly`,
@@ -83,11 +106,20 @@ export function setSessionIdCookie(
 /**
  * Clear session id cookie (use in logout API).
  */
-export function clearSessionIdCookie(response: Response): void {
+export function clearSessionIdCookie(response: Response, schoolCode?: string): void {
+  // Clear legacy root-scoped cookie
   response.headers.append(
     'Set-Cookie',
     `${SESSION_ID_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly`
   );
+  // Clear role-scoped cookies
+  response.headers.append('Set-Cookie', `${SESSION_ID_COOKIE_NAME}=; Path=/dashboard; Max-Age=0; SameSite=Lax; HttpOnly`);
+  response.headers.append('Set-Cookie', `${SESSION_ID_COOKIE_NAME}=; Path=/teacher; Max-Age=0; SameSite=Lax; HttpOnly`);
+  response.headers.append('Set-Cookie', `${SESSION_ID_COOKIE_NAME}=; Path=/student; Max-Age=0; SameSite=Lax; HttpOnly`);
+  response.headers.append('Set-Cookie', `${SESSION_ID_COOKIE_NAME}=; Path=/accountant; Max-Age=0; SameSite=Lax; HttpOnly`);
+  if (schoolCode) {
+    response.headers.append('Set-Cookie', `${SESSION_ID_COOKIE_NAME}=; Path=/dashboard/${String(schoolCode).toUpperCase()}; Max-Age=0; SameSite=Lax; HttpOnly`);
+  }
 }
 
 /**

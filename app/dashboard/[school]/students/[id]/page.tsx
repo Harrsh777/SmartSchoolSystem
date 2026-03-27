@@ -76,6 +76,35 @@ interface ClassInfo {
   };
 }
 
+interface FeeStatementSummary {
+  total_due: number;
+  total_paid: number;
+  total_pending: number;
+  overdue_amount: number;
+}
+
+interface AcademicExamGroup {
+  exam_id: string;
+  exam_name: string;
+  exam_type: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  academic_year: string | null;
+  subjects: Array<{
+    id: string;
+    subject_name: string;
+    marks_obtained: number;
+    max_marks: number;
+    percentage: number;
+    grade: string | null;
+    remarks: string | null;
+  }>;
+  total_marks: number;
+  total_max_marks: number;
+  overall_percentage: number;
+  overall_grade: string;
+}
+
 export default function StudentDetailPage({
   params,
 }: {
@@ -94,10 +123,13 @@ export default function StudentDetailPage({
     percentage: 0,
   });
   const [fees, setFees] = useState<FeeRecord[]>([]);
+  const [feeStatementSummary, setFeeStatementSummary] = useState<FeeStatementSummary | null>(null);
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
+  const [academicMarks, setAcademicMarks] = useState<AcademicExamGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [feesLoading, setFeesLoading] = useState(false);
+  const [marksLoading, setMarksLoading] = useState(false);
   const [houseColor, setHouseColor] = useState<string | null>(null);
   const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
 
@@ -155,13 +187,21 @@ export default function StudentDetailPage({
   }, [schoolCode, student?.house]);
 
   useEffect(() => {
+    if (!student) return;
+    fetchAttendance();
+    loadFeesForStudent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [student?.id, schoolCode, student?.academic_year]);
+
+  useEffect(() => {
     if (student) {
       if (activeTab === 'attendance') {
         fetchAttendance();
       } else if (activeTab === 'financial') {
-        fetchFees();
+        loadFeesForStudent();
       } else if (activeTab === 'academic') {
         fetchClassInfo();
+        fetchMarks();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,17 +228,100 @@ export default function StudentDetailPage({
     }
   };
 
-  const fetchFees = async () => {
+  const loadFeesForStudent = async () => {
     try {
       setFeesLoading(true);
-      const response = await fetch(
-        `/api/fees?school_code=${schoolCode}&student_id=${studentId}`
-      );
-      const result = await response.json();
-      
-      if (response.ok && result.data) {
-        setFees(result.data);
+      const ay =
+        student?.academic_year && String(student.academic_year).trim()
+          ? `&academic_year=${encodeURIComponent(String(student.academic_year).trim())}`
+          : '';
+      const statementUrl = `/api/fees/students/${encodeURIComponent(studentId)}/statement?school_code=${encodeURIComponent(schoolCode)}${ay}`;
+
+      const [legacyRes, statementRes] = await Promise.all([
+        fetch(
+          `/api/fees?school_code=${encodeURIComponent(schoolCode)}&student_id=${encodeURIComponent(studentId)}`
+        ),
+        fetch(statementUrl),
+      ]);
+
+      const legacyJson = legacyRes.ok ? await legacyRes.json() : null;
+      const statementJson = statementRes.ok ? await statementRes.json() : null;
+
+      const legacyRows: FeeRecord[] = Array.isArray(legacyJson?.data)
+        ? legacyJson.data.map((row: Record<string, unknown>) => ({
+            id: String(row.id ?? ''),
+            receipt_no: String(row.receipt_no ?? ''),
+            payment_date: String(row.payment_date ?? ''),
+            amount: Number(row.amount ?? 0),
+            transport_fee:
+              row.transport_fee != null && row.transport_fee !== ''
+                ? Number(row.transport_fee)
+                : undefined,
+            total_amount: Number(row.total_amount ?? row.amount ?? 0),
+            payment_mode: String(row.payment_mode ?? ''),
+            collected_by: row.collected_by ? String(row.collected_by) : undefined,
+            remarks: row.remarks ? String(row.remarks) : undefined,
+          }))
+        : [];
+
+      type V2Payment = {
+        id?: string;
+        receipt_no?: string;
+        payment_date?: string;
+        amount?: number;
+        payment_mode?: string;
+        remarks?: string | null;
+        allocations?: Array<{
+          allocated_amount?: number;
+          fee_name?: string;
+        }>;
+      };
+
+      const v2Rows: FeeRecord[] = [];
+      if (statementJson?.data?.payment_history && Array.isArray(statementJson.data.payment_history)) {
+        const payments = statementJson.data.payment_history as V2Payment[];
+        for (const p of payments) {
+          const allocs = p.allocations || [];
+          const allocText =
+            allocs.length > 0
+              ? allocs
+                  .map(
+                    (a) =>
+                      `${a.fee_name ?? 'Fee'}: ${Number(a.allocated_amount ?? 0)}`
+                  )
+                  .join('; ')
+              : '';
+          const remarkParts = [p.remarks, allocText].filter(Boolean);
+          v2Rows.push({
+            id: `v2-${String(p.id ?? '')}`,
+            receipt_no: String(p.receipt_no ?? ''),
+            payment_date: String(p.payment_date ?? ''),
+            amount: Number(p.amount ?? 0),
+            total_amount: Number(p.amount ?? 0),
+            payment_mode: String(p.payment_mode ?? 'cash'),
+            remarks: remarkParts.length ? remarkParts.join(' — ') : undefined,
+          });
+        }
       }
+
+      if (statementJson?.data?.summary) {
+        const s = statementJson.data.summary as FeeStatementSummary;
+        setFeeStatementSummary({
+          total_due: Number(s.total_due ?? 0),
+          total_paid: Number(s.total_paid ?? 0),
+          total_pending: Number(s.total_pending ?? 0),
+          overdue_amount: Number(s.overdue_amount ?? 0),
+        });
+      } else {
+        setFeeStatementSummary(null);
+      }
+
+      const merged = [...v2Rows, ...legacyRows].sort((a, b) => {
+        const ta = new Date(a.payment_date).getTime();
+        const tb = new Date(b.payment_date).getTime();
+        return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+      });
+      setFees(merged);
     } catch (err) {
       console.error('Error fetching fees:', err);
     } finally {
@@ -207,19 +330,60 @@ export default function StudentDetailPage({
   };
 
   const fetchClassInfo = async () => {
-    if (!student?.class || !student?.section || !student?.academic_year) return;
-    
+    if (!student?.class || !student?.section) return;
+
     try {
-      const response = await fetch(
-        `/api/student/class-teacher?school_code=${schoolCode}&class=${student.class}&section=${student.section}&academic_year=${student.academic_year}`
-      );
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        class: String(student.class),
+        section: String(student.section),
+      });
+      if (student.academic_year) {
+        params.set('academic_year', String(student.academic_year));
+      }
+      const response = await fetch(`/api/student/class-teacher?${params.toString()}`);
       const result = await response.json();
-      
-      if (response.ok && result.data) {
-        setClassInfo(result.data.class);
+
+      if (response.ok && result.data?.class) {
+        const row = result.data.class as Record<string, unknown>;
+        setClassInfo({
+          id: String(row.id ?? ''),
+          class: String(row.class ?? ''),
+          section: String(row.section ?? ''),
+          academic_year: String(row.academic_year ?? ''),
+          class_teacher: result.data.class_teacher
+            ? {
+                id: String((result.data.class_teacher as { id: string }).id),
+                full_name: String((result.data.class_teacher as { full_name: string }).full_name),
+                staff_id: String((result.data.class_teacher as { staff_id: string }).staff_id),
+                email: (result.data.class_teacher as { email?: string }).email,
+                phone: (result.data.class_teacher as { phone?: string }).phone,
+              }
+            : undefined,
+        });
       }
     } catch (err) {
       console.error('Error fetching class info:', err);
+    }
+  };
+
+  const fetchMarks = async () => {
+    try {
+      setMarksLoading(true);
+      const response = await fetch(
+        `/api/student/marks?school_code=${encodeURIComponent(schoolCode)}&student_id=${encodeURIComponent(studentId)}`
+      );
+      const result = await response.json();
+      if (response.ok && Array.isArray(result.data)) {
+        setAcademicMarks(result.data as AcademicExamGroup[]);
+      } else {
+        setAcademicMarks([]);
+      }
+    } catch (err) {
+      console.error('Error fetching marks:', err);
+      setAcademicMarks([]);
+    } finally {
+      setMarksLoading(false);
     }
   };
 
@@ -287,12 +451,13 @@ export default function StudentDetailPage({
     );
   }
 
-  // Calculate financial stats
+  // Calculate financial stats (legacy + v2 payments merged in `fees`)
   const financialStats = {
     totalPaid: fees.reduce((sum, fee) => sum + Number(fee.total_amount || 0), 0),
     totalTransactions: fees.length,
     lastPayment: fees.length > 0 ? fees[0].payment_date : null,
-    pendingAmount: 0, // TODO: Calculate from fee schedules
+    pendingAmount: feeStatementSummary?.total_pending ?? 0,
+    overdueAmount: feeStatementSummary?.overdue_amount ?? 0,
   };
 
   const tabs = [
@@ -384,7 +549,14 @@ export default function StudentDetailPage({
               <span className="text-xs bg-white/20 px-2 py-1 rounded-full">Total Paid</span>
             </div>
             <p className="text-3xl font-bold mb-1">{formatCurrency(financialStats.totalPaid)}</p>
-            <p className="text-xs text-green-100">{financialStats.totalTransactions} transaction{financialStats.totalTransactions !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-green-100">
+              {financialStats.totalTransactions} transaction{financialStats.totalTransactions !== 1 ? 's' : ''}
+              {financialStats.pendingAmount > 0 && (
+                <span className="block mt-1 opacity-95">
+                  Pending {formatCurrency(financialStats.pendingAmount)}
+                </span>
+              )}
+            </p>
           </Card>
         </motion.div>
 
@@ -790,7 +962,7 @@ export default function StudentDetailPage({
                 className="space-y-6"
               >
                 {/* Financial Summary */}
-                <div className="grid md:grid-cols-3 gap-4">
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <Card className="p-5 bg-gradient-to-br from-green-500 to-green-600 text-white">
                     <div className="flex items-center justify-between mb-2">
                       <IndianRupee size={20} className="opacity-90" />
@@ -819,6 +991,22 @@ export default function StudentDetailPage({
                       {financialStats.lastPayment ? formatDate(financialStats.lastPayment) : 'No payments yet'}
                     </p>
                   </Card>
+
+                  {feeStatementSummary && (
+                    <Card className="p-5 bg-gradient-to-br from-rose-500 to-rose-600 text-white">
+                      <div className="flex items-center justify-between mb-2">
+                        <AlertCircle size={20} className="opacity-90" />
+                        <FileText size={16} className="opacity-90" />
+                      </div>
+                      <p className="text-2xl font-bold mb-1">Balance Due</p>
+                      <p className="text-3xl font-bold">{formatCurrency(financialStats.pendingAmount)}</p>
+                      {financialStats.overdueAmount > 0 && (
+                        <p className="text-xs text-rose-100 mt-1">
+                          Overdue {formatCurrency(financialStats.overdueAmount)}
+                        </p>
+                      )}
+                    </Card>
+                  )}
                 </div>
 
                 {/* Fee Records */}
@@ -831,7 +1019,7 @@ export default function StudentDetailPage({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={fetchFees}
+                      onClick={loadFeesForStudent}
                       disabled={feesLoading}
                       className="border-[#1e3a8a] text-[#1e3a8a]"
                     >
@@ -982,6 +1170,94 @@ export default function StudentDetailPage({
                     </div>
                   </Card>
                 )}
+
+                {/* Examination marks */}
+                <Card>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                      <BarChart3 size={20} className="text-[#1e3a8a]" />
+                      Marks by examination
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchMarks}
+                      disabled={marksLoading}
+                      className="border-[#1e3a8a] text-[#1e3a8a]"
+                    >
+                      <RefreshCw size={16} className={`mr-2 ${marksLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                  {marksLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="animate-spin text-[#1e3a8a]" size={32} />
+                    </div>
+                  ) : academicMarks.length > 0 ? (
+                    <div className="space-y-6">
+                      {academicMarks.map((exam) => (
+                        <div
+                          key={exam.exam_id}
+                          className="rounded-xl border border-gray-200 overflow-hidden"
+                        >
+                          <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-lg">{exam.exam_name}</p>
+                              <p className="text-xs text-blue-100">
+                                {[exam.exam_type, exam.academic_year].filter(Boolean).join(' · ') || 'Examination'}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-blue-100">Overall</p>
+                              <p className="font-bold text-xl">
+                                {exam.total_marks} / {exam.total_max_marks} ({exam.overall_percentage}%){' '}
+                                <span className="text-blue-50">· {exam.overall_grade}</span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead className="bg-gray-50 text-gray-700 text-left text-xs uppercase tracking-wide">
+                                <tr>
+                                  <th className="px-4 py-2 font-semibold">Subject</th>
+                                  <th className="px-4 py-2 font-semibold">Marks</th>
+                                  <th className="px-4 py-2 font-semibold">%</th>
+                                  <th className="px-4 py-2 font-semibold">Grade</th>
+                                  <th className="px-4 py-2 font-semibold">Remarks</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {exam.subjects.map((sub) => (
+                                  <tr key={sub.id} className="hover:bg-gray-50/80">
+                                    <td className="px-4 py-2.5 text-sm font-medium text-gray-900">
+                                      {sub.subject_name}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-sm text-gray-800">
+                                      {sub.marks_obtained} / {sub.max_marks}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-sm text-gray-600">{sub.percentage}%</td>
+                                    <td className="px-4 py-2.5 text-sm font-semibold text-[#1e3a8a]">
+                                      {sub.grade ?? '—'}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-sm text-gray-500">{sub.remarks || '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-10">
+                      <BarChart3 size={48} className="mx-auto mb-3 text-gray-300" />
+                      <p className="text-gray-500 font-medium">No marks recorded yet</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        Marks appear after examinations are graded for this student
+                      </p>
+                    </div>
+                  )}
+                </Card>
 
                 {/* Academic Details */}
                 <Card>

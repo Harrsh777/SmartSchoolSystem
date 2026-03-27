@@ -81,6 +81,12 @@ export function middleware(request: NextRequest) {
       const login = new URL(LOGIN_PATH, request.url);
       return NextResponse.redirect(login);
     }
+    const pathParts = pathname.split('/').filter(Boolean);
+    const schoolCodeInPath = pathParts.length > 1 ? String(pathParts[1] || '').toUpperCase() : '';
+    if (auth.schoolCode && schoolCodeInPath && auth.schoolCode.toUpperCase() !== schoolCodeInPath) {
+      const login = new URL(LOGIN_PATH, request.url);
+      return NextResponse.redirect(login);
+    }
     return NextResponse.next();
   }
 

@@ -37,6 +37,7 @@ export default function ReportCardGeneratePage({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [classes, setClasses] = useState<Array<{ id: string; class: string; section: string }>>([]);
   const [exams, setExams] = useState<Array<{ id: string; exam_name: string; term_id?: string | null; academic_year?: string; class_mappings?: Array<{ class: { id: string; class: string; section: string } }> }>>([]);
@@ -59,6 +60,10 @@ export default function ReportCardGeneratePage({
     examsForClass.some((e) => String(e.term_id || '') === String(t.id))
   );
   const examsForSelectedTerms = examsForClass.filter((e) => selectedTerms.has(String(e.term_id || '')));
+  const examsForSelectedTermIdsKey = examsForSelectedTerms
+    .map((e) => e.id)
+    .sort()
+    .join('|');
 
   useEffect(() => {
     const run = async () => {
@@ -113,9 +118,16 @@ export default function ReportCardGeneratePage({
       prev.forEach((id) => {
         if (allowed.has(id)) next.add(id);
       });
+      if (next.size === prev.size) {
+        let same = true;
+        prev.forEach((id) => {
+          if (!next.has(id)) same = false;
+        });
+        if (same) return prev;
+      }
       return next;
     });
-  }, [selectedTerms, selectedClass, selectedSection, examsForSelectedTerms]);
+  }, [selectedTerms, selectedClass, selectedSection, examsForSelectedTermIdsKey]);
 
   useEffect(() => {
     if (step === 4 && (selectedClass || selectedSection)) {
@@ -189,6 +201,7 @@ export default function ReportCardGeneratePage({
     const ids = Array.from(selectedExamIds);
     if (ids.length === 0) return;
     setGenerating(true);
+    setSubmitMessage(null);
     try {
       const res = await fetch('/api/marks/report-card/generate', {
         method: 'POST',
@@ -202,29 +215,36 @@ export default function ReportCardGeneratePage({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate');
-      
-      // Check if there were any errors during generation
-      if (data.errors && data.errors.length > 0) {
-        const errorMessages = data.errors.map((e: { student_id: string; error: string }) => e.error).join(', ');
-        alert(`Some report cards failed to generate: ${errorMessages}`);
-      }
-      
+
       // If at least one was generated, navigate to dashboard
       if (data.generated && data.generated.length > 0) {
+        if (data.errors && data.errors.length > 0) {
+          setSubmitMessage({
+            type: 'error',
+            text: `Generated ${data.generated.length} report card(s), but ${data.errors.length} failed. You can retry for remaining students.`,
+          });
+        } else {
+          setSubmitMessage({
+            type: 'success',
+            text: `Generated ${data.generated.length} report card(s) successfully.`,
+          });
+        }
         router.refresh();
-        router.push(`/dashboard/${schoolCode}/report-card/dashboard`);
+        setTimeout(() => {
+          router.push(`/dashboard/${schoolCode}/report-card/dashboard`);
+        }, 250);
       } else {
         throw new Error('No report cards were generated. ' + (data.errors?.[0]?.error || 'Unknown error'));
       }
     } catch (e) {
-      alert((e as Error).message);
+      setSubmitMessage({ type: 'error', text: (e as Error).message });
     } finally {
       setGenerating(false);
     }
   };
 
   return (
-    <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
+    <div className="space-y-6 pb-4 bg-[#ECEDED]">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
@@ -258,6 +278,15 @@ export default function ReportCardGeneratePage({
       </div>
 
       <Card>
+        {submitMessage ? (
+          <div className={`mx-6 mt-6 rounded-lg border px-4 py-3 text-sm ${
+            submitMessage.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-rose-200 bg-rose-50 text-rose-800'
+          }`}>
+            {submitMessage.text}
+          </div>
+        ) : null}
         {step === 1 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">

@@ -12,22 +12,30 @@ export async function GET(request: NextRequest) {
     const section = searchParams.get('section');
     const academicYear = searchParams.get('academic_year');
 
-    if (!schoolCode || !classValue || !section || !academicYear) {
+    if (!schoolCode || !classValue || !section) {
       return NextResponse.json(
-        { error: 'School code, class, section, and academic year are required' },
+        { error: 'School code, class, and section are required' },
         { status: 400 }
       );
     }
 
-    // Find the class
-    const { data: classData, error: classError } = await supabase
+    // Find the class row (prefer matching academic year when provided)
+    let classQuery = supabase
       .from('classes')
       .select('*')
       .eq('school_code', schoolCode)
       .eq('class', classValue)
-      .eq('section', section)
-      .eq('academic_year', academicYear)
-      .single();
+      .eq('section', section);
+
+    if (academicYear) {
+      classQuery = classQuery.eq('academic_year', academicYear);
+    }
+
+    const { data: classRows, error: classError } = await classQuery
+      .order('academic_year', { ascending: false })
+      .limit(1);
+
+    const classData = classRows?.[0];
 
     if (classError || !classData) {
       return NextResponse.json(
