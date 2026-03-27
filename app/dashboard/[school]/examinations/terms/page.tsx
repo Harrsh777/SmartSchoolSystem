@@ -26,6 +26,7 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
   const [selectedAcademicYear, setSelectedAcademicYear] = useState('');
   const [saving, setSaving] = useState(false);
   const [deletingStructureId, setDeletingStructureId] = useState<string | null>(null);
+  const [duplicatingStructureId, setDuplicatingStructureId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const stepItems = [
@@ -288,6 +289,87 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
       setMsg('Structure deleted successfully');
     } finally {
       setDeletingStructureId(null);
+    }
+  };
+
+  const duplicateStructure = async (source: Structure) => {
+    const suggestedName = `${source.name} Copy`;
+    const nextName = prompt('Enter name for duplicated structure', suggestedName);
+    if (!nextName || !nextName.trim()) return;
+
+    setDuplicatingStructureId(source.id);
+    setMsg('');
+    try {
+      const createRes = await fetch('/api/term-structures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_code: schoolCode, name: nextName.trim() }),
+      });
+      const createJson = await createRes.json();
+      if (!createRes.ok || !createJson?.data?.id) {
+        setMsg(createJson?.error || 'Failed to duplicate structure');
+        return;
+      }
+
+      const newStructureId = String(createJson.data.id);
+      const sourceRes = await fetch(
+        `/api/term-structures/${source.id}?school_code=${encodeURIComponent(schoolCode)}`
+      );
+      const sourceJson = await sourceRes.json();
+      if (!sourceRes.ok || !sourceJson?.data) {
+        setMsg(sourceJson?.error || 'Duplicate created, but failed to read source structure');
+        return;
+      }
+
+      const mappings = (sourceJson.data.mappings || []).map((m: { class_id: string; section: string }) => ({
+        class_id: String(m.class_id),
+        section: String(m.section || ''),
+      }));
+      const termsPayload = (sourceJson.data.terms || []).map(
+        (t: {
+          serial?: number;
+          name?: string;
+          academic_year?: string;
+          exams?: Array<{ serial?: number; exam_name?: string; weightage?: number }>;
+        }) => ({
+          serial: Number(t.serial || 1),
+          name: String(t.name || '').trim(),
+          academic_year: String(t.academic_year || selectedAcademicYear || '').trim(),
+          exams: (t.exams || []).map((e) => ({
+            serial: Number(e.serial || 1),
+            exam_name: String(e.exam_name || '').trim(),
+            weightage: Number(e.weightage || 0),
+          })),
+        })
+      );
+
+      const applyRes = await fetch(`/api/term-structures/${newStructureId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          academic_year: selectedAcademicYear,
+          mappings,
+          terms: termsPayload,
+        }),
+      });
+      const applyJson = await applyRes.json();
+      if (!applyRes.ok) {
+        const details = applyJson?.details ? ` (${applyJson.details})` : '';
+        setMsg((applyJson?.error || 'Failed to copy terms into duplicated structure') + details);
+        return;
+      }
+
+      const refreshed = await fetch(`/api/term-structures?school_code=${schoolCode}`);
+      const refreshedJson = await refreshed.json();
+      if (refreshed.ok && Array.isArray(refreshedJson.data)) {
+        setStructures(refreshedJson.data as Structure[]);
+      }
+      setSelectedStructureId(newStructureId);
+      setStep(2);
+      setMsg('Structure duplicated successfully');
+    } finally {
+      setDuplicatingStructureId(null);
     }
   };
 
@@ -560,13 +642,32 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
                   >
                     {s.name}
                   </button>
-                  <Button
-                    variant="outline"
-                    onClick={() => deleteStructure(s.id, s.name)}
-                    disabled={deletingStructureId === s.id}
-                  >
-                    {deletingStructureId === s.id ? 'Deleting...' : 'Delete'}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedStructureId(s.id);
+                        setStep(2);
+                        setMsg('Editing selected structure');
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => duplicateStructure(s)}
+                      disabled={duplicatingStructureId === s.id}
+                    >
+                      {duplicatingStructureId === s.id ? 'Duplicating...' : 'Duplicate'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => deleteStructure(s.id, s.name)}
+                      disabled={deletingStructureId === s.id}
+                    >
+                      {deletingStructureId === s.id ? 'Deleting...' : 'Delete'}
+                    </Button>
+                  </div>
                 </div>
               ))}
               {structures.length === 0 ? <p className="text-sm text-gray-500">No structures yet.</p> : null}
