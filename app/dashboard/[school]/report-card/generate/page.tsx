@@ -32,6 +32,7 @@ export default function ReportCardGeneratePage({
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedStructureId, setSelectedStructureId] = useState('');
   const [selectedTerms, setSelectedTerms] = useState<Set<string>>(new Set());
+  const [selectedExamIds, setSelectedExamIds] = useState<Set<string>>(new Set());
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -57,9 +58,7 @@ export default function ReportCardGeneratePage({
   const termsForClass = structureTerms.filter((t) =>
     examsForClass.some((e) => String(e.term_id || '') === String(t.id))
   );
-  const resolvedExamIds = examsForClass
-    .filter((e) => selectedTerms.has(String(e.term_id || '')))
-    .map((e) => e.id);
+  const examsForSelectedTerms = examsForClass.filter((e) => selectedTerms.has(String(e.term_id || '')));
 
   useEffect(() => {
     const run = async () => {
@@ -94,6 +93,7 @@ export default function ReportCardGeneratePage({
       if (!selectedStructureId) {
         setStructureTerms([]);
         setSelectedTerms(new Set());
+        setSelectedExamIds(new Set());
         return;
       }
       const res = await fetch(`/api/term-structures/${selectedStructureId}?school_code=${encodeURIComponent(schoolCode)}`);
@@ -101,9 +101,21 @@ export default function ReportCardGeneratePage({
       const terms = (json.data?.terms || []) as Array<{ id: string; name: string; serial?: number }>;
       setStructureTerms(terms);
       setSelectedTerms(new Set());
+      setSelectedExamIds(new Set());
     };
     loadStructureTerms();
   }, [selectedStructureId, schoolCode]);
+
+  useEffect(() => {
+    setSelectedExamIds((prev) => {
+      const allowed = new Set(examsForSelectedTerms.map((e) => e.id));
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (allowed.has(id)) next.add(id);
+      });
+      return next;
+    });
+  }, [selectedTerms, selectedClass, selectedSection, examsForSelectedTerms]);
 
   useEffect(() => {
     if (step === 4 && (selectedClass || selectedSection)) {
@@ -141,6 +153,15 @@ export default function ReportCardGeneratePage({
     });
   };
 
+  const toggleExam = (id: string) => {
+    setSelectedExamIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const selectAllStudents = () => {
     if (selectedStudents.size === students.length) setSelectedStudents(new Set());
     else setSelectedStudents(new Set(students.map((s) => s.id)));
@@ -151,13 +172,21 @@ export default function ReportCardGeneratePage({
     else setSelectedTerms(new Set(termsForClass.map((t) => t.id)));
   };
 
+  const selectAllExams = () => {
+    if (selectedExamIds.size === examsForSelectedTerms.length) {
+      setSelectedExamIds(new Set());
+    } else {
+      setSelectedExamIds(new Set(examsForSelectedTerms.map((e) => e.id)));
+    }
+  };
+
   const canProceedStep1 = selectedClass && selectedSection;
-  const canProceedStep2 = selectedStructureId && selectedTerms.size > 0 && resolvedExamIds.length > 0;
+  const canProceedStep2 = selectedStructureId && selectedTerms.size > 0 && selectedExamIds.size > 0;
   const canGenerate = selectedStudents.size > 0;
 
   const handleGenerate = async () => {
     if (!canGenerate) return;
-    const ids = resolvedExamIds;
+    const ids = Array.from(selectedExamIds);
     if (ids.length === 0) return;
     setGenerating(true);
     try {
@@ -277,10 +306,14 @@ export default function ReportCardGeneratePage({
               Pick a term structure first, then select one or more terms. All exams mapped under selected terms will be included.
             </p>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Term Structure</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Step 1: Term Structure</label>
               <select
                 value={selectedStructureId}
-                onChange={(e) => setSelectedStructureId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedStructureId(e.target.value);
+                  setSelectedTerms(new Set());
+                  setSelectedExamIds(new Set());
+                }}
                 className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
               >
                 <option value="">Select Structure</option>
@@ -292,8 +325,10 @@ export default function ReportCardGeneratePage({
               </select>
             </div>
 
-            <div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
               <div className="flex justify-between border-b pb-2 mb-2">
+                <p className="text-sm font-semibold text-gray-700">Step 2: Select Term(s)</p>
                 <button onClick={selectAllTerms} className="text-sm font-medium text-[#1e3a8a] hover:underline" disabled={!selectedStructureId}>
                   {selectedTerms.size === termsForClass.length && termsForClass.length > 0 ? 'Deselect All' : 'Select All'}
                 </button>
@@ -310,8 +345,34 @@ export default function ReportCardGeneratePage({
                 {!selectedStructureId && <div className="p-4 text-gray-500 text-center">Select a structure first</div>}
                 {selectedStructureId && termsForClass.length === 0 && <div className="p-4 text-gray-500 text-center">No terms with exams for this class/section</div>}
               </div>
-              <p className="text-xs text-gray-600 mt-2">Selected terms include {resolvedExamIds.length} exam(s) for report card calculation.</p>
+              </div>
+              <div>
+                <div className="flex justify-between border-b pb-2 mb-2">
+                  <p className="text-sm font-semibold text-gray-700">Step 3: Select Exam(s)</p>
+                  <button
+                    onClick={selectAllExams}
+                    className="text-sm font-medium text-[#1e3a8a] hover:underline"
+                    disabled={examsForSelectedTerms.length === 0}
+                  >
+                    {selectedExamIds.size === examsForSelectedTerms.length && examsForSelectedTerms.length > 0 ? 'Deselect All' : 'Select All'}
+                  </button>
+                  <span className="text-sm text-gray-500">{selectedExamIds.size} of {examsForSelectedTerms.length} selected</span>
+                </div>
+                <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
+                  {examsForSelectedTerms.map((exam) => (
+                    <label key={exam.id} className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
+                      {selectedExamIds.has(exam.id) ? <CheckSquare size={22} className="text-[#1e3a8a]" /> : <Square size={22} className="text-gray-400" />}
+                      <span>{exam.exam_name}</span>
+                      <input type="checkbox" checked={selectedExamIds.has(exam.id)} onChange={() => toggleExam(exam.id)} className="sr-only" />
+                    </label>
+                  ))}
+                  {!selectedStructureId && <div className="p-4 text-gray-500 text-center">Select a structure first</div>}
+                  {selectedStructureId && selectedTerms.size === 0 && <div className="p-4 text-gray-500 text-center">Select one or more terms first</div>}
+                  {selectedStructureId && selectedTerms.size > 0 && examsForSelectedTerms.length === 0 && <div className="p-4 text-gray-500 text-center">No exams found under selected term(s)</div>}
+                </div>
+              </div>
             </div>
+            <p className="text-xs text-gray-600 mt-2">Selected exams for print: {selectedExamIds.size}</p>
 
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setStep(1)}>Back</Button>

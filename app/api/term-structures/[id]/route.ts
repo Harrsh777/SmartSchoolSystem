@@ -66,6 +66,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (e) {
+    console.error('term-structures PUT error:', e);
     return NextResponse.json(
       { error: 'Internal server error', details: e instanceof Error ? e.message : 'Unknown' },
       { status: 500 }
@@ -81,10 +82,12 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
     const schoolCode = String(body.school_code || '').trim();
+    const fallbackAcademicYear = String(body.academic_year || '').trim();
     const mappings = (body.mappings || []) as Array<{ class_id: string; section: string }>;
     const terms = (body.terms || []) as Array<{
       name: string;
       serial: number;
+      academic_year?: string;
       exams: Array<{ exam_name: string; serial: number; weightage?: number }>;
     }>;
 
@@ -119,7 +122,16 @@ export async function PUT(
     }
 
     // Replace mappings
-    await supabase.from('exam_term_structure_mappings').delete().eq('structure_id', id);
+    const { error: deleteMappingsErr } = await supabase
+      .from('exam_term_structure_mappings')
+      .delete()
+      .eq('structure_id', id);
+    if (deleteMappingsErr) {
+      return NextResponse.json(
+        { error: 'Failed to reset structure mappings', details: deleteMappingsErr.message },
+        { status: 500 }
+      );
+    }
     if (mappings.length > 0) {
       const rows = mappings.map((m) => ({
         structure_id: id,
@@ -128,7 +140,15 @@ export async function PUT(
         section: String(m.section || '').trim(),
         is_active: true,
       }));
-      await supabase.from('exam_term_structure_mappings').insert(rows);
+      const { error: insertMappingsErr } = await supabase
+        .from('exam_term_structure_mappings')
+        .insert(rows);
+      if (insertMappingsErr) {
+        return NextResponse.json(
+          { error: 'Failed to save structure mappings', details: insertMappingsErr.message },
+          { status: 500 }
+        );
+      }
     }
 
     // Replace terms and term exams
@@ -146,9 +166,27 @@ export async function PUT(
           { status: 400 }
         );
       }
-      await supabase.from('exam_term_exams').delete().in('term_id', existingTermIds);
+      const { error: deleteTermExamsErr } = await supabase
+        .from('exam_term_exams')
+        .delete()
+        .in('term_id', existingTermIds);
+      if (deleteTermExamsErr) {
+        return NextResponse.json(
+          { error: 'Failed to reset existing term examinations', details: deleteTermExamsErr.message },
+          { status: 500 }
+        );
+      }
     }
-    await supabase.from('exam_terms').delete().eq('structure_id', id);
+    const { error: deleteTermsErr } = await supabase
+      .from('exam_terms')
+      .delete()
+      .eq('structure_id', id);
+    if (deleteTermsErr) {
+      return NextResponse.json(
+        { error: 'Failed to reset existing terms', details: deleteTermsErr.message },
+        { status: 500 }
+      );
+    }
 
     if (terms.length > 0) {
       const termRows = terms.map((t) => ({
@@ -157,14 +195,27 @@ export async function PUT(
         class_id: mappings[0]?.class_id || null,
         section: mappings[0]?.section || '',
         structure_id: id,
+        // Legacy compatibility: some DBs still enforce not-null on old columns.
+        term_name: String(t.name || '').trim(),
+        term_order: Number(t.serial || 1),
         name: String(t.name || '').trim(),
         normalized_name: String(t.name || '').trim().toLowerCase(),
         slug: String(t.name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
         serial: Number(t.serial || 1),
+        academic_year: String(t.academic_year || fallbackAcademicYear || '').trim() || null,
         is_active: true,
         is_deleted: false,
       }));
-      const { data: insertedTerms } = await supabase.from('exam_terms').insert(termRows).select();
+      const { data: insertedTerms, error: insertTermsErr } = await supabase
+        .from('exam_terms')
+        .insert(termRows)
+        .select();
+      if (insertTermsErr || !insertedTerms) {
+        return NextResponse.json(
+          { error: 'Failed to save terms', details: insertTermsErr?.message || 'No terms inserted' },
+          { status: 500 }
+        );
+      }
       const examRows: Array<{ term_id: string; exam_name: string; serial: number; weightage: number; is_active: boolean }> = [];
       (insertedTerms || []).forEach((term, idx) => {
         const original = terms[idx];
@@ -181,12 +232,21 @@ export async function PUT(
         });
       });
       if (examRows.length > 0) {
-        await supabase.from('exam_term_exams').insert(examRows);
+        const { error: insertTermExamsErr } = await supabase
+          .from('exam_term_exams')
+          .insert(examRows);
+        if (insertTermExamsErr) {
+          return NextResponse.json(
+            { error: 'Failed to save examinations under terms', details: insertTermExamsErr.message },
+            { status: 500 }
+          );
+        }
       }
     }
 
     return NextResponse.json({ data: { success: true } }, { status: 200 });
   } catch (e) {
+    console.error('term-structures DELETE error:', e);
     return NextResponse.json(
       { error: 'Internal server error', details: e instanceof Error ? e.message : 'Unknown' },
       { status: 500 }

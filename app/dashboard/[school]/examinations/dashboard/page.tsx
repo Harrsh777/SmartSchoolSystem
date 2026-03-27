@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -32,6 +32,7 @@ interface Exam {
   }>;
   subject_mappings?: Array<{
     subject_id: string;
+    max_marks?: number;
     subject: {
       id: string;
       name: string;
@@ -43,6 +44,12 @@ interface TermOption {
   id: string;
   name: string;
   serial?: number;
+  structure_id?: string | null;
+}
+
+interface StructureOption {
+  id: string;
+  name: string;
 }
 
 export default function ExaminationDashboardPage({
@@ -58,10 +65,16 @@ export default function ExaminationDashboardPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [terms, setTerms] = useState<TermOption[]>([]);
   const [termFilter, setTermFilter] = useState<'all' | 'unassigned' | string>('all');
+  const [structures, setStructures] = useState<StructureOption[]>([]);
+  const [activeStructureId, setActiveStructureId] = useState('');
+  const [activeStructureTerm, setActiveStructureTerm] = useState<string>('unassigned');
+  const [structureTerms, setStructureTerms] = useState<Array<TermOption & { exams?: Array<{ id?: string; exam_name: string; serial?: number; weightage?: number }> }>>([]);
+  const [loadingStructureDetail, setLoadingStructureDetail] = useState(false);
 
   useEffect(() => {
     fetchExams();
     fetchTerms();
+    fetchStructures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
@@ -90,6 +103,25 @@ export default function ExaminationDashboardPage({
       }
     } catch (error) {
       console.error('Error fetching terms:', error);
+    }
+  };
+
+  const fetchStructures = async () => {
+    try {
+      const response = await fetch(`/api/term-structures?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (response.ok && Array.isArray(result.data)) {
+        const list = (result.data as StructureOption[]).map((s) => ({ id: String(s.id), name: String(s.name || '') }));
+        setStructures(list);
+        if (list.length > 0) {
+          setActiveStructureId((prev) => prev || list[0].id);
+        } else {
+          setActiveStructureId('');
+          setStructureTerms([]);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching structures:', error);
     }
   };
 
@@ -153,6 +185,75 @@ export default function ExaminationDashboardPage({
 
     return true;
   });
+
+  const mergedTerms = useMemo(() => {
+    const map = new Map<string, TermOption>();
+    terms.forEach((t) => map.set(String(t.id), { id: String(t.id), name: String(t.name || ''), serial: Number(t.serial || 0) }));
+    exams.forEach((e) => {
+      const t = e.term;
+      if (t?.id && !map.has(String(t.id))) {
+        map.set(String(t.id), {
+          id: String(t.id),
+          name: String(t.name || ''),
+          serial: Number(t.serial || 0),
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => Number(a.serial || 0) - Number(b.serial || 0));
+  }, [terms, exams]);
+
+  const termNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    mergedTerms.forEach((t) => m.set(String(t.id), `${t.serial ? `${t.serial}. ` : ''}${t.name}`.trim()));
+    return m;
+  }, [mergedTerms]);
+
+  useEffect(() => {
+    if (structureTerms.length > 0 && activeStructureTerm === 'unassigned') {
+      setActiveStructureTerm(String(structureTerms[0].id));
+    }
+  }, [structureTerms, activeStructureTerm]);
+
+  useEffect(() => {
+    const loadStructureDetail = async () => {
+      if (!activeStructureId) {
+        setStructureTerms([]);
+        setActiveStructureTerm('unassigned');
+        return;
+      }
+      try {
+        setLoadingStructureDetail(true);
+        const response = await fetch(
+          `/api/term-structures/${activeStructureId}?school_code=${encodeURIComponent(schoolCode)}`
+        );
+        const result = await response.json();
+        if (response.ok && result.data) {
+          const termsList = (result.data.terms || []) as Array<TermOption & { exams?: Array<{ id?: string; exam_name: string; serial?: number; weightage?: number }> }>;
+          setStructureTerms(termsList);
+          setActiveStructureTerm(termsList[0]?.id ? String(termsList[0].id) : 'unassigned');
+        } else {
+          setStructureTerms([]);
+          setActiveStructureTerm('unassigned');
+        }
+      } catch (error) {
+        console.error('Error fetching structure detail:', error);
+        setStructureTerms([]);
+        setActiveStructureTerm('unassigned');
+      } finally {
+        setLoadingStructureDetail(false);
+      }
+    };
+    loadStructureDetail();
+  }, [activeStructureId, schoolCode]);
+
+  const structureViewExams = useMemo(() => {
+    if (activeStructureTerm === 'unassigned') return exams.filter((e) => !e.term_id);
+    return exams.filter((e) => String(e.term_id || '') === activeStructureTerm);
+  }, [activeStructureTerm, exams]);
+  const selectedStructureTerm = useMemo(
+    () => structureTerms.find((t) => String(t.id) === activeStructureTerm) || null,
+    [structureTerms, activeStructureTerm]
+  );
 
   const assignTermToExam = async (examId: string, termId: string) => {
     try {
@@ -278,7 +379,7 @@ export default function ExaminationDashboardPage({
             >
               <option value="all">All Terms</option>
               <option value="unassigned">No Term Assigned</option>
-              {terms.map((t) => (
+              {mergedTerms.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.serial ? `${t.serial}. ` : ''}{t.name}
                 </option>
@@ -347,7 +448,9 @@ export default function ExaminationDashboardPage({
                       <div className="flex items-center gap-2 text-gray-700">
                         <span className="font-medium">Term:</span>
                         <span>
-                          {exam.term?.name ? `${exam.term.serial ? `${exam.term.serial}. ` : ''}${exam.term.name}` : 'No Term Assigned'}
+                          {exam.term_id
+                            ? termNameById.get(String(exam.term_id)) || (exam.term?.name ? `${exam.term.serial ? `${exam.term.serial}. ` : ''}${exam.term.name}` : 'No Term Assigned')
+                            : 'No Term Assigned'}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-gray-700">
@@ -393,7 +496,7 @@ export default function ExaminationDashboardPage({
                           onClick={(e) => e.stopPropagation()}
                         >
                           <option value="">No Term Assigned</option>
-                          {terms.map((t) => (
+                          {mergedTerms.map((t) => (
                             <option key={t.id} value={t.id}>
                               {t.serial ? `${t.serial}. ` : ''}{t.name}
                             </option>
@@ -419,6 +522,128 @@ export default function ExaminationDashboardPage({
           })}
         </div>
       )}
+
+      {/* Integrated Exam Structure View */}
+      <Card className="p-4 md:p-6 border border-violet-100 rounded-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900">Exam Structure, Terms & Schedule</h2>
+          <p className="text-sm text-gray-500">Structure-first planning and live exam visibility</p>
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+          <Card className="p-3 border border-slate-200 rounded-xl">
+            <h3 className="font-semibold mb-2 text-slate-900">Structures</h3>
+            <div className="space-y-2 max-h-[420px] overflow-auto pr-1">
+              {structures.map((structure) => (
+                <button
+                  key={structure.id}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg border transition ${
+                    activeStructureId === structure.id
+                      ? 'bg-violet-50 border-violet-300 text-violet-900'
+                      : 'bg-white border-slate-200 text-slate-700 hover:border-violet-200'
+                  }`}
+                  onClick={() => setActiveStructureId(structure.id)}
+                >
+                  <p className="font-medium">{structure.name}</p>
+                </button>
+              ))}
+              {structures.length === 0 ? <p className="text-sm text-slate-500">No structures found.</p> : null}
+            </div>
+          </Card>
+
+          <Card className="p-3 border border-slate-200 rounded-xl">
+            <h3 className="font-semibold mb-2 text-slate-900">Terms in Structure</h3>
+            <div className="space-y-2">
+              {loadingStructureDetail ? (
+                <p className="text-sm text-slate-500">Loading terms...</p>
+              ) : structureTerms.length === 0 ? (
+                <p className="text-sm text-slate-500">No terms in selected structure.</p>
+              ) : null}
+              {structureTerms.map((term) => (
+                <button
+                  key={term.id}
+                  className={`w-full text-left px-3 py-2 rounded-lg border transition ${
+                    activeStructureTerm === String(term.id)
+                      ? 'bg-violet-50 border-violet-300'
+                      : 'bg-slate-50 border-slate-200 hover:border-violet-200'
+                  }`}
+                  onClick={() => setActiveStructureTerm(String(term.id))}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{term.serial ? `${term.serial}. ` : ''}{term.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-white border border-slate-200">
+                      {(term.exams || []).length} exams
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          <div className="xl:col-span-2 space-y-3">
+            <Card className="p-4 border border-slate-200 rounded-xl">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="font-semibold text-slate-900">
+                  {selectedStructureTerm
+                    ? `${selectedStructureTerm.serial ? `${selectedStructureTerm.serial}. ` : ''}${selectedStructureTerm.name}`
+                    : 'Select a term'}
+                </h3>
+                {selectedStructureTerm ? (
+                  <span className="text-xs px-2 py-1 rounded-full border bg-violet-50 text-violet-700 border-violet-200">
+                    {(selectedStructureTerm.exams || []).length} template exam(s)
+                  </span>
+                ) : null}
+              </div>
+              {selectedStructureTerm && (selectedStructureTerm.exams || []).length > 0 ? (
+                <div className="space-y-2">
+                  {(selectedStructureTerm.exams || []).map((ex, idx) => (
+                    <div key={`${ex.exam_name}-${idx}`} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                      <p className="text-sm text-slate-800">{ex.serial ? `${ex.serial}. ` : ''}{ex.exam_name}</p>
+                      <span className="text-xs text-slate-600">{Number(ex.weightage || 0).toFixed(2)}%</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">No exam templates under this term.</p>
+              )}
+            </Card>
+
+            <Card className="p-4 border border-slate-200 rounded-xl">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h4 className="font-semibold text-slate-900">Created Examinations in this Term</h4>
+                <button
+                  className="text-xs px-2 py-1 rounded-md border border-slate-200 hover:border-violet-200"
+                  onClick={() => setActiveStructureTerm('unassigned')}
+                >
+                  View Unassigned
+                </button>
+              </div>
+              <div className="space-y-3">
+                {structureViewExams.map((exam) => (
+                  <div key={`structure-${exam.id}`} className="p-3 rounded-lg border border-slate-200 bg-white">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-semibold text-slate-900">{exam.exam_name}</h3>
+                      <span className={`px-2 py-1 rounded-full text-xs border ${getStatusColor(getExamStatus(exam))}`}>
+                        {getExamStatus(exam)}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm text-slate-600">
+                      {(exam.subject_mappings || []).length} subject(s), {(exam.class_mappings || []).length} class mapping(s)
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {new Date(exam.start_date).toLocaleDateString()} - {new Date(exam.end_date).toLocaleDateString()}
+                    </div>
+                  </div>
+                ))}
+                {structureViewExams.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    {activeStructureTerm === 'unassigned' ? 'No unassigned exams.' : 'No created examinations for this term yet.'}
+                  </p>
+                ) : null}
+              </div>
+            </Card>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

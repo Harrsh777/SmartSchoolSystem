@@ -185,3 +185,29 @@ create index if not exists idx_exam_subject_mappings_exam_class_subject
 create index if not exists idx_exam_schedules_exam_date_time
   on public.exam_schedules (exam_id, exam_date, start_time, end_time);
 
+-- 7) Academic year alignment (term structure driven flow)
+-- Keep academic year at term level and propagate to examinations.
+alter table public.exam_terms
+  add column if not exists academic_year text;
+
+create index if not exists idx_exam_terms_academic_year
+  on public.exam_terms (school_code, academic_year, is_deleted, is_active);
+
+-- Backfill empty term academic year using class academic year where possible.
+update public.exam_terms t
+set academic_year = c.academic_year
+from public.classes c
+where t.class_id = c.id
+  and (t.academic_year is null or btrim(t.academic_year) = '')
+  and c.academic_year is not null
+  and btrim(c.academic_year) <> '';
+
+-- Backfill examination academic year from linked term, if missing.
+update public.examinations e
+set academic_year = t.academic_year
+from public.exam_terms t
+where e.term_id = t.id
+  and (e.academic_year is null or btrim(e.academic_year) = '')
+  and t.academic_year is not null
+  and btrim(t.academic_year) <> '';
+

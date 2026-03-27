@@ -1254,7 +1254,6 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Examination Dashboard', path: '/examinations/dashboard', category: 'Examinations', icon: BarChart3, parent: 'Examinations' },
     { label: 'Create Examination', path: '/examinations/create', category: 'Examinations', icon: FileText, parent: 'Examinations' },
     { label: 'Add Term Structure', path: '/examinations/terms', category: 'Examinations', icon: BookOpen, parent: 'Examinations' },
-    { label: 'Exam Structure View', path: '/examinations/structure', category: 'Examinations', icon: CalendarDays, parent: 'Examinations' },
     { label: 'Grade Scale', path: '/examinations/grade-scale', category: 'Examinations', icon: GraduationCap, parent: 'Examinations' },
     { label: 'Examination Reports', path: '/examinations/reports', category: 'Examinations', icon: BarChart3, parent: 'Examinations' },
     { label: 'Report Card', path: '/report-card', category: 'Report Card', icon: Award },

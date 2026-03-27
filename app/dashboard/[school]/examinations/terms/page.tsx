@@ -10,6 +10,7 @@ type EditorRow = { serial: number; name: string };
 type TermExamRow = { serial: number; exam_name: string; weightage: number };
 type EditorTerm = { serial: number; name: string; exams: TermExamRow[] };
 type Structure = { id: string; name: string; created_at?: string };
+type AcademicYearOption = { year_name?: string; is_current?: boolean };
 
 export default function TermsPage({ params }: { params: Promise<{ school: string }> }) {
   const { school: schoolCode } = use(params);
@@ -21,6 +22,8 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
   const [selectedStructureId, setSelectedStructureId] = useState('');
   const [newStructureName, setNewStructureName] = useState('');
   const [rows, setRows] = useState<EditorTerm[]>([{ serial: 1, name: '', exams: [{ serial: 1, exam_name: '', weightage: 0 }] }]);
+  const [academicYears, setAcademicYears] = useState<string[]>([]);
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState('');
   const [saving, setSaving] = useState(false);
   const [deletingStructureId, setDeletingStructureId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
@@ -42,6 +45,21 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
       const list = (sJson.data || []) as Structure[];
       setStructures(list);
       if (list.length > 0) setSelectedStructureId(list[0].id);
+
+      const ayRes = await fetch(`/api/academic-year-management/years?school_code=${encodeURIComponent(schoolCode)}`);
+      const ayJson = await ayRes.json();
+      if (ayRes.ok && Array.isArray(ayJson.data)) {
+        const options = (ayJson.data as AcademicYearOption[])
+          .map((r) => String(r.year_name || '').trim())
+          .filter(Boolean);
+        setAcademicYears(options);
+        const current = (ayJson.data as AcademicYearOption[]).find((r) => r.is_current && r.year_name)?.year_name;
+        if (current) {
+          setSelectedAcademicYear(String(current));
+        } else if (options.length > 0) {
+          setSelectedAcademicYear(options[0]);
+        }
+      }
     };
     run();
   }, [schoolCode]);
@@ -76,6 +94,8 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
             : [{ serial: 1, exam_name: '', weightage: 0 }],
       }));
       setRows(termRows.length > 0 ? termRows : [{ serial: 1, name: '', exams: [{ serial: 1, exam_name: '', weightage: 0 }] }]);
+      const loadedAcademicYear = String(detail.terms?.[0]?.academic_year || '').trim();
+      if (loadedAcademicYear) setSelectedAcademicYear(loadedAcademicYear);
     };
     loadStructure();
   }, [selectedStructureId, schoolCode, classes]);
@@ -148,6 +168,10 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
       ),
     [rows]
   );
+  const selectedStructure = useMemo(
+    () => structures.find((s) => s.id === selectedStructureId) || null,
+    [structures, selectedStructureId]
+  );
 
   const createStructure = async () => {
     if (!newStructureName.trim()) return;
@@ -207,6 +231,7 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
       const termsPayload = cleanRows.map((t) => ({
         serial: t.serial,
         name: t.name,
+        academic_year: selectedAcademicYear,
         exams: (t.exams || [])
           .filter((e) => String(e.exam_name || '').trim())
           .map((e) => ({
@@ -220,13 +245,15 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
+          academic_year: selectedAcademicYear,
           mappings,
           terms: termsPayload,
         }),
       });
       const json = await res.json();
       if (!res.ok) {
-        setMsg(json.error || 'Failed to save structure');
+        const details = json?.details ? ` (${json.details})` : '';
+        setMsg((json.error || 'Failed to save structure') + details);
         return;
       }
       setMsg('Structure saved successfully');
@@ -264,8 +291,37 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
     }
   };
 
+  const goToNextStep = () => {
+    if (step === 1 && !selectedStructureId) {
+      setMsg('Please create or select a structure before moving to next step');
+      return;
+    }
+    if (step === 1 && !selectedAcademicYear.trim()) {
+      setMsg('Please select an academic year before moving to next step');
+      return;
+    }
+    if (step === 2 && selectedSectionRows.length === 0) {
+      setMsg('Please map at least one class-section before moving to next step');
+      return;
+    }
+    if (step === 3) {
+      const validTerms = rows.filter((r) => String(r.name).trim() && Number(r.serial) > 0);
+      if (validTerms.length === 0) {
+        setMsg('Please add at least one valid term before moving to next step');
+        return;
+      }
+    }
+    setMsg('');
+    setStep((prev) => (prev < 4 ? ((prev + 1) as 1 | 2 | 3 | 4) : prev));
+  };
+
+  const goToPrevStep = () => {
+    setMsg('');
+    setStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3 | 4) : prev));
+  };
+
   return (
-    <div className="space-y-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="space-y-6 p-6 bg-[#f5f1fb] min-h-screen">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Add Term Structure</h1>
@@ -274,7 +330,7 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
         <Button onClick={() => router.push(`/dashboard/${schoolCode}/examinations/dashboard`)}>Back</Button>
       </div>
 
-      <Card className="p-4 md:p-5">
+      <Card className="p-4 md:p-5 rounded-2xl border border-violet-100">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
           {stepItems.map((s) => (
             <button
@@ -282,8 +338,8 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
               onClick={() => setStep(s.id as 1 | 2 | 3 | 4)}
               className={`text-left px-3 py-3 rounded-xl text-sm border transition ${
                 step === s.id
-                  ? 'bg-[#5A7A95] text-white border-[#5A7A95] shadow-sm'
-                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#5A7A95]/50'
+                  ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
+                  : 'bg-white text-slate-700 border-slate-200 hover:border-violet-300'
               }`}
             >
               <p className="font-semibold">Step {s.id}: {s.title}</p>
@@ -299,21 +355,24 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
         </Card>
       ) : null}
 
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2 space-y-4">
       {step === 1 && (
-        <Card className="p-4 md:p-5 space-y-4">
-          <h2 className="font-semibold text-slate-900">Create / Select Structure</h2>
+        <Card className="p-4 md:p-6 space-y-4 rounded-2xl border border-violet-100">
+          <h2 className="font-semibold text-slate-900 text-xl">Create / Select Structure</h2>
+          <p className="text-sm text-slate-600">Create a new structure or continue editing an existing one.</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input
-              className="border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-[#5A7A95]/30 focus:outline-none"
+              className="border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-violet-300 focus:outline-none"
               placeholder="e.g., Senior Student Structure"
               value={newStructureName}
               onChange={(e) => setNewStructureName(e.target.value)}
             />
-            <Button onClick={createStructure} disabled={saving || !newStructureName.trim()}>
+            <Button onClick={createStructure} disabled={saving || !newStructureName.trim()} className="bg-violet-600 hover:bg-violet-700 text-white">
               Create Structure
             </Button>
             <select
-              className="border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-[#5A7A95]/30 focus:outline-none"
+              className="border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-violet-300 focus:outline-none"
               value={selectedStructureId}
               onChange={(e) => setSelectedStructureId(e.target.value)}
             >
@@ -325,13 +384,31 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
               ))}
             </select>
           </div>
+          <div className="max-w-md">
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Academic Year <span className="text-red-500">*</span>
+            </label>
+            <select
+              className="w-full border border-slate-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-violet-300 focus:outline-none"
+              value={selectedAcademicYear}
+              onChange={(e) => setSelectedAcademicYear(e.target.value)}
+            >
+              <option value="">Select academic year</option>
+              {academicYears.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">This year will be applied to all terms in this structure.</p>
+          </div>
         </Card>
       )}
 
       {step === 2 && (
-        <Card className="p-4 md:p-5">
+        <Card className="p-4 md:p-6 rounded-2xl border border-violet-100">
           <div className="mb-4">
-            <h2 className="font-semibold text-slate-900">Map Classes & Sections</h2>
+            <h2 className="font-semibold text-slate-900 text-xl">Map Classes & Sections</h2>
             <p className="text-sm text-slate-600 mt-1">Select all class-section combinations this structure applies to.</p>
           </div>
           <div className="space-y-3 max-h-[540px] overflow-auto pr-1">
@@ -357,10 +434,10 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
       )}
 
       {step === 3 && (
-        <Card className="p-4 md:p-5 space-y-3">
+        <Card className="p-4 md:p-6 space-y-3 rounded-2xl border border-violet-100">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-slate-900">Add Terms</h2>
-            <Button variant="outline" onClick={addRow}>Add Term</Button>
+            <h2 className="font-semibold text-slate-900 text-xl">Add Terms</h2>
+            <Button variant="outline" onClick={addRow}>+ Add Term</Button>
           </div>
           {rows.map((row, index) => (
             <div key={index} className="grid grid-cols-12 gap-2 items-center border border-slate-200 rounded-xl p-2 bg-white">
@@ -387,9 +464,9 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
       )}
 
       {step === 4 && (
-        <Card className="p-4 md:p-5 space-y-4">
+        <Card className="p-4 md:p-6 space-y-4 rounded-2xl border border-violet-100">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-semibold text-slate-900">Add Examinations Under Terms</h2>
+            <h2 className="font-semibold text-slate-900 text-xl">Add Examinations Under Terms</h2>
             <span
               className={`text-xs px-2 py-1 rounded-full border ${
                 Math.abs(totalStructureWeightage - 100) <= 0.0001
@@ -441,62 +518,77 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
           ))}
         </Card>
       )}
-
-      <Card className="p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border border-slate-200">
-        <div className="text-sm text-slate-700">
-          <span className="font-semibold">{selectedStructureId ? 'Structure selected' : 'No structure selected'}</span>
-          <span className="mx-2 text-slate-400">•</span>
-          <span>{selectedSectionRows.length} mapped section(s)</span>
         </div>
-        <Button onClick={applyTerms} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Structure'}
-        </Button>
-      </Card>
 
-      {selectedSectionRows.length > 0 ? (
-        <Card className="p-4">
-          <h3 className="font-semibold text-slate-900 mb-2">Selected Sections</h3>
-          <div className="flex flex-wrap gap-2">
-            {selectedSectionRows.map((r) => (
-              <span key={r.id} className="px-2.5 py-1 rounded-full text-xs bg-[#5A7A95]/10 text-[#35536b] border border-[#5A7A95]/20">
-                {r.class}-{r.section}
-              </span>
-            ))}
-          </div>
-        </Card>
-      ) : null}
+        <div className="space-y-4">
+          <Card className="p-4 rounded-2xl border border-violet-200">
+            <p className="text-xs uppercase tracking-wide text-violet-700 font-semibold mb-2">Selection Summary</p>
+            <p className="text-sm text-slate-600">Structure selected</p>
+            <p className="font-semibold text-slate-900 mt-1">{selectedStructure?.name || 'None'}</p>
+            <p className="text-sm text-slate-600 mt-3">Academic year</p>
+            <p className="font-semibold text-slate-900 mt-1">{selectedAcademicYear || 'Not selected'}</p>
+            <p className="text-sm text-slate-600 mt-3">{selectedSectionRows.length} mapped section(s)</p>
+            {selectedSectionRows.length > 0 ? (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {selectedSectionRows.slice(0, 6).map((r) => (
+                  <span key={r.id} className="px-2 py-0.5 rounded-full text-xs bg-violet-50 text-violet-700 border border-violet-200">
+                    {r.class}-{r.section}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </Card>
 
-      <Card className="p-4 md:p-5">
-        <h3 className="font-semibold mb-3 text-slate-900">Saved Structures</h3>
-        <div className="space-y-2">
-          {structures.map((s) => (
-            <div
-              key={s.id}
-              className={`w-full px-3 py-2.5 border rounded-xl transition flex items-center justify-between gap-3 ${
-                selectedStructureId === s.id
-                  ? 'border-[#5A7A95] bg-[#5A7A95]/8 text-slate-900'
-                  : 'border-slate-200 bg-white text-slate-700'
-              }`}
-            >
-              <button
-                onClick={() => {
-                  setSelectedStructureId(s.id);
-                  setStep(2);
-                }}
-                className="text-left flex-1"
-              >
-                {s.name}
-              </button>
-              <Button
-                variant="outline"
-                onClick={() => deleteStructure(s.id, s.name)}
-                disabled={deletingStructureId === s.id}
-              >
-                {deletingStructureId === s.id ? 'Deleting...' : 'Delete'}
-              </Button>
+          <Card className="p-4 md:p-5 rounded-2xl border border-violet-100">
+            <h3 className="font-semibold mb-3 text-slate-900">Saved Structures</h3>
+            <div className="space-y-2">
+              {structures.map((s) => (
+                <div
+                  key={s.id}
+                  className={`w-full px-3 py-2.5 border rounded-xl transition flex items-center justify-between gap-3 ${
+                    selectedStructureId === s.id
+                      ? 'border-violet-400 bg-violet-50 text-slate-900'
+                      : 'border-slate-200 bg-white text-slate-700'
+                  }`}
+                >
+                  <button
+                    onClick={() => {
+                      setSelectedStructureId(s.id);
+                      setStep(2);
+                    }}
+                    className="text-left flex-1"
+                  >
+                    {s.name}
+                  </button>
+                  <Button
+                    variant="outline"
+                    onClick={() => deleteStructure(s.id, s.name)}
+                    disabled={deletingStructureId === s.id}
+                  >
+                    {deletingStructureId === s.id ? 'Deleting...' : 'Delete'}
+                  </Button>
+                </div>
+              ))}
+              {structures.length === 0 ? <p className="text-sm text-gray-500">No structures yet.</p> : null}
             </div>
-          ))}
-          {structures.length === 0 ? <p className="text-sm text-gray-500">No structures yet.</p> : null}
+          </Card>
+        </div>
+      </div>
+
+      <Card className="p-4 md:p-5 rounded-2xl border border-violet-100">
+        <div className="flex items-center justify-between">
+          <Button variant="outline" onClick={goToPrevStep} disabled={step === 1}>
+            Back
+          </Button>
+          {step < 4 ? (
+            <Button onClick={goToNextStep} className="bg-violet-600 hover:bg-violet-700 text-white">
+              Save & Continue
+            </Button>
+          ) : (
+            <Button onClick={applyTerms} disabled={saving} className="bg-violet-600 hover:bg-violet-700 text-white">
+              {saving ? 'Saving...' : 'Save Structure'}
+            </Button>
+          )}
         </div>
       </Card>
     </div>

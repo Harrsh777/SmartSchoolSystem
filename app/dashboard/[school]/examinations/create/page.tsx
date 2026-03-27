@@ -54,12 +54,17 @@ interface TermOption {
   name: string;
   class_id: string;
   section: string;
+  academic_year?: string;
   serial?: number;
   exams?: Array<{ id?: string; exam_name: string; serial?: number }>;
 }
 interface TermStructureOption {
   id: string;
   name: string;
+}
+interface StructureMapping {
+  class_id: string;
+  section: string;
 }
 
 export default function CreateExaminationPage({
@@ -77,11 +82,12 @@ export default function CreateExaminationPage({
   const [structures, setStructures] = useState<TermStructureOption[]>([]);
   const [selectedStructureId, setSelectedStructureId] = useState('');
   const [selectedTemplateExam, setSelectedTemplateExam] = useState('');
+  const [structureMappings, setStructureMappings] = useState<StructureMapping[]>([]);
 
   // Step 1: Exam Metadata
   const [examMetadata, setExamMetadata] = useState({
     exam_name: '',
-    academic_year: new Date().getFullYear().toString(),
+    academic_year: '',
     start_date: '',
     end_date: '',
     description: '',
@@ -139,43 +145,12 @@ export default function CreateExaminationPage({
   };
 
   useEffect(() => {
-    // Term selection supports single class-section mapping.
-    // For multi-class exam creation, keep term as unassigned (backward compatible).
-    const loadTerms = async () => {
-      if (selectedClasses.length !== 1 || selectedClasses[0].sections.length !== 1) {
-        setTerms([]);
-      setSelectedTermId('');
-        return;
-      }
-      const sectionId = selectedClasses[0].sections[0];
-      const sectionRow = classes.find((c) => c.id === sectionId);
-      if (!sectionRow) {
-        setTerms([]);
-        setSelectedTermId('');
-        return;
-      }
-      const response = await fetch(
-        `/api/terms?school_code=${schoolCode}&class_id=${encodeURIComponent(sectionId)}&section=${encodeURIComponent(sectionRow.section)}`
-      );
-      const result = await response.json();
-      if (response.ok && Array.isArray(result.data)) {
-        setTerms(result.data);
-        if (selectedTermId && !result.data.some((t: TermOption) => t.id === selectedTermId)) {
-          setSelectedTermId('');
-        }
-      } else {
-        setTerms([]);
-        setSelectedTermId('');
-      }
-    };
-    loadTerms();
-  }, [selectedClasses, classes, schoolCode, selectedTermId]);
-
-  useEffect(() => {
     const loadStructureDetail = async () => {
       if (!selectedStructureId) {
         setTerms([]);
         setSelectedTermId('');
+        setStructureMappings([]);
+        setSelectedClasses([]);
         return;
       }
       const res = await fetch(
@@ -183,35 +158,64 @@ export default function CreateExaminationPage({
       );
       const json = await res.json();
       const t = (json.data?.terms || []) as TermOption[];
+      const mappings = (json.data?.mappings || []) as Array<{ class_id: string; section: string }>;
+      setStructureMappings(mappings.map((m) => ({ class_id: String(m.class_id), section: String(m.section || '') })));
       setTerms(t);
       if (selectedTermId && !t.some((x) => x.id === selectedTermId)) setSelectedTermId('');
+
+      // Auto-prepare mapped class/sections from structure mappings.
+      const mappedRows = mappings
+        .map((m) => classes.find((c) => String(c.id) === String(m.class_id) && String(c.section) === String(m.section || '')))
+        .filter(Boolean) as ClassData[];
+      const grouped = new Map<string, { className: string; sections: string[] }>();
+      mappedRows.forEach((row) => {
+        if (!grouped.has(row.class)) grouped.set(row.class, { className: row.class, sections: [] });
+        const g = grouped.get(row.class)!;
+        if (!g.sections.includes(String(row.id))) g.sections.push(String(row.id));
+      });
+      const autoSelected = Array.from(grouped.values()).map((g) => ({
+        classId: g.sections[0] || '',
+        className: g.className,
+        sections: g.sections,
+      }));
+      setSelectedClasses(autoSelected);
     };
     loadStructureDetail();
-  }, [selectedStructureId, schoolCode, selectedTermId]);
+  }, [selectedStructureId, schoolCode, selectedTermId, classes]);
 
   useEffect(() => {
     if (!selectedTermId) {
       setSelectedTemplateExam('');
+      setExamMetadata((prev) => ({ ...prev, academic_year: '', exam_name: '' }));
       return;
     }
     const term = terms.find((t) => t.id === selectedTermId);
     if (!term) {
       setSelectedTemplateExam('');
+      setExamMetadata((prev) => ({ ...prev, academic_year: '', exam_name: '' }));
       return;
     }
     const firstExam = term.exams && term.exams.length > 0 ? term.exams[0].exam_name : '';
     setSelectedTemplateExam(firstExam || '');
+    setExamMetadata((prev) => ({
+      ...prev,
+      academic_year: String(term.academic_year || '').trim(),
+      exam_name: String(firstExam || '').trim(),
+    }));
   }, [selectedTermId, terms]);
 
   // Step 1: Validate and Save Metadata
   const handleStep1Next = () => {
     const newErrors: Record<string, string> = {};
     
-    if (!examMetadata.exam_name.trim()) {
-      newErrors.exam_name = 'Exam name is required';
+    if (!selectedStructureId) {
+      newErrors.exam_name = 'Please select a term structure first';
     }
-    if (!examMetadata.academic_year.trim()) {
-      newErrors.academic_year = 'Academic year is required';
+    if (!selectedTermId) {
+      newErrors.exam_name = 'Please select a term';
+    }
+    if (!selectedTemplateExam || !examMetadata.exam_name.trim()) {
+      newErrors.exam_name = 'Please select an examination template from Select Term flow';
     }
     if (!examMetadata.start_date) {
       newErrors.start_date = 'Start date is required';
@@ -229,7 +233,7 @@ export default function CreateExaminationPage({
 
     setErrors(newErrors);
     if (Object.keys(newErrors).length === 0) {
-      setCurrentStep(2);
+      handleStep2Next();
     }
   };
 
@@ -268,7 +272,7 @@ export default function CreateExaminationPage({
 
   const handleStep2Next = () => {
     if (selectedClasses.length === 0) {
-      setErrors({ class_selection: 'Please select at least one class' });
+      setErrors({ class_selection: 'No mapped class/section found in selected structure' });
       return;
     }
     
@@ -475,9 +479,9 @@ export default function CreateExaminationPage({
       }
     }
 
-    // Term is required when exactly one class-section is selected (recommended flow).
-    if (selectedClasses.length === 1 && selectedClasses[0].sections.length === 1 && !selectedTermId) {
-      setErrors({ schedule: 'Please select a term for this class and section' });
+    // Term is required for this flow.
+    if (!selectedTermId) {
+      setErrors({ schedule: 'Please select a term before creating examination' });
       return;
     }
 
@@ -548,7 +552,6 @@ export default function CreateExaminationPage({
 
   const steps = [
     { number: 1, title: 'Exam Details', icon: FileText },
-    { number: 2, title: 'Map Classes', icon: Users },
     { number: 3, title: 'Map Subjects', icon: BookOpen },
     { number: 4, title: 'Schedule Exams', icon: Calendar },
   ];
@@ -632,55 +635,23 @@ export default function CreateExaminationPage({
             {currentStep === 1 && (
               <div className="space-y-6">
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Exam Details</h2>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Exam Name <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="text"
-                    value={examMetadata.exam_name}
-                    onChange={(e) => setExamMetadata(prev => ({ ...prev, exam_name: e.target.value }))}
-                    placeholder="e.g., Mid Term Exam, Final Exam"
-                    className={errors.exam_name ? 'border-red-500' : ''}
-                  />
-                  {errors.exam_name && (
-                    <p className="mt-1 text-sm text-red-600">{errors.exam_name}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Academic Year <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="text"
-                    value={examMetadata.academic_year}
-                    onChange={(e) => setExamMetadata(prev => ({ ...prev, academic_year: e.target.value }))}
-                    placeholder="e.g., 2024-2025"
-                    className={errors.academic_year ? 'border-red-500' : ''}
-                  />
-                  {errors.academic_year && (
-                    <p className="mt-1 text-sm text-red-600">{errors.academic_year}</p>
-                  )}
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <label className="block text-sm font-semibold text-slate-800 mb-1">
-                    Structure Flow: Structure → Term → Examination
+                    Select Term
                   </label>
                   <p className="text-xs text-slate-600 mb-3">
-                    Choose a structure first, then a term, and then an examination template to auto-fill exam name.
+                    Structure → Term → Examination. Exam name is auto-filled from the selected examination.
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-slate-600">Step 1: Term Structure</p>
+                      <p className="text-xs font-medium text-slate-600">Step 1: Select Structure</p>
                       <select
                         value={selectedStructureId}
                         onChange={(e) => {
                           setSelectedStructureId(e.target.value);
                           setSelectedTermId('');
                           setSelectedTemplateExam('');
+                          setExamMetadata((prev) => ({ ...prev, exam_name: '', academic_year: '' }));
                         }}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
                       >
@@ -694,18 +665,19 @@ export default function CreateExaminationPage({
                     </div>
 
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-slate-600">Step 2: Term</p>
+                      <p className="text-xs font-medium text-slate-600">Step 2: Select Term</p>
                       <select
                         value={selectedTermId}
                         onChange={(e) => {
                           setSelectedTermId(e.target.value);
                           setSelectedTemplateExam('');
+                          setExamMetadata((prev) => ({ ...prev, exam_name: '' }));
                         }}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100"
                         disabled={!selectedStructureId}
                       >
                         <option value="">
-                          {selectedStructureId ? 'Choose term (or keep unassigned)' : 'Select structure first'}
+                          {selectedStructureId ? 'Choose term' : 'Select structure first'}
                         </option>
                         {terms.map((term) => (
                           <option key={term.id} value={term.id}>
@@ -717,7 +689,7 @@ export default function CreateExaminationPage({
                     </div>
 
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-slate-600">Step 3: Examination Template</p>
+                      <p className="text-xs font-medium text-slate-600">Step 3: Select Examination</p>
                       <select
                         value={selectedTemplateExam}
                         onChange={(e) => {
@@ -740,7 +712,18 @@ export default function CreateExaminationPage({
                       </select>
                     </div>
                   </div>
+                  {examMetadata.academic_year ? (
+                    <p className="mt-3 text-xs text-slate-500">
+                      Academic Year: <span className="font-medium text-slate-700">{examMetadata.academic_year}</span> (auto from selected term)
+                    </p>
+                  ) : null}
                 </div>
+
+                {errors.exam_name && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                    <p className="text-sm text-red-700">{errors.exam_name}</p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -788,8 +771,8 @@ export default function CreateExaminationPage({
 
                 <div className="flex justify-end pt-4">
                   <Button onClick={handleStep1Next}>
-                    Next: Map Classes
-                    <ArrowRight size={18} className="ml-2" />
+                    Next: Map Subjects
+                   
                   </Button>
                 </div>
               </div>
@@ -987,7 +970,7 @@ export default function CreateExaminationPage({
                 </div>
 
                 <div className="flex justify-between pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(2)}>
+                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
                     <ArrowLeft size={18} className="mr-2" />
                     Previous
                   </Button>

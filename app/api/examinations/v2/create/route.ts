@@ -7,7 +7,6 @@ export async function POST(request: NextRequest) {
     const {
       school_code,
       exam_name,
-      academic_year,
       start_date,
       end_date,
       description,
@@ -17,6 +16,7 @@ export async function POST(request: NextRequest) {
       schedules,
       created_by,
     } = body;
+    let academic_year = body.academic_year;
 
     console.log('Received examination creation request:', {
       school_code,
@@ -27,10 +27,26 @@ export async function POST(request: NextRequest) {
       schedules_count: schedules?.length || 0,
     });
 
+    // Resolve academic year from term when UI does not send it directly.
+    if ((!academic_year || !String(academic_year).trim()) && term_id) {
+      const { data: termYear } = await supabase
+        .from('exam_terms')
+        .select('academic_year')
+        .eq('id', term_id)
+        .maybeSingle();
+      academic_year = String(termYear?.academic_year || '').trim();
+    }
+
     // Validation
-    if (!school_code || !exam_name || !academic_year || !start_date || !end_date) {
+    if (!school_code || !exam_name || !start_date || !end_date) {
       return NextResponse.json(
         { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+    if (!academic_year || !String(academic_year).trim()) {
+      return NextResponse.json(
+        { error: 'Academic year is required. Select a term with configured academic year.' },
         { status: 400 }
       );
     }
@@ -75,7 +91,7 @@ export async function POST(request: NextRequest) {
       school_id: schoolData.id,
       school_code: school_code,
       exam_name: exam_name.trim(),
-      academic_year: academic_year.trim(),
+      academic_year: String(academic_year).trim(),
       start_date: start_date,
       end_date: end_date,
       description: description || null,
