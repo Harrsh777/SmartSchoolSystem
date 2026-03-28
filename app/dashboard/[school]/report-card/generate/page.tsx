@@ -244,8 +244,8 @@ export default function ReportCardGeneratePage({
   };
 
   return (
-    <div className="space-y-6 pb-4 bg-[#ECEDED]">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+    <div className="space-y-6 max-w-full overflow-x-hidden">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center shadow-lg">
@@ -263,7 +263,7 @@ export default function ReportCardGeneratePage({
         </div>
       </motion.div>
 
-      <div className="flex gap-2 mb-6 flex-wrap">
+      <div className="flex gap-2 mb-4 flex-wrap">
         {[1, 2, 3, 4].map((s) => (
           <div
             key={s}
@@ -277,7 +277,7 @@ export default function ReportCardGeneratePage({
         ))}
       </div>
 
-      <Card>
+      <Card className="overflow-x-hidden">
         {submitMessage ? (
           <div className={`mx-6 mt-6 rounded-lg border px-4 py-3 text-sm ${
             submitMessage.type === 'success'

@@ -42,6 +42,7 @@ import {
   GraduationCap,
   GripVertical,
   ClipboardList,
+  Palette,
   BarChart3,
   Tag,
   CreditCard,
@@ -1267,6 +1268,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Marks', path: '/marks', category: 'Marks', icon: GraduationCap },
     { label: 'Marks Dashboard', path: '/marks', category: 'Marks', icon: FileBarChart, parent: 'Marks' },
     { label: 'Mark Entry', path: '/marks-entry', category: 'Marks', icon: ClipboardList, parent: 'Marks' },
+    { label: 'Non-Scholastic Marks', path: '/marks/non-scholastic-marks', category: 'Marks', icon: Palette, parent: 'Marks' },
     
     // Fees - V2 System (Primary) + Legacy
     { label: 'Fees', path: '/fees', category: 'Fees', icon: IndianRupee },
@@ -2086,7 +2088,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
         </AnimatePresence>
 
         {/* Main Content */}
-        <main className="flex-1 lg:ml-0 bg-background min-h-[calc(100vh-4rem)]">
+        <main className="flex-1 min-h-0 lg:ml-0 bg-background">
           <div className="p-4 sm:p-6 lg:p-8">
             {/* Back button - show on all module pages except home */}
             {pathname !== basePath && pathname !== `${basePath}/` && (

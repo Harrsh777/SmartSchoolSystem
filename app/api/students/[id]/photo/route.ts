@@ -34,27 +34,23 @@ export async function GET(
       return NextResponse.json({ error: 'No photo' }, { status: 404 });
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const isOurStorage =
-      supabaseUrl &&
-      photoUrl.startsWith(supabaseUrl) &&
-      photoUrl.includes('/storage/v1/object/') &&
-      photoUrl.includes('student-photos');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
+    const trimmed = photoUrl.trim();
+    const signableBuckets = new Set(['student-photos', 'school-media']);
 
-    if (isOurStorage) {
-      const match = photoUrl.match(/\/object\/public\/student-photos\/(.+)$/);
-      const filePath = match ? match[1] : null;
-      if (filePath) {
-        const { data: signed } = await supabase.storage
-          .from('student-photos')
-          .createSignedUrl(filePath, 3600);
+    if (supabaseUrl && trimmed.startsWith(supabaseUrl) && trimmed.includes('/storage/v1/object/public/')) {
+      const match = trimmed.match(/\/object\/public\/([^/?#]+)\/(.+)$/);
+      const bucket = match?.[1];
+      const filePath = match?.[2];
+      if (bucket && filePath && signableBuckets.has(bucket)) {
+        const { data: signed } = await supabase.storage.from(bucket).createSignedUrl(filePath, 3600);
         if (signed?.signedUrl) {
           return NextResponse.redirect(signed.signedUrl);
         }
       }
     }
 
-    return NextResponse.redirect(photoUrl.trim());
+    return NextResponse.redirect(trimmed);
   } catch (err) {
     console.error('Student photo route error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -51,11 +51,11 @@ export async function GET(request: NextRequest) {
         const filteredSubjects = (allSubjects || []).filter((subject: { id: string }) => assignedSubjectIds.has(subject.id));
         return NextResponse.json({ data: filteredSubjects }, { status: 200 });
       }
-      // If no assignments found, return all subjects (backward compatibility)
-      // This allows classes without assigned subjects to see all subjects
+      // Class was specified but has no subject mappings — return empty (exams/timetable use class curriculum only)
+      return NextResponse.json({ data: [] }, { status: 200 });
     }
 
-    // Return all subjects if no class_id or no assignments
+    // No class_id: full subject catalog for the school
     return NextResponse.json({ data: allSubjects || [] }, { status: 200 });
   } catch (error) {
     console.error('Error fetching subjects:', error);

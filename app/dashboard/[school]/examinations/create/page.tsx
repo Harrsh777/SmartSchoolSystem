@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -97,8 +97,9 @@ export default function CreateExaminationPage({
   const [classes, setClasses] = useState<ClassData[]>([]);
   const [selectedClasses, setSelectedClasses] = useState<SelectedClass[]>([]);
 
-  // Step 3: Subject Mapping
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  // Step 3: Subject Mapping — subjects allowed per class-section (from class_subjects)
+  const [subjectsBySectionId, setSubjectsBySectionId] = useState<Record<string, Subject[]>>({});
+  const [step3SubjectsLoading, setStep3SubjectsLoading] = useState(false);
   const [classSubjects, setClassSubjects] = useState<ClassSubject[]>([]);
 
   // Step 4: Schedule
@@ -116,20 +117,11 @@ export default function CreateExaminationPage({
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [classesRes, subjectsRes] = await Promise.all([
-        fetch(`/api/classes?school_code=${schoolCode}`),
-        fetch(`/api/timetable/subjects?school_code=${schoolCode}`),
-      ]);
-
+      const classesRes = await fetch(`/api/classes?school_code=${schoolCode}`);
       const classesData = await classesRes.json();
-      const subjectsData = await subjectsRes.json();
 
       if (classesRes.ok && classesData.data) {
         setClasses(classesData.data);
-      }
-
-      if (subjectsRes.ok && subjectsData.data) {
-        setSubjects(subjectsData.data);
       }
 
       const sRes = await fetch(`/api/term-structures?school_code=${schoolCode}`);
@@ -203,6 +195,45 @@ export default function CreateExaminationPage({
       exam_name: String(firstExam || '').trim(),
     }));
   }, [selectedTermId, terms]);
+
+  const sectionIdsForStep3 = useMemo(
+    () => [...new Set(classSubjects.map((c) => c.sectionId))].sort(),
+    [classSubjects]
+  );
+  const sectionIdsForStep3Key = sectionIdsForStep3.join(',');
+
+  useEffect(() => {
+    if (currentStep !== 3 || sectionIdsForStep3.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    setStep3SubjectsLoading(true);
+    Promise.all(
+      sectionIdsForStep3.map(async (sectionId) => {
+        const res = await fetch(
+          `/api/timetable/subjects?school_code=${encodeURIComponent(schoolCode)}&class_id=${encodeURIComponent(sectionId)}`
+        );
+        const json = await res.json();
+        if (!res.ok || !Array.isArray(json.data)) {
+          return [sectionId, [] as Subject[]] as const;
+        }
+        return [sectionId, json.data as Subject[]] as const;
+      })
+    )
+      .then((entries) => {
+        if (!cancelled) {
+          setSubjectsBySectionId(Object.fromEntries(entries));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStep3SubjectsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStep, schoolCode, sectionIdsForStep3Key]);
 
   // Step 1: Validate and Save Metadata
   const handleStep1Next = () => {
@@ -298,34 +329,37 @@ export default function CreateExaminationPage({
 
   // Step 3: Subject Mapping
   const handleSubjectAdd = (classSubjectIndex: number, subjectId: string) => {
-    const subject = subjects.find(s => s.id === subjectId);
-    if (!subject) return;
-
-    setClassSubjects(prev => prev.map((cs, idx) => {
-      if (idx === classSubjectIndex) {
-        const exists = cs.subjects.find(s => s.subject_id === subjectId);
-        if (exists) return cs;
-        
+    setClassSubjects((prev) => {
+      const cs = prev[classSubjectIndex];
+      if (!cs) return prev;
+      const pool = subjectsBySectionId[cs.sectionId] ?? [];
+      const subject = pool.find((s) => s.id === subjectId);
+      if (!subject) return prev;
+      return prev.map((row, idx) => {
+        if (idx !== classSubjectIndex) return row;
+        if (row.subjects.some((s) => s.subject_id === subjectId)) return row;
         return {
-          ...cs,
-          subjects: [...cs.subjects, {
-            subject_id: subjectId,
-            subject_name: subject.name,
-            max_marks: 100,
-            pass_marks: 33,
-          }],
+          ...row,
+          subjects: [
+            ...row.subjects,
+            {
+              subject_id: subjectId,
+              subject_name: subject.name,
+              max_marks: 100,
+              pass_marks: 33,
+            },
+          ],
         };
-      }
-      return cs;
-    }));
+      });
+    });
   };
 
   const handleSelectAllSubjects = (classSubjectIndex: number) => {
     setClassSubjects(prev => prev.map((cs, idx) => {
       if (idx === classSubjectIndex) {
-        // Get all subjects that are not already added
-        const availableSubjects = subjects.filter(s => 
-          !cs.subjects.find(existing => existing.subject_id === s.id)
+        const pool = subjectsBySectionId[cs.sectionId] ?? [];
+        const availableSubjects = pool.filter(
+          (s) => !cs.subjects.find((existing) => existing.subject_id === s.id)
         );
         
         // Add all available subjects with default values
@@ -396,10 +430,19 @@ export default function CreateExaminationPage({
   };
 
   const handleStep3Next = () => {
-    // Validate all classes have at least one subject
-    const hasEmpty = classSubjects.some(cs => cs.subjects.length === 0);
+    const unassignedClass = classSubjects.find(
+      (cs) => (subjectsBySectionId[cs.sectionId]?.length ?? 0) === 0
+    );
+    if (unassignedClass) {
+      setErrors({
+        subjects: `No subjects assigned to Class ${unassignedClass.className} - Section ${unassignedClass.sectionName}. Map subjects to this class in Add/Modify Classes, then try again.`,
+      });
+      return;
+    }
+
+    const hasEmpty = classSubjects.some((cs) => cs.subjects.length === 0);
     if (hasEmpty) {
-      setErrors({ subjects: 'All classes must have at least one subject' });
+      setErrors({ subjects: 'All classes must have at least one subject mapped for this exam' });
       return;
     }
 
@@ -863,8 +906,20 @@ export default function CreateExaminationPage({
                   </div>
                 )}
 
+                {step3SubjectsLoading && (
+                  <div className="flex items-center gap-3 text-[#5A7A95]">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#5A7A95] border-t-transparent" />
+                    <span className="text-sm font-medium">Loading subjects for your classes…</span>
+                  </div>
+                )}
+
                 <div className="space-y-6">
-                  {classSubjects.map((cs, csIndex) => (
+                  {classSubjects.map((cs, csIndex) => {
+                    const pool = subjectsBySectionId[cs.sectionId] ?? [];
+                    const notYetAdded = pool.filter((s) => !cs.subjects.find((sub) => sub.subject_id === s.id));
+                    const hasClassSubjects = pool.length > 0;
+
+                    return (
                     <div key={`${cs.classId}-${cs.sectionId}`} className="border border-gray-200 rounded-lg p-4">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">
                         Class {cs.className} - Section {cs.sectionName}
@@ -888,7 +943,7 @@ export default function CreateExaminationPage({
                                 Same for everyone
                               </Button>
                             )}
-                            {subjects.filter(s => !cs.subjects.find(sub => sub.subject_id === s.id)).length > 0 && (
+                            {hasClassSubjects && notYetAdded.length > 0 && (
                               <Button
                                 type="button"
                                 variant="outline"
@@ -901,26 +956,42 @@ export default function CreateExaminationPage({
                             )}
                           </div>
                         </div>
+                        {!step3SubjectsLoading && !hasClassSubjects && (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <p className="font-medium">No subjects assigned to this class</p>
+                            <p className="mt-1 text-amber-800/90">
+                              Map subjects to Class {cs.className} — Section {cs.sectionName} under{' '}
+                              <span className="font-medium">Add/Modify Classes</span> before you can include them in this examination.
+                            </p>
+                          </div>
+                        )}
                         <select
+                          disabled={step3SubjectsLoading || !hasClassSubjects || notYetAdded.length === 0}
                           onChange={(e) => {
                             if (e.target.value) {
                               handleSubjectAdd(csIndex, e.target.value);
                               e.target.value = '';
                             }
                           }}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7A95] focus:border-transparent"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7A95] focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                         >
-                          <option value="">Select a subject...</option>
-                          {subjects
-                            .filter(s => !cs.subjects.find(sub => sub.subject_id === s.id))
-                            .map(subject => (
-                              <option key={subject.id} value={subject.id}>
-                                {subject.name}
-                              </option>
-                            ))}
+                          <option value="">
+                            {step3SubjectsLoading
+                              ? 'Loading…'
+                              : !hasClassSubjects
+                                ? 'No subjects assigned to this class'
+                                : notYetAdded.length === 0
+                                  ? 'All assigned subjects added'
+                                  : 'Select a subject...'}
+                          </option>
+                          {notYetAdded.map((subject) => (
+                            <option key={subject.id} value={subject.id}>
+                              {subject.name}
+                            </option>
+                          ))}
                         </select>
-                        {subjects.filter(s => !cs.subjects.find(sub => sub.subject_id === s.id)).length === 0 && (
-                          <p className="mt-2 text-sm text-gray-500">All subjects have been added</p>
+                        {hasClassSubjects && notYetAdded.length === 0 && cs.subjects.length > 0 && (
+                          <p className="mt-2 text-sm text-gray-500">All subjects assigned to this class have been added</p>
                         )}
                       </div>
 
@@ -966,7 +1037,8 @@ export default function CreateExaminationPage({
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="flex justify-between pt-4">
@@ -974,7 +1046,7 @@ export default function CreateExaminationPage({
                     <ArrowLeft size={18} className="mr-2" />
                     Previous
                   </Button>
-                  <Button onClick={handleStep3Next}>
+                  <Button onClick={handleStep3Next} disabled={step3SubjectsLoading}>
                     Next: Schedule Exams
                     <ArrowRight size={18} className="ml-2" />
                   </Button>

@@ -968,7 +968,7 @@ function generateLandscapeReportCardHTML(
       `
           )
           .join('')
-      : `<tr><td class="td-left">Art and Craft</td><td class="td-c">A</td><td class="td-c">A</td></tr>`;
+      : '';
 
   const gradingScaleRow =
     showGradingScale && data.gradeScales && data.gradeScales.length
@@ -1380,6 +1380,20 @@ function generateLandscapeReportCardHTML(
           <div class="summary-cell"><span class="lbl">Grade</span>${overallGrade || '-'}</div>
           <div class="summary-cell"><span class="lbl">Rank</span>${rank}</div>
         </div>
+        ` : ''}
+
+        ${showCoScholastic && (data.coScholastic?.length ?? 0) > 0 ? `
+        <div class="section-h">${sectionCoScholastic}</div>
+        <table class="cos" cellspacing="0" cellpadding="0">
+          <thead>
+            <tr>
+              <th class="td-left">Activity</th>
+              <th>Term-I</th>
+              <th>Term-II</th>
+            </tr>
+          </thead>
+          <tbody>${coScholasticRows}</tbody>
+        </table>
         ` : ''}
 
         ${showRemarks ? `

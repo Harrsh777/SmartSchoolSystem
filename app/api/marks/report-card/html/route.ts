@@ -1,7 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { getAppUrl } from '@/lib/env';
 import { generateReportCardHTML } from '@/lib/report-card-html';
 import type { ReportCardData } from '@/lib/report-card-html';
+import { fetchCoScholasticRowsForReportCard } from '@/lib/co-scholastic-report';
+
+/**
+ * Use the same photo endpoint as the student profile UI so report cards work when
+ * the student-photos bucket is private (raw photo_url in HTML would 403).
+ */
+function resolveReportCardStudentPhotoUrl(
+  student: Record<string, unknown>,
+  schoolCode: string
+): string | null {
+  const raw =
+    (typeof student.photo_url === 'string' && student.photo_url.trim()) ||
+    (typeof student.student_photo_url === 'string' && student.student_photo_url.trim()) ||
+    (typeof student.student_photo === 'string' && student.student_photo.trim()) ||
+    (typeof student.profile_photo_url === 'string' && student.profile_photo_url.trim()) ||
+    (typeof student.avatar_url === 'string' && student.avatar_url.trim()) ||
+    null;
+  if (!raw) return null;
+
+  const id = student.id;
+  if (!id || typeof id !== 'string') {
+    return raw;
+  }
+
+  const qs = `school_code=${encodeURIComponent(schoolCode)}`;
+  const base = getAppUrl();
+  if (base) {
+    return `${base}/api/students/${id}/photo?${qs}`;
+  }
+  return `/api/students/${id}/photo?${qs}`;
+}
 
 /**
  * GET /api/marks/report-card/html
@@ -148,23 +180,40 @@ export async function fetchReportCardData(
     };
   }
 
+  const examTermId = (exam as { term_id?: string | null }).term_id;
   let coScholastic: Array<{ name: string; term1_grade?: string; term2_grade?: string }> | null = null;
-  try {
-    const { data: co } = await supabase
-      .from('term_co_scholastic')
-      .select('*')
-      .eq('school_code', schoolCode)
-      .eq('student_id', studentId)
-      .limit(5);
-    if (co?.length) {
-      coScholastic = [
-        { name: 'Work Education or Pre Vocational Education', term1_grade: (co[0] as { discipline_grade?: string }).discipline_grade, term2_grade: (co[0] as { work_habits_grade?: string }).work_habits_grade },
-        { name: 'Art Education', term1_grade: undefined, term2_grade: undefined },
-        { name: 'Health & Physical Education', term1_grade: undefined, term2_grade: undefined },
-      ];
+
+  const cosFromMarks = await fetchCoScholasticRowsForReportCard({
+    schoolCode,
+    studentId,
+    studentClass: String(student.class || ''),
+    studentSection: String(student.section || ''),
+    examTermIds: examTermId ? [String(examTermId)] : [],
+  });
+  if (cosFromMarks && cosFromMarks.length > 0) {
+    coScholastic = cosFromMarks;
+  } else {
+    try {
+      const { data: co } = await supabase
+        .from('term_co_scholastic')
+        .select('*')
+        .eq('school_code', schoolCode)
+        .eq('student_id', studentId)
+        .limit(5);
+      if (co?.length) {
+        coScholastic = [
+          {
+            name: 'Work Education or Pre Vocational Education',
+            term1_grade: (co[0] as { discipline_grade?: string }).discipline_grade,
+            term2_grade: (co[0] as { work_habits_grade?: string }).work_habits_grade,
+          },
+          { name: 'Art Education', term1_grade: undefined, term2_grade: undefined },
+          { name: 'Health & Physical Education', term1_grade: undefined, term2_grade: undefined },
+        ];
+      }
+    } catch {
+      coScholastic = null;
     }
-  } catch {
-    coScholastic = null;
   }
 
   return {
@@ -190,13 +239,7 @@ export async function fetchReportCardData(
       address: student.address || student.school_address,
       student_contact: student.student_contact || student.phone || student.mobile,
       roll_number: student.roll_number,
-      photo_url:
-        student.photo_url ||
-        (student as { student_photo_url?: string }).student_photo_url ||
-        (student as { student_photo?: string }).student_photo ||
-        (student as { profile_photo_url?: string }).profile_photo_url ||
-        (student as { avatar_url?: string }).avatar_url ||
-        null,
+      photo_url: resolveReportCardStudentPhotoUrl(student as Record<string, unknown>, schoolCode),
     },
     exam: {
       exam_name: exam.exam_name || exam.name || '',
@@ -472,28 +515,40 @@ export async function fetchReportCardDataMultiExam(
   }
 
   let coScholastic: Array<{ name: string; term1_grade?: string; term2_grade?: string }> | null = null;
-  try {
-    const { data: co } = await supabase
-      .from('term_co_scholastic')
-      .select('*')
-      .eq('school_code', schoolCode)
-      .eq('student_id', studentId)
-      .order('added_at', { ascending: false })
-      .limit(5);
 
-    if (co?.length) {
-      coScholastic = [
-        {
-          name: 'Work Education or Pre Vocational Education',
-          term1_grade: (co[0] as { discipline_grade?: string }).discipline_grade,
-          term2_grade: (co[0] as { work_habits_grade?: string }).work_habits_grade,
-        },
-        { name: 'Art Education', term1_grade: undefined, term2_grade: undefined },
-        { name: 'Health & Physical Education', term1_grade: undefined, term2_grade: undefined },
-      ];
+  const cosFromMarksMulti = await fetchCoScholasticRowsForReportCard({
+    schoolCode,
+    studentId,
+    studentClass: String(student.class || ''),
+    studentSection: String(student.section || ''),
+    examTermIds: termIds,
+  });
+  if (cosFromMarksMulti && cosFromMarksMulti.length > 0) {
+    coScholastic = cosFromMarksMulti;
+  } else {
+    try {
+      const { data: co } = await supabase
+        .from('term_co_scholastic')
+        .select('*')
+        .eq('school_code', schoolCode)
+        .eq('student_id', studentId)
+        .order('added_at', { ascending: false })
+        .limit(5);
+
+      if (co?.length) {
+        coScholastic = [
+          {
+            name: 'Work Education or Pre Vocational Education',
+            term1_grade: (co[0] as { discipline_grade?: string }).discipline_grade,
+            term2_grade: (co[0] as { work_habits_grade?: string }).work_habits_grade,
+          },
+          { name: 'Art Education', term1_grade: undefined, term2_grade: undefined },
+          { name: 'Health & Physical Education', term1_grade: undefined, term2_grade: undefined },
+        ];
+      }
+    } catch {
+      coScholastic = null;
     }
-  } catch {
-    coScholastic = null;
   }
 
   return {
@@ -519,13 +574,7 @@ export async function fetchReportCardDataMultiExam(
       address: student.address || student.school_address,
       student_contact: student.student_contact || student.phone || student.mobile,
       roll_number: student.roll_number,
-      photo_url:
-        student.photo_url ||
-        (student as { student_photo_url?: string }).student_photo_url ||
-        (student as { student_photo?: string }).student_photo ||
-        (student as { profile_photo_url?: string }).profile_photo_url ||
-        (student as { avatar_url?: string }).avatar_url ||
-        null,
+      photo_url: resolveReportCardStudentPhotoUrl(student as Record<string, unknown>, schoolCode),
     },
     exam: {
       exam_name: combinedExamName,

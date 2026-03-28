@@ -243,163 +243,68 @@ export default function EduCoreLanding() {
       </button>
 
       {/* Navbar */}
-      <nav className={`fixed w-full z-50 transition-all duration-500 ${scrolled ? 'bg-[#14072e]/70 backdrop-blur-xl border-b border-white/10 py-0.5 sm:py-1 shadow-2xl' : 'bg-[#14072e]/30 backdrop-blur-md border-b border-white/5 py-4 sm:py-6'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-2 sm:space-x-3 group cursor-pointer">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#667eea] via-[#764ba2] to-[#f093fb] flex items-center justify-center text-white shadow-2xl group-hover:rotate-12 transition-transform duration-300">
-                <MdSchool className="text-lg sm:text-xl" />
-              </div>
-              <span className="font-display font-bold text-xl sm:text-2xl bg-gradient-to-r from-[#667eea] to-[#764ba2] bg-clip-text text-transparent group-hover:gradient-text transition-all duration-500">
-                EduCore
-              </span>
-            </div>
-            <div className="hidden lg:flex items-center space-x-8 xl:space-x-10">
-              <a
-                href="#solutions"
-                className="relative text-sm font-semibold text-white dark:text-gray-300 hover:text-[#ffffff] dark:hover:text-white transition-colors group"
-              >
-                Solutions
-                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#fffff] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
-              </a>
-              <a
-                href="#analytics"
-                className="relative text-sm font-semibold text-white dark:text-gray-300 hover:text-[#fffff] dark:hover:text-white transition-colors group"
-              >
-                Analytics
-                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#fffff] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
-              </a>
-              <a
-                href="#testimonials"
-                className="relative text-sm font-semibold text-white dark:text-gray-300 hover:text-[#fffff] dark:hover:text-white transition-colors group"
-              >
-                Success Stories
-                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#fffff] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
-              </a>
-              <a
-                href="#pricing"
-                className="relative text-sm font-semibold text-white dark:text-gray-300 hover:text-[#fffff] dark:hover:text-white transition-colors group"
-              >
-                Pricing
-                <span className="absolute -bottom-1 left-1/2 w-0 h-0.5 bg-gradient-to-r from-[#fffff] to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
-              </a>
-            </div>
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              <Link
-                href="/login"
-                className="hidden md:block px-4 sm:px-6 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold text-[#667eea] dark:text-skyblue hover:text-[#764ba2] transition-colors relative group"
-              >
-                Log in
-                <span className="absolute inset-0 rounded-full bg-gradient-to-r from-[#667eea]/5 to-[#764ba2]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
-              </Link>
-              <Link
-                href="/demo"
-                className="px-4 sm:px-8 py-2 sm:py-3 rounded-full bg-gradient-to-r from-[#667eea] via-[#764ba2] to-[#f093fb] text-white text-xs sm:text-sm font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 transform hover:translate-y-[-2px] flex items-center gap-1 sm:gap-2 group"
-              >
-                <span className="hidden sm:inline">Request Demo</span>
-                <span className="sm:hidden">Demo</span>
-                <FiArrowRight className="text-xs sm:text-sm group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </div>
-          </div>
+      <nav
+  className={`fixed w-full z-50 transition-all duration-500 ${
+    scrolled
+      ? "bg-[#14072e]/70 backdrop-blur-xl border-b border-white/10 shadow-2xl"
+      : "bg-[#14072e]/30 backdrop-blur-md border-b border-white/5"
+  }`}
+>
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="flex justify-between items-center h-12 sm:h-14">
+
+      {/* Logo */}
+      <div className="flex items-center space-x-2 group cursor-pointer">
+        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-[#667eea] via-[#764ba2] to-[#f093fb] flex items-center justify-center text-white shadow-lg group-hover:rotate-12 transition-transform duration-300">
+          <MdSchool className="text-base sm:text-lg" />
         </div>
-      </nav>
+        <span className="font-display font-bold text-lg sm:text-xl bg-gradient-to-r from-[#667eea] to-[#764ba2] bg-clip-text text-transparent">
+          EduCore
+        </span>
+      </div>
+
+      {/* Desktop Menu */}
+      <div className="hidden lg:flex items-center space-x-6 xl:space-x-8">
+        {["Solutions", "Analytics", "Success Stories", "Pricing"].map((item, i) => (
+          <a
+            key={i}
+            href={`#${item.toLowerCase().replace(" ", "")}`}
+            className="relative text-sm font-medium text-white/80 hover:text-white transition-colors group"
+          >
+            {item}
+            <span className="absolute -bottom-1 left-1/2 w-0 h-[2px] bg-gradient-to-r from-white to-[#764ba2] transition-all duration-300 group-hover:w-full group-hover:left-0"></span>
+          </a>
+        ))}
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center space-x-2 sm:space-x-3">
+        
+        {/* Login */}
+        <Link
+          href="/login"
+          className="hidden md:inline-flex items-center px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium text-[#667eea] hover:text-[#764ba2] transition-colors relative group"
+        >
+          Log in
+          <span className="absolute inset-0 rounded-full bg-gradient-to-r from-[#667eea]/10 to-[#764ba2]/10 opacity-0 group-hover:opacity-100 transition-opacity"></span>
+        </Link>
+
+        {/* CTA */}
+        <Link
+          href="/demo"
+          className="inline-flex items-center gap-1.5 px-4 sm:px-6 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-[#667eea] via-[#764ba2] to-[#f093fb] text-white text-xs sm:text-sm font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300"
+        >
+          <span className="hidden sm:inline">Request Demo</span>
+          <span className="sm:hidden">Demo</span>
+          <FiArrowRight className="text-xs sm:text-sm group-hover:translate-x-1 transition-transform" />
+        </Link>
+      </div>
+    </div>
+  </div>
+</nav>
 
       {/* Hero Section */}
-      <section ref={heroRef} className="relative overflow-hidden min-h-screen flex items-center pt-24 pb-14">
-        <div className="absolute inset-0 z-0">
-          <Background className="opacity-95" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(154,82,255,0.35),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(42,191,255,0.22),transparent_40%)]" />
-        </div>
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
-          <div className="text-center mt-5 mb-10">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight">
-              Powerful Tools for Effective
-              <br />
-              School Management
-            </h1>
-            <p className="mt-5 text-base sm:text-lg text-white/75 max-w-3xl mx-auto">
-              Your complete SaaS platform for academic operations, finance, attendance, communication, and growth.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Link
-                href="/signup"
-                className="px-7 py-3.5 rounded-full bg-gradient-to-r from-[#8b5cf6] to-[#a855f7] text-white font-semibold shadow-[0_10px_30px_rgba(139,92,246,0.45)] hover:scale-[1.02] transition-all duration-300 flex items-center gap-2"
-              >
-                Get started
-                <FiArrowRight className="text-sm" />
-              </Link>
-              <a
-                href="#features"
-                className="px-7 py-3.5 rounded-full border border-white/25 bg-white/5 text-white font-semibold hover:bg-white/10 transition-all duration-300 flex items-center gap-2"
-              >
-                <FiPlay className="text-sm" />
-                See How it works
-              </a>
-            </div>
-          </div>
-
-          <div className="max-w-6xl mx-auto overflow-x-auto pb-2">
-            <div className="flex items-stretch gap-4 min-w-max">
-            <div className="w-[240px] sm:w-[260px] rounded-[32px] overflow-hidden shadow-2xl ring-1 ring-white/50 h-[220px] relative group shrink-0">
-              <Image
-                src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=3840&q=90"
-                alt="Students in campus discussion"
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-700"
-                priority
-                unoptimized
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/15 to-transparent" />
-              <p className="absolute left-4 bottom-4 text-white text-sm font-semibold tracking-wide">Smart Campus Workflows</p>
-            </div>
-
-          
-
-            <div className="w-[320px] sm:w-[360px] rounded-[40px] overflow-hidden shadow-2xl ring-1 ring-white/60 h-[220px] relative group shrink-0">
-              <Image
-                src="https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&w=3840&q=90"
-                alt="Classroom collaboration"
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-700"
-                priority
-                unoptimized
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
-              <div className="absolute bottom-4 left-4 rounded-full bg-white/90 text-slate-900 text-xs font-semibold px-3 py-1.5">
-                260% workflow efficiency
-              </div>
-            </div>
-
-            <div className="w-[280px] sm:w-[300px] rounded-[32px] overflow-hidden shadow-2xl ring-1 ring-white/50 h-[220px] relative group shrink-0">
-              <Image
-                src="https://images.unsplash.com/photo-1513258496099-48168024aec0?auto=format&fit=crop&w=3840&q=90"
-                alt="Digital classroom with tablets"
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-700"
-                unoptimized
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent" />
-            </div>
-
-            <div className="w-[260px] sm:w-[280px] rounded-[32px] overflow-hidden shadow-2xl ring-1 ring-white/50 h-[220px] relative group shrink-0">
-              <Image
-                src="https://images.unsplash.com/photo-1588072432836-e10032774350?auto=format&fit=crop&w=3840&q=90"
-                alt="Student learning online"
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-700"
-                unoptimized
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-              <div className="absolute bottom-4 right-4 rounded-full bg-white/90 text-slate-900 text-xs font-semibold px-3 py-1.5">
-                98% admin satisfaction
-              </div>
-            </div>
-            </div>
-          </div>
-        </div>
-      </section>
+     <section ref={heroRef} className="relative overflow-hidden min-h-screen flex items-center pt-24 pb-14"> <div className="absolute inset-0 z-0"> <Background className="opacity-95" /> <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(154,82,255,0.35),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(42,191,255,0.22),transparent_40%)]" /> </div> <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full"> <div className="text-center mt-5 mb-10"> <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight"> Powerful Tools for Effective <br /> School Management </h1> <p className="mt-5 text-base sm:text-lg text-white/75 max-w-3xl mx-auto"> Your complete SaaS platform for academic operations, finance, attendance, communication, and growth. </p> <div className="mt-8 flex flex-wrap items-center justify-center gap-3"> <Link href="/signup" className="px-7 py-3.5 rounded-full bg-gradient-to-r from-[#8b5cf6] to-[#a855f7] text-white font-semibold shadow-[0_10px_30px_rgba(139,92,246,0.45)] hover:scale-[1.02] transition-all duration-300 flex items-center gap-2" > Get started <FiArrowRight className="text-sm" /> </Link> <a href="#features" className="px-7 py-3.5 rounded-full border border-white/25 bg-white/5 text-white font-semibold hover:bg-white/10 transition-all duration-300 flex items-center gap-2" > <FiPlay className="text-sm" /> See How it works </a> </div> </div> {/* Hero bento — high-res educational imagery */} <div className="grid grid-cols-12 gap-4 md:gap-5 lg:gap-6"> {/* LEFT INFO CARD */} <div className="col-span-12 md:col-span-4 lg:col-span-3 rounded-2xl bg-white/10 backdrop-blur-lg border border-white/20 p-5 flex flex-col justify-between min-h-[180px]"> <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-violet-300"> <div className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-white">→</div> Platform </div> <div> <h3 className="text-white font-semibold text-lg leading-snug mt-4"> Empower your institution with School Manager Pro </h3> <p className="text-white/60 text-sm mt-2"> One connected workspace for academics, finance, and community—built for modern schools. </p> </div> </div> {/* HERO IMAGE (FIXED HEIGHT NOW) */} <div className="col-span-12 md:col-span-8 lg:col-span-6 rounded-2xl overflow-hidden relative group min-h-[200px]"> <Image src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=3840&q=88" alt="Students collaborating" fill className="object-cover transition-transform duration-700 group-hover:scale-105" /> <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" /> <div className="absolute bottom-4 left-4"> <p className="text-xs text-white/70 uppercase tracking-wider"> Learning together </p> <p className="text-white font-semibold text-sm"> Collaboration that scales from class to campus </p> </div> </div> {/* STATS COLUMN */} <div className="col-span-12 md:col-span-12 lg:col-span-3 flex flex-row lg:flex-col gap-4"> {/* 260% */} <div className="flex-1 rounded-2xl bg-white/90 backdrop-blur-md p-4 flex flex-col justify-end shadow-lg"> <span className="text-3xl font-extrabold bg-gradient-to-br from-violet-600 to-fuchsia-500 bg-clip-text text-transparent"> 260% </span> <p className="text-xs text-gray-600 mt-2"> Faster workflows when admin & teaching tools live together </p> </div> {/* 98% */} <div className="flex-1 rounded-2xl bg-white/90 backdrop-blur-md p-4 flex flex-col justify-end shadow-lg"> <span className="text-3xl font-extrabold bg-gradient-to-br from-cyan-600 to-violet-500 bg-clip-text text-transparent"> 98% </span> <p className="text-xs text-gray-600 mt-2"> Stronger trust in reporting & parent communication </p> </div> </div> {/* BOTTOM LEFT */} <div className="col-span-12 md:col-span-6 rounded-2xl overflow-hidden relative group min-h-[160px]"> <Image src="https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=3840&q=88" alt="Campus" fill className="object-cover transition-transform duration-700 group-hover:scale-105" /> <div className="absolute inset-0 bg-black/40" /> <span className="absolute bottom-3 left-3 text-xs text-white uppercase"> Campus & Library Ready </span> </div> {/* BOTTOM RIGHT */} <div className="col-span-12 md:col-span-6 rounded-2xl overflow-hidden relative group min-h-[160px]"> <Image src="https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=3840&q=88" alt="Teaching" fill className="object-cover transition-transform duration-700 group-hover:scale-105" /> <div className="absolute inset-0 bg-black/40" /> <span className="absolute bottom-3 left-3 text-xs text-white uppercase"> Engaged Teaching </span> </div> </div> </div> </section>
 
       {/* Logo Section */}
      
