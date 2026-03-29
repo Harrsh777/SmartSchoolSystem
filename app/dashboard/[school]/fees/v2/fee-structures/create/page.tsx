@@ -22,6 +22,25 @@ interface Class {
   academic_year: string;
 }
 
+function sumAmountRecord(rec: Record<string, number>): number {
+  return Object.values(rec).reduce((s, a) => s + (Number(a) || 0), 0);
+}
+
+function hasNegativeAmount(rec: Record<string, number>): boolean {
+  return Object.values(rec).some((a) => Number(a) < 0);
+}
+
+/** All fee heads with amounts (default 0) for consistent line items including explicit zeros. */
+function itemsForHeads(
+  feeHeads: FeeHead[],
+  amountsByHeadId: Record<string, number> | undefined
+): { fee_head_id: string; amount: number }[] {
+  return feeHeads.map((h) => ({
+    fee_head_id: h.id,
+    amount: Math.max(0, Number(amountsByHeadId?.[h.id] ?? 0)),
+  }));
+}
+
 const MONTHS = [
   { value: 1, label: 'January' },
   { value: 2, label: 'February' },
@@ -149,10 +168,41 @@ export default function CreateFeeStructurePage({
     });
   };
 
+  const getMonthsInRange = () => {
+    const list: { value: number; label: string }[] = [];
+    let m = startMonth;
+    const end = endMonth;
+    do {
+      list.push({ value: m, label: MONTHS.find((x) => x.value === m)?.label || `Month ${m}` });
+      m = m >= 12 ? 1 : m + 1;
+    } while (m !== (end >= 12 ? 1 : end + 1));
+    return list;
+  };
+
+  const QUARTERS = [
+    { id: 'Q1', label: 'Q1 (Apr–Jun)' },
+    { id: 'Q2', label: 'Q2 (Jul–Sep)' },
+    { id: 'Q3', label: 'Q3 (Oct–Dec)' },
+    { id: 'Q4', label: 'Q4 (Jan–Mar)' },
+  ];
+
   const hasCompositionData = () => {
-    if (frequency === 'yearly') return Object.keys(selectedFeeHeads).length > 0 && Object.values(selectedFeeHeads).some((a) => a > 0);
-    if (frequency === 'quarterly') return QUARTERS.some((q) => Object.keys(selectedFeeHeadsByQuarter[q.id] || {}).length > 0);
-    if (frequency === 'monthly') return Object.keys(selectedFeeHeadsByMonth).length > 0;
+    if (frequency === 'yearly') {
+      return Object.keys(selectedFeeHeads).length > 0 && sumAmountRecord(selectedFeeHeads) > 0 && !hasNegativeAmount(selectedFeeHeads);
+    }
+    if (frequency === 'quarterly') {
+      return QUARTERS.some((q) => {
+        const rec = selectedFeeHeadsByQuarter[q.id] || {};
+        return sumAmountRecord(rec) > 0 && !hasNegativeAmount(rec);
+      });
+    }
+    if (frequency === 'monthly') {
+      const months = getMonthsInRange();
+      return months.some((mo) => {
+        const rec = selectedFeeHeadsByMonth[String(mo.value)] || {};
+        return sumAmountRecord(rec) > 0 && !hasNegativeAmount(rec);
+      });
+    }
     return false;
   };
 
@@ -214,29 +264,38 @@ export default function CreateFeeStructurePage({
     } else if (step === 3) {
       if (frequency === 'yearly') {
         if (Object.keys(selectedFeeHeads).length === 0) {
-          setError('Please select at least one fee head and enter amounts');
+          setError('Please enter amounts for at least one fee head (₹0 is allowed for optional heads if the total is above zero)');
           return;
         }
-        const hasZeroAmount = Object.values(selectedFeeHeads).some((amt) => amt <= 0);
-        if (hasZeroAmount) {
-          setError('All fee head amounts must be greater than 0');
+        if (hasNegativeAmount(selectedFeeHeads)) {
+          setError('Amounts cannot be negative');
+          return;
+        }
+        if (sumAmountRecord(selectedFeeHeads) <= 0) {
+          setError('Total fee amount for the year must be greater than zero');
           return;
         }
       } else if (frequency === 'quarterly') {
         const atLeastOneComplete = QUARTERS.some((q) => {
           const amts = selectedFeeHeadsByQuarter[q.id] || {};
-          return Object.keys(amts).length > 0 && !Object.values(amts).some((a) => a <= 0);
+          return sumAmountRecord(amts) > 0 && !hasNegativeAmount(amts);
         });
         if (!atLeastOneComplete) {
-          setError('Please enter fee amounts for at least one quarter (e.g. Q1). You can fill remaining quarters before saving.');
+          setError('Please enter fee amounts for at least one quarter (e.g. Q1). Individual heads may be ₹0 if the quarter total is above zero.');
           return;
         }
       } else if (frequency === 'monthly') {
         const months = getMonthsInRange();
         for (const mo of months) {
           const amts = selectedFeeHeadsByMonth[String(mo.value)] || {};
-          if (Object.keys(amts).length === 0 || Object.values(amts).some((a) => a <= 0)) {
-            setError(`Please enter fee amounts for ${mo.label}`);
+          if (hasNegativeAmount(amts)) {
+            setError(`Amounts cannot be negative for ${mo.label}`);
+            return;
+          }
+          if (sumAmountRecord(amts) <= 0) {
+            setError(
+              `Total for ${mo.label} must be greater than zero (individual fee heads may be ₹0).`
+            );
             return;
           }
         }
@@ -265,10 +324,32 @@ export default function CreateFeeStructurePage({
     if (frequency === 'quarterly') {
       const missingQuarters = QUARTERS.filter((q) => {
         const amts = selectedFeeHeadsByQuarter[q.id] || {};
-        return Object.keys(amts).length === 0 || Object.values(amts).some((a) => a <= 0);
+        return sumAmountRecord(amts) <= 0 || hasNegativeAmount(amts);
       });
       if (missingQuarters.length > 0) {
-        setError(`Please enter fee amounts for all quarters before saving: ${missingQuarters.map((q) => q.id).join(', ')}`);
+        setError(
+          `Each quarter needs a total above zero (₹0 is allowed on individual heads). Complete: ${missingQuarters.map((q) => q.id).join(', ')}`
+        );
+        return;
+      }
+    }
+
+    if (frequency === 'monthly') {
+      const badMonths = getMonthsInRange().filter((mo) => {
+        const amts = selectedFeeHeadsByMonth[String(mo.value)] || {};
+        return sumAmountRecord(amts) <= 0 || hasNegativeAmount(amts);
+      });
+      if (badMonths.length > 0) {
+        setError(
+          `Each month needs a total above zero. Check: ${badMonths.map((m) => m.label).join(', ')}`
+        );
+        return;
+      }
+    }
+
+    if (frequency === 'yearly') {
+      if (sumAmountRecord(selectedFeeHeads) <= 0 || hasNegativeAmount(selectedFeeHeads)) {
+        setError('Year total must be greater than zero and amounts cannot be negative');
         return;
       }
     }
@@ -276,11 +357,6 @@ export default function CreateFeeStructurePage({
     try {
       setLoading(true);
       setError('');
-
-      const items = Object.entries(selectedFeeHeads).map(([fee_head_id, amount]) => ({
-        fee_head_id,
-        amount,
-      }));
 
       const baseCombinations: { class_name: string; section: string | null }[] = [];
       classSectionMap.forEach(({ class: className, sections }) => {
@@ -297,7 +373,7 @@ export default function CreateFeeStructurePage({
       const toCreate: CreatePayload[] = [];
 
       if (frequency === 'yearly') {
-        const items = Object.entries(selectedFeeHeads).map(([fee_head_id, amount]) => ({ fee_head_id, amount }));
+        const items = itemsForHeads(feeHeads, selectedFeeHeads);
         baseCombinations.forEach(({ class_name, section }) => {
           const nameSuffix = section ? ` - ${section}` : '';
           toCreate.push({
@@ -309,10 +385,7 @@ export default function CreateFeeStructurePage({
         });
       } else if (frequency === 'quarterly') {
         QUARTERS.forEach((q) => {
-          const items = Object.entries(selectedFeeHeadsByQuarter[q.id] || {}).map(([fee_head_id, amount]) => ({
-            fee_head_id,
-            amount,
-          }));
+          const items = itemsForHeads(feeHeads, selectedFeeHeadsByQuarter[q.id]);
           baseCombinations.forEach(({ class_name, section }) => {
             const nameSuffix = section ? ` - ${section}` : '';
             toCreate.push({
@@ -327,10 +400,7 @@ export default function CreateFeeStructurePage({
         const months = getMonthsInRange();
         months.forEach((mo) => {
           const key = String(mo.value);
-          const items = Object.entries(selectedFeeHeadsByMonth[key] || {}).map(([fee_head_id, amount]) => ({
-            fee_head_id,
-            amount,
-          }));
+          const items = itemsForHeads(feeHeads, selectedFeeHeadsByMonth[key]);
           baseCombinations.forEach(({ class_name, section }) => {
             const nameSuffix = section ? ` - ${section}` : '';
             toCreate.push({
@@ -387,46 +457,7 @@ export default function CreateFeeStructurePage({
   };
 
   const getTotalAmount = () => {
-    return Object.values(selectedFeeHeads).reduce((sum, amt) => sum + amt, 0);
-  };
-
-  const getMonthsInRange = () => {
-    const list: { value: number; label: string }[] = [];
-    let m = startMonth;
-    const end = endMonth;
-    do {
-      list.push({ value: m, label: MONTHS.find((x) => x.value === m)?.label || `Month ${m}` });
-      m = m >= 12 ? 1 : m + 1;
-    } while (m !== (end >= 12 ? 1 : end + 1));
-    return list;
-  };
-
-  const QUARTERS = [
-    { id: 'Q1', label: 'Q1 (Apr–Jun)' },
-    { id: 'Q2', label: 'Q2 (Jul–Sep)' },
-    { id: 'Q3', label: 'Q3 (Oct–Dec)' },
-    { id: 'Q4', label: 'Q4 (Jan–Mar)' },
-  ];
-
-  const getAmountsForFrequency = (): Record<string, number> => {
-    if (frequency === 'yearly') return selectedFeeHeads;
-    if (frequency === 'quarterly' && activeCompositionTab && selectedFeeHeadsByQuarter[activeCompositionTab])
-      return selectedFeeHeadsByQuarter[activeCompositionTab];
-    if (frequency === 'monthly' && activeCompositionTab && selectedFeeHeadsByMonth[activeCompositionTab])
-      return selectedFeeHeadsByMonth[activeCompositionTab];
-    return selectedFeeHeads;
-  };
-
-  const applySameFeesToAllQuarters = () => {
-    const source = activeCompositionTab && selectedFeeHeadsByQuarter[activeCompositionTab]
-      ? { ...selectedFeeHeadsByQuarter[activeCompositionTab] }
-      : selectedFeeHeads;
-    setSelectedFeeHeadsByQuarter({
-      Q1: { ...source },
-      Q2: { ...source },
-      Q3: { ...source },
-      Q4: { ...source },
-    });
+    return sumAmountRecord(selectedFeeHeads);
   };
 
   const stepTitles = [
@@ -778,13 +809,17 @@ export default function CreateFeeStructurePage({
 
                 {frequency === 'monthly' && (
                   <>
-                    <p className="text-sm text-gray-600">Enter fee amounts for each month in your duration.</p>
+                    <p className="text-sm text-gray-600">
+                      Enter fee amounts for each month in your duration. Each month is separate — there is no
+                      &quot;apply to all months&quot; action. Individual fee heads may be ₹0 if that month&apos;s total
+                      is still above zero.
+                    </p>
                     <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
                       {getMonthsInRange().map((mo) => {
                         const key = String(mo.value);
                         const isActive = activeCompositionTab === key;
                         const amts = selectedFeeHeadsByMonth[key] || {};
-                        const total = Object.values(amts).reduce((s, a) => s + a, 0);
+                        const total = sumAmountRecord(amts);
                         return (
                           <button
                             key={key}
@@ -844,12 +879,15 @@ export default function CreateFeeStructurePage({
 
                 {frequency === 'quarterly' && (
                   <>
-                    <p className="text-sm text-gray-600">Enter fee amounts for each quarter. Use &quot;Apply same to all quarters&quot; to copy current quarter to others.</p>
+                    <p className="text-sm text-gray-600">
+                      Enter fee amounts for each quarter. Individual fee heads may be ₹0 if that quarter&apos;s total is
+                      above zero.
+                    </p>
                     <div className="flex gap-2 flex-wrap border-b border-gray-200 pb-2">
                       {QUARTERS.map((q) => {
                         const isActive = activeCompositionTab === q.id;
                         const amts = selectedFeeHeadsByQuarter[q.id] || {};
-                        const total = Object.values(amts).reduce((s, a) => s + a, 0);
+                        const total = sumAmountRecord(amts);
                         return (
                           <button
                             key={q.id}
@@ -863,13 +901,6 @@ export default function CreateFeeStructurePage({
                           </button>
                         );
                       })}
-                      <button
-                        type="button"
-                        onClick={applySameFeesToAllQuarters}
-                        className="ml-auto px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-800 hover:bg-green-200"
-                      >
-                        Apply same fees to all quarters
-                      </button>
                     </div>
                     {activeCompositionTab && (
                       <div className="space-y-3 mt-4">
@@ -1008,21 +1039,6 @@ export default function CreateFeeStructurePage({
                       <span className="text-sm text-gray-600">Last date of payment:</span>
                       <p className="font-semibold text-gray-900">{paymentDueDay}{paymentDueDay === 1 ? 'st' : paymentDueDay === 2 ? 'nd' : paymentDueDay === 3 ? 'rd' : 'th'} of each period</p>
                     </div>
-                    <div>
-                      <span className="text-sm text-gray-600">Total Amount:</span>
-                      <p className="font-semibold text-indigo-600">
-                        {frequency === 'yearly' && `₹${getTotalAmount().toFixed(2)}`}
-                        {frequency === 'quarterly' &&
-                          `Per quarter: ₹${Object.values(selectedFeeHeadsByQuarter.Q1 || {}).reduce((s, a) => s + a, 0).toFixed(2)}`}
-                        {frequency === 'monthly' &&
-                          (() => {
-                            const months = getMonthsInRange();
-                            const first = months[0];
-                            const amts = first ? selectedFeeHeadsByMonth[String(first.value)] || {} : {};
-                            return `Per month (e.g. ${first?.label}): ₹${Object.values(amts).reduce((s, a) => s + a, 0).toFixed(2)}`;
-                          })()}
-                      </p>
-                    </div>
                     {academicYear && (
                       <div>
                         <span className="text-sm text-gray-600">Academic Year:</span>
@@ -1031,18 +1047,92 @@ export default function CreateFeeStructurePage({
                     )}
                   </div>
 
-                  <div className="mt-4">
-                    <span className="text-sm text-gray-600">Fee Heads:</span>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {Object.entries(selectedFeeHeads).map(([headId, amount]) => {
-                        const head = feeHeads.find(h => h.id === headId);
-                        return head ? (
-                          <span key={headId} className="px-3 py-1 bg-white border border-gray-200 rounded-md text-sm">
-                            {head.name}: ₹{amount.toFixed(2)}
-                          </span>
-                        ) : null;
-                      })}
-                    </div>
+                  <div className="mt-4 border-t border-gray-200 pt-4">
+                    <span className="text-sm font-semibold text-gray-800">Amount summary</span>
+                    {frequency === 'yearly' && (
+                      <p className="mt-1 text-lg font-bold text-indigo-600">Year total: ₹{getTotalAmount().toFixed(2)}</p>
+                    )}
+                    {frequency === 'quarterly' && (
+                      <ul className="mt-2 space-y-1 text-sm">
+                        {QUARTERS.map((q) => (
+                          <li key={q.id} className="flex justify-between max-w-md">
+                            <span className="text-gray-700">{q.label}</span>
+                            <span className="font-mono font-semibold text-indigo-600">
+                              ₹{sumAmountRecord(selectedFeeHeadsByQuarter[q.id] || {}).toFixed(2)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {frequency === 'monthly' && (
+                      <ul className="mt-2 space-y-1 text-sm max-h-44 overflow-y-auto pr-1">
+                        {getMonthsInRange().map((mo) => (
+                          <li key={mo.value} className="flex justify-between max-w-md">
+                            <span className="text-gray-700">{mo.label}</span>
+                            <span className="font-mono font-semibold text-indigo-600">
+                              ₹{sumAmountRecord(selectedFeeHeadsByMonth[String(mo.value)] || {}).toFixed(2)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="mt-4 border-t border-gray-200 pt-4">
+                    <span className="text-sm font-semibold text-gray-800">Fee heads (all amounts, including ₹0)</span>
+                    {frequency === 'yearly' && (
+                      <ul className="mt-2 space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
+                        {feeHeads.map((h) => {
+                          const amt = Number(selectedFeeHeads[h.id] ?? 0);
+                          return (
+                            <li key={h.id} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
+                              <span className="text-gray-800">{h.name}</span>
+                              <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    {frequency === 'quarterly' && (
+                      <div className="mt-2 space-y-3">
+                        {QUARTERS.map((q) => (
+                          <div key={q.id}>
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{q.label}</p>
+                            <ul className="mt-1 space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
+                              {feeHeads.map((h) => {
+                                const amt = Number(selectedFeeHeadsByQuarter[q.id]?.[h.id] ?? 0);
+                                return (
+                                  <li key={h.id} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
+                                    <span className="text-gray-800">{h.name}</span>
+                                    <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {frequency === 'monthly' && (
+                      <div className="mt-2 space-y-3 max-h-72 overflow-y-auto pr-1">
+                        {getMonthsInRange().map((mo) => (
+                          <div key={mo.value}>
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{mo.label}</p>
+                            <ul className="mt-1 space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
+                              {feeHeads.map((h) => {
+                                const amt = Number(selectedFeeHeadsByMonth[String(mo.value)]?.[h.id] ?? 0);
+                                return (
+                                  <li key={h.id} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
+                                    <span className="text-gray-800">{h.name}</span>
+                                    <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {lateFeeType && (

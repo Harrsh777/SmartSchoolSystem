@@ -34,6 +34,13 @@ export async function POST(
       return permissionCheck;
     }
 
+    if ((structure as { deleted_at?: string | null }).deleted_at) {
+      return NextResponse.json(
+        { error: 'This fee structure has been removed and cannot be activated.' },
+        { status: 400 }
+      );
+    }
+
     if (structure.is_active) {
       return NextResponse.json(
         { error: 'Fee structure is already active' },

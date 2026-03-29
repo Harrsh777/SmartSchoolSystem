@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
 import { enrichStudentFeesWithAdjustments } from '@/lib/fees/enrich-student-fees';
+import { academicYearMatchesStructure } from '@/lib/fees/fee-structure-class-match';
 import { installmentDisplayLabel } from '@/lib/fees/installment-display-label';
 
 /**
@@ -105,8 +106,7 @@ export async function GET(
     if (academicYear) {
       feesToUse = feesToUse.filter((fee) => {
         const structure = fee.fee_structure as { academic_year?: string | null } | null;
-        const feeYear = (structure?.academic_year ?? '').toString().trim();
-        return feeYear === academicYear;
+        return academicYearMatchesStructure(structure?.academic_year, academicYear);
       });
     }
 

@@ -4,6 +4,7 @@ import { requirePermission } from '@/lib/api-permissions';
 import { feeStructureMatchesSelection } from '@/lib/fees/fee-structure-class-match';
 import { normalizeFeeDueMonthKey } from '@/lib/fees/due-month-key';
 import { isClassFeeLineTableMissingError } from '@/lib/fees/class-fee-line-table';
+import { isMissingFeeStructuresDeletedAtColumn } from '@/lib/fees/fee-structure-deleted-at-compat';
 
 function serializeInsertError(err: unknown, httpStatus?: number, httpStatusText?: string): string {
   if (err == null) {
@@ -193,12 +194,17 @@ export async function POST(request: NextRequest) {
     const migrationHint =
       'Apply supabase/migrations/20260329200000_class_fee_line_adjustments.sql (or 20260330190000_ensure_class_fee_line_adjustments.sql) and reload the PostgREST schema.';
 
-    const { data: structure, error: fsLookupErr } = await supabase
-      .from('fee_structures')
-      .select('id, school_code, academic_year, class_name, section, is_active')
-      .eq('id', fee_structure_id)
-      .ilike('school_code', code)
-      .maybeSingle();
+    const fsBase = () =>
+      supabase
+        .from('fee_structures')
+        .select('id, school_code, academic_year, class_name, section, is_active')
+        .eq('id', fee_structure_id)
+        .ilike('school_code', code);
+
+    let { data: structure, error: fsLookupErr } = await fsBase().is('deleted_at', null).maybeSingle();
+    if (fsLookupErr && isMissingFeeStructuresDeletedAtColumn(fsLookupErr)) {
+      ({ data: structure, error: fsLookupErr } = await fsBase().maybeSingle());
+    }
 
     if (fsLookupErr) {
       return NextResponse.json({ error: fsLookupErr.message }, { status: 500 });

@@ -78,6 +78,16 @@ interface PendingStudent {
   due_date: string;
 }
 
+interface SessionPaidUpStudent {
+  id: string;
+  admission_no: string;
+  student_name: string;
+  class: string;
+  section: string;
+  installment_count: number;
+  total_paid_session: number;
+}
+
 interface PaymentRecord {
   id: string;
   amount: number;
@@ -109,6 +119,8 @@ export default function PaymentCollectionPage({
   const [classFilter, setClassFilter] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
   const [pendingStudents, setPendingStudents] = useState<PendingStudent[]>([]);
+  const [paidUpStudents, setPaidUpStudents] = useState<SessionPaidUpStudent[]>([]);
+  const [classRows, setClassRows] = useState<Array<{ class?: string; section?: string }>>([]);
   const [selectedStudent, setSelectedStudent] = useState<PendingStudent | null>(null);
   const [studentFees, setStudentFees] = useState<StudentFee[]>([]);
   const [recentPayments, setRecentPayments] = useState<PaymentRecord[]>([]);
@@ -152,29 +164,61 @@ export default function PaymentCollectionPage({
     fetchAcademicYears();
   }, [fetchAcademicYears]);
 
+  const fetchClassRows = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/classes?school_code=${encodeURIComponent(schoolCode)}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.data)) {
+        setClassRows(data.data as Array<{ class?: string; section?: string }>);
+      } else {
+        setClassRows([]);
+      }
+    } catch {
+      setClassRows([]);
+    }
+  }, [schoolCode]);
+
+  useEffect(() => {
+    fetchClassRows();
+  }, [fetchClassRows]);
+
   const fetchPendingStudents = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-      let url = `/api/v2/fees/students/pending?school_code=${schoolCode}&limit=300`;
-      if (classFilter) url += `&class=${encodeURIComponent(classFilter)}`;
-      if (sectionFilter) url += `&section=${encodeURIComponent(sectionFilter)}`;
-      if (currentAcademicYear) url += `&academic_year=${encodeURIComponent(currentAcademicYear)}`;
-      const response = await fetch(url);
-      const result = await response.json();
-      if (response.ok) setPendingStudents(result.data || []);
-      else setError(result.error || 'Failed to load students with pending fees');
+      const q = new URLSearchParams({ school_code: schoolCode, limit: '300' });
+      if (classFilter) q.set('class', classFilter);
+      if (sectionFilter) q.set('section', sectionFilter);
+      if (currentAcademicYear) q.set('academic_year', currentAcademicYear);
+
+      const pendingUrl = `/api/v2/fees/students/pending?${q.toString()}`;
+      const paidUpUrl = `/api/v2/fees/students/session-paid-up?${q.toString()}`;
+
+      const [pendingRes, paidUpRes] = await Promise.all([fetch(pendingUrl), fetch(paidUpUrl)]);
+      const pendingJson = await pendingRes.json();
+      const paidUpJson = await paidUpRes.json();
+
+      if (pendingRes.ok) setPendingStudents(pendingJson.data || []);
+      else {
+        setPendingStudents([]);
+        setError(pendingJson.error || 'Failed to load students with pending fees');
+      }
+
+      if (paidUpRes.ok) setPaidUpStudents(paidUpJson.data || []);
+      else setPaidUpStudents([]);
     } catch (err) {
       console.error(err);
       setError('Failed to load students');
+      setPendingStudents([]);
+      setPaidUpStudents([]);
     } finally {
       setLoading(false);
     }
   }, [schoolCode, classFilter, sectionFilter, currentAcademicYear]);
 
   useEffect(() => {
-    if (currentAcademicYear) fetchPendingStudents();
-  }, [fetchPendingStudents, currentAcademicYear]);
+    void fetchPendingStudents();
+  }, [fetchPendingStudents]);
 
   useEffect(() => {
     fetchStaff();
@@ -202,27 +246,53 @@ export default function PaymentCollectionPage({
     }
   }, [schoolCode]);
 
-  const uniqueClasses = useMemo(
-    () =>
-      Array.from(new Set(pendingStudents.map((s) => s.class))).sort((a, b) => {
-        const numA = parseInt(a) || 0;
-        const numB = parseInt(b) || 0;
-        return numA - numB;
-      }),
-    [pendingStudents]
-  );
-  const uniqueSections = useMemo(
-    () =>
-      classFilter
-        ? Array.from(
-            new Set(pendingStudents.filter((s) => s.class === classFilter).map((s) => s.section))
-          ).sort()
-        : [],
-    [classFilter, pendingStudents]
-  );
+  const uniqueClasses = useMemo(() => {
+    const fromApi = Array.from(
+      new Set(classRows.map((r) => String(r.class ?? '').trim()).filter(Boolean))
+    );
+    if (fromApi.length > 0) {
+      return fromApi.sort((a, b) => {
+        const numA = parseInt(a, 10) || 0;
+        const numB = parseInt(b, 10) || 0;
+        if (numA !== numB) return numA - numB;
+        return a.localeCompare(b);
+      });
+    }
+    return Array.from(new Set(pendingStudents.map((s) => s.class))).sort((a, b) => {
+      const numA = parseInt(a, 10) || 0;
+      const numB = parseInt(b, 10) || 0;
+      return numA - numB;
+    });
+  }, [classRows, pendingStudents]);
 
-  const handleStudentSelect = async (student: PendingStudent) => {
-    setSelectedStudent(student);
+  const uniqueSections = useMemo(() => {
+    if (!classFilter) return [] as string[];
+    const fromApi = Array.from(
+      new Set(
+        classRows
+          .filter((r) => String(r.class ?? '').trim() === String(classFilter).trim())
+          .map((r) => String(r.section ?? '').trim())
+          .filter(Boolean)
+      )
+    );
+    if (fromApi.length > 0) return fromApi.sort();
+    return Array.from(
+      new Set(pendingStudents.filter((s) => s.class === classFilter).map((s) => s.section))
+    ).sort();
+  }, [classFilter, classRows, pendingStudents]);
+
+  const handleStudentSelect = async (student: PendingStudent | SessionPaidUpStudent) => {
+    setSelectedStudent({
+      id: student.id,
+      student_name: student.student_name,
+      admission_no: student.admission_no,
+      class: student.class,
+      section: student.section,
+      pending_amount:
+        'pending_amount' in student ? student.pending_amount : 0,
+      late_fee_amount: 'late_fee_amount' in student ? student.late_fee_amount : undefined,
+      due_date: 'due_date' in student ? student.due_date : '',
+    });
     setStudentFees([]);
     setRecentPayments([]);
     setAllocations({});
@@ -366,6 +436,16 @@ export default function PaymentCollectionPage({
     [pendingStudents, searchQuery]
   );
 
+  const filteredPaidUpStudents = useMemo(
+    () =>
+      paidUpStudents.filter(
+        (s) =>
+          s.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.admission_no.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [paidUpStudents, searchQuery]
+  );
+
   const totalDue = studentFees.reduce((sum, f) => sum + f.total_due, 0);
   const totalDueForDisplay = selectedStudent ? selectedStudent.pending_amount : totalDue;
   const totalAllocated = Object.values(allocations).reduce((sum, amt) => sum + amt, 0);
@@ -406,14 +486,7 @@ export default function PaymentCollectionPage({
       <header className="sticky top-0 z-10 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/dashboard`)}
-            >
-              <ArrowLeft size={18} className="mr-2" />
-              Back
-            </Button>
+          
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40">
                 <Wallet size={24} className="text-blue-600 dark:text-blue-400" />
@@ -452,54 +525,84 @@ export default function PaymentCollectionPage({
 
         {/* Select Student bar */}
         <Card className="mb-6 p-4 sm:p-5">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Select Student</h2>
-          <div className="flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
-            <div className="flex flex-col sm:flex-row gap-3 flex-1 min-w-0">
-              <div className="relative flex-1 min-w-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <Input
-                  type="text"
-                  placeholder="Search by Name or Student ID"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-10"
-                />
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Select Student</h2>
+            {(classFilter || sectionFilter || searchQuery.trim()) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 text-xs h-8"
+                onClick={() => {
+                  setClassFilter('');
+                  setSectionFilter('');
+                  setSearchQuery('');
+                }}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+          <div className="flex flex-col lg:flex-row gap-4 lg:items-end lg:justify-between">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 flex-1 min-w-0 w-full">
+              <div className="sm:col-span-2 lg:col-span-5 min-w-0">
+                <label className="block text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
+                  Search
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                  <Input
+                    type="text"
+                    placeholder="Name or admission number"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-11 w-full"
+                  />
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setClassFilter('')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    !classFilter
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
+              <div className="sm:col-span-1 lg:col-span-3 min-w-0">
+                <label
+                  htmlFor="collect-class-filter"
+                  className="block text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wide mb-1.5"
                 >
-                  All Classes
-                </button>
-                {uniqueClasses.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setClassFilter(c)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      classFilter === c
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
+                  Class
+                </label>
                 <select
+                  id="collect-class-filter"
+                  value={classFilter}
+                  onChange={(e) => {
+                    setClassFilter(e.target.value);
+                    setSectionFilter('');
+                  }}
+                  className="w-full h-11 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm px-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                >
+                  <option value="">All classes</option>
+                  {uniqueClasses.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-1 lg:col-span-4 min-w-0">
+                <label
+                  htmlFor="collect-section-filter"
+                  className="block text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wide mb-1.5"
+                >
+                  Section
+                </label>
+                <select
+                  id="collect-section-filter"
                   value={sectionFilter}
                   onChange={(e) => setSectionFilter(e.target.value)}
-                  className="h-10 px-3 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm min-w-[120px]"
                   disabled={!classFilter}
+                  className="w-full h-11 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm px-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="">Sections</option>
+                  <option value="">{classFilter ? 'All sections' : 'Select a class first'}</option>
                   {uniqueSections.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -919,11 +1022,27 @@ export default function PaymentCollectionPage({
                 <Loader2 size={32} className="animate-spin text-blue-600" />
               </div>
             ) : filteredStudents.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <Users size={48} className="mx-auto mb-3 text-gray-300" />
-                <p className="font-medium">No students with pending dues</p>
-                <p className="text-sm mt-1">
-                  {searchQuery || classFilter || sectionFilter ? 'Try different filters.' : 'All clear for this session.'}
+              <div className="text-center py-12 text-gray-500 dark:text-slate-400 px-2">
+                <Users size={48} className="mx-auto mb-3 text-gray-300 dark:text-slate-600" />
+                <p className="font-medium text-gray-800 dark:text-slate-200">No students with pending dues</p>
+                <p className="text-sm mt-2 max-w-md mx-auto leading-relaxed">
+                  {searchQuery.trim() || classFilter || sectionFilter ? (
+                    <>
+                      Nothing matches your search or class/section filters for session{' '}
+                      <span className="font-medium text-gray-700 dark:text-slate-300">
+                        {currentAcademicYear || '—'}
+                      </span>
+                      . Try <span className="font-medium">Clear filters</span> or another class/section.
+                    </>
+                  ) : pendingStudents.length === 0 ? (
+                    <>
+                      No unpaid installments in this session (
+                      <span className="font-medium">{currentAcademicYear || 'current'}</span>
+                      ) for active fee structures, or dues are not in pending/partial/overdue status.
+                    </>
+                  ) : (
+                    'No names match your search.'
+                  )}
                 </p>
               </div>
             ) : (
@@ -943,6 +1062,66 @@ export default function PaymentCollectionPage({
                     </p>
                     <p className="text-sm font-bold text-red-600 dark:text-red-400 mt-1">
                       {formatCurrency(student.pending_amount)} due
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
+
+        {!selectedStudent && (
+          <Card className="p-5 mt-6 border border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-emerald-950/20">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+              <CheckCircle size={20} className="text-emerald-600 dark:text-emerald-400" />
+              Fully paid for this session
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
+              Students with fee installments for{' '}
+              <span className="font-medium text-gray-800 dark:text-slate-200">
+                {currentAcademicYear || 'the selected session'}
+              </span>
+              {classFilter ? (
+                <>
+                  , class <span className="font-medium">{classFilter}</span>
+                  {sectionFilter ? (
+                    <>
+                      , section <span className="font-medium">{sectionFilter}</span>
+                    </>
+                  ) : null}
+                </>
+              ) : null}{' '}
+              and no balance due on those installments. Open a student to view receipts and payment history.
+            </p>
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 size={28} className="animate-spin text-emerald-600" />
+              </div>
+            ) : filteredPaidUpStudents.length === 0 ? (
+              <div className="text-center py-10 text-gray-500 dark:text-slate-400">
+                <UserCheck size={40} className="mx-auto mb-2 text-emerald-200 dark:text-emerald-900" />
+                <p className="font-medium">No fully paid students match these filters</p>
+                <p className="text-sm mt-1">Try another class, section, or session — or no one is fully settled yet.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[360px] overflow-y-auto">
+                {filteredPaidUpStudents.map((student) => (
+                  <button
+                    key={student.id}
+                    type="button"
+                    onClick={() => handleStudentSelect(student)}
+                    className="text-left p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-400 dark:hover:border-emerald-600 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 transition-colors"
+                  >
+                    <p className="font-semibold text-gray-900 dark:text-white truncate">
+                      {student.student_name}
+                    </p>
+                    <p className="text-sm font-mono text-gray-500 dark:text-slate-400">
+                      {student.admission_no} • {student.class}-{student.section}
+                    </p>
+                    <p className="text-xs text-emerald-800 dark:text-emerald-300 mt-1">
+                      {student.installment_count} installment{student.installment_count !== 1 ? 's' : ''} settled
+                      {' · '}
+                      {formatCurrency(student.total_paid_session)} received (session)
                     </p>
                   </button>
                 ))}

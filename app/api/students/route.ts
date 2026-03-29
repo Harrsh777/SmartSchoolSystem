@@ -46,6 +46,11 @@ export async function GET(request: NextRequest) {
     const sectionFilter = searchParams.get('section');
     const academicYearFilter = searchParams.get('academic_year');
     const statusFilter = searchParams.get('status');
+    const searchRaw = searchParams.get('search')?.trim() ?? '';
+    const limitRaw = searchParams.get('limit');
+    const parsedLimit = limitRaw != null && limitRaw !== '' ? parseInt(limitRaw, 10) : NaN;
+    const limit =
+      Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 500) : null;
 
     // Build query - select only fields needed for list view
     const studentFields = 'id,admission_no,student_name,first_name,last_name,class,section,academic_year,status,student_contact,father_name,mother_name,father_contact,mother_contact,parent_name,parent_phone,parent_email,roll_number,email,house,photo_url,created_at,updated_at';
@@ -66,10 +71,25 @@ export async function GET(request: NextRequest) {
       const escaped = escapeIlike(trimmed);
       query = query.ilike('class', escaped);
     }
-    if (sectionFilter !== null && sectionFilter !== undefined) {
+    if (sectionFilter !== null && sectionFilter !== undefined && String(sectionFilter).trim() !== '') {
       const sectionVal = String(sectionFilter ?? '').trim();
       query = query.ilike('section', escapeIlike(sectionVal));
     }
+
+    if (searchRaw.length >= 2) {
+      const tokens = searchRaw.split(/\s+/).filter((t) => t.length > 0);
+      if (tokens.length === 1) {
+        const safe = escapeIlike(tokens[0]);
+        const p = `%${safe}%`;
+        query = query.or(`student_name.ilike.${p},admission_no.ilike.${p}`);
+      } else {
+        // Full name: every word must appear in student_name (tighter than a single OR ilike).
+        for (const tok of tokens) {
+          query = query.ilike('student_name', `%${escapeIlike(tok)}%`);
+        }
+      }
+    }
+
     if (academicYearFilter) {
       // Include students with matching academic_year OR null (students added without year)
       query = query.or(`academic_year.eq.${academicYearFilter},academic_year.is.null`);
@@ -90,6 +110,10 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', 'active');
     }
     // If statusFilter is 'all', don't filter by status
+
+    if (limit != null) {
+      query = query.limit(limit);
+    }
 
     // Execute query
     const { data: students, error: studentsError } = await query.order('created_at', { ascending: false });

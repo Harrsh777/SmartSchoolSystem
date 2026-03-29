@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo } from 'react';
+import { use, useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -117,14 +117,63 @@ export default function FeeStatementsPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
-  useEffect(() => {
-    if (searchQuery.length >= 2) {
-      searchStudents();
-    } else {
+  const searchStudents = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        search: searchQuery.trim(),
+        limit: '50',
+      });
+      if (selectedClass) params.append('class', selectedClass);
+      if (selectedSection) params.append('section', selectedSection);
+
+      const response = await fetch(`/api/students?${params.toString()}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setStudents(Array.isArray(result.data) ? result.data : []);
+      } else {
+        setStudents([]);
+      }
+    } catch (error) {
+      console.error('Error searching students:', error);
       setStudents([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, selectedClass, selectedSection, schoolCode]);
+  }, [schoolCode, searchQuery, selectedClass, selectedSection]);
+
+  const loadClassRoster = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        limit: '80',
+      });
+      if (selectedClass) params.append('class', selectedClass);
+      if (selectedSection) params.append('section', selectedSection);
+
+      const response = await fetch(`/api/students?${params.toString()}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setStudents(Array.isArray(result.data) ? result.data : []);
+      } else {
+        setStudents([]);
+      }
+    } catch (error) {
+      console.error('Error loading class roster:', error);
+      setStudents([]);
+    }
+  }, [schoolCode, selectedClass, selectedSection]);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length >= 2) {
+      void searchStudents();
+      return;
+    }
+    if (selectedClass) {
+      void loadClassRoster();
+      return;
+    }
+    setStudents([]);
+  }, [searchQuery, selectedClass, selectedSection, searchStudents, loadClassRoster]);
 
   const fetchClasses = async () => {
     try {
@@ -135,25 +184,6 @@ export default function FeeStatementsPage({
       }
     } catch (error) {
       console.error('Error fetching classes:', error);
-    }
-  };
-
-  const searchStudents = async () => {
-    try {
-      const params = new URLSearchParams({
-        school_code: schoolCode,
-        search: searchQuery,
-      });
-      if (selectedClass) params.append('class', selectedClass);
-      if (selectedSection) params.append('section', selectedSection);
-
-      const response = await fetch(`/api/students?${params.toString()}`);
-      const result = await response.json();
-      if (response.ok && result.data) {
-        setStudents(result.data.slice(0, 10));
-      }
-    } catch (error) {
-      console.error('Error searching students:', error);
     }
   };
 
@@ -182,7 +212,7 @@ export default function FeeStatementsPage({
       setLoadingRecent(true);
       const params = new URLSearchParams({
         school_code: schoolCode,
-        limit: '5',
+        limit: '25',
       });
       if (selectedClass) params.set('class', selectedClass);
       if (selectedSection) params.set('section', selectedSection);
@@ -377,12 +407,15 @@ export default function FeeStatementsPage({
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <Input
                 type="text"
-                placeholder="Search by name or admission number..."
+                placeholder="Search name (use full name to narrow) or admission no…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
               />
             </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Pick a <span className="font-medium">class</span> to list students here, or type at least 2 characters to search.
+            </p>
             {students.length > 0 && (
               <div className="mt-2 border border-gray-200 rounded-lg bg-white shadow-lg max-h-60 overflow-y-auto z-10">
                 {students.map(student => (
@@ -890,13 +923,16 @@ export default function FeeStatementsPage({
               </div>
 
               <p className="text-sm text-gray-500">
-                Or use the search above to view any student’s complete fee history.
+                Or choose a class (and section) above, or search by name / admission number.
               </p>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <IndianRupee className="mx-auto text-gray-400 mb-4" size={48} />
-              <p className="text-gray-500">No recent pending fee statements found. Search for a student above.</p>
+              <p className="text-gray-500">
+                No students with pending dues in this filter. Select a <span className="font-medium">class</span> to list
+                students, or search by name (full name narrows results) or admission number.
+              </p>
             </div>
           )}
         </Card>

@@ -19,6 +19,7 @@ import {
   Grid3x3,
   History,
 } from 'lucide-react';
+import { ACADEMIC_YEAR_NAME_FORMAT_HINT, parseAcademicYearName } from '@/lib/academic-year-name';
 
 interface FeeSchedule {
   id: string;
@@ -384,69 +385,8 @@ export default function FeeBasicsPage({
         </Card>
       </div>
 
-      {/* Section 1: Fee Schedule */}
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-900">1. Fee Schedule</h2>
-          <Button
-            onClick={() => {
-              setEditingSchedule(null);
-              setShowScheduleModal(true);
-            }}
-            className="bg-orange-500 hover:bg-orange-600 text-white"
-          >
-            <Plus size={18} className="mr-2" />
-            ADD FEE SCHEDULE
-          </Button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-teal-700 text-white">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Classes</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold">No. of Installments</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Schedule Name</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {schedules.length > 0 ? (
-                schedules.map((schedule, index) => (
-                  <tr key={schedule.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {String(index + 1).padStart(2, '0')}. {formatClasses(schedule.classes)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{schedule.number_of_installments}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{schedule.schedule_name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {formatDateRange(schedule.start_date, schedule.end_date)}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <button
-                        onClick={() => {
-                          setEditingSchedule(schedule);
-                          setShowScheduleModal(true);
-                        }}
-                        className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                        title="Edit"
-                      >
-                        <Edit size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                    No fee schedules found. Click &quot;ADD FEE SCHEDULE&quot; to create one.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+     
+     
 
       {/* Section 2: Fee Component */}
       <Card className="p-6">
@@ -809,6 +749,11 @@ function AcademicYearModal({ schoolCode, onClose }: { schoolCode: string; onClos
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const parsed = parseAcademicYearName(formData.year_name);
+    if (!parsed.ok) {
+      alert(parsed.error);
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch('/api/fees/academic-years', {
@@ -817,6 +762,7 @@ function AcademicYearModal({ schoolCode, onClose }: { schoolCode: string; onClos
         body: JSON.stringify({
           school_code: schoolCode,
           ...formData,
+          year_name: parsed.year_name,
         }),
       });
       if (response.ok) {
@@ -857,8 +803,10 @@ function AcademicYearModal({ schoolCode, onClose }: { schoolCode: string; onClos
                 value={formData.year_name}
                 onChange={(e) => setFormData({ ...formData, year_name: e.target.value })}
                 required
-                placeholder="e.g., Apr 2025 - Mar 2026"
+                placeholder="2026-2027"
+                className="font-mono"
               />
+              <p className="text-xs text-gray-500 mt-1">{ACADEMIC_YEAR_NAME_FORMAT_HINT}</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

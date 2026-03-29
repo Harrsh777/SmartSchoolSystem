@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { parseAcademicYearName } from '@/lib/academic-year-name';
 
 /**
  * GET /api/fees/academic-years
@@ -56,6 +57,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const parsed = parseAcademicYearName(String(year_name));
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
     // Get school ID
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
@@ -83,7 +89,7 @@ export async function POST(request: NextRequest) {
       .insert([{
         school_id: schoolData.id,
         school_code,
-        year_name,
+        year_name: parsed.year_name,
         start_date,
         end_date,
         is_current: is_current || false,

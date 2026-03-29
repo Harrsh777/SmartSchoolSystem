@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import {
+  enrichStudentFeesWithAdjustments,
+  type FeeWithStructure,
+} from '@/lib/fees/enrich-student-fees';
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 /**
  * POST /api/fees/receipts/download
@@ -59,7 +72,11 @@ export async function POST(request: NextRequest) {
           id,
           name,
           class_name,
-          section
+          section,
+          academic_year,
+          late_fee_type,
+          late_fee_value,
+          grace_period_days
         )
       `)
       .eq('student_id', student_id)
@@ -72,6 +89,24 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    const studentCtx = {
+      id: String(student.id),
+      class: String(student.class ?? ''),
+      section: (student.section as string | null | undefined) ?? null,
+    };
+    const enrichedFees = await enrichStudentFeesWithAdjustments(
+      supabase,
+      normalizedSchoolCode,
+      studentCtx,
+      fees as FeeWithStructure[]
+    );
+    const orderMap = new Map(
+      fee_ids.map((id: unknown, i: number) => [String(id), i])
+    );
+    enrichedFees.sort(
+      (a, b) => (orderMap.get(String(a.id)) ?? 0) - (orderMap.get(String(b.id)) ?? 0)
+    );
 
     // Fetch fee structure items (fee heads) for each fee structure
     const feeStructureIds = [...new Set(fees.map(f => f.fee_structure_id))];
@@ -113,8 +148,14 @@ export async function POST(request: NextRequest) {
       .eq('school_code', normalizedSchoolCode)
       .eq('is_reversed', false);
 
-    // Generate HTML receipt
-    const receiptHtml = generateReceiptHTML(school, student, fees, payments || [], itemsByStructure);
+    // Generate HTML receipt (enriched totals include misc/class line adjustments)
+    const receiptHtml = generateReceiptHTML(
+      school,
+      student,
+      enrichedFees as Record<string, unknown>[],
+      payments || [],
+      itemsByStructure
+    );
 
     // Return HTML that can be viewed in browser and printed/saved as PDF
     return new NextResponse(receiptHtml, {
@@ -144,12 +185,21 @@ function generateReceiptHTML(
     day: 'numeric',
   });
 
-  const totalAmount = fees.reduce((sum, fee) => {
-    return sum + Number(fee.base_amount || 0) + Number(fee.adjustment_amount || 0);
-  }, 0);
+  const grossBillable = (fee: Record<string, unknown>) => {
+    const finalAmt = fee.final_amount;
+    const late = fee.late_fee;
+    if (finalAmt != null && late != null) {
+      return Number(finalAmt) + Number(late);
+    }
+    return Number(fee.base_amount || 0) + Number(fee.adjustment_amount || 0);
+  };
 
+  const totalAmount = fees.reduce((sum, fee) => sum + grossBillable(fee), 0);
   const totalPaid = fees.reduce((sum, fee) => sum + Number(fee.paid_amount || 0), 0);
-  const totalDue = totalAmount - totalPaid;
+  const totalDue = fees.reduce((sum, fee) => {
+    if (fee.total_due != null) return sum + Number(fee.total_due);
+    return sum + (grossBillable(fee) - Number(fee.paid_amount || 0));
+  }, 0);
 
   // Find payments related to these fees
   const feeIds = new Set(fees.map((f: Record<string, unknown>) => f.id as string));
@@ -427,8 +477,24 @@ function generateReceiptContent(
     </div>
 
     ${fees.map((fee: Record<string, unknown>) => {
-      const balance = Number((fee.base_amount as number) || 0) + Number((fee.adjustment_amount as number) || 0) - Number((fee.paid_amount as number) || 0);
+      const balance =
+        fee.total_due != null
+          ? Number(fee.total_due)
+          : Number((fee.base_amount as number) || 0) +
+            Number((fee.adjustment_amount as number) || 0) -
+            Number((fee.paid_amount as number) || 0);
       const status = balance <= 0 ? 'Paid' : (fee.status as string) === 'overdue' ? 'Overdue' : 'Pending';
+      const effectiveAdj =
+        fee.effective_adjustment_amount != null
+          ? Number(fee.effective_adjustment_amount)
+          : Number(fee.adjustment_amount || 0);
+      const lateFee = fee.late_fee != null ? Number(fee.late_fee) : 0;
+      const manualLines = (fee.installment_manual_lines as Array<{
+        label: string;
+        amount: number;
+        kind: string;
+        source?: string;
+      }>) || [];
       const structureItems = itemsByStructure[fee.fee_structure_id as string] || [];
       
       const feeStructure = fee.fee_structure as Record<string, unknown> | undefined;
@@ -488,6 +554,46 @@ function generateReceiptContent(
               </tr>
               `;
             }).join('')}
+            ${manualLines
+              .map(
+                (line) => `
+              <tr>
+                <td>
+                  <div style="font-weight: 600; font-size: 10px;">${escapeHtml(line.label)}</div>
+                  <div style="font-size: 9px; color: #666; margin-top: 1px;">${line.kind === 'discount' ? 'Discount' : 'Misc'}${line.source ? ` · ${line.source}` : ''}</div>
+                </td>
+                <td class="text-right" style="font-size: 10px;">₹${Number(line.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td class="text-right" style="font-size: 10px;">₹${Number(line.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              </tr>
+              `
+              )
+              .join('')}
+          </tbody>
+        </table>
+        ` : manualLines.length > 0 ? `
+        <table class="fees-table" style="margin-bottom: 0;">
+          <thead>
+            <tr>
+              <th style="width: 50%;">Fee Head</th>
+              <th class="text-right" style="width: 25%;">Amount</th>
+              <th class="text-right" style="width: 25%;">Allocated</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${manualLines
+              .map(
+                (line) => `
+              <tr>
+                <td>
+                  <div style="font-weight: 600; font-size: 10px;">${escapeHtml(line.label)}</div>
+                  <div style="font-size: 9px; color: #666; margin-top: 1px;">${line.kind === 'discount' ? 'Discount' : 'Misc'}${line.source ? ` · ${line.source}` : ''}</div>
+                </td>
+                <td class="text-right" style="font-size: 10px;">₹${Number(line.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td class="text-right" style="font-size: 10px;">₹${Number(line.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              </tr>
+              `
+              )
+              .join('')}
           </tbody>
         </table>
         ` : ''}
@@ -499,23 +605,33 @@ function generateReceiptContent(
               <div style="font-size: 12px; font-weight: bold;">₹${Number(fee.base_amount || 0).toLocaleString('en-IN')}</div>
             </div>
             <div>
-              <div style="font-size: 9px; color: #666; margin-bottom: 2px;">Adjustment</div>
+              <div style="font-size: 9px; color: #666; margin-bottom: 2px;">Adjustments</div>
               ${(() => {
-                const adjustmentAmount = Number(fee.adjustment_amount || 0);
-                const color = adjustmentAmount > 0 ? '#4caf50' : adjustmentAmount < 0 ? '#f44336' : '#1a1a1a';
-                const display = adjustmentAmount !== 0 ? (adjustmentAmount > 0 ? '+' : '') + '₹' + adjustmentAmount.toLocaleString('en-IN') : '₹0';
+                const color = effectiveAdj > 0 ? '#4caf50' : effectiveAdj < 0 ? '#f44336' : '#1a1a1a';
+                const display =
+                  effectiveAdj !== 0
+                    ? (effectiveAdj > 0 ? '+' : '') +
+                      '₹' +
+                      effectiveAdj.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : '₹0';
                 return `<div style="font-size: 12px; font-weight: bold; color: ${color};">${display}</div>`;
               })()}
+              <div style="font-size: 8px; color: #888; margin-top: 2px;">Rules + misc / class lines</div>
             </div>
             <div>
               <div style="font-size: 9px; color: #666; margin-bottom: 2px;">Paid Amount</div>
               <div style="font-size: 12px; font-weight: bold; color: #4caf50;">₹${Number(fee.paid_amount || 0).toLocaleString('en-IN')}</div>
             </div>
             <div>
-              <div style="font-size: 9px; color: #666; margin-bottom: 2px;">Balance</div>
+              <div style="font-size: 9px; color: #666; margin-bottom: 2px;">Balance due</div>
               <div style="font-size: 12px; font-weight: bold; color: ${balance > 0 ? '#f44336' : '#4caf50'};">
-                ₹${balance.toLocaleString('en-IN')}
+                ₹${balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
+              ${
+                lateFee > 0
+                  ? `<div style="font-size: 8px; color: #888; margin-top: 2px;">incl. late fee ₹${lateFee.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>`
+                  : ''
+              }
             </div>
           </div>
         </div>

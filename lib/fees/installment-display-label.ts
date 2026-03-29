@@ -18,7 +18,7 @@ export function buildAcademicYearMonthOrder(startMonth: number, endMonth: number
 
 function parseDueMonthCalendarPart(dueMonth: string): { year: number; month: number } | null {
   const t = dueMonth.trim();
-  const m = t.match(/^(\d{4})-(\d{2})/);
+  const m = t.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?/);
   if (!m) return null;
   const year = parseInt(m[1], 10);
   const month = parseInt(m[2], 10);
@@ -65,11 +65,18 @@ export function installmentDisplayLabel(params: {
   const em = Number(params.endMonth);
 
   if (freq === 'quarterly') {
+    // Derive Q1–Q4 from this installment's due_month + structure start/end months. Structure names often
+    // carry a single trailing "Q4" (or wrong quarter) for the whole template — using that for every row
+    // would label Apr/Jul/Oct/Jan installments all as the same quarter.
     const q =
       Number.isFinite(sm) && Number.isFinite(em)
         ? quarterLabelFromDueMonth(params.dueMonth, sm, em)
         : null;
     if (q) return `${base} ${q}`.trim();
+    const nameQuarter = rawName.match(/\b(Q[1-4])\b/i);
+    if (nameQuarter) {
+      return `${base} ${nameQuarter[1].toUpperCase()}`.trim();
+    }
     return base || rawName;
   }
 

@@ -43,7 +43,13 @@ export async function POST(
     if (permissionCheck) {
       return permissionCheck;
     }
-    
+
+    if ((structure as { deleted_at?: string | null }).deleted_at) {
+      return NextResponse.json(
+        { error: 'This fee structure has been removed. Generate fees is not available.' },
+        { status: 400 }
+      );
+    }
 
     if (!structure.is_active) {
       return NextResponse.json(

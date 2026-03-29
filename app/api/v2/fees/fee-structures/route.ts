@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
+import { isMissingFeeStructuresDeletedAtColumn } from '@/lib/fees/fee-structure-deleted-at-compat';
 
 /**
  * GET /api/v2/fees/fee-structures
@@ -26,15 +27,21 @@ export async function GET(request: NextRequest) {
 
     const supabase = getServiceRoleClient();
 
-    const { data: structures, error } = await supabase
-      .from('fee_structures')
-      .select(`
+    const selectStructures = () =>
+      supabase
+        .from('fee_structures')
+        .select(`
         *,
         created_by_staff:created_by (id, full_name, staff_id),
         activated_by_staff:activated_by (id, full_name, staff_id)
       `)
-      .eq('school_code', schoolCode.toUpperCase())
-      .order('created_at', { ascending: false });
+        .eq('school_code', schoolCode.toUpperCase())
+        .order('created_at', { ascending: false });
+
+    let { data: structures, error } = await selectStructures().is('deleted_at', null);
+    if (error && isMissingFeeStructuresDeletedAtColumn(error)) {
+      ({ data: structures, error } = await selectStructures());
+    }
 
     if (error) {
       console.error('Error fetching fee structures:', error);

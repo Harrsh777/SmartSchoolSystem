@@ -200,7 +200,7 @@ export default function FeesDashboardPage({
           <IndianRupee size={32} className="text-indigo-600" />
           Fee Management Dashboard
         </h1>
-        <p className="text-gray-600">Overview of fee collections and pending dues</p>
+ <p className="text-gray-600">Overview of fee collections and pending dues</p>
       </motion.div>
 
       {/* Stats Cards */}
@@ -338,86 +338,7 @@ export default function FeesDashboardPage({
         </div>
       </Card>
 
-      {/* Fee Schedule — same data as Fee Basics; add/edit opens Fee Basics modal */}
-      <Card className="overflow-hidden border border-gray-300 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4 px-1">
-          <h2 className="text-xl font-bold text-gray-900">1. Fee Schedule</h2>
-          <button
-            type="button"
-            onClick={() =>
-              router.push(`/dashboard/${schoolCode}/fees/basics?addSchedule=1`)
-            }
-            className="inline-flex items-center gap-2 rounded-lg border-2 border-[#B8860B] bg-white px-4 py-2.5 text-sm font-semibold uppercase tracking-wide text-[#B8860B] transition-colors hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B8860B] focus-visible:ring-offset-2"
-          >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#B8860B] text-white">
-              <Plus className="h-4 w-4 stroke-[2.5]" aria-hidden />
-            </span>
-            Add fee schedule
-          </button>
-        </div>
-        <div className="overflow-x-auto rounded-md border border-gray-200">
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="bg-[#003D4C] text-white">
-                <th className="w-[40%] px-4 py-3.5 text-sm font-bold">Classes</th>
-                <th className="w-[15%] px-4 py-3.5 text-sm font-bold">No. of Installments</th>
-                <th className="w-[15%] px-4 py-3.5 text-sm font-bold">Schedule Name</th>
-                <th className="w-[20%] px-4 py-3.5 text-sm font-bold">Date</th>
-                <th className="w-[10%] px-4 py-3.5 text-center text-sm font-bold">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {feeSchedules.length > 0 ? (
-                feeSchedules.map((row, index) => (
-                  <tr
-                    key={row.id}
-                    className="border-t border-gray-200 bg-white hover:bg-gray-50/80"
-                  >
-                    <td className="px-4 py-3.5 text-sm text-gray-900 align-top">
-                      <span className="text-gray-400 tabular-nums">
-                        {String(index + 1).padStart(2, '0')}.
-                      </span>{' '}
-                      {scheduleClassesList(row.classes)}
-                    </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-900">
-                      {row.number_of_installments}
-                    </td>
-                    <td className="px-4 py-3.5 text-sm font-medium text-gray-900">
-                      {row.schedule_name}
-                    </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-700 whitespace-nowrap">
-                      {formatScheduleDateRange(row.start_date, row.end_date)}
-                    </td>
-                    <td className="px-4 py-3.5 text-center align-middle">
-                      <button
-                        type="button"
-                        title="Edit"
-                        onClick={() =>
-                          router.push(
-                            `/dashboard/${schoolCode}/fees/basics?editSchedule=${encodeURIComponent(row.id)}`
-                          )
-                        }
-                        className="inline-flex items-center justify-center rounded-lg p-2 text-[#C17F2A] transition-colors hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B8860B]"
-                      >
-                        <Pencil className="h-5 w-5" aria-hidden />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-4 py-10 text-center text-sm text-gray-500"
-                  >
-                    No fee schedules yet. Use &quot;Add fee schedule&quot; to create one (same as Fee Basics).
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      {/* Fee Schedule — same data as Fee Basics; add/edit opens Fee Basics mod
 
       {/* Current Fee Structures - reflects latest from fee-structures/create and list */}
       <Card>

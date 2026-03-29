@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { Plus, RefreshCw, Loader2, AlertTriangle, CheckCircle, ArrowLeft } from 'lucide-react';
+import { ACADEMIC_YEAR_NAME_FORMAT_HINT, parseAcademicYearName } from '@/lib/academic-year-name';
 
 interface AcademicYearRow {
   id: string;
@@ -56,6 +57,11 @@ export default function YearSetupPage({ params }: { params: Promise<{ school: st
       setError('Year name is required');
       return;
     }
+    const parsed = parseAcademicYearName(newYearName);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
     setCreating(true);
     setError('');
     setSuccess('');
@@ -65,7 +71,7 @@ export default function YearSetupPage({ params }: { params: Promise<{ school: st
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
-          year_name: newYearName.trim(),
+          year_name: parsed.year_name,
           start_date: newStartDate || undefined,
           end_date: newEndDate || undefined,
           status: 'upcoming',
@@ -166,9 +172,20 @@ export default function YearSetupPage({ params }: { params: Promise<{ school: st
             <div className="mt-6 pt-4 border-t border-[#E5E7EB]">
               <h3 className="text-sm font-medium text-[#0F172A] mb-3">Create new academic year</h3>
               <div className="flex flex-wrap gap-3 items-end">
-                <div>
-                  <label className="block text-xs text-[#64748B] mb-1">Year name (e.g. 2026-2027)</label>
-                  <Input value={newYearName} onChange={(e) => setNewYearName(e.target.value)} placeholder="2026-2027" className="w-40" />
+                <div className="min-w-[200px]">
+                  <label className="block text-xs text-[#64748B] mb-1">Year name</label>
+                  <Input
+                    value={newYearName}
+                    onChange={(e) => setNewYearName(e.target.value)}
+                    placeholder="2026-2027"
+                    className="w-full max-w-[220px] font-mono"
+                    maxLength={32}
+                    autoComplete="off"
+                    aria-describedby="year-name-hint"
+                  />
+                  <p id="year-name-hint" className="text-[11px] text-[#64748B] mt-1 max-w-xs leading-snug">
+                    {ACADEMIC_YEAR_NAME_FORMAT_HINT}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs text-[#64748B] mb-1">Start date</label>

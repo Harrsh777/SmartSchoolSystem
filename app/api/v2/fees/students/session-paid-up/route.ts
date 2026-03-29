@@ -7,11 +7,16 @@ import {
   studentMatchesCollectPaymentFilters,
 } from '@/lib/fees/fee-structure-class-match';
 
+/**
+ * GET /api/v2/fees/students/session-paid-up
+ * Students who have fee rows for the session (class/section/year) and no outstanding total_due
+ * on any of those rows (same enrichment as pending list). For Collect Payment reference.
+ */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '200'), 500);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '200', 10), 400);
     const classFilter = searchParams.get('class')?.trim() || '';
     const sectionFilter = searchParams.get('section')?.trim() || '';
     const academicYear = searchParams.get('academic_year')?.trim() || '';
@@ -23,7 +28,7 @@ export async function GET(request: NextRequest) {
     const supabase = getServiceRoleClient();
     const normalizedSchoolCode = schoolCode.toUpperCase();
 
-    const { data: pendingFeesRaw, error: feesError } = await supabase
+    const { data: feesRaw, error: feesError } = await supabase
       .from('student_fees')
       .select(`
         id,
@@ -52,19 +57,22 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('school_code', normalizedSchoolCode)
-      .in('status', ['pending', 'partial', 'overdue'])
+      .in('status', ['pending', 'partial', 'overdue', 'paid'])
       .order('due_date', { ascending: true })
-      .limit(1000);
+      .limit(2500);
 
     if (feesError) {
-      console.error('Error fetching pending fees:', feesError);
+      console.error('Error fetching fees for session-paid-up:', feesError);
       return NextResponse.json({ error: feesError.message }, { status: 500 });
     }
 
-    // Do not hide rows when the fee structure was deactivated — staff still need to collect outstanding dues.
-    let pendingFees = pendingFeesRaw || [];
+    let fees = (feesRaw || []).filter((fee) => {
+      const structure = fee.fee_structure as unknown as { is_active?: boolean } | null;
+      return structure?.is_active !== false;
+    });
+
     if (classFilter || sectionFilter || academicYear) {
-      pendingFees = pendingFees.filter((fee) => {
+      fees = fees.filter((fee) => {
         const student = fee.student as unknown as { class?: string; section?: string };
         const structure = fee.fee_structure as unknown as { academic_year?: string | null };
         if (!studentMatchesCollectPaymentFilters(student, classFilter, sectionFilter)) return false;
@@ -75,30 +83,32 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    if (fees.length === 0) {
+      return NextResponse.json({ data: [] });
+    }
+
     const classLinesBySectionKey = await fetchAllClassFeeLinesBySectionKey(
       supabase,
       normalizedSchoolCode
     );
-    const enriched = await enrichPendingFeeRows(supabase, normalizedSchoolCode, pendingFees as never, {
+    const enriched = await enrichPendingFeeRows(supabase, normalizedSchoolCode, fees as never, {
       classLinesBySectionKey,
     });
 
-    const studentMap = new Map<
-      string,
-      {
-        id: string;
-        student_name: string;
-        admission_no: string;
-        class: string;
-        section: string;
-        pending_amount: number;
-        late_fee_amount: number;
-        due_date: string;
-        latest_due_date: string;
-      }
-    >();
+    type Agg = {
+      id: string;
+      student_name: string;
+      admission_no: string;
+      class: string;
+      section: string;
+      total_due_sum: number;
+      installment_count: number;
+      total_paid_sum: number;
+    };
 
-    enriched.forEach((fee) => {
+    const byStudent = new Map<string, Agg>();
+
+    for (const fee of enriched) {
       const student = fee.student as unknown as {
         id: string;
         student_name?: string;
@@ -106,49 +116,47 @@ export async function GET(request: NextRequest) {
         class?: string;
         section?: string;
       };
+      if (!student?.id) continue;
 
-      if (!student?.id) return;
+      const td = Number(fee.total_due || 0);
+      const paid = Number(fee.paid_amount || 0);
 
-      const totalDue = fee.total_due;
-      if (totalDue <= 0) return;
-
-      if (!studentMap.has(student.id)) {
-        studentMap.set(student.id, {
+      if (!byStudent.has(student.id)) {
+        byStudent.set(student.id, {
           id: student.id,
           student_name: student.student_name || 'Unknown',
           admission_no: student.admission_no || '',
           class: student.class || '',
           section: student.section || '',
-          pending_amount: 0,
-          late_fee_amount: 0,
-          due_date: String(fee.due_date),
-          latest_due_date: String(fee.due_date || ''),
+          total_due_sum: 0,
+          installment_count: 0,
+          total_paid_sum: 0,
         });
       }
+      const a = byStudent.get(student.id)!;
+      a.total_due_sum += td;
+      a.installment_count += 1;
+      a.total_paid_sum += paid;
+    }
 
-      const data = studentMap.get(student.id)!;
-      const feeDueDate = fee.due_date || '';
-      const prevLatest = data.latest_due_date ? new Date(data.latest_due_date) : null;
-      const currentDue = feeDueDate ? new Date(feeDueDate) : null;
-
-      if (!prevLatest || (currentDue && currentDue > prevLatest)) {
-        data.latest_due_date = feeDueDate;
-        data.pending_amount = totalDue;
-        data.late_fee_amount = fee.late_fee;
-        data.due_date = feeDueDate;
-      } else if (currentDue && prevLatest && currentDue.getTime() === prevLatest.getTime()) {
-        data.pending_amount += totalDue;
-        data.late_fee_amount += fee.late_fee;
-      }
-    });
-
-    const pendingStudents = Array.from(studentMap.values())
-      .sort((a, b) => b.pending_amount - a.pending_amount)
+    const EPS = 0.005;
+    const paidUp = Array.from(byStudent.values())
+      .filter((a) => a.installment_count > 0 && a.total_due_sum <= EPS)
+      .map((a) => ({
+        id: a.id,
+        student_name: a.student_name,
+        admission_no: a.admission_no,
+        class: a.class,
+        section: a.section,
+        installment_count: a.installment_count,
+        total_paid_session: Math.round(a.total_paid_sum * 100) / 100,
+      }))
+      .sort((x, y) => x.student_name.localeCompare(y.student_name, undefined, { sensitivity: 'base' }))
       .slice(0, limit);
 
-    return NextResponse.json({ data: pendingStudents });
+    return NextResponse.json({ data: paidUp });
   } catch (error) {
-    console.error('Error in pending students:', error);
+    console.error('Error in session-paid-up:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

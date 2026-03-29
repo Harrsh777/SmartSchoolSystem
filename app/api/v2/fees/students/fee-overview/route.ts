@@ -3,6 +3,13 @@ import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
 import { enrichStudentFeesWithAdjustments } from '@/lib/fees/enrich-student-fees';
 import { fetchAllClassFeeLinesBySectionKey } from '@/lib/fees/class-fee-line-adjustments';
+import { academicYearMatchesStructure } from '@/lib/fees/fee-structure-class-match';
+import {
+  fetchActiveAdjustmentRules,
+  fetchRuleTargetsMap,
+  fetchStructureItemsMap,
+} from '@/lib/fees/load-adjustment-context';
+import { fetchLineAdjustmentsGroupedByFeeIds } from '@/lib/fees/student-fee-line-adjustments';
 
 function escapeIlike(value: string): string {
   return String(value ?? '')
@@ -104,6 +111,29 @@ export async function GET(request: NextRequest) {
 
     const classLinesBySectionKey = await fetchAllClassFeeLinesBySectionKey(supabase, code);
 
+    const allFeeRows = rawFees || [];
+    const allFeeIds = allFeeRows.map((f) => String(f.id));
+    const allStructureIds = [
+      ...new Set(allFeeRows.map((f) => String(f.fee_structure_id)).filter(Boolean)),
+    ];
+
+    const [lineGroups, rules, structureItemsByStructureId] = await Promise.all([
+      fetchLineAdjustmentsGroupedByFeeIds(supabase, allFeeIds),
+      fetchActiveAdjustmentRules(supabase, code),
+      fetchStructureItemsMap(supabase, allStructureIds),
+    ]);
+    const targetByRuleId = await fetchRuleTargetsMap(
+      supabase,
+      rules.map((r) => r.id)
+    );
+
+    const prefetched = {
+      lineGroups,
+      rules,
+      targetByRuleId,
+      structureItemsByStructureId,
+    };
+
     const rows: Array<{
       student: (typeof studentList)[0];
       has_generated_fees: boolean;
@@ -124,8 +154,7 @@ export async function GET(request: NextRequest) {
         }
         if (!allYears && academicYear) {
           const ay = (fee.fee_structure as { academic_year?: string | null } | null)?.academic_year;
-          const y = ay != null ? String(ay).trim() : '';
-          if (y && y !== academicYear) return false;
+          if (!academicYearMatchesStructure(ay, academicYear)) return false;
         }
         return true;
       });
@@ -150,6 +179,7 @@ export async function GET(request: NextRequest) {
 
       const enriched = await enrichStudentFeesWithAdjustments(supabase, code, studentCtx, fees as never, {
         classLinesBySectionKey,
+        prefetched,
       });
 
       const names = new Set<string>();

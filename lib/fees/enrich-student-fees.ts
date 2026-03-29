@@ -2,7 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   computeRuleAdjustmentForFee,
   effectiveAdjustmentAmount,
+  type AdjustmentRuleRow,
   type FeeRowContext,
+  type StructureItemRow,
   type StudentContext,
 } from '@/lib/fees/adjustment-rules-engine';
 import { computeLateFee } from '@/lib/fees/late-fee';
@@ -11,7 +13,10 @@ import {
   fetchRuleTargetsMap,
   fetchStructureItemsMap,
 } from '@/lib/fees/load-adjustment-context';
-import { fetchLineAdjustmentsGroupedByFeeIds } from '@/lib/fees/student-fee-line-adjustments';
+import {
+  fetchLineAdjustmentsGroupedByFeeIds,
+  type LineAdjustmentRow,
+} from '@/lib/fees/student-fee-line-adjustments';
 import {
   classSectionCacheKey,
   fetchAllClassFeeLinesBySectionKey,
@@ -42,12 +47,24 @@ export type FeeWithStructure = Record<string, unknown> & {
 };
 
 /**
+ * Shared DB reads for many students (fee overview / bulk). Avoids N× rules+targets+items queries.
+ */
+export type EnrichStudentFeesPrefetched = {
+  lineGroups: Map<string, LineAdjustmentRow[]>;
+  rules: AdjustmentRuleRow[];
+  targetByRuleId: Map<string, Set<string>>;
+  structureItemsByStructureId: Map<string, StructureItemRow[]>;
+};
+
+/**
  * Applies adjustment rules (lazy), legacy adjustment_amount, and late fee.
  * Paid rows: rules are not applied; only stored adjustment_amount counts.
  */
 export type EnrichStudentFeesOptions = {
   /** When set (e.g. fee overview), one DB read for all class-section keys. */
   classLinesBySectionKey?: Map<string, ClassFeeLineRow[]>;
+  /** When set, skips per-call fetches (use with batch-loaded maps). */
+  prefetched?: EnrichStudentFeesPrefetched;
 };
 
 export async function enrichStudentFeesWithAdjustments(
@@ -73,7 +90,9 @@ export async function enrichStudentFeesWithAdjustments(
 > {
   const normalized = schoolCode.toUpperCase();
   const feeIds = fees.map((f) => String(f.id));
-  const lineGroups = await fetchLineAdjustmentsGroupedByFeeIds(supabase, feeIds);
+  const lineGroups =
+    opts?.prefetched?.lineGroups ??
+    (await fetchLineAdjustmentsGroupedByFeeIds(supabase, feeIds));
   const sectionKey = classSectionCacheKey(student.class, student.section);
   let classLinesForSection: ClassFeeLineRow[] = [];
   if (opts?.classLinesBySectionKey) {
@@ -82,11 +101,16 @@ export async function enrichStudentFeesWithAdjustments(
     const map = await fetchAllClassFeeLinesBySectionKey(supabase, normalized);
     classLinesForSection = map.get(sectionKey) ?? [];
   }
-  const rules = await fetchActiveAdjustmentRules(supabase, normalized);
+  const rules =
+    opts?.prefetched?.rules ?? (await fetchActiveAdjustmentRules(supabase, normalized));
   const ruleIds = rules.map((r) => r.id);
-  const targetByRuleId = await fetchRuleTargetsMap(supabase, ruleIds);
+  const targetByRuleId =
+    opts?.prefetched?.targetByRuleId ??
+    (await fetchRuleTargetsMap(supabase, ruleIds));
   const structureIds = [...new Set(fees.map((f) => String(f.fee_structure_id)).filter(Boolean))];
-  const structureItemsByStructureId = await fetchStructureItemsMap(supabase, structureIds);
+  const structureItemsByStructureId =
+    opts?.prefetched?.structureItemsByStructureId ??
+    (await fetchStructureItemsMap(supabase, structureIds));
 
   return fees.map((fee) => {
     const structure = fee.fee_structure;

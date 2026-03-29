@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
+import {
+  FEE_STRUCTURES_DELETED_AT_SQL,
+  isMissingFeeStructuresDeletedAtColumn,
+  isSoftDeleteBlockedByMissingDeletedAtColumn,
+} from '@/lib/fees/fee-structure-deleted-at-compat';
 
 /**
  * GET /api/v2/fees/fee-structures/[id]
@@ -15,15 +20,20 @@ export async function GET(
     const supabase = getServiceRoleClient();
 
     // Get structure first to get school_code for permission check
-    const { data: structure, error } = await supabase
-      .from('fee_structures')
-      .select(`
+    const selectOne = () =>
+      supabase
+        .from('fee_structures')
+        .select(`
         *,
         created_by_staff:created_by (id, full_name, staff_id),
         activated_by_staff:activated_by (id, full_name, staff_id)
       `)
-      .eq('id', id)
-      .single();
+        .eq('id', id);
+
+    let { data: structure, error } = await selectOne().is('deleted_at', null).single();
+    if (error && isMissingFeeStructuresDeletedAtColumn(error)) {
+      ({ data: structure, error } = await selectOne().single());
+    }
 
     if (error || !structure) {
       return NextResponse.json(
@@ -85,16 +95,31 @@ export async function PATCH(
     const supabase = getServiceRoleClient();
 
     // Check if structure exists and is active
-    const { data: existing, error: fetchError } = await supabase
+    let { data: existing, error: fetchError } = await supabase
       .from('fee_structures')
-      .select('is_active')
+      .select('is_active, deleted_at')
       .eq('id', id)
       .single();
+
+    if (fetchError && isMissingFeeStructuresDeletedAtColumn(fetchError)) {
+      ({ data: existing, error: fetchError } = await supabase
+        .from('fee_structures')
+        .select('is_active')
+        .eq('id', id)
+        .single());
+    }
 
     if (fetchError || !existing) {
       return NextResponse.json(
         { error: 'Fee structure not found' },
         { status: 404 }
+      );
+    }
+
+    if ((existing as { deleted_at?: string | null }).deleted_at) {
+      return NextResponse.json(
+        { error: 'This fee structure has been removed. It cannot be edited.' },
+        { status: 400 }
       );
     }
 
@@ -200,8 +225,9 @@ export async function PATCH(
 
 /**
  * DELETE /api/v2/fees/fee-structures/[id]
- * Delete a fee structure. Allowed only when structure is inactive.
- * If any student fees have been generated for this structure, deletion is not allowed (use deactivate instead).
+ * Allowed only when inactive.
+ * - If student_fees exist: soft-delete (set deleted_at) so installments and payments stay in Collect Payment.
+ * - If none: hard-delete structure + items.
  */
 export async function DELETE(
   request: NextRequest,
@@ -216,11 +242,19 @@ export async function DELETE(
     const { id } = await params;
     const supabase = getServiceRoleClient();
 
-    const { data: existing, error: fetchError } = await supabase
+    let { data: existing, error: fetchError } = await supabase
       .from('fee_structures')
-      .select('id, is_active')
+      .select('id, is_active, deleted_at')
       .eq('id', id)
       .single();
+
+    if (fetchError && isMissingFeeStructuresDeletedAtColumn(fetchError)) {
+      ({ data: existing, error: fetchError } = await supabase
+        .from('fee_structures')
+        .select('id, is_active')
+        .eq('id', id)
+        .single());
+    }
 
     if (fetchError || !existing) {
       return NextResponse.json(
@@ -229,9 +263,16 @@ export async function DELETE(
       );
     }
 
+    if ((existing as { deleted_at?: string | null }).deleted_at) {
+      return NextResponse.json(
+        { error: 'This fee structure has already been removed.' },
+        { status: 400 }
+      );
+    }
+
     if (existing.is_active) {
       return NextResponse.json(
-        { error: 'Cannot delete an active fee structure. Deactivate it first.' },
+        { error: 'Cannot delete an active fee structure. Deactivate it first so no new fees can be generated.' },
         { status: 400 }
       );
     }
@@ -241,13 +282,43 @@ export async function DELETE(
       .select('id', { count: 'exact', head: true })
       .eq('fee_structure_id', id);
 
-    if (!countError && count && count > 0) {
-      return NextResponse.json(
-        {
-          error: 'Cannot delete this fee structure because fees have already been generated for students. You can deactivate it instead so no new fees are generated.',
-        },
-        { status: 400 }
-      );
+    const hasStudentFees = !countError && count != null && count > 0;
+
+    if (hasStudentFees) {
+      const now = new Date().toISOString();
+      const { error: softErr } = await supabase
+        .from('fee_structures')
+        .update({
+          deleted_at: now,
+          is_active: false,
+          activated_at: null,
+          activated_by: null,
+        })
+        .eq('id', id);
+
+      if (softErr) {
+        if (isSoftDeleteBlockedByMissingDeletedAtColumn(softErr)) {
+          return NextResponse.json(
+            {
+              error:
+                'One-time database update required: add column fee_structures.deleted_at (see SQL below). Then in Supabase: Settings → Data API → Reload schema if the app still errors. After that, remove this structure again.',
+              apply_sql: FEE_STRUCTURES_DELETED_AT_SQL,
+            },
+            { status: 422 }
+          );
+        }
+        console.error('Error soft-deleting fee structure:', softErr);
+        return NextResponse.json(
+          { error: 'Failed to remove fee structure', details: softErr.message },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        message:
+          'Fee structure removed from your list. Existing student fee records and collected payments are unchanged.',
+        data: { id, soft_deleted: true },
+      }, { status: 200 });
     }
 
     await supabase.from('fee_structure_items').delete().eq('fee_structure_id', id);
@@ -266,7 +337,7 @@ export async function DELETE(
 
     return NextResponse.json({
       message: 'Fee structure deleted successfully',
-      data: { id },
+      data: { id, soft_deleted: false },
     }, { status: 200 });
   } catch (error) {
     console.error('Error in DELETE /api/v2/fees/fee-structures/[id]:', error);

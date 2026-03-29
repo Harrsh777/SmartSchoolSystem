@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { parseAcademicYearName } from '@/lib/academic-year-name';
 
 /**
  * GET /api/academic-year-management/years?school_code=XXX
@@ -97,6 +98,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const parsed = parseAcademicYearName(String(year_name));
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
       .select('id')
@@ -110,7 +116,7 @@ export async function POST(request: NextRequest) {
     const insertPayload: Record<string, unknown> = {
       school_id: schoolData.id,
       school_code,
-      year_name: String(year_name).trim(),
+      year_name: parsed.year_name,
       start_date: start_date || new Date().toISOString().slice(0, 10),
       end_date: end_date || new Date().toISOString().slice(0, 10),
       is_current: false,

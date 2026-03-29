@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, TrendingUp, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Power, PowerOff, FileText, Search, CheckCircle, XCircle, AlertCircle, Loader2, Calendar, TrendingUp, ChevronDown, ChevronRight, Trash2, ClipboardCopy } from 'lucide-react';
 
 const MONTHS = [
   { value: 1, label: 'January' },
@@ -76,6 +76,8 @@ export default function FeeStructuresPage({
   const [deactivating, setDeactivating] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [groupActionKey, setGroupActionKey] = useState<string | null>(null);
+  /** Set when DELETE fails until DB has fee_structures.deleted_at (API returns apply_sql). */
+  const [feeStructureSchemaSql, setFeeStructureSchemaSql] = useState<string | null>(null);
 
   const fetchStructures = useCallback(async () => {
     try {
@@ -100,6 +102,10 @@ export default function FeeStructuresPage({
   useEffect(() => {
     fetchStructures();
   }, [fetchStructures]);
+
+  useEffect(() => {
+    if (!error) setFeeStructureSchemaSql(null);
+  }, [error]);
 
   const handleActivate = async (structureId: string) => {
     if (!confirm('Activate this fee structure? This will make it available for fee generation.')) {
@@ -187,22 +193,41 @@ export default function FeeStructuresPage({
     }
   };
 
-  const handleDelete = async (structureId: string, structureName: string) => {
-    if (!confirm(`Delete fee structure "${structureName}"? This cannot be undone. Only inactive structures with no generated fees can be deleted.`)) {
-      return;
-    }
+  const handleDelete = async (structure: FeeStructure) => {
+    const { id: structureId, name: structureName, fees_generated: feesGenerated } = structure;
+    const msg = feesGenerated
+      ? `Remove "${structureName}" from the fee structure list?\n\n` +
+        `• Student installments and amounts already generated stay in the system.\n` +
+        `• Collect Payment and receipts are not affected.\n` +
+        `• This only hides the structure after you have deactivated it (no new generation).\n\n` +
+        `Continue?`
+      : `Permanently delete "${structureName}"?\n\n` +
+        `No student fee rows exist for this structure yet. This cannot be undone.`;
+    if (!confirm(msg)) return;
+
     try {
       setDeleting(structureId);
       setError('');
-      const response = await fetch(`/api/v2/fees/fee-structures/${structureId}`, { method: 'DELETE' });
+      setFeeStructureSchemaSql(null);
+      const staffId = sessionStorage.getItem('staff_id') || '';
+      const response = await fetch(`/api/v2/fees/fee-structures/${structureId}`, {
+        method: 'DELETE',
+        headers: staffId ? { 'x-staff-id': staffId } : {},
+      });
       const result = await response.json();
 
       if (response.ok) {
-        setSuccess('Fee structure deleted successfully');
+        setSuccess(
+          result.message ||
+            (result.data?.soft_deleted
+              ? 'Fee structure removed. Existing student fees and payments are unchanged.'
+              : 'Fee structure deleted successfully')
+        );
         fetchStructures();
-        setTimeout(() => setSuccess(''), 3000);
+        setTimeout(() => setSuccess(''), 5000);
       } else {
         setError(result.error || 'Failed to delete fee structure');
+        setFeeStructureSchemaSql(typeof result.apply_sql === 'string' ? result.apply_sql : null);
       }
     } catch (err) {
       setError('Failed to delete fee structure');
@@ -412,16 +437,18 @@ export default function FeeStructuresPage({
         className="flex items-center justify-between"
       >
         <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/dashboard`)}>
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
               <FileText size={32} className="text-indigo-600" />
               Fee Structures
             </h1>
             <p className="text-gray-600">Manage fee structures for classes</p>
+            <p className="text-sm text-gray-500 mt-2 max-w-2xl">
+              To remove a structure: <strong>Deactivate</strong> first (stops new fee generation), then use{' '}
+              <strong>Delete</strong>. If students already have fees from this structure, delete only removes it from
+              this list — installments and collected payments stay in Collect Payment.
+            </p>
           </div>
         </div>
         <Button
@@ -452,7 +479,7 @@ export default function FeeStructuresPage({
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg"
+          className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg space-y-3"
         >
           <div className="flex items-start gap-2">
             <AlertCircle size={20} className="mt-0.5 flex-shrink-0" />
@@ -460,6 +487,30 @@ export default function FeeStructuresPage({
               <pre className="whitespace-pre-wrap font-sans text-sm">{error}</pre>
             </div>
           </div>
+          {feeStructureSchemaSql && (
+            <div className="rounded-md border border-amber-200 bg-amber-50/90 p-3 text-amber-950">
+              <p className="text-xs font-semibold text-amber-900 mb-2">
+                Supabase → SQL Editor → paste → Run. Then Settings → Data API → Reload schema if needed.
+              </p>
+              <div className="relative">
+                <pre className="text-[11px] leading-relaxed overflow-x-auto p-2 pr-24 bg-white/80 border border-amber-100 rounded font-mono text-gray-900 max-h-48 overflow-y-auto">
+                  {feeStructureSchemaSql}
+                </pre>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="absolute top-2 right-2 h-8 text-xs gap-1 bg-white"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(feeStructureSchemaSql);
+                  }}
+                >
+                  <ClipboardCopy className="w-3.5 h-3.5" />
+                  Copy SQL
+                </Button>
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
 
@@ -652,7 +703,7 @@ export default function FeeStructuresPage({
                                   )}
                                   {!structure.is_active && (
                                     <Button
-                                      onClick={() => handleDelete(structure.id, structure.name)}
+                                      onClick={() => handleDelete(structure)}
                                       disabled={deleting === structure.id}
                                       className="bg-gray-700 hover:bg-gray-800 text-white text-xs py-1.5 px-2"
                                       size="sm"

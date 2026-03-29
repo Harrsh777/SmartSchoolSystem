@@ -7,6 +7,7 @@ import {
 } from '@/lib/fees/structure-installment-months';
 import { feeStructureMatchesSelection } from '@/lib/fees/fee-structure-class-match';
 import { installmentDisplayLabel } from '@/lib/fees/installment-display-label';
+import { isMissingFeeStructuresDeletedAtColumn } from '@/lib/fees/fee-structure-deleted-at-compat';
 
 type InstallmentKey = string;
 
@@ -24,6 +25,159 @@ type InstallmentRow = {
   unpaid_installment_count: number;
   from_structure_only?: boolean;
 };
+
+/** Row shape from fee_structures select (with items aggregate). */
+type StructureSelectRow = {
+  id: string;
+  name?: string | null;
+  is_active?: boolean | null;
+  academic_year?: string | null;
+  class_name?: string | null;
+  section?: string | null;
+  start_month?: number | null;
+  end_month?: number | null;
+  frequency?: string | null;
+  payment_due_day?: number | null;
+  items?: Array<{ amount?: number }> | null;
+};
+
+function baseAmountFromStructureItems(st: StructureSelectRow): number {
+  const items = st.items || [];
+  return items.reduce((sum, it) => sum + Number(it.amount || 0), 0);
+}
+
+/**
+ * Duplicate fee structures (same class/section/year, same schedule, same structure total)
+ * each produce identical installment slots — collapse to one canonical structure for listing.
+ */
+function structureScheduleBaseDedupeKey(st: StructureSelectRow): string {
+  const ay = (st.academic_year ?? '').toString().trim().toLowerCase();
+  const cls = String(st.class_name ?? '').trim().toLowerCase();
+  const sec = String(st.section ?? '').trim().toLowerCase();
+  const sm = Number(st.start_month);
+  const em = Number(st.end_month);
+  const freq = String(st.frequency ?? 'monthly').trim().toLowerCase();
+  const pdd = Math.max(1, Math.min(31, Number(st.payment_due_day ?? 15)));
+  const base = Math.round(baseAmountFromStructureItems(st) * 100) / 100;
+  return `${ay}|${cls}|${sec}|${sm}|${em}|${freq}|${pdd}|${base}`;
+}
+
+function pickCanonicalStructure(
+  group: StructureSelectRow[],
+  feeCountByStructureId: Map<string, number>
+): StructureSelectRow {
+  const sorted = [...group].sort((a, b) => {
+    const ca = feeCountByStructureId.get(String(a.id)) ?? 0;
+    const cb = feeCountByStructureId.get(String(b.id)) ?? 0;
+    if (cb !== ca) return cb - ca;
+    return String(a.id).localeCompare(String(b.id));
+  });
+  return sorted[0];
+}
+
+function dedupeMatchingStructures(
+  allStructures: StructureSelectRow[],
+  sel: { className: string; section: string; academicYear: string },
+  feeCountByStructureId: Map<string, number>
+): StructureSelectRow[] {
+  const matching: StructureSelectRow[] = [];
+  for (const st of allStructures) {
+    if (st.is_active === false) continue;
+    if (
+      !feeStructureMatchesSelection(
+        {
+          academic_year: st.academic_year,
+          class_name: st.class_name,
+          section: st.section,
+        },
+        sel
+      )
+    ) {
+      continue;
+    }
+    matching.push(st);
+  }
+
+  const groups = new Map<string, StructureSelectRow[]>();
+  for (const st of matching) {
+    const k = structureScheduleBaseDedupeKey(st);
+    const arr = groups.get(k) ?? [];
+    arr.push(st);
+    groups.set(k, arr);
+  }
+
+  const out: StructureSelectRow[] = [];
+  for (const group of groups.values()) {
+    out.push(pickCanonicalStructure(group, feeCountByStructureId));
+  }
+  return out;
+}
+
+function mergeInstallmentRowsByDuplicateStructure(
+  rows: InstallmentRow[],
+  structById: Map<string, StructureSelectRow>,
+  feeCountByStructureId: Map<string, number>
+): InstallmentRow[] {
+  const groups = new Map<string, InstallmentRow[]>();
+  for (const row of rows) {
+    const st = structById.get(row.fee_structure_id);
+    const groupKey = st
+      ? `${structureScheduleBaseDedupeKey(st)}::${row.due_month}`
+      : `${row.fee_structure_id}::${row.due_month}`;
+    const arr = groups.get(groupKey) ?? [];
+    arr.push(row);
+    groups.set(groupKey, arr);
+  }
+
+  const merged: InstallmentRow[] = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      merged.push(group[0]);
+      continue;
+    }
+
+    const sorted = [...group].sort((a, b) => {
+      const ca = feeCountByStructureId.get(a.fee_structure_id) ?? 0;
+      const cb = feeCountByStructureId.get(b.fee_structure_id) ?? 0;
+      if (cb !== ca) return cb - ca;
+      return a.fee_structure_id.localeCompare(b.fee_structure_id);
+    });
+    const canonical = sorted[0];
+    const canonStruct = structById.get(canonical.fee_structure_id);
+    const smSt = Number(canonStruct?.start_month);
+    const emSt = Number(canonStruct?.end_month);
+    const startMonthSt = Number.isFinite(smSt) && smSt >= 1 && smSt <= 12 ? smSt : 1;
+    const endMonthSt = Number.isFinite(emSt) && emSt >= 1 && emSt <= 12 ? emSt : 12;
+
+    const student_fee_ids = [...new Set(group.flatMap((g) => g.student_fee_ids))];
+    const sample_student_fee_id =
+      group.find((g) => g.sample_student_fee_id)?.sample_student_fee_id ?? '';
+
+    merged.push({
+      fee_structure_id: canonical.fee_structure_id,
+      due_month: canonical.due_month,
+      due_date: canonical.due_date,
+      structure_name: canonStruct
+        ? installmentDisplayLabel({
+            structureName: String(canonStruct.name || 'Fee structure'),
+            frequency: canonStruct.frequency as string | null,
+            startMonth: startMonthSt,
+            endMonth: endMonthSt,
+            dueMonth: canonical.due_month,
+          })
+        : canonical.structure_name,
+      academic_year: canonical.academic_year,
+      is_active: canonical.is_active,
+      sample_student_fee_id,
+      student_fee_ids,
+      base_amount: canonical.base_amount,
+      paid_installment_count: group.reduce((s, g) => s + g.paid_installment_count, 0),
+      unpaid_installment_count: group.reduce((s, g) => s + g.unpaid_installment_count, 0),
+      from_structure_only: group.every((g) => g.from_structure_only),
+    });
+  }
+  return merged;
+}
 
 /**
  * GET /api/v2/fees/class-section/installments?school_code=&class=&section=&academic_year=
@@ -69,6 +223,7 @@ export async function GET(request: NextRequest) {
     const studentIds = (students || []).map((s) => s.id);
 
     const byKey = new Map<InstallmentKey, InstallmentRow>();
+    const feeCountByStructureId = new Map<string, number>();
 
     if (studentIds.length > 0) {
       const { data: rawFees, error: feeErr } = await supabase
@@ -120,6 +275,7 @@ export async function GET(request: NextRequest) {
         if (!isActive && paid <= 0) continue;
 
         const fsid = String(f.fee_structure_id);
+        feeCountByStructureId.set(fsid, (feeCountByStructureId.get(fsid) || 0) + 1);
         const dm = String(f.due_month ?? '');
         const key = `${fsid}::${dm}`;
         const isPaidStatus = String(f.status || '').toLowerCase() === 'paid';
@@ -157,10 +313,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: structures, error: fsErr } = await supabase
-      .from('fee_structures')
-      .select(
-        `
+    const selectStructures = () =>
+      supabase
+        .from('fee_structures')
+        .select(
+          `
         id,
         name,
         is_active,
@@ -173,32 +330,32 @@ export async function GET(request: NextRequest) {
         payment_due_day,
         items:fee_structure_items(amount)
       `
-      )
-      .ilike('school_code', code);
+        )
+        .ilike('school_code', code);
+
+    let { data: structures, error: fsErr } = await selectStructures().is('deleted_at', null);
+    if (fsErr && isMissingFeeStructuresDeletedAtColumn(fsErr)) {
+      ({ data: structures, error: fsErr } = await selectStructures());
+    }
 
     if (fsErr) {
       return NextResponse.json({ error: fsErr.message }, { status: 500 });
     }
 
+    const allStructureRows = (structures || []) as StructureSelectRow[];
+    const structById = new Map<string, StructureSelectRow>(
+      allStructureRows.map((s) => [String(s.id), s])
+    );
+
+    const structuresForInstallmentSlots = dedupeMatchingStructures(
+      allStructureRows,
+      { className, section, academicYear },
+      feeCountByStructureId
+    );
+
     const anchorYear = anchorYearFromAcademicYearLabel(academicYear);
 
-    for (const st of structures || []) {
-      if (
-        !feeStructureMatchesSelection(
-          {
-            academic_year: st.academic_year as string | null,
-            class_name: st.class_name as string | null,
-            section: st.section as string | null,
-          },
-          { className, section, academicYear }
-        )
-      ) {
-        continue;
-      }
-
-      const isActive = st.is_active !== false;
-      if (!isActive) continue;
-
+    for (const st of structuresForInstallmentSlots) {
       const items = (st.items as Array<{ amount?: number }> | null) || [];
       const baseFromItems = items.reduce((sum, it) => sum + Number(it.amount || 0), 0);
 
@@ -249,7 +406,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const installments = Array.from(byKey.values()).sort((a, b) => {
+    const installments = mergeInstallmentRowsByDuplicateStructure(
+      Array.from(byKey.values()),
+      structById,
+      feeCountByStructureId
+    ).sort((a, b) => {
       const ta = new Date(a.due_date || 0).getTime();
       const tb = new Date(b.due_date || 0).getTime();
       return ta - tb;
