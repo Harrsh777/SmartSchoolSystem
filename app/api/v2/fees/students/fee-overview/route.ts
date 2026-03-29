@@ -85,6 +85,8 @@ export async function GET(request: NextRequest) {
         paid_amount,
         adjustment_amount,
         status,
+        fee_source,
+        transport_snapshot,
         fee_structure:fee_structure_id (
           id,
           name,

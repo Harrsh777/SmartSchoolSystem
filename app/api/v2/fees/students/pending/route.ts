@@ -35,6 +35,8 @@ export async function GET(request: NextRequest) {
         due_month,
         status,
         fee_structure_id,
+        fee_source,
+        transport_snapshot,
         fee_structure:fee_structure_id (
           is_active,
           late_fee_type,

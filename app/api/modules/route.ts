@@ -96,6 +96,7 @@ const ALLOWED_MODULES_CONFIG = [
     sub_modules: [
       { key: 'marks_dashboard', name: 'Marks Dashboard', route: '/dashboard/[school]/marks' },
       { key: 'marks_entry', name: 'Mark Entry', route: '/dashboard/[school]/marks-entry' },
+      { key: 'bulk_add_marks', name: 'Bulk add marks', route: '/dashboard/[school]/marks/bulk-upload' },
     ],
   },
   {

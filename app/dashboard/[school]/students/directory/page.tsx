@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
+import { use, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -16,6 +16,7 @@ import {
   GraduationCap,
   Eye,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   Calendar,
   UserX,
@@ -25,10 +26,20 @@ import {
   Loader2,
   X,
   School,
+  ArrowUpDown,
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
 type StudentStatus = 'active' | 'deactivated' | 'transferred' | 'alumni' | 'deleted';
+
+const DIRECTORY_PAGE_SIZE = 25;
+
+interface ClassRow {
+  id: string;
+  class: string;
+  section: string;
+  academic_year?: string | null;
+}
 
 interface InstituteHouse {
   id: string;
@@ -45,13 +56,21 @@ export default function StudentDirectoryPage({
   const { school: schoolCode } = use(params);
   const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [studentsTotal, setStudentsTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [studentsLoading, setStudentsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<StudentStatus>('active');
   const [academicYear, setAcademicYear] = useState('');
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
+  const [classRows, setClassRows] = useState<ClassRow[]>([]);
+  /** Server-side ordering for the paginated list */
+  const [directorySort, setDirectorySort] = useState<
+    'created_desc' | 'name_asc' | 'name_desc'
+  >('created_desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [houses, setHouses] = useState<InstituteHouse[]>([]);
   const [updatingHouseId, setUpdatingHouseId] = useState<string | null>(null);
@@ -177,13 +196,69 @@ export default function StudentDirectoryPage({
   }, [schoolCode, academicYear]);
 
   useEffect(() => {
-    fetchStudents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode, selectedStatus, academicYear]);
-
-  useEffect(() => {
     fetchCounts();
   }, [fetchCounts]);
+
+  const fetchClasses = useCallback(async () => {
+    try {
+      setClassesLoading(true);
+      const res = await fetch(`/api/classes?school_code=${encodeURIComponent(schoolCode)}`);
+      const json = await res.json();
+      if (res.ok && Array.isArray(json.data)) {
+        setClassRows(
+          json.data.map((row: { id: string; class: string; section: string; academic_year?: string | null }) => ({
+            id: String(row.id),
+            class: String(row.class ?? ''),
+            section: String(row.section ?? ''),
+            academic_year: row.academic_year ?? null,
+          }))
+        );
+      } else {
+        setClassRows([]);
+      }
+    } catch (err) {
+      console.error('Error fetching classes:', err);
+      setClassRows([]);
+    } finally {
+      setClassesLoading(false);
+    }
+  }, [schoolCode]);
+
+  useEffect(() => {
+    fetchClasses();
+  }, [fetchClasses]);
+
+  const filteredClassRows = useMemo(() => {
+    if (!academicYear) return classRows;
+    return classRows.filter((r) => String(r.academic_year ?? '') === academicYear);
+  }, [classRows, academicYear]);
+
+  const uniqueClasses = useMemo(
+    () =>
+      Array.from(new Set(filteredClassRows.map((r) => getString(r.class)).filter((c) => c.length > 0))).sort(),
+    [filteredClassRows]
+  );
+
+  const uniqueSectionsForClass = useMemo(() => {
+    if (!selectedClass) return [];
+    return Array.from(
+      new Set(
+        filteredClassRows
+          .filter((r) => getString(r.class) === selectedClass)
+          .map((r) => getString(r.section))
+          .filter((s) => s.length > 0)
+      )
+    ).sort();
+  }, [filteredClassRows, selectedClass]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedClass, selectedSection, selectedStatus, academicYear, directorySort]);
+
+  useEffect(() => {
+    setSelectedClass('');
+    setSelectedSection('');
+  }, [academicYear]);
 
   useEffect(() => {
     const closeStatusMenu = (e: MouseEvent) => {
@@ -194,43 +269,74 @@ export default function StudentDirectoryPage({
     return () => document.removeEventListener('click', closeStatusMenu);
   }, [statusMenuStudentId]);
 
-  const fetchStudents = async () => {
+  const fetchStudents = useCallback(async () => {
+    if (!selectedClass || !selectedSection) {
+      setStudents([]);
+      setStudentsTotal(0);
+      setStudentsLoading(false);
+      return;
+    }
     try {
-      setLoading(true);
-      let url = `/api/students?school_code=${schoolCode}&status=${selectedStatus}`;
-      if (academicYear) {
-        url += `&academic_year=${encodeURIComponent(academicYear)}`;
+      setStudentsLoading(true);
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        status: selectedStatus,
+        class: selectedClass,
+        section: selectedSection,
+        page: String(currentPage),
+        page_size: String(DIRECTORY_PAGE_SIZE),
+      });
+      if (academicYear) params.set('academic_year', academicYear);
+      const q = searchQuery.trim();
+      if (q.length >= 2) params.set('search', q);
+
+      if (directorySort === 'name_asc') {
+        params.set('sort_by', 'student_name');
+        params.set('sort_order', 'asc');
+      } else if (directorySort === 'name_desc') {
+        params.set('sort_by', 'student_name');
+        params.set('sort_order', 'desc');
+      } else {
+        params.set('sort_by', 'created_at');
+        params.set('sort_order', 'desc');
       }
-      const response = await fetch(url);
+
+      const response = await fetch(`/api/students?${params.toString()}`);
       const result = await response.json();
-      if (response.ok && result.data) {
+      if (response.ok && Array.isArray(result.data)) {
         setStudents(result.data);
+        setStudentsTotal(typeof result.total === 'number' ? result.total : result.data.length);
+      } else {
+        setStudents([]);
+        setStudentsTotal(0);
       }
     } catch (err) {
       console.error('Error fetching students:', err);
+      setStudents([]);
+      setStudentsTotal(0);
     } finally {
-      setLoading(false);
+      setStudentsLoading(false);
     }
-  };
+  }, [
+    schoolCode,
+    selectedClass,
+    selectedSection,
+    selectedStatus,
+    academicYear,
+    currentPage,
+    searchQuery,
+    directorySort,
+  ]);
 
+  useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
 
-  const filteredStudents = students.filter(student => {
-    const query = searchQuery.toLowerCase();
-    const studentName = getString(student.student_name).toLowerCase();
-    const admissionNo = getString(student.admission_no).toLowerCase();
-    const email = getString(student.email).toLowerCase();
-    const matchesSearch = 
-      studentName.includes(query) ||
-      admissionNo.includes(query) ||
-      email.includes(query);
-
-    const studentClass = getString(student.class);
-    const studentSection = getString(student.section);
-    const matchesClass = !selectedClass || studentClass === selectedClass;
-    const matchesSection = !selectedSection || studentSection === selectedSection;
-
-    return matchesSearch && matchesClass && matchesSection;
-  });
+  useEffect(() => {
+    if (!selectedClass || !selectedSection) return;
+    const tp = Math.max(1, Math.ceil(studentsTotal / DIRECTORY_PAGE_SIZE));
+    if (currentPage > tp) setCurrentPage(tp);
+  }, [selectedClass, selectedSection, currentPage, studentsTotal]);
 
   const handleStudentClick = (studentId: string) => {
     router.push(`/dashboard/${schoolCode}/students/${studentId}`);
@@ -243,32 +349,10 @@ export default function StudentDirectoryPage({
     { id: 'alumni', label: 'Alumni', count: statusCounts.alumni },
   ];
 
-  const uniqueClasses: string[] = Array.from(
-    new Set(students.map(s => getString(s.class)).filter(c => c.length > 0))
-  ).sort();
-  const uniqueSections: string[] = selectedClass
-    ? Array.from(
-        new Set(
-          students
-            .filter(s => getString(s.class) === selectedClass)
-            .map(s => getString(s.section))
-            .filter(s => s.length > 0)
-        )
-      ).sort()
-    : Array.from(
-        new Set(students.map(s => getString(s.section)).filter(s => s.length > 0))
-      ).sort();
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-200 border-t-blue-800 mx-auto mb-3"></div>
-          <p className="text-gray-600 text-sm font-medium">Loading students...</p>
-        </div>
-      </div>
-    );
-  }
+  const selectionReady = Boolean(selectedClass && selectedSection);
+  const totalPages = Math.max(1, Math.ceil(studentsTotal / DIRECTORY_PAGE_SIZE));
+  const rangeFrom = studentsTotal === 0 ? 0 : (currentPage - 1) * DIRECTORY_PAGE_SIZE + 1;
+  const rangeTo = Math.min(currentPage * DIRECTORY_PAGE_SIZE, studentsTotal);
 
   const normalizeStatus = (s: string): string => {
     const v = getString(s).toLowerCase();
@@ -353,13 +437,13 @@ export default function StudentDirectoryPage({
   const exportSectionOptions = exportClass
     ? Array.from(
         new Set(
-          students
-            .filter((s) => getString(s.class) === exportClass)
-            .map((s) => getString(s.section))
+          filteredClassRows
+            .filter((r) => getString(r.class) === exportClass)
+            .map((r) => getString(r.section))
             .filter((s) => s.length > 0)
         )
       ).sort()
-    : Array.from(new Set(students.map((s) => getString(s.section)).filter((s) => s.length > 0))).sort();
+    : [];
 
   const handleExportExcel = async () => {
     if (exportColumns.length === 0) {
@@ -419,7 +503,7 @@ export default function StudentDirectoryPage({
             <h1 className="text-xl font-bold text-blue-900 mb-0.5">
               Student Directory
             </h1>
-            <p className="text-gray-600 text-sm">Manage and view all students in your school</p>
+            <p className="text-gray-600 text-sm">Choose a class and section to view students in that group</p>
           </div>
           <div className="flex items-center gap-2">
             <Calendar size={16} className="text-blue-800" />
@@ -473,7 +557,7 @@ export default function StudentDirectoryPage({
 
       {/* Filters */}
       <Card className="p-4 bg-white border-blue-100">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Class</label>
             <select
@@ -482,11 +566,14 @@ export default function StudentDirectoryPage({
                 setSelectedClass(e.target.value);
                 setSelectedSection('');
               }}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white"
+              disabled={classesLoading}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white disabled:bg-gray-100 disabled:text-gray-500"
             >
-              <option value="">All Classes</option>
-              {uniqueClasses.map(cls => (
-                <option key={cls} value={cls}>{cls}</option>
+              <option value="">{classesLoading ? 'Loading classes…' : 'Select class'}</option>
+              {uniqueClasses.map((cls) => (
+                <option key={cls} value={cls}>
+                  {cls}
+                </option>
               ))}
             </select>
           </div>
@@ -496,12 +583,14 @@ export default function StudentDirectoryPage({
             <select
               value={selectedSection}
               onChange={(e) => setSelectedSection(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white disabled:bg-gray-100"
-              disabled={!selectedClass}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white disabled:bg-gray-100 disabled:text-gray-500"
+              disabled={classesLoading || !selectedClass}
             >
-              <option value="">All Sections</option>
-              {uniqueSections.map(sec => (
-                <option key={sec} value={sec}>{sec}</option>
+              <option value="">{selectedClass ? 'Select section' : 'Select class first'}</option>
+              {uniqueSectionsForClass.map((sec) => (
+                <option key={sec} value={sec}>
+                  {sec}
+                </option>
               ))}
             </select>
           </div>
@@ -519,12 +608,60 @@ export default function StudentDirectoryPage({
               />
             </div>
           </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
+              <ArrowUpDown size={12} className="text-blue-800" aria-hidden />
+              Sort by
+            </label>
+            <select
+              value={directorySort}
+              onChange={(e) =>
+                setDirectorySort(e.target.value as 'created_desc' | 'name_asc' | 'name_desc')
+              }
+              disabled={!selectionReady}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white disabled:bg-gray-100 disabled:text-gray-500"
+              title={!selectionReady ? 'Select class and section first' : undefined}
+            >
+              <option value="created_desc">Recently added first</option>
+              <option value="name_asc">Student name (A–Z)</option>
+              <option value="name_desc">Student name (Z–A)</option>
+            </select>
+          </div>
         </div>
 
         <div className="pt-3 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-gray-600">
-            Showing <span className="font-semibold text-blue-800">{filteredStudents.length}</span> students
-          </p>
+          {!selectionReady ? (
+            <p className="text-sm text-gray-600">
+              <span className="font-medium text-blue-900">Select a class and section</span> to load students for this directory.
+            </p>
+          ) : studentsLoading && students.length === 0 ? (
+            <p className="text-sm text-gray-600 flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-800" />
+              Loading students…
+            </p>
+          ) : (
+            <p className="text-sm text-gray-600 flex flex-wrap items-center gap-x-1 gap-y-0">
+              {studentsTotal === 0 ? (
+                <span>No students in this class-section for the current status filter.</span>
+              ) : (
+                <>
+                  Showing{' '}
+                  <span className="font-semibold text-blue-800">
+                    {rangeFrom}–{rangeTo}
+                  </span>{' '}
+                  of <span className="font-semibold text-blue-800">{studentsTotal}</span> students
+                  <span className="text-gray-500">
+                    {' '}
+                    · Page {currentPage} of {totalPages}
+                  </span>
+                </>
+              )}
+              {studentsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-blue-800 shrink-0" aria-hidden />
+              ) : null}
+            </p>
+          )}
         </div>
       </Card>
 
@@ -623,9 +760,34 @@ export default function StudentDirectoryPage({
       )}
 
       {/* Students Grid/List */}
-      {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredStudents.map((student, index) => {
+      {!selectionReady ? (
+        <Card className="p-12 border-blue-100 border-dashed bg-gradient-to-b from-blue-50/40 to-white">
+          <div className="flex flex-col items-center justify-center text-center gap-4 max-w-md mx-auto">
+            <div className="rounded-full bg-blue-100 p-4 text-blue-800">
+              <GraduationCap size={40} aria-hidden />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Select class and section</h2>
+              <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                Use the filters above to choose a <span className="font-medium text-gray-800">class</span> and{' '}
+                <span className="font-medium text-gray-800">section</span>. Student profiles appear here after both are
+                selected.
+              </p>
+            </div>
+          </div>
+        </Card>
+      ) : viewMode === 'grid' ? (
+        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 ${studentsLoading ? 'opacity-60 pointer-events-none' : ''}`}>
+          {students.length === 0 && !studentsLoading ? (
+            <div className="col-span-full rounded-xl border border-dashed border-blue-200 bg-blue-50/40 py-16 px-6 text-center">
+              <User className="mx-auto text-gray-400 mb-3" size={40} aria-hidden />
+              <p className="font-medium text-gray-800">No students in this class-section</p>
+              <p className="text-sm text-gray-500 mt-2 max-w-sm mx-auto">
+                Try another status tab or use search (type at least 2 characters).
+              </p>
+            </div>
+          ) : (
+            students.map((student, index) => {
             const avatarColor = getHouseColorForStudent(student.house);
             return (
             <motion.div
@@ -793,10 +955,11 @@ export default function StudentDirectoryPage({
               </Card>
             </motion.div>
             );
-          })}
+          })
+          )}
         </div>
       ) : (
-        <Card className="overflow-hidden border-blue-100">
+        <Card className={`overflow-hidden border-blue-100 ${studentsLoading ? 'opacity-60 pointer-events-none' : ''}`}>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-blue-800 text-white">
@@ -813,8 +976,8 @@ export default function StudentDirectoryPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredStudents.length > 0 ? (
-                  filteredStudents.map((student) => {
+                {students.length > 0 ? (
+                  students.map((student) => {
                     const avatarColor = getHouseColorForStudent(student.house);
                     return (
                     <tr 
@@ -984,6 +1147,39 @@ export default function StudentDirectoryPage({
                 )}
               </tbody>
             </table>
+          </div>
+        </Card>
+      )}
+
+      {selectionReady && totalPages > 1 && (
+        <Card className="p-4 border-blue-100 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-gray-600">
+            Page <span className="font-semibold text-blue-900">{currentPage}</span> of{' '}
+            <span className="font-semibold text-blue-900">{totalPages}</span>
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-blue-200 text-blue-900"
+              disabled={currentPage <= 1 || studentsLoading}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft size={18} className="mr-0.5" />
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-blue-200 text-blue-900"
+              disabled={currentPage >= totalPages || studentsLoading}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+              <ChevronRight size={18} className="ml-0.5" />
+            </Button>
           </div>
         </Card>
       )}

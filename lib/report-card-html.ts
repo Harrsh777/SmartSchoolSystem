@@ -12,6 +12,7 @@ export interface ExamMarksData {
   marks_obtained: number | null;
   max_marks: number;
   grade?: string;
+  marks_entry_code?: string | null;
 }
 
 export interface MultiExamSubjectMarks {
@@ -52,7 +53,10 @@ export interface ReportCardData {
     father_name?: string;
     mother_name?: string;
     address?: string;
+    /** Primary phone for report (student / parent). */
     student_contact?: string;
+    /** Formatted date of birth for display */
+    date_of_birth?: string;
     roll_number?: string;
     photo_url?: string | null;
   };
@@ -69,6 +73,7 @@ export interface ReportCardData {
     percentage?: number;
     grade?: string;
     remarks?: string;
+    marks_entry_code?: string | null;
   }>;
   // For multiple exams (term-wise display)
   multiExamMarks?: MultiExamSubjectMarks[];
@@ -890,6 +895,7 @@ function generateLandscapeReportCardHTML(
   const subjects = marksSource.map((m) => m.subject?.name).filter(Boolean) as string[];
 
   const computeGrade = (m: ReportCardData['marks'][number]): string => {
+    if (m.marks_entry_code) return '-';
     if (m.grade) return m.grade;
     // Fallback to percentage ranges if grade is missing.
     const totalMax = m.max_marks || 0;
@@ -928,7 +934,11 @@ function generateLandscapeReportCardHTML(
               const examCells = termExams
                 .map((e) => {
                   const examMark = row.exams.find((em) => em.exam_id === e.id);
-                  return `<td class="td-num">${examMark?.marks_obtained == null ? '-' : examMark.marks_obtained}</td>`;
+                  const c = String(examMark?.marks_entry_code || '').trim().toUpperCase();
+                  const display =
+                    c ||
+                    (examMark?.marks_obtained == null ? '-' : String(examMark.marks_obtained));
+                  return `<td class="td-num">${display}</td>`;
                 })
                 .join('');
               const termTotal = (row.term_totals || []).find((x) => String(x.term_id) === String(t.term_id));
@@ -941,15 +951,18 @@ function generateLandscapeReportCardHTML(
     : marksSource
         .map((m) => {
           const max = Number(m.max_marks || 0);
+          const code = String(m.marks_entry_code || '').trim().toUpperCase();
           const obtained = m.marks_obtained == null ? null : Number(m.marks_obtained);
-          const pct = max > 0 && obtained != null ? (obtained / max) * 100 : 0;
+          const displayObtained = code || (obtained == null ? '-' : String(obtained));
+          const pct =
+            !code && max > 0 && obtained != null ? (obtained / max) * 100 : 0;
           const grade = computeGrade(m);
           return `
             <tr>
               <td class="td-subj">${m.subject?.name || '-'}</td>
               <td class="td-num">${max}</td>
-              <td class="td-num">${obtained == null ? '-' : obtained}</td>
-              <td class="td-num">${obtained == null ? '-' : pct.toFixed(1) + '%'}</td>
+              <td class="td-num">${displayObtained}</td>
+              <td class="td-num">${code || obtained == null ? '-' : pct.toFixed(1) + '%'}</td>
               <td class="td-c"><strong>${grade}</strong></td>
             </tr>`;
         })
@@ -1319,9 +1332,9 @@ function generateLandscapeReportCardHTML(
             <div class="kv"><b>Student Name</b><span>${student.student_name || '-'}</span></div>
             <div class="kv"><b>Class</b><span>Grade-${student.class} ${student.section || 'A'}</span></div>
             <div class="kv"><b>${fatherLabel}</b><span>${student.father_name || '-'}</span></div>
-            <div class="kv"><b>Contact No.</b><span>${schoolPhone || '-'}</span></div>
+            <div class="kv"><b>Contact No.</b><span>${student.student_contact || '—'}</span></div>
             <div class="kv"><b>${motherLabel}</b><span>${student.mother_name || '-'}</span></div>
-            <div class="kv"><b>Date of Birth</b><span>${(student as any).dob || (student as any).date_of_birth || '—'}</span></div>
+            <div class="kv"><b>Date of Birth</b><span>${student.date_of_birth || '—'}</span></div>
           </div>
           <div class="photo-box">
             ${student.photo_url ? `<img src="${student.photo_url}" alt="Student Photo" style="width:72px;height:88px;object-fit:cover;border-radius:2px;" />` : 'Passport<br/>photo'}

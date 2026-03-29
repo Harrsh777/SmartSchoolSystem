@@ -23,6 +23,7 @@ interface Exam {
     };
   }>;
   subject_mappings?: Array<{
+    class_id?: string | null;
     subject_id: string;
     subject: {
       id: string;
@@ -123,11 +124,7 @@ export default function ExaminationDetailPage({
   if (!exam) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => router.push(`/dashboard/${schoolCode}/examinations/dashboard`)}>
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+        <div className="flex items-center gap-4">        
           <h1 className="text-3xl font-bold text-gray-900">Examination Not Found</h1>
         </div>
         <Card>
@@ -146,6 +143,13 @@ export default function ExaminationDetailPage({
   const classesCount = exam.class_mappings?.length || 0;
   const subjectsCount = exam.subject_mappings?.length || 0;
   const totalMaxMarks = exam.subject_mappings?.reduce((sum, sm) => sum + (sm.max_marks || 0), 0) || 0;
+  const showSubjectClassCol = exam.subject_mappings?.some((sm) => sm.class_id) ?? false;
+  const subjectClassLabelById = new Map(
+    (exam.class_mappings || []).map((cm) => [
+      cm.class_id,
+      cm.class ? `Class ${cm.class.class} · Sec ${cm.class.section}` : cm.class_id,
+    ])
+  );
 
   return (
     <div className="space-y-6">
@@ -274,26 +278,56 @@ export default function ExaminationDetailPage({
         <Card className="p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Subjects & Marks</h2>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Subject</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">Max Marks</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">Pass Marks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {exam.subject_mappings.map((sm) => (
-                  <tr key={sm.subject_id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium text-gray-900">
-                      {sm.subject?.name || 'Unknown'}
-                    </td>
-                    <td className="py-3 px-4 text-center text-gray-700">{sm.max_marks || 0}</td>
-                    <td className="py-3 px-4 text-center text-gray-700">{sm.pass_marks || 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {(() => {
+              const showClassCol = exam.subject_mappings!.some((sm) => sm.class_id);
+              const classLabelById = new Map(
+                (exam.class_mappings || []).map((cm) => [
+                  cm.class_id,
+                  cm.class
+                    ? `Class ${cm.class.class} · Sec ${cm.class.section}`
+                    : cm.class_id,
+                ])
+              );
+              return (
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      {showClassCol && (
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Class</th>
+                      )}
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Subject</th>
+                      <th className="text-center py-3 px-4 font-semibold text-gray-700">Max Marks</th>
+                      <th className="text-center py-3 px-4 font-semibold text-gray-700">Pass Marks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exam.subject_mappings!.map((sm, index) => (
+                      <tr
+                        key={
+                          sm.class_id
+                            ? `${sm.class_id}-${sm.subject_id}`
+                            : `${sm.subject_id}-${index}`
+                        }
+                        className="border-b border-gray-100 hover:bg-gray-50"
+                      >
+                        {showClassCol && (
+                          <td className="py-3 px-4 text-gray-700">
+                            {sm.class_id
+                              ? classLabelById.get(sm.class_id) || '—'
+                              : '—'}
+                          </td>
+                        )}
+                        <td className="py-3 px-4 font-medium text-gray-900">
+                          {sm.subject?.name || 'Unknown'}
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-700">{sm.max_marks || 0}</td>
+                        <td className="py-3 px-4 text-center text-gray-700">{sm.pass_marks || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })()}
           </div>
         </Card>
       )}

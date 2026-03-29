@@ -20,15 +20,34 @@ export async function GET(request: NextRequest) {
 
     const supabase = getServiceRoleClient();
 
-    // First, get the student's transport_route_id
-    const { data: student, error: studentError } = await supabase
+    let student: Record<string, unknown> | null = null;
+    let studentError = null as {
+      hint: any; code?: string; message?: string 
+} | null;
+
+    const extendedSelect = supabase
       .from('students')
-      // Some deployments do not have pickup_stop_id/dropoff_stop_id on students.
-      // Keep this query minimal to avoid 42703 (undefined column) errors.
-      .select('id, transport_route_id, transport_type')
+      .select(
+        'id, transport_route_id, transport_type, transport_pickup_stop_id, transport_dropoff_stop_id, transport_custom_fare, transport_fee'
+      )
       .eq('id', studentId)
       .eq('school_code', schoolCode)
       .single();
+
+    const extRes = await extendedSelect;
+    if (extRes.error?.code === '42703' || extRes.error?.message?.includes('transport_pickup_stop_id')) {
+      const minRes = await supabase
+        .from('students')
+        .select('id, transport_route_id, transport_type')
+        .eq('id', studentId)
+        .eq('school_code', schoolCode)
+        .single();
+      student = minRes.data as Record<string, unknown> | null;
+      studentError = minRes.error;
+    } else {
+      student = extRes.data as Record<string, unknown> | null;
+      studentError = extRes.error;
+    }
 
     if (studentError) {
       // Handle specific error codes
@@ -209,15 +228,75 @@ export async function GET(request: NextRequest) {
       })
       .filter((stop) => stop != null && !!stop.id);
 
-    // Pickup/dropoff stops may be stored elsewhere (or not stored at all).
-    // We keep these null unless your schema provides those fields.
-    const pickupStop = null;
-    const dropoffStop = null;
+    const pickupId = student.transport_pickup_stop_id
+      ? String(student.transport_pickup_stop_id)
+      : null;
+    const dropId = student.transport_dropoff_stop_id
+      ? String(student.transport_dropoff_stop_id)
+      : null;
+    const stopIds = [pickupId, dropId].filter((x): x is string => !!x);
+
+    const stopRowById = new Map<
+      string,
+      { id: string; stop_name: string; pickup_fare: number | null; drop_fare: number | null }
+    >();
+    if (stopIds.length > 0) {
+      const { data: stopRows } = await supabase
+        .from('transport_stops')
+        .select('id, name, pickup_fare, drop_fare')
+        .in('id', stopIds)
+        .eq('school_code', schoolCode);
+      for (const r of stopRows || []) {
+        stopRowById.set(String(r.id), {
+          id: String(r.id),
+          stop_name: String(r.name ?? 'Stop'),
+          pickup_fare: r.pickup_fare != null ? Number(r.pickup_fare) : null,
+          drop_fare: r.drop_fare != null ? Number(r.drop_fare) : null,
+        });
+      }
+    }
+
+    function toStudentStopPayload(id: string | null): {
+      id: string;
+      stop_name: string;
+      address: null;
+      latitude: null;
+      longitude: null;
+      pickup_fare: number | null;
+      drop_fare: number | null;
+    } | null {
+      if (!id) return null;
+      const row = stopRowById.get(id);
+      if (!row) return null;
+      return {
+        id: row.id,
+        stop_name: row.stop_name,
+        address: null,
+        latitude: null,
+        longitude: null,
+        pickup_fare: row.pickup_fare,
+        drop_fare: row.drop_fare,
+      };
+    }
+
+    const pickupStop = toStudentStopPayload(pickupId);
+    const dropoffStop = toStudentStopPayload(dropId);
+
+    const transport_fee_effective =
+      student.transport_fee != null && student.transport_fee !== ''
+        ? Number(student.transport_fee)
+        : null;
+    const transport_custom_fare =
+      student.transport_custom_fare != null && student.transport_custom_fare !== ''
+        ? Number(student.transport_custom_fare)
+        : null;
 
     // Format the response
     const formattedData = {
       has_transport: true,
       transport_type: student.transport_type || 'School Bus',
+      transport_fee: transport_fee_effective,
+      transport_custom_fare,
       route: {
         id: route.id,
         route_name: route.route_name,

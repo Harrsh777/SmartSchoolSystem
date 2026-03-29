@@ -6,7 +6,56 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, ArrowRight, Check, Calendar, BookOpen, Users, FileText, Save } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Calendar, BookOpen, FileText, Save, Clock } from 'lucide-react';
+
+type ScheduleTimeStep = 15 | 30 | 45;
+
+function buildTimeSlotOptions(step: ScheduleTimeStep): string[] {
+  const opts: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    const minutes = step === 15 ? [0, 15, 30, 45] : step === 30 ? [0, 30] : [0, 45];
+    for (const m of minutes) {
+      opts.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+  }
+  return opts;
+}
+
+function formatTimeLabel(hhmm: string): string {
+  if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return hhmm || '—';
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function ScheduleTimeSelect({
+  value,
+  onChange,
+  options,
+  placeholder = 'Select time',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+}) {
+  const list = value && !options.includes(value) ? [value, ...options] : options;
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-900 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#5A7A95]/30 focus:border-[#5A7A95]/50 transition-colors hover:border-gray-400"
+    >
+      <option value="">{placeholder}</option>
+      {list.map((t) => (
+        <option key={t} value={t}>
+          {formatTimeLabel(t)}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 interface ClassData {
   id: string;
@@ -27,17 +76,29 @@ interface SelectedClass {
   sections: string[];
 }
 
+interface MappedExamSubject {
+  subject_id: string;
+  subject_name: string;
+  max_marks: number;
+  pass_marks: number;
+  /** When set, pass_marks is derived from max_marks × pass_percent (user can still use marks-only by leaving this empty). */
+  pass_percent: number | null;
+}
+
 interface ClassSubject {
   classId: string;
   className: string;
   sectionId: string;
   sectionName: string;
-  subjects: Array<{
-    subject_id: string;
-    subject_name: string;
-    max_marks: number;
-    pass_marks: number;
-  }>;
+  subjects: MappedExamSubject[];
+}
+
+function passMarksFromPercent(maxMarks: number, percent: number): number {
+  if (!Number.isFinite(maxMarks) || maxMarks < 1) return 0;
+  if (!Number.isFinite(percent) || percent <= 0) return 0;
+  const p = Math.min(100, Math.max(0, percent));
+  const raw = Math.round((maxMarks * p) / 100);
+  return Math.min(Math.max(0, raw), maxMarks - 1);
 }
 
 interface ExamSchedule {
@@ -101,9 +162,19 @@ export default function CreateExaminationPage({
   const [subjectsBySectionId, setSubjectsBySectionId] = useState<Record<string, Subject[]>>({});
   const [step3SubjectsLoading, setStep3SubjectsLoading] = useState(false);
   const [classSubjects, setClassSubjects] = useState<ClassSubject[]>([]);
+  /** Bulk "apply pass % to all" input per class-section (sectionId key). */
+  const [bulkPassPercentDraft, setBulkPassPercentDraft] = useState<Record<string, string>>({});
 
   // Step 4: Schedule
   const [examSchedules, setExamSchedules] = useState<ExamSchedule[]>([]);
+  const [scheduleTimeStep, setScheduleTimeStep] = useState<ScheduleTimeStep>(15);
+  const [bulkScheduleStart, setBulkScheduleStart] = useState('');
+  const [bulkScheduleEnd, setBulkScheduleEnd] = useState('');
+
+  const scheduleTimeOptions = useMemo(
+    () => buildTimeSlotOptions(scheduleTimeStep),
+    [scheduleTimeStep]
+  );
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   // createdExamId removed - not used
@@ -347,6 +418,7 @@ export default function CreateExaminationPage({
               subject_name: subject.name,
               max_marks: 100,
               pass_marks: 33,
+              pass_percent: null,
             },
           ],
         };
@@ -368,6 +440,7 @@ export default function CreateExaminationPage({
           subject_name: subject.name,
           max_marks: 100,
           pass_marks: 33,
+          pass_percent: null,
         }));
         
         return {
@@ -397,20 +470,95 @@ export default function CreateExaminationPage({
     field: 'max_marks' | 'pass_marks',
     value: number
   ) => {
-    setClassSubjects(prev => prev.map((cs, idx) => {
-      if (idx === classSubjectIndex) {
+    setClassSubjects((prev) =>
+      prev.map((cs, idx) => {
+        if (idx !== classSubjectIndex) return cs;
         return {
           ...cs,
           subjects: cs.subjects.map((s, sIdx) => {
-            if (sIdx === subjectIndex) {
-              return { ...s, [field]: value };
+            if (sIdx !== subjectIndex) return s;
+            if (field === 'pass_marks') {
+              return { ...s, pass_marks: value, pass_percent: null };
             }
-            return s;
+            const max_marks = value;
+            let pass_marks = s.pass_marks;
+            if (s.pass_percent != null && s.pass_percent > 0) {
+              pass_marks = passMarksFromPercent(max_marks, s.pass_percent);
+            } else if (pass_marks >= max_marks) {
+              pass_marks = Math.max(0, max_marks - 1);
+            }
+            return { ...s, max_marks, pass_marks };
           }),
         };
-      }
-      return cs;
-    }));
+      })
+    );
+  };
+
+  const handleSubjectPassPercentChange = (
+    classSubjectIndex: number,
+    subjectIndex: number,
+    raw: string
+  ) => {
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      setClassSubjects((prev) =>
+        prev.map((cs, idx) => {
+          if (idx !== classSubjectIndex) return cs;
+          return {
+            ...cs,
+            subjects: cs.subjects.map((s, sIdx) =>
+              sIdx === subjectIndex ? { ...s, pass_percent: null } : s
+            ),
+          };
+        })
+      );
+      return;
+    }
+    const pct = parseFloat(trimmed.replace(/,/g, '.'));
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) return;
+    setClassSubjects((prev) =>
+      prev.map((cs, idx) => {
+        if (idx !== classSubjectIndex) return cs;
+        return {
+          ...cs,
+          subjects: cs.subjects.map((s, sIdx) => {
+            if (sIdx !== subjectIndex) return s;
+            return {
+              ...s,
+              pass_percent: pct,
+              pass_marks: passMarksFromPercent(s.max_marks, pct),
+            };
+          }),
+        };
+      })
+    );
+  };
+
+  const handleApplyPassPercentToAllInSection = (classSubjectIndex: number, sectionId: string) => {
+    const raw = (bulkPassPercentDraft[sectionId] ?? '').trim();
+    const pct = parseFloat(raw.replace(/,/g, '.'));
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      setErrors({ marks: 'Enter a valid pass percentage between 1 and 100 to apply to all subjects.' });
+      return;
+    }
+    setErrors((e) => {
+      const next = { ...e };
+      delete next.marks;
+      return next;
+    });
+    setClassSubjects((prev) =>
+      prev.map((cs, idx) => {
+        if (idx !== classSubjectIndex) return cs;
+        return {
+          ...cs,
+          subjects: cs.subjects.map((s) => ({
+            ...s,
+            pass_percent: pct,
+            pass_marks: passMarksFromPercent(s.max_marks, pct),
+          })),
+        };
+      })
+    );
   };
 
   /** Copy max marks and pass marks from the first subject row to all others in this class/section. */
@@ -423,7 +571,11 @@ export default function CreateExaminationPage({
         subjects: cs.subjects.map((s) => ({
           ...s,
           max_marks: first.max_marks,
-          pass_marks: first.pass_marks,
+          pass_marks:
+            first.pass_percent != null && first.pass_percent > 0
+              ? passMarksFromPercent(first.max_marks, first.pass_percent)
+              : first.pass_marks,
+          pass_percent: first.pass_percent,
         })),
       };
     }));
@@ -485,6 +637,51 @@ export default function CreateExaminationPage({
       }
       return s;
     }));
+  };
+
+  const handleApplyTimesToAllSchedules = () => {
+    const start = bulkScheduleStart.trim();
+    const end = bulkScheduleEnd.trim();
+    if (!start || !end) {
+      setErrors({ schedule: 'Choose both start and end time before applying to all exams.' });
+      return;
+    }
+    if (start >= end) {
+      setErrors({ schedule: 'End time must be after start time.' });
+      return;
+    }
+    setErrors((e) => {
+      const next = { ...e };
+      delete next.schedule;
+      return next;
+    });
+    setExamSchedules((prev) => prev.map((s) => ({ ...s, start_time: start, end_time: end })));
+  };
+
+  const handleApplyFirstRowTimesToAll = () => {
+    const first = examSchedules[0];
+    if (!first?.start_time || !first?.end_time) {
+      setErrors({ schedule: 'Set start and end time on the first exam row first, or use the quick apply bar above.' });
+      return;
+    }
+    if (first.start_time >= first.end_time) {
+      setErrors({ schedule: 'End time must be after start time on the first row.' });
+      return;
+    }
+    setErrors((e) => {
+      const next = { ...e };
+      delete next.schedule;
+      return next;
+    });
+    setBulkScheduleStart(first.start_time);
+    setBulkScheduleEnd(first.end_time);
+    setExamSchedules((prev) =>
+      prev.map((s) => ({
+        ...s,
+        start_time: first.start_time,
+        end_time: first.end_time,
+      }))
+    );
   };
 
   const handleStep4Submit = async () => {
@@ -557,7 +754,15 @@ export default function CreateExaminationPage({
           description: examMetadata.description || null,
           term_id: selectedTermId || null,
           class_mappings: selectedClasses,
-          class_subjects: classSubjects,
+          class_subjects: classSubjects.map((cs) => ({
+            ...cs,
+            subjects: cs.subjects.map((s) => ({
+              subject_id: s.subject_id,
+              subject_name: s.subject_name,
+              max_marks: s.max_marks,
+              pass_marks: s.pass_marks,
+            })),
+          })),
           schedules: examSchedules,
           created_by: createdBy,
         }),
@@ -898,7 +1103,15 @@ export default function CreateExaminationPage({
             {/* Step 3: Map Subjects */}
             {currentStep === 3 && (
               <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Map Subjects & Marks</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Map Subjects & Marks</h2>
+                <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+                  Set <span className="font-medium text-gray-800">max marks</span> for each subject. For passing criteria,
+                  either enter <span className="font-medium text-gray-800">pass marks</span> directly, or use an optional{' '}
+                  <span className="font-medium text-gray-800">pass %</span> — pass marks are calculated as a rounded
+                  percentage of max marks (capped below max). Clear the % field to edit pass marks manually. Use{' '}
+                  <span className="font-medium text-gray-800">Apply to all</span> to set one percentage for every subject
+                  in that class-section (each subject still uses its own max).
+                </p>
                 
                 {(errors.subjects || errors.marks) && (
                   <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -938,7 +1151,7 @@ export default function CreateExaminationPage({
                                 size="sm"
                                 onClick={() => handleApplyFirstRowMarksToAll(csIndex)}
                                 className="text-xs"
-                                title="Apply the first row's Max / Pass / Weightage to every subject below"
+                                title="Copy max marks, pass marks, and pass % from the first row to all subjects below"
                               >
                                 Same for everyone
                               </Button>
@@ -996,6 +1209,43 @@ export default function CreateExaminationPage({
                       </div>
 
                       {cs.subjects.length > 0 && (
+                        <div className="mb-4 p-3 rounded-lg border border-dashed border-gray-300 bg-white">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Pass % — apply to all subjects in this class-section
+                          </label>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Input
+                              type="number"
+                              placeholder="e.g. 33"
+                              min={1}
+                              max={100}
+                              step={0.5}
+                              value={bulkPassPercentDraft[cs.sectionId] ?? ''}
+                              onChange={(e) =>
+                                setBulkPassPercentDraft((d) => ({
+                                  ...d,
+                                  [cs.sectionId]: e.target.value,
+                                }))
+                              }
+                              className="max-w-[120px]"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="text-xs"
+                              onClick={() => handleApplyPassPercentToAllInSection(csIndex, cs.sectionId)}
+                            >
+                              Apply to all
+                            </Button>
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-1.5">
+                            Each subject keeps its own max marks; pass marks = rounded % of that max.
+                          </p>
+                        </div>
+                      )}
+
+                      {cs.subjects.length > 0 && (
                         <div className="space-y-3">
                           {cs.subjects.map((subject, sIndex) => (
                             <div
@@ -1011,24 +1261,65 @@ export default function CreateExaminationPage({
                                   Remove
                                 </button>
                               </div>
-                              <div className="grid grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
-                                  <label className="block text-xs text-gray-600 mb-1">Max Marks</label>
+                                  <label className="block text-xs text-gray-600 mb-1">Max marks</label>
                                   <Input
                                     type="number"
                                     value={subject.max_marks}
-                                    onChange={(e) => handleSubjectChange(csIndex, sIndex, 'max_marks', parseInt(e.target.value) || 0)}
-                                    min="1"
+                                    onChange={(e) =>
+                                      handleSubjectChange(
+                                        csIndex,
+                                        sIndex,
+                                        'max_marks',
+                                        parseInt(e.target.value, 10) || 0
+                                      )
+                                    }
+                                    min={1}
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-xs text-gray-600 mb-1">Pass Marks</label>
+                                  <label className="block text-xs text-gray-600 mb-1">
+                                    Pass % <span className="text-gray-400 font-normal">(optional)</span>
+                                  </label>
                                   <Input
                                     type="number"
+                                    placeholder="— use pass marks"
+                                    min={0}
+                                    max={100}
+                                    step={0.5}
+                                    value={subject.pass_percent ?? ''}
+                                    onChange={(e) =>
+                                      handleSubjectPassPercentChange(csIndex, sIndex, e.target.value)
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">
+                                    Pass marks
+                                    {subject.pass_percent != null && subject.pass_percent > 0 ? (
+                                      <span className="text-gray-400 font-normal"> (from %)</span>
+                                    ) : null}
+                                  </label>
+                                  <Input
+                                    type="number"
+                                    readOnly={subject.pass_percent != null && subject.pass_percent > 0}
+                                    className={
+                                      subject.pass_percent != null && subject.pass_percent > 0
+                                        ? 'bg-gray-100 cursor-not-allowed'
+                                        : ''
+                                    }
                                     value={subject.pass_marks}
-                                    onChange={(e) => handleSubjectChange(csIndex, sIndex, 'pass_marks', parseInt(e.target.value) || 0)}
-                                    min="0"
-                                    max={subject.max_marks - 1}
+                                    onChange={(e) =>
+                                      handleSubjectChange(
+                                        csIndex,
+                                        sIndex,
+                                        'pass_marks',
+                                        parseInt(e.target.value, 10) || 0
+                                      )
+                                    }
+                                    min={0}
+                                    max={Math.max(0, subject.max_marks - 1)}
                                   />
                                 </div>
                               </div>
@@ -1057,57 +1348,156 @@ export default function CreateExaminationPage({
             {/* Step 4: Schedule */}
             {currentStep === 4 && (
               <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Schedule Examinations</h2>
-                
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Schedule Examinations</h2>
+                    <p className="text-sm text-gray-600 mt-1 max-w-2xl">
+                      Times use the slot interval you pick (every 15, 30, or 45 minutes). Use{' '}
+                      <span className="font-medium text-gray-800">Apply to all</span> when every paper shares the same
+                      slot, then adjust individual rows if needed.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm">
+                  <div className="flex flex-wrap items-start gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#5A7A95]/10 text-[#5A7A95]">
+                      <Clock className="h-5 w-5" aria-hidden />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-4">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">Time slot interval</p>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          Dropdown lists only these minute marks within each hour.
+                        </p>
+                        <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                          {([15, 30, 45] as const).map((step) => (
+                            <button
+                              key={step}
+                              type="button"
+                              onClick={() => setScheduleTimeStep(step)}
+                              className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                                scheduleTimeStep === step
+                                  ? 'bg-[#5A7A95] text-white shadow-sm'
+                                  : 'text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              Every {step} min
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="h-px bg-slate-200" />
+
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800 mb-3">Apply same times to every exam</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                          <div className="sm:col-span-1 lg:col-span-3">
+                            <label className="block text-xs font-medium text-slate-600 mb-1.5">Start time</label>
+                            <ScheduleTimeSelect
+                              value={bulkScheduleStart}
+                              onChange={setBulkScheduleStart}
+                              options={scheduleTimeOptions}
+                              placeholder="Start"
+                            />
+                          </div>
+                          <div className="sm:col-span-1 lg:col-span-3">
+                            <label className="block text-xs font-medium text-slate-600 mb-1.5">End time</label>
+                            <ScheduleTimeSelect
+                              value={bulkScheduleEnd}
+                              onChange={setBulkScheduleEnd}
+                              options={scheduleTimeOptions}
+                              placeholder="End"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2 lg:col-span-6">
+                            <Button type="button" onClick={handleApplyTimesToAllSchedules} className="shrink-0">
+                              Apply to all rows
+                            </Button>
+                            {examSchedules.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleApplyFirstRowTimesToAll}
+                                className="shrink-0"
+                                title="Copy start and end from the first exam in the list to all others"
+                              >
+                                Match first row
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {errors.schedule && (
                   <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                     <p className="text-red-600">{errors.schedule}</p>
                   </div>
                 )}
 
-                <div className="space-y-4">
+                <div className="space-y-6">
                   {examSchedules.map((schedule, index) => {
                     const classSubject = classSubjects.find(
                       cs => cs.classId === schedule.classId && cs.sectionId === schedule.sectionId
                     );
                     const subject = classSubject?.subjects.find(s => s.subject_id === schedule.subjectId);
-                    
+                    const prev = examSchedules[index - 1];
+                    const showSectionDivider =
+                      index > 0 && (prev.sectionId !== schedule.sectionId || prev.classId !== schedule.classId);
+
                     return (
-                      <div
-                        key={index}
-                        className="p-4 border border-gray-200 rounded-lg bg-gray-50"
-                      >
-                        <div className="mb-3">
-                          <span className="font-semibold text-gray-900">
-                            Class {classSubject?.className} - Section {classSubject?.sectionName} - {subject?.subject_name}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Exam Date</label>
-                            <Input
-                              type="date"
-                              value={schedule.exam_date}
-                              onChange={(e) => handleScheduleChange(index, 'exam_date', e.target.value)}
-                              min={examMetadata.start_date}
-                              max={examMetadata.end_date}
-                            />
+                      <div key={index} className="space-y-3">
+                        {showSectionDivider && (
+                          <div className="flex items-center gap-3 pt-2">
+                            <div className="h-px flex-1 bg-slate-200" />
+                            <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                              {classSubject?.className} · Section {classSubject?.sectionName}
+                            </span>
+                            <div className="h-px flex-1 bg-slate-200" />
                           </div>
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Start Time</label>
-                            <Input
-                              type="time"
-                              value={schedule.start_time}
-                              onChange={(e) => handleScheduleChange(index, 'start_time', e.target.value)}
-                            />
+                        )}
+                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300/80 transition-colors">
+                          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                Class {classSubject?.className} · Section {classSubject?.sectionName}
+                              </p>
+                              <p className="text-base font-semibold text-gray-900 mt-0.5">{subject?.subject_name}</p>
+                            </div>
                           </div>
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">End Time</label>
-                            <Input
-                              type="time"
-                              value={schedule.end_time}
-                              onChange={(e) => handleScheduleChange(index, 'end_time', e.target.value)}
-                            />
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1.5">Exam date</label>
+                              <Input
+                                type="date"
+                                value={schedule.exam_date}
+                                onChange={(e) => handleScheduleChange(index, 'exam_date', e.target.value)}
+                                min={examMetadata.start_date}
+                                max={examMetadata.end_date}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1.5">Start time</label>
+                              <ScheduleTimeSelect
+                                value={schedule.start_time}
+                                onChange={(v) => handleScheduleChange(index, 'start_time', v)}
+                                options={scheduleTimeOptions}
+                                placeholder="Select start"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1.5">End time</label>
+                              <ScheduleTimeSelect
+                                value={schedule.end_time}
+                                onChange={(v) => handleScheduleChange(index, 'end_time', v)}
+                                options={scheduleTimeOptions}
+                                placeholder="Select end"
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>

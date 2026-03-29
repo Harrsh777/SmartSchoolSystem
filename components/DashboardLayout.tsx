@@ -49,7 +49,8 @@ import {
   ArrowLeft,
   Download,
   CalendarRange,
-  SlidersHorizontal
+  SlidersHorizontal,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { languages } from '@/lib/translations';
@@ -1273,6 +1274,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Marks', path: '/marks', category: 'Marks', icon: GraduationCap },
     { label: 'Marks Dashboard', path: '/marks', category: 'Marks', icon: FileBarChart, parent: 'Marks' },
     { label: 'Mark Entry', path: '/marks-entry', category: 'Marks', icon: ClipboardList, parent: 'Marks' },
+    { label: 'Bulk add marks', path: '/marks/bulk-upload', category: 'Marks', icon: FileSpreadsheet, parent: 'Marks' },
     { label: 'Non-Scholastic Marks', path: '/marks/non-scholastic-marks', category: 'Marks', icon: Palette, parent: 'Marks' },
     
     // Fees - V2 System (Primary) + Legacy
@@ -1285,7 +1287,6 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Class-wise fees', path: '/fees/v2/class-wise', category: 'Fees', icon: SlidersHorizontal, parent: 'Fees' },
 
     { label: 'Student Fee Statements', path: '/fees/statements', category: 'Fees', icon: IndianRupee, parent: 'Fees' },
-
     { label: 'Fee Reports', path: '/fees/reports', category: 'Fees', icon: BarChart3, parent: 'Fees' },
     
     // Library
@@ -1706,8 +1707,26 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
               >
                 {sidebarOpen ? <X size={24} className="text-[#2C3E50] dark:text-[#5A879A]" /> : <Menu size={24} className="text-[#2C3E50] dark:text-[#5A879A]" />}
               </button>
-              <Link href={schoolCode ? `/dashboard/${schoolCode}` : '/'} className="text-xl font-bold bg-gradient-to-r from-[#5A7A95] to-[#6B9BB8] bg-clip-text text-transparent">
-                EduCore
+              <Link
+                href={schoolCode ? `/dashboard/${schoolCode}` : '/'}
+                className="flex items-center justify-center shrink-0 h-10 min-w-[2.5rem] max-w-[168px] rounded-lg border border-gray-200/90 dark:border-gray-600 bg-white dark:bg-[#1e293b] px-2 py-1 hover:opacity-90 transition-opacity"
+                aria-label="Go to school dashboard home"
+                title="School dashboard home"
+              >
+                {sidebarSchoolLogo ? (
+                  <NextImage
+                    src={sidebarSchoolLogo}
+                    alt={schoolName ? `${schoolName} logo` : 'School logo'}
+                    width={152}
+                    height={32}
+                    className="h-8 w-auto max-w-[152px] object-contain object-left"
+                    priority
+                  />
+                ) : (
+                  <span className="flex items-center justify-center h-8 w-8 rounded-md bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] text-white text-sm font-bold shrink-0">
+                    {(schoolName || schoolCode || 'S').charAt(0).toUpperCase()}
+                  </span>
+                )}
               </Link>
               <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600" />
               <span className="hidden sm:block text-[#2C3E50] dark:text-[#F8FAFC] font-semibold">{schoolName}</span>

@@ -3,6 +3,7 @@ import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
 import { logAudit } from '@/lib/audit-logger';
 import { enrichStudentFeesWithAdjustments } from '@/lib/fees/enrich-student-fees';
+import { formatTransportFeeLabel, type TransportSnapshot } from '@/lib/fees/transport-fee-sync';
 
 /**
  * GET /api/v2/fees/payments
@@ -207,7 +208,10 @@ export async function POST(request: NextRequest) {
         due_date,
         due_month,
         status,
+        fee_source,
+        transport_snapshot,
         fee_structure:fee_structure_id (
+          name,
           academic_year,
           late_fee_type,
           late_fee_value,
@@ -358,11 +362,21 @@ export async function POST(request: NextRequest) {
         date: payment.payment_date,
       },
       allocations: allocations.map((alloc: { student_fee_id: string; allocated_amount: number }) => {
-        const fee = studentFees.find(f => f.id === alloc.student_fee_id);
+        const fee = studentFees.find(f => f.id === alloc.student_fee_id) as {
+          due_date?: string;
+          fee_source?: string;
+          transport_snapshot?: TransportSnapshot;
+          fee_structure?: { name?: string } | null;
+        } | undefined;
+        const feeLabel =
+          fee?.fee_source === 'transport'
+            ? formatTransportFeeLabel(fee.transport_snapshot ?? null)
+            : String(fee?.fee_structure?.name || 'Fee');
         return {
           student_fee_id: alloc.student_fee_id,
           allocated_amount: alloc.allocated_amount,
           due_month: fee?.due_date || null,
+          fee_name: feeLabel,
         };
       }),
       collector: {

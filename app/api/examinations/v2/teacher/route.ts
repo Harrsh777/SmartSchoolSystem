@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import {
+  fetchTeachingByClass,
+  staffTeachesSubject,
+  teachingMapToRecord,
+} from '@/lib/teacher-timetable-teaching';
 
 /**
  * GET /api/examinations/v2/teacher
- * Get all examinations for the school (date-wise) so every staff can view the full exam calendar.
- * Query params: school_code (required), teacher_id optional for future use.
+ * school_code (required). teacher_id optional:
+ * - Without teacher_id: all published exams (calendar / admin).
+ * - With teacher_id: only exams that include at least one subject the teacher teaches
+ *   for that class on the timetable; subject_mappings are trimmed to those subjects only.
  */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    const teacherId = searchParams.get('teacher_id')?.trim() || '';
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -56,12 +64,60 @@ export async function GET(request: NextRequest) {
     }
 
     // Show all non-draft examinations (upcoming, ongoing, completed, active)
-    const filteredExams = (examinations || []).filter((exam: Record<string, unknown>) => {
+    let filteredExams = (examinations || []).filter((exam: Record<string, unknown>) => {
       const status = exam.status as string;
       const isPublishedOrActive = exam.status === 'active' || exam.is_published === true
         || (status !== 'draft' && (status === 'upcoming' || status === 'ongoing' || status === 'completed'));
       return isPublishedOrActive;
     });
+
+    let subject_ids_by_class: Record<string, string[]> = {};
+    let teacher_scope: 'all' | 'timetable' | 'timetable_empty' = 'all';
+    let teaching_assignments: Array<{
+      class_id: string;
+      class_name: string;
+      section: string;
+      subject_ids: string[];
+    }> = [];
+
+    if (teacherId) {
+      const teaching = await fetchTeachingByClass(supabase, schoolCode, teacherId);
+      subject_ids_by_class = { ...teachingMapToRecord(teaching) };
+      teacher_scope = teaching.size > 0 ? 'timetable' : 'timetable_empty';
+
+      const classIdList = Array.from(teaching.keys());
+      if (classIdList.length > 0) {
+        const { data: classRows } = await supabase
+          .from('classes')
+          .select('id, class, section')
+          .eq('school_code', schoolCode)
+          .in('id', classIdList);
+        const byId = new Map((classRows || []).map((c) => [c.id, c]));
+        teaching_assignments = classIdList.map((cid) => {
+          const row = byId.get(cid);
+          return {
+            class_id: cid,
+            class_name: row?.class ?? '',
+            section: row?.section ?? '',
+            subject_ids: Array.from(teaching.get(cid) || []),
+          };
+        });
+      }
+
+      filteredExams = filteredExams
+        .map((exam: Record<string, unknown>) => {
+          const mappings = ((exam.subject_mappings as Array<Record<string, unknown>>) || []).filter((m) => {
+            const cid = String(m.class_id ?? '');
+            const sid = String(m.subject_id ?? '');
+            return staffTeachesSubject(teaching, cid, sid);
+          });
+          return { ...exam, subject_mappings: mappings };
+        })
+        .filter((exam: Record<string, unknown>) => {
+          const mappings = (exam.subject_mappings as Array<Record<string, unknown>>) || [];
+          return mappings.length > 0;
+        });
+    }
 
     // Collect all subject IDs from subject_mappings to fetch teacher names
     const allSubjectIds = new Set<string>();
@@ -111,7 +167,15 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ data: enrichedExams }, { status: 200 });
+    return NextResponse.json(
+      {
+        data: enrichedExams,
+        teacher_scope,
+        subject_ids_by_class,
+        teaching_assignments,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error fetching teacher examinations:', error);
     return NextResponse.json(

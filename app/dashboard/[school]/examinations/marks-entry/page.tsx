@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
+import { use, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -9,6 +9,7 @@ import Input from '@/components/ui/Input';
 import { 
   ArrowLeft, 
   Search,
+  ArrowUpDown,
   FileText,
   Users,
   BookOpen,
@@ -114,6 +115,21 @@ function classMappingMatchesSelection(
   return false;
 }
 
+type MarksTableSort = 'name_asc' | 'name_desc' | 'roll_asc' | 'roll_desc';
+
+function compareRollNumbers(a: string | undefined, b: string | undefined, ascending: boolean): number {
+  const sa = String(a ?? '').trim();
+  const sb = String(b ?? '').trim();
+  const emptyA = !sa;
+  const emptyB = !sb;
+  if (emptyA && emptyB) return 0;
+  if (emptyA) return ascending ? 1 : -1;
+  if (emptyB) return ascending ? -1 : 1;
+  const cmp = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
+  if (cmp !== 0) return ascending ? cmp : -cmp;
+  return 0;
+}
+
 function resolveExamClassIdForSelection(
   classMappings: Record<string, unknown>[],
   matchingClassIds: Set<string>,
@@ -159,6 +175,7 @@ export default function MarksEntryPage({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [marksTableSort, setMarksTableSort] = useState<MarksTableSort>('name_asc');
   const [showTotals, setShowTotals] = useState(true);
 
   // Fetch classes and sections
@@ -684,10 +701,35 @@ export default function MarksEntryPage({
     }
   };
 
-  const filteredStudents = students.filter(student =>
-    student.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    student.admission_no.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const displayStudents = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const filtered = students.filter(
+      (student) =>
+        student.student_name.toLowerCase().includes(q) ||
+        student.admission_no.toLowerCase().includes(q)
+    );
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      if (marksTableSort === 'roll_asc' || marksTableSort === 'roll_desc') {
+        const rc = compareRollNumbers(
+          a.roll_number,
+          b.roll_number,
+          marksTableSort === 'roll_asc'
+        );
+        if (rc !== 0) return rc;
+      }
+      const na = (a.student_name || '').toLowerCase();
+      const nb = (b.student_name || '').toLowerCase();
+      let nameCmp = na.localeCompare(nb, undefined, { sensitivity: 'base' });
+      if (marksTableSort === 'name_desc') nameCmp = -nameCmp;
+      if (nameCmp !== 0) return nameCmp;
+      return String(a.admission_no).localeCompare(String(b.admission_no), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    });
+    return sorted;
+  }, [students, searchQuery, marksTableSort]);
 
   // Get sections for selected class
   const availableSections = selectedClass
@@ -934,8 +976,8 @@ export default function MarksEntryPage({
         {/* Search and Toggle */}
         {students.length > 0 && !loadingStudents && (
           <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-4">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-              <div className="relative flex-1">
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-4">
+              <div className="relative flex-1 min-w-0">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <Input
                   value={searchQuery}
@@ -944,8 +986,25 @@ export default function MarksEntryPage({
                   className="pl-10 w-full"
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
+                <div className="flex items-center gap-2">
+                  <ArrowUpDown size={16} className="text-[#5A7A95] shrink-0" aria-hidden />
+                  <label htmlFor="marks-sort" className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                    Sort
+                  </label>
+                  <select
+                    id="marks-sort"
+                    value={marksTableSort}
+                    onChange={(e) => setMarksTableSort(e.target.value as MarksTableSort)}
+                    className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] min-w-[200px]"
+                  >
+                    <option value="name_asc">Student name (A–Z)</option>
+                    <option value="name_desc">Student name (Z–A)</option>
+                    <option value="roll_asc">Roll number (low → high)</option>
+                    <option value="roll_desc">Roll number (high → low)</option>
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer sm:pl-2 sm:border-l sm:border-gray-200 dark:sm:border-gray-600">
                   <input
                     type="checkbox"
                     checked={showTotals}
@@ -985,7 +1044,7 @@ export default function MarksEntryPage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {filteredStudents.map((student, index) => {
+                  {displayStudents.map((student, index) => {
                     const stats = calculateStudentStats(student.id);
                     return (
                       <motion.tr

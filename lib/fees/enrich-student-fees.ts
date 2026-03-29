@@ -37,6 +37,7 @@ export type FeeWithStructure = Record<string, unknown> & {
   paid_amount: number;
   adjustment_amount: number;
   status: string;
+  fee_source?: string | null;
   student?: { id: string; class?: string; section?: string };
   fee_structure: {
     academic_year?: string | null;
@@ -45,6 +46,39 @@ export type FeeWithStructure = Record<string, unknown> & {
     grace_period_days?: number;
   } | null;
 };
+
+type EnrichedFeeExtras = {
+  late_fee: number;
+  rules_adjustment_delta: number;
+  adjustment_lines: { rule_id: string; label: string; adjustment_type: string; delta: number; reason: string | null }[];
+  effective_adjustment_amount: number;
+  final_amount: number;
+  balance_due: number;
+  total_due: number;
+  line_adjustments_sum: number;
+  installment_manual_lines: MergedManualLine[];
+};
+
+/** Transport rows: no rules, class lines, or late fee — amount is snapshot base minus paid. */
+function applyTransportFeeEnrichment(fee: FeeWithStructure): (FeeWithStructure & EnrichedFeeExtras) | null {
+  if (String(fee.fee_source || 'structure') !== 'transport') return null;
+  const base = Number(fee.base_amount || 0);
+  const paid = Number(fee.paid_amount || 0);
+  const balanceDue = Math.round((base - paid) * 100) / 100;
+  const totalDue = Math.max(0, balanceDue);
+  return {
+    ...fee,
+    late_fee: 0,
+    rules_adjustment_delta: 0,
+    adjustment_lines: [],
+    line_adjustments_sum: 0,
+    installment_manual_lines: [],
+    effective_adjustment_amount: 0,
+    final_amount: Math.round(base * 100) / 100,
+    balance_due: balanceDue,
+    total_due: totalDue,
+  };
+}
 
 /**
  * Shared DB reads for many students (fee overview / bulk). Avoids N× rules+targets+items queries.
@@ -113,6 +147,9 @@ export async function enrichStudentFeesWithAdjustments(
     (await fetchStructureItemsMap(supabase, structureIds));
 
   return fees.map((fee) => {
+    const transportRow = applyTransportFeeEnrichment(fee);
+    if (transportRow) return transportRow;
+
     const structure = fee.fee_structure;
     const ctx: FeeRowContext = {
       id: String(fee.id),
@@ -211,6 +248,9 @@ export async function enrichPendingFeeRows(
   const structureItemsByStructureId = await fetchStructureItemsMap(supabase, structureIds);
 
   return rows.map((fee) => {
+    const transportRow = applyTransportFeeEnrichment(fee as FeeWithStructure);
+    if (transportRow) return transportRow as (typeof rows)[number] & EnrichedFeeExtras;
+
     const st = fee.student as { id?: string; class?: string; section?: string } | undefined;
     const student: StudentContext = {
       id: String(st?.id ?? fee.student_id),

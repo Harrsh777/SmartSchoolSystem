@@ -168,23 +168,14 @@ export async function DELETE(
       );
     }
 
-    // Delete related exam_subjects first (cascade may not be set up)
-    await supabase
-      .from('exam_subjects')
-      .delete()
-      .eq('exam_id', examId);
-
-    // Delete related marks (student_subject_marks table)
-    await supabase
-      .from('student_subject_marks')
-      .delete()
-      .eq('exam_id', examId);
-
-    // Delete related exam summary records
-    await supabase
-      .from('student_exam_summary')
-      .delete()
-      .eq('exam_id', examId);
+    // Delete dependent rows (v1 + v2 schema; ignore individual errors for optional tables)
+    await supabase.from('report_cards').delete().eq('exam_id', examId);
+    await supabase.from('exam_schedules').delete().eq('exam_id', examId);
+    await supabase.from('exam_subject_mappings').delete().eq('exam_id', examId);
+    await supabase.from('exam_class_mappings').delete().eq('exam_id', examId);
+    await supabase.from('exam_subjects').delete().eq('exam_id', examId);
+    await supabase.from('student_subject_marks').delete().eq('exam_id', examId);
+    await supabase.from('student_exam_summary').delete().eq('exam_id', examId);
 
     // Delete the examination
     const { error: deleteError } = await supabase

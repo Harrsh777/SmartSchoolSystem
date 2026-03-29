@@ -5,7 +5,7 @@ import { requirePermission } from '@/lib/api-permissions';
 /**
  * GET /api/v2/fees/fee-heads
  * Get all fee heads for a school
- * Query params: school_code
+ * Query params: school_code, active_only (true/1 = only applicable / is_active heads)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -16,6 +16,11 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
+    const activeOnlyRaw = searchParams.get('active_only');
+    const activeOnly =
+      activeOnlyRaw === '1' ||
+      activeOnlyRaw === 'true' ||
+      activeOnlyRaw === 'yes';
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -26,11 +31,17 @@ export async function GET(request: NextRequest) {
 
     const supabase = getServiceRoleClient();
 
-    const { data: feeHeads, error } = await supabase
+    let query = supabase
       .from('fee_heads')
       .select('*')
       .eq('school_code', schoolCode.toUpperCase())
       .order('name', { ascending: true });
+
+    if (activeOnly) {
+      query = query.eq('is_active', true);
+    }
+
+    const { data: feeHeads, error } = await query;
 
     if (error) {
       console.error('Error fetching fee heads:', error);
@@ -63,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { school_code, name, description, is_optional } = body;
+    const { school_code, name, description, is_optional, is_active } = body;
 
     if (!school_code || !name) {
       return NextResponse.json(
@@ -98,7 +109,7 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         description: description?.trim() || null,
         is_optional: is_optional || false,
-        is_active: true,
+        is_active: typeof is_active === 'boolean' ? is_active : true,
       })
       .select()
       .single();

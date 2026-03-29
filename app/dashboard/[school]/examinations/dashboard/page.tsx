@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, Calendar, Clock, BookOpen, Users, FileText, Search } from 'lucide-react';
+import { Calendar, Clock, BookOpen, Users, FileText, Search, Trash2 } from 'lucide-react';
 
 interface Exam {
   id: string;
@@ -70,6 +70,7 @@ export default function ExaminationDashboardPage({
   const [activeStructureTerm, setActiveStructureTerm] = useState<string>('unassigned');
   const [structureTerms, setStructureTerms] = useState<Array<TermOption & { exams?: Array<{ id?: string; exam_name: string; serial?: number; weightage?: number }> }>>([]);
   const [loadingStructureDetail, setLoadingStructureDetail] = useState(false);
+  const [deletingExamId, setDeletingExamId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchExams();
@@ -254,6 +255,35 @@ export default function ExaminationDashboardPage({
     () => structureTerms.find((t) => String(t.id) === activeStructureTerm) || null,
     [structureTerms, activeStructureTerm]
   );
+
+  const handleDeleteExam = async (exam: Exam) => {
+    const name = exam.exam_name?.trim() || 'this examination';
+    if (
+      !confirm(
+        `Are you sure you want to delete "${name}"?\n\nThis will remove the exam and related marks, schedules, and mappings. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      setDeletingExamId(exam.id);
+      const res = await fetch(
+        `/api/examinations/${exam.id}?school_code=${encodeURIComponent(schoolCode)}`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(typeof data.error === 'string' ? data.error : 'Failed to delete examination');
+        return;
+      }
+      await fetchExams();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to delete examination. Please try again.');
+    } finally {
+      setDeletingExamId(null);
+    }
+  };
 
   const assignTermToExam = async (examId: string, termId: string) => {
     try {
@@ -503,17 +533,39 @@ export default function ExaminationDashboardPage({
                           ))}
                         </select>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/dashboard/${schoolCode}/examinations/${exam.id}`);
-                        }}
-                      >
-                        View Details
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/dashboard/${schoolCode}/examinations/${exam.id}`);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
+                          disabled={deletingExamId === exam.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDeleteExam(exam);
+                          }}
+                          title="Delete examination"
+                        >
+                          {deletingExamId === exam.id ? (
+                            <span className="text-xs px-1">…</span>
+                          ) : (
+                            <>
+                              <Trash2 size={14} className="mr-1 inline" aria-hidden />
+                              Delete
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </Card>

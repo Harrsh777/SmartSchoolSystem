@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import NextImage from 'next/image';
 import { LogOut } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
@@ -22,6 +25,19 @@ export default function DashboardHeader({
   badgeColor,
   icon,
 }: DashboardHeaderProps) {
+  const [schoolLogoUrl, setSchoolLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!schoolCode) return;
+    fetch(`/api/schools/info?school_code=${encodeURIComponent(schoolCode)}`)
+      .then((res) => res.json())
+      .then((result) => {
+        if (result.data?.logo_url) setSchoolLogoUrl(result.data.logo_url);
+        else setSchoolLogoUrl(null);
+      })
+      .catch(() => setSchoolLogoUrl(null));
+  }, [schoolCode]);
+
   const handleLogout = () => {
     void (async () => {
       const res = await fetch('/api/auth/logout', {
@@ -54,12 +70,27 @@ export default function DashboardHeader({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 ${iconBgColor} rounded-lg flex items-center justify-center`}>
-                {icon}
-              </div>
-              <span className="text-xl font-bold text-gray-900">EduCore</span>
-            </div>
+            <Link
+              href={schoolCode ? `/dashboard/${schoolCode}` : '/'}
+              className="flex items-center justify-center h-10 min-w-[2.5rem] max-w-[168px] rounded-lg border border-gray-200 px-2 py-1 hover:opacity-90 transition-opacity"
+              aria-label="Go to school dashboard home"
+              title="School dashboard home"
+            >
+              {schoolLogoUrl ? (
+                <NextImage
+                  src={schoolLogoUrl}
+                  alt="School logo"
+                  width={152}
+                  height={32}
+                  className="h-8 w-auto max-w-[152px] object-contain object-left"
+                  priority
+                />
+              ) : (
+                <div className={`w-8 h-8 ${iconBgColor} rounded-lg flex items-center justify-center`}>
+                  {icon}
+                </div>
+              )}
+            </Link>
             <div className="h-6 w-px bg-gray-300" />
             <div>
               <p className="text-sm font-medium text-gray-900">{schoolCode}</p>

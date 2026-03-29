@@ -9,6 +9,78 @@ import { fetchCoScholasticRowsForReportCard } from '@/lib/co-scholastic-report';
  * Use the same photo endpoint as the student profile UI so report cards work when
  * the student-photos bucket is private (raw photo_url in HTML would 403).
  */
+function formatDobForReport(student: Record<string, unknown>): string {
+  const raw = student.date_of_birth ?? student.dob;
+  if (raw == null || raw === '') return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  const d = new Date(s.includes('T') ? s : `${s}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function resolveStudentContact(student: Record<string, unknown>): string {
+  const candidates = [
+    student.student_contact,
+    student.parent_phone,
+    student.father_contact,
+    student.mother_contact,
+    student.phone,
+    student.mobile,
+    student.contact_no,
+  ];
+  for (const c of candidates) {
+    const t = c != null ? String(c).trim() : '';
+    if (t) return t;
+  }
+  return '';
+}
+
+/** When PostgREST embed `subject:subjects` fails, resolve names from subjects table. */
+function gradeScalesQuery(
+  supabase: ReturnType<typeof getServiceRoleClient>,
+  schoolCode: string,
+  academicYear: string | null | undefined
+) {
+  let q = supabase
+    .from('grade_scales')
+    .select('grade, min_marks, max_marks, min_percentage, max_percentage')
+    .eq('school_code', schoolCode)
+    .eq('is_active', true);
+  const y = String(academicYear ?? '').trim();
+  if (y) {
+    q = q.or(`academic_year.is.null,academic_year.eq.${y}`);
+  } else {
+    q = q.or('academic_year.is.null');
+  }
+  return q.order('display_order', { ascending: false });
+}
+
+async function attachSubjectNamesToMarks(
+  supabase: ReturnType<typeof getServiceRoleClient>,
+  marks: Array<Record<string, unknown>>
+): Promise<void> {
+  if (!marks.length) return;
+  const ids = [...new Set(marks.map((m) => m.subject_id).filter(Boolean))] as string[];
+  if (!ids.length) return;
+  const needs = marks.some((m) => {
+    const sub = m.subject as { name?: string } | null | undefined;
+    const name = sub && typeof sub.name === 'string' ? sub.name.trim() : '';
+    return Boolean(m.subject_id) && !name;
+  });
+  if (!needs) return;
+  const { data: subs } = await supabase.from('subjects').select('id, name').in('id', ids);
+  const byId = new Map((subs || []).map((s) => [String(s.id), String(s.name || 'N/A')]));
+  for (const m of marks) {
+    const sid = m.subject_id ? String(m.subject_id) : '';
+    if (!sid) continue;
+    const sub = (m.subject as { name?: string; id?: string; color?: string }) || {};
+    const existingName = sub.name && String(sub.name).trim();
+    const name = existingName || byId.get(sid) || 'N/A';
+    m.subject = { ...sub, id: sub.id || sid, name };
+  }
+}
+
 function resolveReportCardStudentPhotoUrl(
   student: Record<string, unknown>,
   schoolCode: string
@@ -117,16 +189,11 @@ export async function fetchReportCardData(
       .eq('student_id', studentId)
       .eq('school_code', schoolCode)
       .maybeSingle(),
-    supabase
-      .from('grade_scales')
-      .select('grade, min_marks, max_marks, min_percentage, max_percentage')
-      .eq('school_code', schoolCode)
-      .eq('is_active', true)
-      .or(`academic_year.is.null,academic_year.eq.${exam.academic_year || ''}`)
-      .order('display_order', { ascending: false }),
+    gradeScalesQuery(supabase, schoolCode, exam.academic_year as string | undefined),
   ]);
 
   const marks = marksRes.data || [];
+  await attachSubjectNamesToMarks(supabase, marks as Array<Record<string, unknown>>);
   const summary = summaryRes.data;
 
   let gradeScales: Array<{ grade: string; min_marks?: number; max_marks?: number; min_percentage?: number; max_percentage?: number }> = [];
@@ -237,7 +304,8 @@ export async function fetchReportCardData(
       father_name: student.father_name,
       mother_name: student.mother_name,
       address: student.address || student.school_address,
-      student_contact: student.student_contact || student.phone || student.mobile,
+      student_contact: resolveStudentContact(student as Record<string, unknown>) || undefined,
+      date_of_birth: formatDobForReport(student as Record<string, unknown>) || undefined,
       roll_number: student.roll_number,
       photo_url: resolveReportCardStudentPhotoUrl(student as Record<string, unknown>, schoolCode),
     },
@@ -246,14 +314,19 @@ export async function fetchReportCardData(
       academic_year: exam.academic_year || '',
       result_date: new Date().toLocaleDateString('en-IN'),
     },
-    marks: marks.map((m) => ({
-      subject: m.subject || { name: 'N/A' },
-      max_marks: Number(m.max_marks) || 0,
-      marks_obtained: m.marks_obtained != null ? Number(m.marks_obtained) : null,
-      percentage: m.percentage != null ? Number(m.percentage) : undefined,
-      grade: m.grade,
-      remarks: m.remarks,
-    })),
+    marks: marks.map((m) => {
+      const codeRaw = (m as { marks_entry_code?: string | null }).marks_entry_code;
+      const code = codeRaw ? String(codeRaw).trim().toUpperCase() : '';
+      return {
+        subject: m.subject || { name: 'N/A' },
+        max_marks: Number(m.max_marks) || 0,
+        marks_obtained: code ? null : m.marks_obtained != null ? Number(m.marks_obtained) : null,
+        percentage: m.percentage != null ? Number(m.percentage) : undefined,
+        grade: m.grade,
+        remarks: m.remarks,
+        marks_entry_code: code || null,
+      };
+    }),
     summary: summary
       ? {
           total_marks: summary.total_marks,
@@ -329,7 +402,7 @@ export async function fetchReportCardDataMultiExam(
     term_serial: termMetaById.get(String((e as { term_id?: string | null }).term_id || ''))?.serial,
   }));
 
-  const { data: allMarks } = await supabase
+  const { data: allMarksRaw } = await supabase
     .from('student_subject_marks')
     .select(`*, subject:subjects(id, name, color)`)
     .in('exam_id', examIds)
@@ -338,13 +411,14 @@ export async function fetchReportCardDataMultiExam(
     .order('exam_id', { ascending: true })
     .order('created_at', { ascending: true });
 
-  const { data: gradeScalesData } = await supabase
-    .from('grade_scales')
-    .select('grade, min_marks, max_marks, min_percentage, max_percentage')
-    .eq('school_code', schoolCode)
-    .eq('is_active', true)
-    .or(`academic_year.is.null,academic_year.eq.${firstExam.academic_year || ''}`)
-    .order('display_order', { ascending: false });
+  const allMarks = allMarksRaw || [];
+  await attachSubjectNamesToMarks(supabase, allMarks as Array<Record<string, unknown>>);
+
+  const { data: gradeScalesData } = await gradeScalesQuery(
+    supabase,
+    schoolCode,
+    firstExam.academic_year as string | undefined
+  );
 
   let gradeScales: Array<{ grade: string; min_marks?: number; max_marks?: number; min_percentage?: number; max_percentage?: number }> = [];
   if (gradeScalesData?.length) {
@@ -380,6 +454,7 @@ export async function fetchReportCardDataMultiExam(
     subject?: { id?: string; name?: string };
     max_marks?: number;
     marks_obtained?: number | null;
+    marks_entry_code?: string | null;
     grade?: string;
     remarks?: string;
   };
@@ -395,6 +470,7 @@ export async function fetchReportCardDataMultiExam(
       marks_obtained: number | null;
       max_marks: number;
       grade?: string;
+      marks_entry_code?: string | null;
     }>;
     overall_max_marks: number;
     overall_marks_obtained: number | null;
@@ -404,9 +480,10 @@ export async function fetchReportCardDataMultiExam(
     const subName = m.subject?.name || 'N/A';
     const subId = m.subject_id || subName;
     const max = Number(m.max_marks) || 0;
-    const obtained = m.marks_obtained != null ? Number(m.marks_obtained) : null;
-    const examId = m.exam_id;
-    const examInfo = exams.find((e: ExamRecord) => e.id === examId);
+    const entryCode = String(m.marks_entry_code || '').trim().toUpperCase();
+    const obtained = entryCode ? null : m.marks_obtained != null ? Number(m.marks_obtained) : null;
+    const examIdRow = m.exam_id;
+    const examInfo = exams.find((e: ExamRecord) => e.id === examIdRow);
     const examName = examInfo?.exam_name || examInfo?.name || 'Exam';
 
     if (!bySubject[subId]) {
@@ -419,16 +496,17 @@ export async function fetchReportCardDataMultiExam(
     }
 
     // Store per-exam marks
-    const pct = max > 0 && obtained != null ? (obtained / max) * 100 : 0;
-    bySubject[subId].exams[examId] = {
-      exam_id: examId,
+    const pct = !entryCode && max > 0 && obtained != null ? (obtained / max) * 100 : 0;
+    bySubject[subId].exams[examIdRow] = {
+      exam_id: examIdRow,
       exam_name: examName,
       term_id: (examInfo as { term_id?: string | null })?.term_id || null,
       term_name: termMetaById.get(String((examInfo as { term_id?: string | null })?.term_id || ''))?.name || ((examInfo as { term_id?: string | null })?.term_id ? 'Term' : 'Unassigned'),
       term_serial: termMetaById.get(String((examInfo as { term_id?: string | null })?.term_id || ''))?.serial,
       marks_obtained: obtained,
       max_marks: max,
-      grade: getGradeFromPct(pct),
+      grade: entryCode ? '-' : getGradeFromPct(pct),
+      marks_entry_code: entryCode || null,
     };
 
     // Accumulate for overall
@@ -474,6 +552,7 @@ export async function fetchReportCardDataMultiExam(
           marks_obtained: null,
           max_marks: 0,
           grade: '-',
+          marks_entry_code: null,
         };
       }),
       term_totals: termTotalsList,
@@ -572,7 +651,8 @@ export async function fetchReportCardDataMultiExam(
       father_name: student.father_name,
       mother_name: student.mother_name,
       address: student.address || student.school_address,
-      student_contact: student.student_contact || student.phone || student.mobile,
+      student_contact: resolveStudentContact(student as Record<string, unknown>) || undefined,
+      date_of_birth: formatDobForReport(student as Record<string, unknown>) || undefined,
       roll_number: student.roll_number,
       photo_url: resolveReportCardStudentPhotoUrl(student as Record<string, unknown>, schoolCode),
     },

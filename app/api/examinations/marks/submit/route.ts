@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
 
 /**
  * Submit marks for review (change status from draft to submitted)
@@ -13,6 +14,9 @@ export async function POST(request: NextRequest) {
       exam_id,
       student_id, // Support per-student submission
       class_id, // Required for single-student (filter subjects by class); used for bulk too
+      scoped_subject_ids, // Teacher marks: only require/submit these subjects
+      teacher_marks_scoped,
+      entered_by,
     } = body;
 
     if (!school_code || !exam_id) {
@@ -40,7 +44,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const subjectIds = examSubjectMappings.map(esm => esm.subject_id);
+    let subjectIds = examSubjectMappings.map((esm) => esm.subject_id);
+
+    if (Array.isArray(scoped_subject_ids) && scoped_subject_ids.length > 0) {
+      const allowed = new Set(examSubjectMappings.map((m) => m.subject_id));
+      subjectIds = scoped_subject_ids.filter((id: string) => allowed.has(id));
+      if (subjectIds.length === 0) {
+        return NextResponse.json({ error: 'No valid scoped subjects for this exam/class' }, { status: 400 });
+      }
+    }
+
+    if (teacher_marks_scoped && entered_by && class_id) {
+      const teachingMap = await loadTeachingMap(supabase, school_code, String(entered_by));
+      const gate = assertTeacherSubjectScope(teachingMap, String(class_id), subjectIds);
+      if (!gate.ok) {
+        return NextResponse.json(
+          { error: 'Forbidden: scoped subjects must match your timetable.', forbidden_subjects: gate.forbidden },
+          { status: 403 }
+        );
+      }
+    }
 
     // If student_id is provided, submit for single student
     if (student_id) {
@@ -73,7 +96,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Update status to submitted (table may not have status/updated_at – treat update failure as non-fatal)
-      const { data: updatedMarks, error: updateError } = await supabase
+      let submitQuery = supabase
         .from('student_subject_marks')
         .update({
           status: 'submitted',
@@ -81,8 +104,13 @@ export async function POST(request: NextRequest) {
         })
         .eq('school_code', school_code)
         .eq('exam_id', exam_id)
-        .eq('student_id', student_id)
-        .select();
+        .eq('student_id', student_id);
+
+      if (subjectIds.length > 0 && Array.isArray(scoped_subject_ids) && scoped_subject_ids.length > 0) {
+        submitQuery = submitQuery.in('subject_id', subjectIds);
+      }
+
+      const { data: updatedMarks, error: updateError } = await submitQuery.select();
 
       if (updateError) {
         // If columns don't exist or RLS blocks update, marks are already saved – still return success
@@ -167,7 +195,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update status to submitted for all students in class (non-fatal if status/updated_at missing)
-    const { data: updatedMarks, error: updateError } = await supabase
+    let bulkSubmitQuery = supabase
       .from('student_subject_marks')
       .update({
         status: 'submitted',
@@ -175,8 +203,13 @@ export async function POST(request: NextRequest) {
       })
       .eq('school_code', school_code)
       .eq('exam_id', exam_id)
-      .eq('class_id', class_id)
-      .select();
+      .eq('class_id', class_id);
+
+    if (subjectIds.length > 0 && Array.isArray(scoped_subject_ids) && scoped_subject_ids.length > 0) {
+      bulkSubmitQuery = bulkSubmitQuery.in('subject_id', subjectIds);
+    }
+
+    const { data: updatedMarks, error: updateError } = await bulkSubmitQuery.select();
 
     if (updateError) {
       console.warn('Bulk submit marks status update failed (non-fatal):', updateError.message);

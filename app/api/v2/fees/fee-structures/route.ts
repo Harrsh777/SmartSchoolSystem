@@ -51,9 +51,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const structuresVisible = (structures || []).filter(
+      (s: { is_system?: boolean }) => !s.is_system
+    );
+
     // Fetch items for each structure
-    if (structures && structures.length > 0) {
-      const structureIds = structures.map(s => s.id);
+    if (structuresVisible.length > 0) {
+      const structureIds = structuresVisible.map(s => s.id);
       const { data: items, error: itemsError } = await supabase
         .from('fee_structure_items')
         .select(`
@@ -66,7 +70,7 @@ export async function GET(request: NextRequest) {
         console.error('Error fetching fee structure items:', itemsError);
       } else {
         // Attach items to structures
-        structures.forEach(structure => {
+        structuresVisible.forEach(structure => {
           structure.items = items?.filter(item => item.fee_structure_id === structure.id) || [];
         });
       }
@@ -74,7 +78,7 @@ export async function GET(request: NextRequest) {
 
     // Add "fees generated" metadata for UI.
     // We treat "generated" as: at least 1 row exists in `student_fees` for that structure.
-    const structuresWithMeta = (structures || []).map((s) => ({
+    const structuresWithMeta = structuresVisible.map((s) => ({
       ...s,
       fees_generated: false,
       fees_generated_at: null as string | null,

@@ -4,6 +4,13 @@ import { requirePermission } from '@/lib/api-permissions';
 import { enrichStudentFeesWithAdjustments } from '@/lib/fees/enrich-student-fees';
 import { academicYearMatchesStructure } from '@/lib/fees/fee-structure-class-match';
 import { installmentDisplayLabel } from '@/lib/fees/installment-display-label';
+import {
+  formatTransportFeeLabel,
+  type TransportSnapshot,
+} from '@/lib/fees/transport-fee-sync';
+
+/** Row after label pass: spread keeps DB/enrichment fields; TS needs this so fee_source etc. are not dropped. */
+type LabeledStudentFee = Record<string, unknown> & { installment_display_label: string };
 
 /**
  * GET /api/v2/fees/students/[studentId]/fees]
@@ -42,14 +49,6 @@ export async function GET(
       .eq('school_code', normalizedSchoolCode)
       .single();
 
-    console.log('Fetching fees for student:', {
-      studentId,
-      school_code: normalizedSchoolCode,
-      student_found: !!student,
-      student_name: student?.student_name,
-      student_school_code: student?.school_code,
-    });
-
     if (!student) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
@@ -78,13 +77,6 @@ export async function GET(
       .eq('school_code', normalizedSchoolCode)
       .order('due_month', { ascending: true });
 
-    console.log('Student fees query result:', {
-      studentId,
-      school_code: normalizedSchoolCode,
-      fees_found: fees?.length || 0,
-      error: error?.message,
-    });
-
     if (error) {
       console.error('Error fetching student fees:', error);
       return NextResponse.json(
@@ -110,6 +102,35 @@ export async function GET(
       });
     }
 
+    const structureIds = [
+      ...new Set(feesToUse.map((f) => String(f.fee_structure_id || '')).filter(Boolean)),
+    ];
+    const itemsByStructure = new Map<
+      string,
+      Array<{ amount: number; fee_head: { id?: string; name?: string } | null }>
+    >();
+    if (structureIds.length > 0) {
+      const { data: structItems } = await supabase
+        .from('fee_structure_items')
+        .select(
+          `
+          fee_structure_id,
+          amount,
+          fee_head:fee_head_id ( id, name )
+        `
+        )
+        .in('fee_structure_id', structureIds);
+      for (const row of structItems || []) {
+        const sid = String(row.fee_structure_id);
+        const fh = row.fee_head as { id?: string; name?: string } | null;
+        if (!itemsByStructure.has(sid)) itemsByStructure.set(sid, []);
+        itemsByStructure.get(sid)!.push({
+          amount: Number(row.amount || 0),
+          fee_head: fh,
+        });
+      }
+    }
+
     const studentCtx = {
       id: String(student.id),
       class: String(student.class ?? ''),
@@ -123,28 +144,46 @@ export async function GET(
       feesToUse as never
     );
 
-    const labeled = (feesWithAdjustments as Array<Record<string, unknown>>).map((fee) => {
-      const fs = fee.fee_structure as {
-        name?: string;
-        frequency?: string | null;
-        start_month?: number | null;
-        end_month?: number | null;
-      } | null;
-      const sm = Number(fs?.start_month);
-      const em = Number(fs?.end_month);
-      const startMonth = Number.isFinite(sm) && sm >= 1 && sm <= 12 ? sm : 1;
-      const endMonth = Number.isFinite(em) && em >= 1 && em <= 12 ? em : 12;
-      const installment_display_label = installmentDisplayLabel({
-        structureName: String(fs?.name || 'Fee'),
-        frequency: fs?.frequency,
-        startMonth,
-        endMonth,
-        dueMonth: String(fee.due_month ?? ''),
-      });
-      return { ...fee, installment_display_label };
+    const labeled: LabeledStudentFee[] = (feesWithAdjustments as Array<Record<string, unknown>>).map(
+      (fee): LabeledStudentFee => {
+        if (String(fee.fee_source || 'structure') === 'transport') {
+          const snap = fee.transport_snapshot as TransportSnapshot | null | undefined;
+          return {
+            ...fee,
+            installment_display_label: formatTransportFeeLabel(snap ?? null),
+          };
+        }
+        const fs = fee.fee_structure as {
+          name?: string;
+          frequency?: string | null;
+          start_month?: number | null;
+          end_month?: number | null;
+        } | null;
+        const sm = Number(fs?.start_month);
+        const em = Number(fs?.end_month);
+        const startMonth = Number.isFinite(sm) && sm >= 1 && sm <= 12 ? sm : 1;
+        const endMonth = Number.isFinite(em) && em >= 1 && em <= 12 ? em : 12;
+        const installment_display_label = installmentDisplayLabel({
+          structureName: String(fs?.name || 'Fee'),
+          frequency: fs?.frequency,
+          startMonth,
+          endMonth,
+          dueMonth: String(fee.due_month ?? ''),
+        });
+        return { ...fee, installment_display_label };
+      }
+    );
+
+    const withStructureLines = labeled.map((fee) => {
+      const fsid = String(fee['fee_structure_id'] || '');
+      const lines =
+        String(fee['fee_source'] || 'structure') === 'transport'
+          ? []
+          : itemsByStructure.get(fsid) ?? [];
+      return { ...fee, structure_line_items: lines };
     });
 
-    return NextResponse.json({ data: labeled }, { status: 200 });
+    return NextResponse.json({ data: withStructureLines }, { status: 200 });
   } catch (error) {
     console.error('Error in GET /api/v2/fees/students/[studentId]/fees:', error);
     return NextResponse.json(

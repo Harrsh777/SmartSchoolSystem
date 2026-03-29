@@ -52,12 +52,25 @@ export async function GET(request: NextRequest) {
     const limit =
       Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 500) : null;
 
-    // Build query - select only fields needed for list view
-    const studentFields = 'id,admission_no,student_name,first_name,last_name,class,section,academic_year,status,student_contact,father_name,mother_name,father_contact,mother_contact,parent_name,parent_phone,parent_email,roll_number,email,house,photo_url,created_at,updated_at';
-    let query = supabase
-      .from('students')
-      .select(studentFields)
-      .eq('school_code', schoolCode);
+    const pageRaw = searchParams.get('page');
+    const paginate = pageRaw != null && pageRaw !== '';
+    let page = 1;
+    let pageSize = 25;
+    if (paginate) {
+      page = Math.max(1, parseInt(pageRaw, 10) || 1);
+      const ps = parseInt(searchParams.get('page_size') || '25', 10);
+      pageSize = Number.isFinite(ps) ? Math.min(100, Math.max(1, ps)) : 25;
+    }
+
+    // Build query - select only fields needed for list view (include transport for route mapping UI)
+    const studentFields =
+      'id,admission_no,student_name,first_name,last_name,class,section,academic_year,status,student_contact,father_name,mother_name,father_contact,mother_contact,parent_name,parent_phone,parent_email,roll_number,email,house,photo_url,created_at,updated_at,transport_route_id,transport_pickup_stop_id,transport_dropoff_stop_id,transport_custom_fare,transport_fee,transport_type';
+    let query = paginate
+      ? supabase
+          .from('students')
+          .select(studentFields, { count: 'exact' })
+          .eq('school_code', schoolCode)
+      : supabase.from('students').select(studentFields).eq('school_code', schoolCode);
 
     // Apply filters - case-insensitive class/section so "CLASS-1" matches "Class-1" in DB
     function escapeIlike(value: string): string {
@@ -81,7 +94,7 @@ export async function GET(request: NextRequest) {
       if (tokens.length === 1) {
         const safe = escapeIlike(tokens[0]);
         const p = `%${safe}%`;
-        query = query.or(`student_name.ilike.${p},admission_no.ilike.${p}`);
+        query = query.or(`student_name.ilike.${p},admission_no.ilike.${p},email.ilike.${p}`);
       } else {
         // Full name: every word must appear in student_name (tighter than a single OR ilike).
         for (const tok of tokens) {
@@ -111,17 +124,49 @@ export async function GET(request: NextRequest) {
     }
     // If statusFilter is 'all', don't filter by status
 
-    if (limit != null) {
+    const sortByParam = (searchParams.get('sort_by') || '').trim().toLowerCase();
+    const sortOrderParam = (searchParams.get('sort_order') || '').trim().toLowerCase();
+    let orderColumn = 'created_at';
+    let ascending = false;
+    if (sortByParam === 'student_name' || sortByParam === 'name') {
+      orderColumn = 'student_name';
+      ascending = sortOrderParam !== 'desc';
+    } else if (sortByParam === 'roll_number' || sortByParam === 'roll') {
+      orderColumn = 'roll_number';
+      ascending = sortOrderParam !== 'desc';
+    } else {
+      orderColumn = 'created_at';
+      ascending = sortOrderParam === 'asc';
+    }
+    query = query.order(orderColumn, { ascending, nullsFirst: false });
+
+    if (paginate) {
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+      query = query.range(from, to);
+    } else if (limit != null) {
       query = query.limit(limit);
     }
 
     // Execute query
-    const { data: students, error: studentsError } = await query.order('created_at', { ascending: false });
+    const { data: students, error: studentsError, count } = await query;
 
     if (studentsError) {
       return NextResponse.json(
         { error: 'Failed to fetch students', details: studentsError.message },
         { status: 500 }
+      );
+    }
+
+    if (paginate) {
+      return NextResponse.json(
+        {
+          data: students || [],
+          total: count ?? 0,
+          page,
+          page_size: pageSize,
+        },
+        { status: 200 }
       );
     }
 

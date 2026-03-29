@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { normalizeMarksEntryCode } from '@/lib/marks-entry-codes';
+import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
 
 /**
  * Bulk save marks for multiple students
@@ -12,8 +14,9 @@ export async function POST(request: NextRequest) {
       school_code,
       exam_id,
       class_id,
-      marks, // Array of { student_id, subjects: [{ subject_id, max_marks, marks_obtained, remarks }] }
+      marks, // Array of { student_id, subjects: [{ subject_id, max_marks, marks_obtained, remarks, marks_entry_code? }] }
       entered_by,
+      teacher_marks_scoped,
     } = body;
 
     if (!school_code || !exam_id || !class_id || !marks || !Array.isArray(marks)) {
@@ -98,6 +101,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (teacher_marks_scoped) {
+      const teachingMap = await loadTeachingMap(supabase, school_code, String(finalEnteredBy));
+      const allSubjectIds: string[] = [];
+      for (const studentMark of marks as Array<{ subjects?: Array<{ subject_id?: string }> }>) {
+        for (const sub of studentMark.subjects || []) {
+          if (sub.subject_id) allSubjectIds.push(String(sub.subject_id));
+        }
+      }
+      const gate = assertTeacherSubjectScope(teachingMap, String(class_id), [...new Set(allSubjectIds)]);
+      if (!gate.ok) {
+        return NextResponse.json(
+          {
+            error: 'You can only enter marks for subjects you teach on the timetable for this class.',
+            forbidden_subjects: gate.forbidden,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // Get exam subjects to check passing marks from exam_subject_mappings
     // Note: examSubjects is fetched but not currently used - kept for future validation
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -119,7 +142,9 @@ export async function POST(request: NextRequest) {
       max_marks: number;
       marks_obtained: number;
       remarks: string | null;
-      entered_by: string; // Required - will use principal_id for principals if needed
+      entered_by: string;
+      marks_entry_code?: string | null;
+      status?: string;
     }> = [];
 
     const errors: Array<{ student_id: string; subject_id?: string; error: string }> = [];
@@ -138,10 +163,18 @@ export async function POST(request: NextRequest) {
 
       // Process each subject for this student
       for (const subjectMark of subjects) {
-        const { subject_id, max_marks, marks_obtained, remarks } = subjectMark;
+        const { subject_id, max_marks, marks_obtained, remarks } = subjectMark as {
+          subject_id?: string;
+          max_marks?: unknown;
+          marks_obtained?: unknown;
+          remarks?: string | null;
+          marks_entry_code?: unknown;
+        };
+
+        const entryCode = normalizeMarksEntryCode(subjectMark.marks_entry_code);
 
         // Validation
-        if (!subject_id || max_marks === undefined || marks_obtained === undefined) {
+        if (!subject_id || max_marks === undefined || (marks_obtained === undefined && !entryCode)) {
           errors.push({
             student_id,
             subject_id,
@@ -151,7 +184,7 @@ export async function POST(request: NextRequest) {
         }
 
         const maxMarks = parseFloat(String(max_marks || '0')) || 0;
-        const marksObtained = parseFloat(String(marks_obtained || '0')) || 0;
+        const marksObtained = entryCode ? 0 : parseFloat(String(marks_obtained ?? '0')) || 0;
 
         if (maxMarks <= 0) {
           errors.push({
@@ -162,7 +195,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        if (marksObtained < 0) {
+        if (!entryCode && marksObtained < 0) {
           errors.push({
             student_id,
             subject_id,
@@ -171,7 +204,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        if (marksObtained > maxMarks) {
+        if (!entryCode && marksObtained > maxMarks) {
           errors.push({
             student_id,
             subject_id,
@@ -189,7 +222,7 @@ export async function POST(request: NextRequest) {
 
         // Insert only columns that exist in the table
         // grade, percentage, and passing_status columns don't exist - may be calculated by database triggers
-        allMarksRecords.push({
+        const row: (typeof allMarksRecords)[0] = {
           exam_id,
           student_id,
           subject_id,
@@ -198,13 +231,12 @@ export async function POST(request: NextRequest) {
           school_code,
           max_marks: maxMarks,
           marks_obtained: marksObtained,
-          // Removed: percentage - column doesn't exist in table
-          // Removed: grade - column doesn't exist in table
-          // Removed: passing_status - column doesn't exist in table
           remarks: remarks || null,
-          entered_by: finalEnteredBy, // Use finalEnteredBy which handles principal case
-          // Removed: status - column doesn't exist in table
-        });
+          entered_by: finalEnteredBy,
+          status: 'draft',
+        };
+        if (entryCode) row.marks_entry_code = entryCode;
+        allMarksRecords.push(row);
       }
     }
 
@@ -231,36 +263,61 @@ export async function POST(request: NextRequest) {
       } : null,
     });
 
-    // Bulk upsert all marks
-    const { data: savedMarks, error: marksError } = await supabase
-      .from('student_subject_marks')
-      .upsert(allMarksRecords, {
-        onConflict: 'exam_id,student_id,subject_id',
-        ignoreDuplicates: false,
-      })
-      .select(`
+    const selectJoin = `
         *,
         subject:subjects (
           id,
           name,
           color
         )
-      `);
+      `;
 
-    if (marksError) {
-      console.error('Error saving marks:', {
-        error: marksError,
-        code: marksError.code,
-        message: marksError.message,
-        details: marksError.details,
-        hint: marksError.hint,
-      });
+    let savedMarks: unknown[] | null = null;
+    let marksError: { message?: string; code?: string; hint?: string } | null = null;
+
+    const { data: data1, error: err1 } = await supabase
+      .from('student_subject_marks')
+      .upsert(allMarksRecords, {
+        onConflict: 'exam_id,student_id,subject_id',
+        ignoreDuplicates: false,
+      })
+      .select(selectJoin);
+
+    if (!err1) {
+      savedMarks = data1;
+    } else {
+      const isColumnError =
+        err1.code === 'PGRST204' || /column.*does not exist|Could not find the/.test(err1.message || '');
+      if (isColumnError) {
+        const stripped = allMarksRecords.map((r) => {
+          const { status: _s, marks_entry_code: _m, ...rest } = r;
+          void _s;
+          void _m;
+          return rest;
+        });
+        const { data: data2, error: err2 } = await supabase
+          .from('student_subject_marks')
+          .upsert(stripped, {
+            onConflict: 'exam_id,student_id,subject_id',
+            ignoreDuplicates: false,
+          })
+          .select(selectJoin);
+        if (!err2) savedMarks = data2;
+        else marksError = err2;
+      } else {
+        marksError = err1;
+      }
+    }
+
+    if (marksError || savedMarks == null) {
+      const err = marksError || { message: 'Upsert failed' };
+      console.error('Error saving marks:', err);
       return NextResponse.json(
-        { 
-          error: 'Failed to save marks', 
-          details: marksError.message,
-          code: marksError.code,
-          hint: marksError.hint,
+        {
+          error: 'Failed to save marks',
+          details: err.message,
+          code: err.code,
+          hint: err.hint,
         },
         { status: 500 }
       );

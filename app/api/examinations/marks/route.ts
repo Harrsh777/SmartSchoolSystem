@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { normalizeMarksEntryCode } from '@/lib/marks-entry-codes';
+import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
 
 // Get marks for a student in an exam
 export async function GET(request: NextRequest) {
@@ -62,9 +64,12 @@ export async function POST(request: NextRequest) {
       exam_id,
       student_id,
       class_id,
-      marks, // Array of { subject_id, max_marks, marks_obtained, remarks }
+      marks, // Array of { subject_id, max_marks, marks_obtained, remarks?, marks_entry_code? }
       entered_by,
+      teacher_marks_scoped,
     } = body;
+
+    const scoped = Boolean(teacher_marks_scoped);
 
     if (!school_code || !exam_id || !student_id || !class_id || !marks || !Array.isArray(marks) || !entered_by) {
       return NextResponse.json(
@@ -87,16 +92,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate marks (allow null for absent)
+    if (scoped) {
+      const teachingMap = await loadTeachingMap(supabase, school_code, String(entered_by));
+      const subjectIds = marks.map((x: { subject_id?: string }) => String(x.subject_id || '')).filter(Boolean);
+      const gate = assertTeacherSubjectScope(teachingMap, String(class_id), subjectIds);
+      if (!gate.ok) {
+        return NextResponse.json(
+          {
+            error: 'You can only enter marks for subjects you teach on the timetable for this class.',
+            forbidden_subjects: gate.forbidden,
+          },
+          { status: 403 }
+        );
+      }
+
+      const { data: lockedRows } = await supabase
+        .from('student_subject_marks')
+        .select('subject_id')
+        .eq('exam_id', exam_id)
+        .eq('student_id', student_id)
+        .eq('status', 'submitted');
+
+      const locked = new Set((lockedRows || []).map((r: { subject_id: string }) => r.subject_id));
+      for (const m of marks as Array<{ subject_id?: string }>) {
+        if (locked.has(String(m.subject_id))) {
+          return NextResponse.json(
+            { error: 'These marks are submitted and locked.', subject_id: m.subject_id },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
+    // Validate marks (special codes AB / NA / EXEMPT skip numeric cap)
     for (const mark of marks) {
-      const obtained = mark.marks_obtained;
+      const code = normalizeMarksEntryCode((mark as { marks_entry_code?: unknown }).marks_entry_code);
+      if (code) continue;
+      const obtained = (mark as { marks_obtained?: unknown }).marks_obtained;
       if (obtained != null && obtained !== '' && Number(obtained) < 0) {
         return NextResponse.json(
-          { error: `Marks obtained cannot be negative for subject ${mark.subject_id}` },
+          { error: `Marks obtained cannot be negative for subject ${(mark as { subject_id?: string }).subject_id}` },
           { status: 400 }
         );
       }
-      const maxM = Number(mark.max_marks) || 0;
+      const maxM = Number((mark as { max_marks?: unknown }).max_marks) || 0;
       if (obtained != null && obtained !== '' && Number(obtained) > maxM) {
         return NextResponse.json(
           { error: `Marks obtained (${obtained}) cannot exceed max marks (${maxM})` },
@@ -111,14 +150,22 @@ export async function POST(request: NextRequest) {
       max_marks: number;
       marks_obtained: number;
       remarks?: string;
+      marks_entry_code?: string | null;
     }
-    const maxMarksValues = (m: MarkInput) => ({
-      maxMarks: parseInt(String(m.max_marks || '0')) || 0,
-      marksObtained: parseFloat(String(m.marks_obtained || '0')) || 0,
-    });
-    // entered_by is required (NOT NULL) – always include it in full and fallback
+    const maxMarksValues = (m: MarkInput) => {
+      const code = normalizeMarksEntryCode(m.marks_entry_code);
+      const maxMarks = parseInt(String(m.max_marks || '0')) || 0;
+      if (code) {
+        return { maxMarks, marksObtained: 0, marks_entry_code: code as string };
+      }
+      return {
+        maxMarks,
+        marksObtained: parseFloat(String(m.marks_obtained ?? '0')) || 0,
+        marks_entry_code: null as string | null,
+      };
+    };
     const coreRecord = (m: MarkInput) => {
-      const { maxMarks, marksObtained } = maxMarksValues(m);
+      const { maxMarks, marksObtained, marks_entry_code } = maxMarksValues(m);
       return {
         exam_id,
         student_id,
@@ -130,12 +177,21 @@ export async function POST(request: NextRequest) {
         marks_obtained: marksObtained,
         remarks: m.remarks || null,
         entered_by,
+        marks_entry_code: marks_entry_code,
       };
     };
-    const fullRecord = (m: MarkInput) => ({ ...coreRecord(m), status: 'draft' });
+    const fullRecord = (m: MarkInput) => ({
+      ...coreRecord(m),
+      status: 'draft',
+    });
 
     const marksRecordsFull = marks.map((m: MarkInput) => fullRecord(m));
-    const marksRecordsCore = marks.map((m: MarkInput) => coreRecord(m));
+    const marksRecordsCore = marks.map((m: MarkInput) => {
+      const c = coreRecord(m);
+      const { marks_entry_code: _code, ...rest } = c;
+      void _code;
+      return rest;
+    });
 
     // Upsert: try with optional columns first; on column error, retry with core only
     let insertedMarks: unknown[] | null = null;
@@ -211,6 +267,24 @@ export async function POST(request: NextRequest) {
       }
     } catch {
       // Summary table may not exist or have different columns; marks are still saved
+    }
+
+    try {
+      await supabase.from('marks_entry_audit').insert({
+        school_code,
+        exam_id,
+        student_id,
+        subject_id: null,
+        class_id,
+        actor_staff_id: entered_by,
+        action: 'marks_upsert',
+        payload: {
+          subject_ids: (marks as MarkInput[]).map((m) => m.subject_id),
+          teacher_marks_scoped: scoped,
+        },
+      });
+    } catch {
+      // audit table optional until migration applied
     }
 
     return NextResponse.json({
