@@ -7,8 +7,8 @@ import Link from 'next/link';
 import NextImage from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
-  Home, 
-  Users, 
+  Home,
+  Users,
   UserCheck, 
   BookOpen, 
   FileText, 
@@ -48,7 +48,8 @@ import {
   CreditCard,
   ArrowLeft,
   Download,
-  CalendarRange
+  CalendarRange,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useTranslation } from '@/contexts/TranslationContext';
 import { languages } from '@/lib/translations';
@@ -71,6 +72,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import RoleSessionSwitcher from '@/components/auth/RoleSessionSwitcher';
+import { logoutCurrentSessionAndGo } from '@/lib/client-logout';
 import ClassManagementModal from '@/components/classes/ClassManagementModal';
 import TimetableManagementModal from '@/components/timetable/TimetableManagementModal';
 import StudentManagementModal from '@/components/students/StudentManagementModal';
@@ -1081,13 +1084,15 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     }
   };
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-    sessionStorage.removeItem('school');
-    sessionStorage.removeItem('admin_authenticated');
-    sessionStorage.removeItem('staff');
-    localStorage.removeItem('dashboard_language'); // Optional: keep language preference
-    router.push('/login');
+  const handleLogout = () => {
+    void logoutCurrentSessionAndGo('/login', {
+      beforeNavigate: () => {
+        sessionStorage.removeItem('school');
+        sessionStorage.removeItem('admin_authenticated');
+        sessionStorage.removeItem('staff');
+        localStorage.removeItem('dashboard_language');
+      },
+    });
   };
 
   const handleDownloadAttendanceReport = async () => {
@@ -1276,9 +1281,11 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Fee Heads', path: '/fees/v2/fee-heads', category: 'Fees', icon: Tag, parent: 'Fees' },
     { label: 'Fee Structures', path: '/fees/v2/fee-structures', category: 'Fees', icon: FileText, parent: 'Fees' },
     { label: 'Collect Payment', path: '/fees/v2/collection', category: 'Fees', icon: CreditCard, parent: 'Fees' },
+    { label: 'Student-wise fees', path: '/fees/v2/student-wise', category: 'Fees', icon: Users, parent: 'Fees' },
+    { label: 'Class-wise fees', path: '/fees/v2/class-wise', category: 'Fees', icon: SlidersHorizontal, parent: 'Fees' },
 
     { label: 'Student Fee Statements', path: '/fees/statements', category: 'Fees', icon: IndianRupee, parent: 'Fees' },
-    { label: 'Discounts & Fines', path: '/fees/discounts-fines', category: 'Fees', icon: Tag, parent: 'Fees' },
+
     { label: 'Fee Reports', path: '/fees/reports', category: 'Fees', icon: BarChart3, parent: 'Fees' },
     
     // Library
@@ -1757,6 +1764,10 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                     </button>
                   </motion.div>
                 )}
+              </div>
+
+              <div className="hidden sm:flex items-center">
+                <RoleSessionSwitcher />
               </div>
 
               {/* Quick Actions Button */}

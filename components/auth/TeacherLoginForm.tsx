@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Input from '@/components/ui/Input';
@@ -9,7 +8,6 @@ import Button from '@/components/ui/Button';
 import { UserCheck, Eye, EyeOff, AlertCircle, Building2, User, Lock, BookOpen, Lightbulb, Sparkles, Award, ClipboardList, PenTool } from 'lucide-react';
 
 export default function TeacherLoginForm() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     school_code: '',
     staff_id: '',
@@ -55,23 +53,21 @@ export default function TeacherLoginForm() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(formData),
       });
 
       const result = await response.json();
 
       if (response.ok && result.success) {
-        // Store session data
         sessionStorage.setItem('teacher', JSON.stringify(result.teacher));
         sessionStorage.setItem('role', 'teacher');
-        
-        // Store remember me preference
+        sessionStorage.setItem('teacher_authenticated', '1');
         if (rememberMe) {
           localStorage.setItem('rememberTeacher', 'true');
         }
-        
-        // Redirect to teacher dashboard
-        router.push('/teacher/dashboard');
+        window.location.assign('/teacher/dashboard');
+        return;
       } else {
         setError(result.error || 'Invalid credentials. Please try again.');
       }

@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { TranslationProvider } from '@/contexts/TranslationContext';
 import type { AcceptedSchool } from '@/lib/supabase';
 import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
+import { logoutCurrentSessionAndGo } from '@/lib/client-logout';
 
 export default function SchoolDashboardLayout({
   children,
@@ -22,10 +23,12 @@ export default function SchoolDashboardLayout({
   // Logout handler for 401 responses only – clear only admin session so teacher tab is unaffected
   useEffect(() => {
     const logout = () => {
-      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-      sessionStorage.removeItem('school');
-      sessionStorage.removeItem('admin_authenticated');
-      router.push('/login');
+      void logoutCurrentSessionAndGo('/login', {
+        beforeNavigate: () => {
+          sessionStorage.removeItem('school');
+          sessionStorage.removeItem('admin_authenticated');
+        },
+      });
     };
     setLogoutHandler(logout);
     setupApiInterceptor();

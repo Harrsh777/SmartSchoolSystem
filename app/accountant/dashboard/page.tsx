@@ -21,6 +21,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import AddFeeModal from '@/components/fees/AddFeeModal';
+import { logoutCurrentSessionAndGo } from '@/lib/client-logout';
 
 interface Student {
   id: string;
@@ -165,12 +166,14 @@ export default function AccountantDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classFilter, sectionFilter, searchQuery, accountant]);
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-    sessionStorage.removeItem('accountant');
-    sessionStorage.removeItem('school');
-    sessionStorage.removeItem('role');
-    router.push('/accountant/login');
+  const handleLogout = () => {
+    void logoutCurrentSessionAndGo('/accountant/login', {
+      beforeNavigate: () => {
+        sessionStorage.removeItem('accountant');
+        sessionStorage.removeItem('school');
+        sessionStorage.removeItem('role');
+      },
+    });
   };
 
   const handleAddFee = (student: Student) => {

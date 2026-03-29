@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import { GraduationCap, Eye, EyeOff, AlertCircle, User, Lock, Lightbulb, Sparkles, Building2 } from 'lucide-react';
 
 export default function StudentLoginForm() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     school_code: '',
     admission_no: '',
@@ -54,23 +52,20 @@ export default function StudentLoginForm() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(formData),
       });
 
       const result = await response.json();
 
       if (response.ok && result.success) {
-        // Store session data
         sessionStorage.setItem('student', JSON.stringify(result.student));
         sessionStorage.setItem('role', 'student');
-        
-        // Store remember me preference
         if (rememberMe) {
           localStorage.setItem('rememberStudent', 'true');
         }
-        
-        // Redirect to student dashboard
-        router.push('/student/dashboard');
+        window.location.assign('/student/dashboard');
+        return;
       } else {
         setError(result.error || 'Invalid credentials. Please try again.');
       }

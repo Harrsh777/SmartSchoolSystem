@@ -26,6 +26,8 @@ const ALLOWED_MODULES_CONFIG = [
       { key: 'fee_heads', name: 'Fee Heads', route: '/dashboard/[school]/fees/v2/fee-heads' },
       { key: 'fee_structures', name: 'Fee Structures', route: '/dashboard/[school]/fees/v2/fee-structures' },
       { key: 'fee_collection', name: 'Collect Payment', route: '/dashboard/[school]/fees/v2/collection' },
+      { key: 'fee_student_wise', name: 'Student-wise fees', route: '/dashboard/[school]/fees/v2/student-wise' },
+      { key: 'fee_class_wise', name: 'Class-wise fees', route: '/dashboard/[school]/fees/v2/class-wise' },
       { key: 'fee_statements', name: 'Student Fee Statements', route: '/dashboard/[school]/fees/statements' },
       { key: 'discounts_fines', name: 'Discounts & Fines', route: '/dashboard/[school]/fees/discounts-fines' },
       { key: 'fee_reports', name: 'Fee Reports', route: '/dashboard/[school]/fees/reports' },

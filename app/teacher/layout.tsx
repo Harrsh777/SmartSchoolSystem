@@ -40,6 +40,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { Staff, AcceptedSchool } from '@/lib/supabase';
 import HelpModal from '@/components/help/HelpModal';
 import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
+import RoleSessionSwitcher from '@/components/auth/RoleSessionSwitcher';
+import { logoutCurrentSessionAndGo } from '@/lib/client-logout';
 import { languages } from '@/lib/translations';
 
 interface TeacherLayoutProps {
@@ -132,10 +134,12 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   // Logout handler for 401 responses only – clear only teacher session so admin tab is unaffected
   useEffect(() => {
     const logout = () => {
-      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-      sessionStorage.removeItem('teacher');
-      sessionStorage.removeItem('teacher_authenticated');
-      router.push('/login');
+      void logoutCurrentSessionAndGo('/login', {
+        beforeNavigate: () => {
+          sessionStorage.removeItem('teacher');
+          sessionStorage.removeItem('teacher_authenticated');
+        },
+      });
     };
     setLogoutHandler(logout);
     setupApiInterceptor();
@@ -915,6 +919,8 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                 )}
               </div>
 
+              <RoleSessionSwitcher className="hidden sm:block" />
+
               {/* Profile */}
               <div className="relative profile-dropdown-container">
                 <button
@@ -937,11 +943,13 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                       Profile Settings
                     </Link>
                     <button
-                      onClick={async () => {
-                        await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-                        sessionStorage.removeItem('teacher');
-                        sessionStorage.removeItem('teacher_authenticated');
-                        router.push('/login');
+                      onClick={() => {
+                        void logoutCurrentSessionAndGo('/login', {
+                          beforeNavigate: () => {
+                            sessionStorage.removeItem('teacher');
+                            sessionStorage.removeItem('teacher_authenticated');
+                          },
+                        });
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-[#DBEAFE] rounded-lg flex items-center gap-2"
                     >

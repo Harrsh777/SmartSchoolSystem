@@ -585,51 +585,49 @@ export default function TeacherDashboard() {
           </div>
         </motion.div>
 
-        {/* Stat Cards - Students (All + My Class in one box), then Pending Leave etc. */}
+        {/* Stat Cards — equal-height tiles in each row */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 items-stretch"
         >
-          {/* Students: All (School) + My Class in one card */}
-          <div className="bg-card rounded-lg p-6 shadow-sm border border-input">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                <Users className="text-blue-600" size={24} />
-              </div>
-              <span className="text-sm font-medium text-foreground">Students</span>
+          {/* Students: All (School) + My Class in one card — same fixed height as peers (md+) */}
+          <div className="bg-card rounded-lg p-6 shadow-sm border border-input flex flex-col w-full min-h-[18rem] md:h-80 overflow-hidden self-stretch">
+            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center shrink-0 mb-3">
+              <Users className="text-blue-600" size={24} />
             </div>
-            <div className="space-y-4">
+            <p className="text-sm text-muted-foreground mb-1 shrink-0">Students</p>
+            <div className="flex-1 flex flex-col gap-3 min-h-0 mt-2 overflow-hidden">
               <div
-                className="flex items-center justify-between rounded-lg border border-input/60 bg-muted/30 px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                className="flex-1 min-h-[4.5rem] flex items-center justify-between rounded-lg border border-input/60 bg-muted/30 px-3 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => router.push('/teacher/dashboard/students')}
                 onKeyDown={(e) => e.key === 'Enter' && router.push('/teacher/dashboard/students')}
                 role="button"
                 tabIndex={0}
               >
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">All Students (School)</p>
-                  <p className="text-xl font-bold text-foreground">{students.length}</p>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">{students.length}</p>
                 </div>
-                <p className="text-xs text-primary font-medium shrink-0">View all students →</p>
+                <p className="text-xs text-primary font-medium shrink-0 self-center">View all →</p>
               </div>
               <div
-                className={`rounded-lg border px-3 py-2 ${assignedClass ? 'border-input/60 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors' : 'border-input/40 bg-muted/20 opacity-80'}`}
+                className={`flex-1 min-h-0 flex flex-col justify-center rounded-lg border px-3 py-3 overflow-y-auto ${assignedClass ? 'border-input/60 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors' : 'border-input/40 bg-muted/20 opacity-80'}`}
                 onClick={assignedClass ? () => router.push('/teacher/dashboard/my-class') : undefined}
                 onKeyDown={assignedClass ? (e) => e.key === 'Enter' && router.push('/teacher/dashboard/my-class') : undefined}
                 role={assignedClass ? 'button' : undefined}
                 tabIndex={assignedClass ? 0 : undefined}
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-muted-foreground">Students in My Class</p>
-                    <p className="text-xl font-bold text-foreground">{myClassStudents.length}</p>
+                    <p className="text-2xl font-bold text-foreground tabular-nums">{myClassStudents.length}</p>
                     {myClassStudents.length === 0 && assignedClass && (
-                      <p className="text-xs text-muted-foreground mt-0.5">No students in your class yet.</p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">No students in your class yet.</p>
                     )}
                     {myClassStudents.length > 0 && (
-                      <div className="max-h-16 overflow-y-auto space-y-0.5 pr-1 mt-1">
+                      <div className="max-h-14 overflow-y-auto space-y-0.5 pr-1 mt-1">
                         {myClassStudents.slice(0, 3).map((s) => {
                           const name = getString(s.student_name) || getString(s.first_name) || '—';
                           return (
@@ -645,7 +643,7 @@ export default function TeacherDashboard() {
                     )}
                   </div>
                   {assignedClass && (
-                    <p className="text-xs text-primary font-medium shrink-0">View all in My Class →</p>
+                    <p className="text-xs text-primary font-medium shrink-0">My Class →</p>
                   )}
                 </div>
               </div>
@@ -653,33 +651,34 @@ export default function TeacherDashboard() {
           </div>
 
           {/* Pending Leave Requests Card - Purple */}
-          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative">
-            <div className="absolute top-4 right-4">
+          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative flex flex-col w-full min-h-[18rem] md:h-80 overflow-hidden self-stretch">
+            <div className="absolute top-4 right-4 z-10">
               <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded-full font-medium">
                 {studentLeaveRequests.length > 0 ? `${studentLeaveRequests.length} New` : 'None'}
               </span>
             </div>
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center mb-3">
-                  <FileText className="text-purple-600" size={24} />
-                </div>
-                <p className="text-sm text-muted-foreground mb-1">Pending Requests</p>
-                <h3 className="text-3xl font-bold text-foreground">{studentLeaveRequests.length}</h3>
-              </div>
+            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center shrink-0 mb-3">
+              <FileText className="text-purple-600" size={24} />
             </div>
-            {/* Progress Bar */}
-            <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-purple-600 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min((studentLeaveRequests.length / 10) * 100, 100)}%` }}
-              />
+            <p className="text-sm text-muted-foreground mb-1 pr-16">Pending Requests</p>
+            <div className="flex-1 flex flex-col min-h-0">
+              <h3 className="text-3xl font-bold text-foreground tabular-nums mb-4">
+                {studentLeaveRequests.length}
+              </h3>
+              <div className="mt-auto pt-2">
+                <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full bg-purple-600 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min((studentLeaveRequests.length / 10) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Staff Attendance Card - Green */}
-          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative">
-            <div className="absolute top-4 right-4">
+          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative flex flex-col w-full min-h-[18rem] md:h-80 overflow-hidden self-stretch">
+            <div className="absolute top-4 right-4 z-10">
               <span className={`${
                 attendanceStats && attendanceStats.percentage >= 95 
                   ? 'bg-green-100 text-green-700' 
@@ -694,48 +693,46 @@ export default function TeacherDashboard() {
                   : 'Stable'}
               </span>
             </div>
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center mb-3">
-                  <UserCheck className="text-green-600" size={24} />
-                </div>
-                <p className="text-sm text-muted-foreground mb-1">Staff Attendance</p>
-                <h3 className="text-3xl font-bold text-foreground">
-                  {attendanceStats ? `${attendanceStats.percentage}%` : '0%'}
-                </h3>
-              </div>
+            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center shrink-0 mb-3">
+              <UserCheck className="text-green-600" size={24} />
             </div>
-            {/* Progress Bar */}
-            <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-green-600 rounded-full transition-all duration-500"
-                style={{ width: `${attendanceStats?.percentage || 0}%` }}
-              />
+            <p className="text-sm text-muted-foreground mb-1 pr-16">Staff Attendance</p>
+            <div className="flex-1 flex flex-col min-h-0">
+              <h3 className="text-3xl font-bold text-foreground tabular-nums mb-4">
+                {attendanceStats ? `${attendanceStats.percentage}%` : '0%'}
+              </h3>
+              <div className="mt-auto pt-2">
+                <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full bg-green-600 rounded-full transition-all duration-500"
+                    style={{ width: `${attendanceStats?.percentage || 0}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Active Notices Card - Orange */}
-          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative">
-            <div className="absolute top-4 right-4">
+          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative flex flex-col w-full min-h-[18rem] md:h-80 overflow-hidden self-stretch">
+            <div className="absolute top-4 right-4 z-10">
               <span className="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full font-medium">
                 {noticesCount > 0 ? 'Active' : 'None'}
               </span>
             </div>
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center mb-3">
-                  <Bell className="text-orange-600" size={24} />
-                </div>
-                <p className="text-sm text-muted-foreground mb-1">Active Notices</p>
-                <h3 className="text-3xl font-bold text-foreground">{noticesCount}</h3>
-              </div>
+            <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center shrink-0 mb-3">
+              <Bell className="text-orange-600" size={24} />
             </div>
-            {/* Progress Bar */}
-            <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-orange-600 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min((noticesCount / 20) * 100, 100)}%` }}
-              />
+            <p className="text-sm text-muted-foreground mb-1 pr-16">Active Notices</p>
+            <div className="flex-1 flex flex-col min-h-0">
+              <h3 className="text-3xl font-bold text-foreground tabular-nums mb-4">{noticesCount}</h3>
+              <div className="mt-auto pt-2">
+                <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full bg-orange-600 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min((noticesCount / 20) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </motion.div>
@@ -1467,26 +1464,26 @@ export default function TeacherDashboard() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch"
       >
         {/* Total Students Card */}
         <motion.div
           whileHover={{ scale: 1.02, y: -4 }}
-          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10"
+          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10 h-full min-h-[180px] flex flex-col"
           onClick={() => router.push('/teacher/dashboard/students')}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
+          <div className="flex items-center justify-between flex-1">
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-2.5 bg-primary/10 rounded-lg">
                   <Users className="text-primary" size={20} />
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">All Students</p>
               </div>
-              <p className="text-3xl font-bold text-foreground mb-1">{students.length}</p>
+              <p className="text-3xl font-bold text-foreground mb-1 tabular-nums">{students.length}</p>
               <p className="text-xs text-muted-foreground">In school</p>
             </div>
-            <div className="opacity-10">
+            <div className="opacity-10 shrink-0">
               <TrendingUp size={48} className="text-primary" />
             </div>
           </div>
@@ -1495,18 +1492,18 @@ export default function TeacherDashboard() {
         {/* Teacher Attendance Card */}
         <motion.div
           whileHover={{ scale: 1.02, y: -4 }}
-          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10"
+          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10 h-full min-h-[180px] flex flex-col"
           onClick={() => router.push('/teacher/dashboard/attendance')}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
+          <div className="flex items-center justify-between flex-1">
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-2.5 bg-accent/10 rounded-lg">
                   <Calendar className="text-accent" size={20} />
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">My Attendance</p>
               </div>
-              <p className="text-3xl font-bold text-foreground mb-1">
+              <p className="text-3xl font-bold text-foreground mb-1 tabular-nums">
                 {attendanceStats ? `${attendanceStats.percentage}%` : '0%'}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -1515,7 +1512,7 @@ export default function TeacherDashboard() {
                   : 'This month'}
               </p>
             </div>
-            <div className="opacity-10">
+            <div className="opacity-10 shrink-0">
               <TrendingUp size={48} className="text-accent" />
             </div>
           </div>
@@ -1524,21 +1521,21 @@ export default function TeacherDashboard() {
         {/* Upcoming Exams Card */}
         <motion.div
           whileHover={{ scale: 1.02, y: -4 }}
-          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10"
+          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10 h-full min-h-[180px] flex flex-col"
           onClick={() => router.push('/teacher/dashboard/examinations')}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
+          <div className="flex items-center justify-between flex-1">
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-2.5 bg-destructive/10 rounded-lg">
                   <FileText className="text-destructive" size={20} />
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">Upcoming Exams</p>
               </div>
-              <p className="text-3xl font-bold text-foreground mb-1">{upcomingExamsCount}</p>
+              <p className="text-3xl font-bold text-foreground mb-1 tabular-nums">{upcomingExamsCount}</p>
               <p className="text-xs text-muted-foreground">Scheduled</p>
             </div>
-            <div className="opacity-10">
+            <div className="opacity-10 shrink-0">
               <TrendingUp size={48} className="text-destructive" />
             </div>
           </div>
@@ -1547,21 +1544,21 @@ export default function TeacherDashboard() {
         {/* Notices Card */}
         <motion.div
           whileHover={{ scale: 1.02, y: -4 }}
-          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10"
+          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10 h-full min-h-[180px] flex flex-col"
           onClick={() => router.push('/teacher/dashboard/communication')}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
+          <div className="flex items-center justify-between flex-1">
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-2.5 bg-accent/10 rounded-lg">
                   <Bell className="text-accent" size={20} />
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">Notices</p>
               </div>
-              <p className="text-3xl font-bold text-foreground mb-1">{noticesCount}</p>
+              <p className="text-3xl font-bold text-foreground mb-1 tabular-nums">{noticesCount}</p>
               <p className="text-xs text-muted-foreground">Active</p>
             </div>
-            <div className="opacity-10">
+            <div className="opacity-10 shrink-0">
               <TrendingUp size={48} className="text-accent" />
             </div>
           </div>

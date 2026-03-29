@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
 import { logAudit } from '@/lib/audit-logger';
+import { enrichStudentFeesWithAdjustments } from '@/lib/fees/enrich-student-fees';
 
 /**
  * GET /api/v2/fees/payments
@@ -155,7 +156,7 @@ export async function POST(request: NextRequest) {
     // Verify student exists
     const { data: student, error: studentError } = await supabase
       .from('students')
-      .select('id, admission_no, student_name, school_code')
+      .select('id, admission_no, student_name, school_code, class, section')
       .eq('id', student_id)
       .eq('school_code', normalizedSchoolCode)
       .single();
@@ -194,32 +195,63 @@ export async function POST(request: NextRequest) {
 
     // Validate all student_fee_ids belong to the student and have sufficient balance
     const studentFeeIds = allocations.map((a: { student_fee_id: string }) => a.student_fee_id);
-    const { data: studentFees, error: feesError } = await supabase
+    const { data: studentFeesRaw, error: feesError } = await supabase
       .from('student_fees')
-      .select('id, student_id, base_amount, paid_amount, adjustment_amount, due_date, status')
+      .select(`
+        id,
+        student_id,
+        fee_structure_id,
+        base_amount,
+        paid_amount,
+        adjustment_amount,
+        due_date,
+        due_month,
+        status,
+        fee_structure:fee_structure_id (
+          academic_year,
+          late_fee_type,
+          late_fee_value,
+          grace_period_days
+        )
+      `)
       .eq('student_id', student_id)
       .in('id', studentFeeIds);
 
-    if (feesError || !studentFees || studentFees.length !== allocations.length) {
+    if (feesError || !studentFeesRaw || studentFeesRaw.length !== allocations.length) {
       return NextResponse.json(
         { error: 'Invalid student fee IDs or fees not found' },
         { status: 400 }
       );
     }
 
-    // Validate allocations don't exceed balance due
+    const studentCtx = {
+      id: String(student.id),
+      class: String(student.class ?? ''),
+      section: student.section ?? null,
+    };
+
+    const studentFeesEnriched = await enrichStudentFeesWithAdjustments(
+      supabase,
+      normalizedSchoolCode,
+      studentCtx,
+      studentFeesRaw as never
+    );
+
+    // Validate allocations don't exceed amount still due (including late fee on that row)
     for (const allocation of allocations) {
-      const fee = studentFees.find(f => f.id === allocation.student_fee_id);
+      const fee = studentFeesEnriched.find((f) => f.id === allocation.student_fee_id);
       if (!fee) continue;
 
-      const balanceDue = fee.base_amount + fee.adjustment_amount - fee.paid_amount;
-      if (parseFloat(allocation.allocated_amount) > balanceDue + 0.01) { // Allow small floating point differences
+      const maxForRow = fee.balance_due + fee.late_fee;
+      if (parseFloat(String(allocation.allocated_amount)) > maxForRow + 0.01) {
         return NextResponse.json(
           { error: `Allocation amount exceeds balance due for fee ${fee.id}` },
           { status: 400 }
         );
       }
     }
+
+    const studentFees = studentFeesRaw;
 
     // BEGIN TRANSACTION (using Supabase RPC or multiple operations)
     // Note: Supabase doesn't support explicit transactions in the JS client,

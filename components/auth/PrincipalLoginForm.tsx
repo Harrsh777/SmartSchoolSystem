@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Input from '@/components/ui/Input';
@@ -9,7 +8,6 @@ import Button from '@/components/ui/Button';
 import { Building2, Eye, EyeOff, AlertCircle, Lock, Briefcase, BarChart3, Shield, TrendingUp } from 'lucide-react';
 
 export default function PrincipalLoginForm() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     school_code: '',
     password: '',
@@ -50,6 +48,7 @@ export default function PrincipalLoginForm() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           school_code: formData.school_code,
           password: formData.password,
@@ -69,8 +68,9 @@ export default function PrincipalLoginForm() {
           localStorage.setItem('rememberAdmin', 'true');
         }
         
-        // Redirect to principal dashboard
-        router.push(`/dashboard/${formData.school_code}`);
+        const code = String(result.school?.school_code ?? formData.school_code).trim().toUpperCase();
+        window.location.assign(`/dashboard/${code}`);
+        return;
       } else {
         setError(result.error || 'Invalid credentials. Please try again.');
       }

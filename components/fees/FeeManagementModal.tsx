@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { X, ExternalLink, BarChart3, Tag, FileText, CreditCard, Settings, Receipt, AlertCircle } from 'lucide-react';
+import { X, ExternalLink, BarChart3, Tag, FileText, CreditCard, Settings, Receipt, AlertCircle, SlidersHorizontal, Users } from 'lucide-react';
 
 interface FeeManagementModalProps {
   isOpen: boolean;
@@ -42,6 +42,22 @@ const menuItems = [
     path: '/fees/v2/collection',
     description: 'Collect fees from students',
     color: 'from-green-500 to-green-600'
+  },
+  {
+    id: 'student-wise-fees',
+    label: 'Student-wise fees',
+    icon: Users,
+    path: '/fees/v2/student-wise',
+    description: 'Per-student fee list, installments, and line-level misc or discounts',
+    color: 'from-amber-500 to-orange-600',
+  },
+  {
+    id: 'class-wise-fees',
+    label: 'Class-wise fees',
+    icon: SlidersHorizontal,
+    path: '/fees/v2/class-wise',
+    description: 'Bulk class fee actions (coming soon)',
+    color: 'from-slate-500 to-slate-600',
   },
   { 
     id: 'fee-setup', 

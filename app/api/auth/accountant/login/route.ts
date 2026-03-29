@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
-import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
+import { applyLoginCookies, SESSION_MAX_AGE } from '@/lib/auth-cookie';
 import { createSession } from '@/lib/session-store';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { createLoginAuditLog } from '@/lib/login-audit';
@@ -214,13 +214,7 @@ export async function POST(request: NextRequest) {
         school: schoolPayload,
       },
     }, { status: 200 });
-    setAuthCookie(response, 'accountant', undefined, SESSION_MAX_AGE);
-    setSessionIdCookie(
-      response,
-      sessionToken,
-      Math.floor((expiresAt.getTime() - Date.now()) / 1000),
-      'accountant'
-    );
+    applyLoginCookies(response, request, sessionToken, 'accountant', normalizedSchoolCode);
     return response;
   } catch (error) {
     console.error('Error in accountant login:', error);

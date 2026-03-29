@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import FloatingLabelInput from '@/components/auth/FloatingLabelInput';
 import { Shield, Lock, Building2, ArrowRight, AlertTriangle } from 'lucide-react';
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     school_code: '',
     password: '',
@@ -45,6 +43,7 @@ export default function AdminLoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(formData),
       });
 
@@ -57,7 +56,9 @@ export default function AdminLoginPage() {
         sessionStorage.setItem('school', JSON.stringify(result.school));
         sessionStorage.setItem('role', 'admin');
         sessionStorage.setItem('admin_authenticated', '1');
-        router.push(`/dashboard/${result.school.school_code}`);
+        const code = String(result.school.school_code || '').trim().toUpperCase();
+        window.location.assign(`/dashboard/${code}`);
+        return;
       } else {
         setError(result.error || 'Invalid credentials. Please try again.');
       }

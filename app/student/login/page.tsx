@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import FloatingLabelInput from '@/components/auth/FloatingLabelInput';
@@ -19,7 +18,6 @@ import {
 } from 'lucide-react';
 
 export default function StudentLoginPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     school_code: '',
     admission_no: '',
@@ -48,6 +46,7 @@ export default function StudentLoginPage() {
       const response = await fetch('/api/auth/student/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(formData),
       });
       try {
@@ -60,7 +59,8 @@ export default function StudentLoginPage() {
       if (loggedIn) {
         sessionStorage.setItem('student', JSON.stringify(result.student));
         sessionStorage.setItem('role', 'student');
-        router.push('/student/dashboard');
+        window.location.assign('/student/dashboard');
+        return;
       } else {
         setError(result.error || 'Invalid credentials.');
       }

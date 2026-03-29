@@ -6,7 +6,12 @@
 import { randomBytes } from 'crypto';
 import { NextRequest } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
-import { SESSION_ID_COOKIE_NAME } from '@/lib/auth-cookie';
+import {
+  AUTH_COOKIE_NAME,
+  SESSION_ID_COOKIE_NAME,
+  getSessionTokenFromCookieGetter,
+  parseAuthCookie,
+} from '@/lib/auth-cookie';
 import type { AuthRole } from '@/lib/auth-cookie';
 import { cookies } from 'next/headers';
 
@@ -111,6 +116,23 @@ export async function getSession(
   };
 }
 
+export function sessionMatchesParsedAuth(
+  session: SessionData,
+  auth: { role: AuthRole; schoolCode?: string }
+): boolean {
+  if (session.role !== auth.role) return false;
+  if (auth.role === 'school') {
+    return (
+      !!auth.schoolCode &&
+      String(session.school_code ?? '').toUpperCase() === auth.schoolCode.toUpperCase()
+    );
+  }
+  if (auth.schoolCode) {
+    return String(session.school_code ?? '').toUpperCase() === auth.schoolCode.toUpperCase();
+  }
+  return true;
+}
+
 /**
  * Delete session by token (logout).
  */
@@ -133,9 +155,19 @@ export async function destroySessionsForUser(role: AuthRole, userId: string): Pr
  * Use in API routes to authorize requests.
  */
 export async function getSessionFromRequest(request: NextRequest): Promise<SessionData | null> {
-  const token = request.cookies.get(SESSION_ID_COOKIE_NAME)?.value;
+  const authRaw = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const parsed = authRaw ? parseAuthCookie(authRaw) : null;
+  if (!parsed) {
+    const legacyOnly = request.cookies.get(SESSION_ID_COOKIE_NAME)?.value;
+    if (!legacyOnly) return null;
+    const session = await getSession(legacyOnly, { sliding: true, extendSeconds: SESSION_TTL_SECONDS });
+    return session;
+  }
+  const token = getSessionTokenFromCookieGetter(request.cookies, parsed);
   if (!token) return null;
-  return getSession(token, { sliding: true, extendSeconds: SESSION_TTL_SECONDS });
+  const session = await getSession(token, { sliding: true, extendSeconds: SESSION_TTL_SECONDS });
+  if (!session || !sessionMatchesParsedAuth(session, parsed)) return null;
+  return session;
 }
 
 /**
@@ -144,7 +176,16 @@ export async function getSessionFromRequest(request: NextRequest): Promise<Sessi
  */
 export async function getSessionFromCookies(): Promise<SessionData | null> {
   const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_ID_COOKIE_NAME)?.value;
+  const authRaw = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+  const parsed = authRaw ? parseAuthCookie(authRaw) : null;
+  if (!parsed) {
+    const legacyOnly = cookieStore.get(SESSION_ID_COOKIE_NAME)?.value;
+    if (!legacyOnly) return null;
+    return getSession(legacyOnly, { sliding: true, extendSeconds: SESSION_TTL_SECONDS });
+  }
+  const token = getSessionTokenFromCookieGetter(cookieStore, parsed);
   if (!token) return null;
-  return getSession(token, { sliding: true, extendSeconds: SESSION_TTL_SECONDS });
+  const session = await getSession(token, { sliding: true, extendSeconds: SESSION_TTL_SECONDS });
+  if (!session || !sessionMatchesParsedAuth(session, parsed)) return null;
+  return session;
 }

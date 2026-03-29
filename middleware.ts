@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { AUTH_COOKIE_NAME, parseAuthCookie } from '@/lib/auth-cookie';
+import {
+  AUTH_COOKIE_NAME,
+  buildAuthCookieValue,
+  cookieNameToSlotKey,
+  getAuthCookieOptions,
+  parseAuthCookie,
+  SESSION_MAX_AGE,
+  slotKeyToCookieName,
+} from '@/lib/auth-cookie';
 
 const LOGIN_PATH = '/login';
 const PUBLIC_PATHS = [
@@ -14,21 +22,15 @@ const PUBLIC_PATHS = [
   '/auth',
 ];
 
-/** CORS: allow Expo web (localhost) and production app origin when calling /api/* */
 const CORS_ALLOWED_ORIGINS = [
-  'http://localhost:8081',      // Expo web dev
-  'http://localhost:19006',     // Expo web alternate
+  'http://localhost:8081',
+  'http://localhost:19006',
   'http://127.0.0.1:8081',
   'http://127.0.0.1:19006',
-  // Add your production app domain when you deploy (e.g. https://your-app.vercel.app)
 ];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
-}
-
-function isApiOrStatic(pathname: string): boolean {
-  return pathname.startsWith('/api') || pathname.startsWith('/_next') || pathname.includes('.');
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
@@ -43,10 +45,15 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
+function activateSlotOnResponse(request: NextRequest, slotKey: string): NextResponse {
+  const res = NextResponse.next();
+  res.cookies.set(AUTH_COOKIE_NAME, slotKey, getAuthCookieOptions(SESSION_MAX_AGE));
+  return res;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // CORS for /api/* (Expo web at localhost:8081 → Vercel API)
   if (pathname.startsWith('/api')) {
     const origin = request.headers.get('origin') ?? null;
 
@@ -75,71 +82,92 @@ export function middleware(request: NextRequest) {
   const cookieValue = request.cookies.get(AUTH_COOKIE_NAME)?.value;
   const auth = cookieValue ? parseAuthCookie(cookieValue) : null;
 
-  // /dashboard/:school/* — require school session
   if (pathname.startsWith('/dashboard/')) {
+    const pathParts = pathname.split('/').filter(Boolean);
+    const schoolCodeInPath = pathParts.length > 1 ? String(pathParts[1] || '').toUpperCase() : '';
+    const desiredSlotKey = schoolCodeInPath ? buildAuthCookieValue('school', schoolCodeInPath) : '';
+
+    if (
+      auth?.role === 'school' &&
+      schoolCodeInPath &&
+      auth.schoolCode?.toUpperCase() === schoolCodeInPath
+    ) {
+      return NextResponse.next();
+    }
+
+    if (desiredSlotKey && request.cookies.get(slotKeyToCookieName(desiredSlotKey))?.value) {
+      return activateSlotOnResponse(request, desiredSlotKey);
+    }
+
     if (!auth || auth.role !== 'school') {
       const login = new URL(LOGIN_PATH, request.url);
       return NextResponse.redirect(login);
     }
-    const pathParts = pathname.split('/').filter(Boolean);
-    const schoolCodeInPath = pathParts.length > 1 ? String(pathParts[1] || '').toUpperCase() : '';
-    if (auth.schoolCode && schoolCodeInPath && auth.schoolCode.toUpperCase() !== schoolCodeInPath) {
-      const login = new URL(LOGIN_PATH, request.url);
-      return NextResponse.redirect(login);
-    }
-    return NextResponse.next();
+    const login = new URL(LOGIN_PATH, request.url);
+    return NextResponse.redirect(login);
   }
 
-  // /teacher/* — require teacher session
   if (pathname.startsWith('/teacher/')) {
-    if (!auth || auth.role !== 'teacher') {
-      const login = new URL('/staff/login', request.url);
-      return NextResponse.redirect(login);
+    if (auth?.role === 'teacher') {
+      return NextResponse.next();
     }
-    return NextResponse.next();
+    for (const c of request.cookies.getAll()) {
+      const sk = cookieNameToSlotKey(c.name);
+      if (sk === 'teacher' || (typeof sk === 'string' && sk.startsWith('teacher:'))) {
+        if (c.value) {
+          return activateSlotOnResponse(request, sk);
+        }
+      }
+    }
+    const login = new URL('/staff/login', request.url);
+    return NextResponse.redirect(login);
   }
 
-  // /student/* — require student session (allow /student and /student/login)
   if (pathname.startsWith('/student/')) {
     if (pathname === '/student/login' || pathname === '/student') {
       return NextResponse.next();
     }
-    if (!auth || auth.role !== 'student') {
-      const login = new URL('/student/login', request.url);
-      return NextResponse.redirect(login);
+    if (auth?.role === 'student') {
+      return NextResponse.next();
     }
-    return NextResponse.next();
+    for (const c of request.cookies.getAll()) {
+      const sk = cookieNameToSlotKey(c.name);
+      if (sk === 'student' || (typeof sk === 'string' && sk.startsWith('student:'))) {
+        if (c.value) {
+          return activateSlotOnResponse(request, sk);
+        }
+      }
+    }
+    const login = new URL('/student/login', request.url);
+    return NextResponse.redirect(login);
   }
 
-  // /admin — super admin panel (password modal on page) and /admin/login — school admin login (public)
-  // Allow all /admin/* through: super admin uses client-side password (educorerp@123), school admin uses /admin/login
   if (pathname.startsWith('/admin')) {
     return NextResponse.next();
   }
 
-  // /accountant/* — require accountant session
   if (pathname.startsWith('/accountant/')) {
     if (pathname === '/accountant/login') {
       return NextResponse.next();
     }
-    if (!auth || auth.role !== 'accountant') {
-      const login = new URL('/accountant/login', request.url);
-      return NextResponse.redirect(login);
+    if (auth?.role === 'accountant') {
+      return NextResponse.next();
     }
-    return NextResponse.next();
+    for (const c of request.cookies.getAll()) {
+      const sk = cookieNameToSlotKey(c.name);
+      if (sk === 'accountant' || (typeof sk === 'string' && sk.startsWith('accountant:'))) {
+        if (c.value) {
+          return activateSlotOnResponse(request, sk);
+        }
+      }
+    }
+    const login = new URL('/accountant/login', request.url);
+    return NextResponse.redirect(login);
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico
-     */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

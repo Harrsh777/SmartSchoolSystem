@@ -22,7 +22,25 @@ import {
   User,
   Hash,
   IndianRupee,
+  ChevronDown,
+  ChevronUp,
+  ListTree,
 } from 'lucide-react';
+
+interface AdjustmentLine {
+  rule_id: string;
+  label: string;
+  adjustment_type: string;
+  delta: number;
+  reason: string | null;
+}
+
+interface ManualLine {
+  id: string;
+  label: string;
+  amount: number;
+  kind: string;
+}
 
 interface StudentFee {
   id: string;
@@ -35,6 +53,12 @@ interface StudentFee {
   late_fee: number;
   total_due: number;
   status: string;
+  rules_adjustment_delta?: number;
+  effective_adjustment_amount?: number;
+  final_amount?: number;
+  adjustment_lines?: AdjustmentLine[];
+  installment_manual_lines?: ManualLine[];
+  installment_display_label?: string;
   fee_structure: {
     name: string;
     late_fee_type?: string;
@@ -102,6 +126,7 @@ export default function PaymentCollectionPage({
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [currentAcademicYear, setCurrentAcademicYear] = useState<string>('');
   const [academicYearsList, setAcademicYearsList] = useState<Array<{ year_name: string; is_current?: boolean }>>([]);
+  const [breakdownFeeId, setBreakdownFeeId] = useState<string | null>(null);
 
   const fetchAcademicYears = useCallback(async () => {
     if (!schoolCode) return;
@@ -600,7 +625,7 @@ export default function PaymentCollectionPage({
                                 </div>
                                 <div className="min-w-0">
                                   <p className="font-semibold text-gray-900 dark:text-white truncate">
-                                    {fee.fee_structure?.name || 'Fee'}
+                                    {fee.installment_display_label || fee.fee_structure?.name || 'Fee'}
                                   </p>
                                   <p className="text-sm text-gray-500 dark:text-slate-400">
                                     {lastPaidDate
@@ -619,10 +644,13 @@ export default function PaymentCollectionPage({
                           );
                         }
 
+                        const lines = fee.adjustment_lines ?? [];
+                        const showBreakdown = breakdownFeeId === fee.id;
+
                         return (
                           <div
                             key={fee.id}
-                            className={`flex items-center justify-between p-4 rounded-xl border-2 ${
+                            className={`rounded-xl border-2 overflow-hidden ${
                               allocated > 0
                                 ? 'border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20'
                                 : isOverdue
@@ -630,36 +658,142 @@ export default function PaymentCollectionPage({
                                 : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/30'
                             }`}
                           >
-                            <div className="flex items-start gap-3 min-w-0 flex-1">
-                              <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center shrink-0">
-                                <Clock size={20} className="text-orange-600 dark:text-orange-400" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-semibold text-gray-900 dark:text-white truncate">
-                                  {fee.fee_structure?.name || 'Fee'}
-                                </p>
-                                <p className="text-sm text-orange-600 dark:text-orange-400">
-                                  PENDING • Due {formatDateShort(fee.due_date)}
-                                </p>
-                                {fee.late_fee > 0 && (
-                                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                                    + {formatCurrency(fee.late_fee)} late fee
+                            <div className="flex items-center justify-between p-4 gap-3">
+                              <div className="flex items-start gap-3 min-w-0 flex-1">
+                                <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center shrink-0">
+                                  <Clock size={20} className="text-orange-600 dark:text-orange-400" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-gray-900 dark:text-white truncate">
+                                    {fee.installment_display_label || fee.fee_structure?.name || 'Fee'}
                                   </p>
-                                )}
+                                  <p className="text-sm text-orange-600 dark:text-orange-400">
+                                    PENDING • Due {formatDateShort(fee.due_date)}
+                                  </p>
+                                  <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">
+                                    Base {formatCurrency(fee.base_amount)}
+                                    {typeof fee.final_amount === 'number' && (
+                                      <span className="ml-2">
+                                        → Final {formatCurrency(fee.final_amount)}
+                                      </span>
+                                    )}
+                                    {fee.paid_amount > 0 && (
+                                      <span className="ml-2 text-green-600">
+                                        Paid {formatCurrency(fee.paid_amount)}
+                                      </span>
+                                    )}
+                                  </p>
+                                  {fee.late_fee > 0 && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                                      + {formatCurrency(fee.late_fee)} late fee
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 shrink-0">
+                                <p className="font-bold text-gray-900 dark:text-white">
+                                  {formatCurrency(fee.total_due)}
+                                </p>
+                                <div className="flex flex-wrap gap-1 justify-end">
+                                  {(lines.length > 0 ||
+                                    (fee.installment_manual_lines && fee.installment_manual_lines.length > 0)) && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-xs h-8"
+                                      onClick={() =>
+                                        setBreakdownFeeId(showBreakdown ? null : fee.id)
+                                      }
+                                    >
+                                      <ListTree size={14} className="mr-1" />
+                                      {showBreakdown ? 'Hide' : 'View'} breakdown
+                                      {showBreakdown ? (
+                                        <ChevronUp size={14} className="ml-1" />
+                                      ) : (
+                                        <ChevronDown size={14} className="ml-1" />
+                                      )}
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    className="bg-blue-600 hover:bg-blue-700 text-white h-8"
+                                    onClick={() => handleAllocationChange(fee.id, fee.total_due)}
+                                  >
+                                    Pay Full
+                                  </Button>
+                                </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3 shrink-0">
-                              <p className="font-bold text-gray-900 dark:text-white">
-                                {formatCurrency(fee.total_due)}
-                              </p>
-                              <Button
-                                size="sm"
-                                className="bg-blue-600 hover:bg-blue-700 text-white"
-                                onClick={() => handleAllocationChange(fee.id, fee.total_due)}
-                              >
-                                Pay Full
-                              </Button>
-                            </div>
+                            {showBreakdown &&
+                              (lines.length > 0 ||
+                                (fee.installment_manual_lines && fee.installment_manual_lines.length > 0)) && (
+                              <div className="px-4 pb-4 pt-0 border-t border-gray-200 dark:border-slate-700 bg-gray-50/80 dark:bg-slate-900/40">
+                                {fee.installment_manual_lines && fee.installment_manual_lines.length > 0 && (
+                                  <>
+                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-3 mb-2">
+                                      Misc / discounts (installment)
+                                    </p>
+                                    <ul className="space-y-1.5 text-sm mb-3">
+                                      {fee.installment_manual_lines.map((ln) => (
+                                        <li
+                                          key={ln.id}
+                                          className="flex justify-between gap-2 text-gray-800 dark:text-slate-200"
+                                        >
+                                          <span>
+                                            {ln.label}{' '}
+                                            <span className="text-gray-500">({ln.kind})</span>
+                                          </span>
+                                          <span
+                                            className={
+                                              ln.amount < 0 ? 'text-green-600' : 'text-red-600'
+                                            }
+                                          >
+                                            {ln.amount < 0 ? '−' : '+'}
+                                            {formatCurrency(Math.abs(ln.amount))}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </>
+                                )}
+                                {lines.length > 0 && (
+                                  <>
+                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-1 mb-2">
+                                      Rule adjustments (stacked)
+                                    </p>
+                                    <ul className="space-y-1.5 text-sm">
+                                      {lines.map((ln) => (
+                                        <li
+                                          key={ln.rule_id}
+                                          className="flex justify-between gap-2 text-gray-800 dark:text-slate-200"
+                                        >
+                                          <span>
+                                            {ln.label}
+                                            {ln.reason ? ` — ${ln.reason}` : ''}
+                                          </span>
+                                          <span
+                                            className={
+                                              ln.delta < 0 ? 'text-green-600' : 'text-red-600'
+                                            }
+                                          >
+                                            {ln.delta < 0 ? '−' : '+'}
+                                            {formatCurrency(Math.abs(ln.delta))}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </>
+                                )}
+                                {Math.abs(Number(fee.adjustment_amount || 0)) > 0.001 && (
+                                    <p className="text-xs text-gray-500 mt-2">
+                                      Includes approved manual adjustment ₹
+                                      {Number(fee.adjustment_amount).toFixed(2)} from the older per-fee
+                                      adjustment approvals.
+                                    </p>
+                                  )}
+                              </div>
+                            )}
                           </div>
                         );
                       })}

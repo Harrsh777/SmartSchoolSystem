@@ -2,7 +2,6 @@
 
 import { LogOut } from 'lucide-react';
 import Button from '@/components/ui/Button';
-import { useRouter } from 'next/navigation';
 
 interface DashboardHeaderProps {
   schoolCode: string;
@@ -23,21 +22,31 @@ export default function DashboardHeader({
   badgeColor,
   icon,
 }: DashboardHeaderProps) {
-  const router = useRouter();
-
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-    if (role === 'principal') {
-      sessionStorage.removeItem('school');
-      sessionStorage.removeItem('admin_authenticated');
-    } else if (role === 'teacher') {
-      sessionStorage.removeItem('teacher');
-      sessionStorage.removeItem('teacher_authenticated');
-    } else if (role === 'student') {
-      sessionStorage.removeItem('student');
-    }
-    sessionStorage.removeItem('role');
-    router.push('/login');
+  const handleLogout = () => {
+    void (async () => {
+      const res = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).catch(() => null);
+      let next = '/login';
+      if (res?.ok) {
+        const j = (await res.json().catch(() => ({}))) as { redirectTo?: string };
+        if (typeof j.redirectTo === 'string' && j.redirectTo.length > 0) next = j.redirectTo;
+      }
+      if (role === 'principal') {
+        sessionStorage.removeItem('school');
+        sessionStorage.removeItem('admin_authenticated');
+      } else if (role === 'teacher') {
+        sessionStorage.removeItem('teacher');
+        sessionStorage.removeItem('teacher_authenticated');
+      } else if (role === 'student') {
+        sessionStorage.removeItem('student');
+      }
+      sessionStorage.removeItem('role');
+      window.location.assign(next);
+    })();
   };
 
   return (

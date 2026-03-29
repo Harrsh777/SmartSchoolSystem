@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import FloatingLabelInput from '@/components/auth/FloatingLabelInput';
@@ -14,7 +13,6 @@ import {
 } from 'lucide-react';
 
 export default function StaffLoginPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     school_code: '',
     staff_id: '',
@@ -63,6 +61,7 @@ export default function StaffLoginPage() {
       const response = await fetch('/api/auth/teacher/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
@@ -80,7 +79,9 @@ export default function StaffLoginPage() {
           localStorage.setItem('rememberStaff', 'true');
         }
         
-        router.push('/teacher/dashboard');
+        // Full navigation so Set-Cookie is applied before middleware runs (avoids soft-nav race).
+        window.location.assign('/teacher/dashboard');
+        return;
       } else {
         setError(result.error || 'Invalid credentials. Please try again.');
       }

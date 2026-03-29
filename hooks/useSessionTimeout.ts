@@ -123,9 +123,22 @@ export function useSessionTimeout({
     }
     setShowWarning(false);
     if (typeof window !== 'undefined') {
-      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+      const res = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).catch(() => null);
+      let next = loginPath;
+      if (res?.ok) {
+        const j = (await res.json().catch(() => ({}))) as { redirectTo?: string };
+        if (typeof j.redirectTo === 'string' && j.redirectTo.length > 0) next = j.redirectTo;
+      }
       localStorage.removeItem(key);
       sessionStorage.clear();
+      if (onLogout) onLogout();
+      window.location.assign(next);
+      return;
     }
     if (onLogout) onLogout();
     router.push(loginPath);

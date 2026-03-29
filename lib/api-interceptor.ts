@@ -16,7 +16,7 @@ let originalFetch: typeof globalThis.fetch | null = null;
 let isInterceptorSetup = false;
 
 // Logout handler (will be set by the layout components)
-let logoutHandler: (() => void) | null = null;
+let logoutHandler: (() => void | Promise<void>) | null = null;
 // Prevent calling logout multiple times (e.g. multiple 401s from in-flight requests)
 let isLoggingOut = false;
 
@@ -54,7 +54,7 @@ function checkIfUserInitiated(): boolean {
 /**
  * Set the logout handler to be called on 401 responses
  */
-export function setLogoutHandler(handler: () => void): void {
+export function setLogoutHandler(handler: (() => void | Promise<void>) | null): void {
   logoutHandler = handler;
 }
 
@@ -90,7 +90,7 @@ export function setupApiInterceptor(): void {
         if (logoutHandler && !isLoggingOut) {
           isLoggingOut = true;
           try {
-            logoutHandler();
+            await Promise.resolve(logoutHandler());
           } finally {
             isLoggingOut = false;
           }

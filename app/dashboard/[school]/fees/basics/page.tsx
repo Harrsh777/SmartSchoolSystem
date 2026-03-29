@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -81,6 +81,7 @@ export default function FeeBasicsPage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   
   // Data states
@@ -122,6 +123,27 @@ export default function FeeBasicsPage({
     fetchAllData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
+
+  // Open fee schedule modal when linked from Fee Dashboard (?addSchedule=1 or ?editSchedule=id)
+  useEffect(() => {
+    const add = searchParams.get('addSchedule');
+    const editId = searchParams.get('editSchedule');
+    if (!add && !editId) return;
+
+    if (add === '1') {
+      setEditingSchedule(null);
+      setShowScheduleModal(true);
+      router.replace(`/dashboard/${schoolCode}/fees/basics`, { scroll: false });
+      return;
+    }
+
+    if (editId && schedules.length > 0) {
+      const s = schedules.find((x) => x.id === editId);
+      setEditingSchedule(s ?? null);
+      setShowScheduleModal(!!s);
+      router.replace(`/dashboard/${schoolCode}/fees/basics`, { scroll: false });
+    }
+  }, [searchParams, schedules, schoolCode, router]);
 
   const fetchAllData = async () => {
     try {

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -10,7 +9,6 @@ import { IndianRupee, ArrowLeft, Lock, Building2, User } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AccountantLoginPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     school_code: '',
     staff_id: '',
@@ -28,6 +26,7 @@ export default function AccountantLoginPage() {
       const response = await fetch('/api/auth/accountant/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(formData),
       });
 
@@ -40,7 +39,8 @@ export default function AccountantLoginPage() {
         sessionStorage.setItem('accountant', JSON.stringify(result.data.staff));
         sessionStorage.setItem('school', JSON.stringify(result.data.school));
         sessionStorage.setItem('role', 'accountant');
-        router.push('/accountant/dashboard');
+        window.location.assign('/accountant/dashboard');
+        return;
       } else {
         setError(result.error || 'Login failed. Please check your credentials.');
       }

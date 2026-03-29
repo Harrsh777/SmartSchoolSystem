@@ -1,26 +1,7 @@
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { NextResponse, NextRequest } from 'next/server';
-
-function computeLateFee(
-  dueDate: string,
-  baseAmount: number,
-  lateFeeType: string | null,
-  lateFeeValue: number,
-  gracePeriodDays: number
-): number {
-  if (!lateFeeType) return 0;
-  const currentDate = new Date();
-  const due = new Date(dueDate);
-  const effectiveDue = new Date(due);
-  effectiveDue.setDate(effectiveDue.getDate() + gracePeriodDays);
-  if (currentDate <= effectiveDue) return 0;
-  const daysLate = Math.floor((currentDate.getTime() - effectiveDue.getTime()) / (1000 * 60 * 60 * 24));
-  if (daysLate <= 0) return 0;
-  if (lateFeeType === 'flat') return lateFeeValue || 0;
-  if (lateFeeType === 'per_day') return (lateFeeValue || 0) * daysLate;
-  if (lateFeeType === 'percentage') return (baseAmount * (lateFeeValue || 0) / 100) * daysLate;
-  return 0;
-}
+import { enrichPendingFeeRows } from '@/lib/fees/enrich-student-fees';
+import { fetchAllClassFeeLinesBySectionKey } from '@/lib/fees/class-fee-line-adjustments';
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,10 +23,12 @@ export async function GET(request: NextRequest) {
       .from('student_fees')
       .select(`
         id,
+        student_id,
         base_amount,
         paid_amount,
         adjustment_amount,
         due_date,
+        due_month,
         status,
         fee_structure_id,
         fee_structure:fee_structure_id (
@@ -74,7 +57,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: feesError.message }, { status: 500 });
     }
 
-    // Only include fees from active fee structures; exclude deactivated structures
     let pendingFees = (pendingFeesRaw || []).filter((fee) => {
       const structure = fee.fee_structure as unknown as { is_active?: boolean } | null;
       return structure?.is_active !== false;
@@ -93,19 +75,30 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const studentMap = new Map<string, {
-      id: string;
-      student_name: string;
-      admission_no: string;
-      class: string;
-      section: string;
-      pending_amount: number;
-      late_fee_amount: number;
-      due_date: string;
-      latest_due_date: string;
-    }>();
+    const classLinesBySectionKey = await fetchAllClassFeeLinesBySectionKey(
+      supabase,
+      normalizedSchoolCode
+    );
+    const enriched = await enrichPendingFeeRows(supabase, normalizedSchoolCode, pendingFees as never, {
+      classLinesBySectionKey,
+    });
 
-    (pendingFees || []).forEach((fee) => {
+    const studentMap = new Map<
+      string,
+      {
+        id: string;
+        student_name: string;
+        admission_no: string;
+        class: string;
+        section: string;
+        pending_amount: number;
+        late_fee_amount: number;
+        due_date: string;
+        latest_due_date: string;
+      }
+    >();
+
+    enriched.forEach((fee) => {
       const student = fee.student as unknown as {
         id: string;
         student_name?: string;
@@ -116,21 +109,8 @@ export async function GET(request: NextRequest) {
 
       if (!student?.id) return;
 
-      const baseAmount = Number(fee.base_amount || 0);
-      const paidAmount = Number(fee.paid_amount || 0);
-      const adjustmentAmount = Number(fee.adjustment_amount || 0);
-      const balanceDue = baseAmount + adjustmentAmount - paidAmount;
-      if (balanceDue <= 0) return;
-
-      const structure = fee.fee_structure as unknown as { late_fee_type?: string | null; late_fee_value?: number; grace_period_days?: number } | null;
-      const lateFee = computeLateFee(
-        fee.due_date || '',
-        baseAmount,
-        structure?.late_fee_type ?? null,
-        Number(structure?.late_fee_value ?? 0),
-        Number(structure?.grace_period_days ?? 0)
-      );
-      const totalDue = balanceDue + lateFee;
+      const totalDue = fee.total_due;
+      if (totalDue <= 0) return;
 
       if (!studentMap.has(student.id)) {
         studentMap.set(student.id, {
@@ -141,8 +121,8 @@ export async function GET(request: NextRequest) {
           section: student.section || '',
           pending_amount: 0,
           late_fee_amount: 0,
-          due_date: fee.due_date,
-          latest_due_date: fee.due_date || '',
+          due_date: String(fee.due_date),
+          latest_due_date: String(fee.due_date || ''),
         });
       }
 
@@ -152,15 +132,13 @@ export async function GET(request: NextRequest) {
       const currentDue = feeDueDate ? new Date(feeDueDate) : null;
 
       if (!prevLatest || (currentDue && currentDue > prevLatest)) {
-        // Newer period found -> reset total to show only that most recent period
         data.latest_due_date = feeDueDate;
         data.pending_amount = totalDue;
-        data.late_fee_amount = lateFee;
+        data.late_fee_amount = fee.late_fee;
         data.due_date = feeDueDate;
       } else if (currentDue && prevLatest && currentDue.getTime() === prevLatest.getTime()) {
-        // Same latest period -> accumulate across heads/rows in same period
         data.pending_amount += totalDue;
-        data.late_fee_amount += lateFee;
+        data.late_fee_amount += fee.late_fee;
       }
     });
 

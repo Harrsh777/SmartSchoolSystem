@@ -3,8 +3,8 @@
  * Rules: Redis is never source of truth; all writes go to Supabase.
  * If Redis is down, the app must fallback to Supabase (see lib/cache.ts).
  *
- * Set REDIS_URL in env (e.g. redis://localhost:6379 or Redis Cloud URL).
- * If unset, getRedis() returns null and all cache/rate-limit logic falls back to DB/memory.
+ * Redis is **off by default**. Set REDIS_ENABLED=true and REDIS_URL to use it.
+ * Otherwise getRedis() returns null (in-memory rate limits, no Redis cache).
  */
 
 import Redis from 'ioredis';
@@ -12,12 +12,17 @@ import Redis from 'ioredis';
 let client: Redis | null = null;
 let available: boolean | null = null;
 
+function isRedisExplicitlyEnabled(): boolean {
+  return process.env.REDIS_ENABLED === 'true';
+}
+
 function getRedisUrl(): string | undefined {
+  if (!isRedisExplicitlyEnabled()) return undefined;
   return process.env.REDIS_URL?.trim() || undefined;
 }
 
 /**
- * Get Redis client. Returns null if REDIS_URL is not set or connection fails.
+ * Get Redis client. Returns null unless REDIS_ENABLED=true and REDIS_URL is set, or if connection fails.
  * All callers must handle null (fallback to Supabase or in-memory).
  */
 export function getRedis(): Redis | null {

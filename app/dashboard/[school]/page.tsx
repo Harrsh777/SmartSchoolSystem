@@ -242,7 +242,6 @@ export default function DashboardPage({
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);
-  const [forceError, setForceError] = useState(false);
 
   useEffect(() => {
     if (!schoolCode) return;
@@ -268,14 +267,6 @@ export default function DashboardPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAcademicYear]);
 
-// Kill switch for too many requests
-useEffect(() => {
-  const timer = setTimeout(() => {
-    setForceError(true);
-  }, 1800);
-
-  return () => clearTimeout(timer);
-}, []);
   // Academic Calendar (events) for dashboard widget
   useEffect(() => {
     const fetchCalendar = async () => {

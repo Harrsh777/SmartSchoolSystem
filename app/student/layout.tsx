@@ -33,6 +33,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/Button';
 import type { Student, AcceptedSchool } from '@/lib/supabase';
 import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/lib/api-interceptor';
+import { logoutCurrentSessionAndGo } from '@/lib/client-logout';
 
 interface StudentLayoutProps {
   children: React.ReactNode;
@@ -102,9 +103,9 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
   // Logout handler for 401 responses only (no inactivity timeout)
   useEffect(() => {
     const logout = () => {
-      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-      sessionStorage.clear();
-      router.push('/student/login');
+      void logoutCurrentSessionAndGo('/student/login', {
+        beforeNavigate: () => sessionStorage.clear(),
+      });
     };
     setLogoutHandler(logout);
     setupApiInterceptor();
@@ -332,11 +333,13 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={async () => {
-                  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-                  sessionStorage.removeItem('student');
-                  sessionStorage.removeItem('role');
-                  router.push('/login');
+                onClick={() => {
+                  void logoutCurrentSessionAndGo('/student/login', {
+                    beforeNavigate: () => {
+                      sessionStorage.removeItem('student');
+                      sessionStorage.removeItem('role');
+                    },
+                  });
                 }}
                 className="border-[#E1E1DB] hover:bg-[#DBEAFE]"
               >

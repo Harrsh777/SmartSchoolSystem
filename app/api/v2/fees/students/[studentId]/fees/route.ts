@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
+import { enrichStudentFeesWithAdjustments } from '@/lib/fees/enrich-student-fees';
+import { installmentDisplayLabel } from '@/lib/fees/installment-display-label';
 
 /**
  * GET /api/v2/fees/students/[studentId]/fees]
@@ -34,7 +36,7 @@ export async function GET(
     // Debug: Check if student exists
     const { data: student } = await supabase
       .from('students')
-      .select('id, admission_no, student_name, school_code')
+      .select('id, admission_no, student_name, school_code, class, section')
       .eq('id', studentId)
       .eq('school_code', normalizedSchoolCode)
       .single();
@@ -46,6 +48,10 @@ export async function GET(
       student_name: student?.student_name,
       student_school_code: student?.school_code,
     });
+
+    if (!student) {
+      return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    }
 
     // Get student fees with structure details (only from active fee structures)
     const { data: fees, error } = await supabase
@@ -61,7 +67,10 @@ export async function GET(
           is_active,
           late_fee_type,
           late_fee_value,
-          grace_period_days
+          grace_period_days,
+          frequency,
+          start_month,
+          end_month
         )
       `)
       .eq('student_id', studentId)
@@ -101,43 +110,41 @@ export async function GET(
       });
     }
 
-    // Calculate late fee for each fee record
-    const feesWithLateFee = feesToUse.map(fee => {
-      const structure = fee.fee_structure;
-      let lateFee = 0;
+    const studentCtx = {
+      id: String(student.id),
+      class: String(student.class ?? ''),
+      section: student.section ?? null,
+    };
 
-      if (structure && structure.late_fee_type) {
-        const currentDate = new Date();
-        const dueDate = new Date(fee.due_date);
-        const gracePeriod = structure.grace_period_days || 0;
-        const effectiveDueDate = new Date(dueDate);
-        effectiveDueDate.setDate(effectiveDueDate.getDate() + gracePeriod);
+    const feesWithAdjustments = await enrichStudentFeesWithAdjustments(
+      supabase,
+      normalizedSchoolCode,
+      studentCtx,
+      feesToUse as never
+    );
 
-        if (currentDate > effectiveDueDate) {
-          const daysLate = Math.floor((currentDate.getTime() - effectiveDueDate.getTime()) / (1000 * 60 * 60 * 24));
+    const labeled = (feesWithAdjustments as Array<Record<string, unknown>>).map((fee) => {
+      const fs = fee.fee_structure as {
+        name?: string;
+        frequency?: string | null;
+        start_month?: number | null;
+        end_month?: number | null;
+      } | null;
+      const sm = Number(fs?.start_month);
+      const em = Number(fs?.end_month);
+      const startMonth = Number.isFinite(sm) && sm >= 1 && sm <= 12 ? sm : 1;
+      const endMonth = Number.isFinite(em) && em >= 1 && em <= 12 ? em : 12;
+      const installment_display_label = installmentDisplayLabel({
+        structureName: String(fs?.name || 'Fee'),
+        frequency: fs?.frequency,
+        startMonth,
+        endMonth,
+        dueMonth: String(fee.due_month ?? ''),
+      });
+      return { ...fee, installment_display_label };
+    });
 
-          if (structure.late_fee_type === 'flat') {
-            lateFee = structure.late_fee_value || 0;
-          } else if (structure.late_fee_type === 'per_day') {
-            lateFee = (structure.late_fee_value || 0) * daysLate;
-          } else if (structure.late_fee_type === 'percentage') {
-            lateFee = (fee.base_amount * (structure.late_fee_value || 0) / 100) * daysLate;
-          }
-        }
-      }
-
-      const balanceDue = fee.base_amount + fee.adjustment_amount - fee.paid_amount;
-      const totalDue = balanceDue + lateFee;
-
-      return {
-        ...fee,
-        late_fee: Math.max(0, lateFee),
-        balance_due: balanceDue,
-        total_due: totalDue,
-      };
-    }) || [];
-
-    return NextResponse.json({ data: feesWithLateFee }, { status: 200 });
+    return NextResponse.json({ data: labeled }, { status: 200 });
   } catch (error) {
     console.error('Error in GET /api/v2/fees/students/[studentId]/fees:', error);
     return NextResponse.json(

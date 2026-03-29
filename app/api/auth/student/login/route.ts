@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { comparePassword } from '@/lib/password-utils';
-import { setAuthCookie, setSessionIdCookie, SESSION_MAX_AGE } from '@/lib/auth-cookie';
+import { applyLoginCookies, SESSION_MAX_AGE } from '@/lib/auth-cookie';
 import { createSession } from '@/lib/session-store';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { createLoginAuditLog } from '@/lib/login-audit';
@@ -171,13 +171,7 @@ export async function POST(request: NextRequest) {
       student: studentProfile,
       message: 'Login successful',
     }, { status: 200 });
-    setAuthCookie(response, 'student', undefined, SESSION_MAX_AGE);
-    setSessionIdCookie(
-      response,
-      sessionToken,
-      Math.floor((expiresAt.getTime() - Date.now()) / 1000),
-      'student'
-    );
+    applyLoginCookies(response, request, sessionToken, 'student', normalizedSchoolCode);
     return response;
   } catch (error) {
     console.error('Student login error:', error);

@@ -11,7 +11,9 @@ import {
   BarChart3,
   CreditCard,
   Receipt,
-  Tag
+  Tag,
+  SlidersHorizontal,
+  Users,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
@@ -54,6 +56,22 @@ export default function FeesPage({
       description: 'Collect fees from students',
       icon: CreditCard,
       path: `/dashboard/${schoolCode}/fees/v2/collection`,
+      color: 'from-[#5A7A95] to-[#6B9BB8]',
+    },
+    {
+      id: 'v2-student-wise',
+      title: 'Student-wise fees',
+      description: 'Filters, fee card per student, installments, misc & discounts per line',
+      icon: Users,
+      path: `/dashboard/${schoolCode}/fees/v2/student-wise`,
+      color: 'from-[#8B6914] to-[#B8860B]',
+    },
+    {
+      id: 'v2-class-wise',
+      title: 'Class-wise fees',
+      description: 'Bulk class actions (coming soon)',
+      icon: SlidersHorizontal,
+      path: `/dashboard/${schoolCode}/fees/v2/class-wise`,
       color: 'from-[#5A7A95] to-[#6B9BB8]',
     },
     {
