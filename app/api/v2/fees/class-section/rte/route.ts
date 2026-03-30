@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     if (studentErr) return NextResponse.json({ error: studentErr.message }, { status: 500 });
 
     const validIds = new Set((students || []).map((s) => String(s.id)));
-    const selectedIds = rteStudentIds.filter((id) => validIds.has(id));
+    const selectedIds = rteStudentIds.filter((id: string) => validIds.has(id));
     const allIds = Array.from(validIds);
 
     if (allIds.length === 0) {

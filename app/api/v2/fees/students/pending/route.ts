@@ -105,9 +105,19 @@ export async function GET(request: NextRequest) {
         .order('due_date', { ascending: true })
         .limit(1000);
 
-    let { data: pendingFeesRaw, error: feesError } = await selectPendingWithRte();
+    let { data: pendingFeesRaw, error: feesError }: {
+      data: Array<Record<string, unknown>> | null;
+      error: { message?: string; code?: string } | null;
+    } = await selectPendingWithRte() as unknown as {
+      data: Array<Record<string, unknown>> | null;
+      error: { message?: string; code?: string } | null;
+    };
     if (feesError && isMissingStudentsIsRteColumn(feesError)) {
-      ({ data: pendingFeesRaw, error: feesError } = await selectPendingLegacy());
+      ({ data: pendingFeesRaw, error: feesError } =
+        (await selectPendingLegacy()) as unknown as {
+          data: Array<Record<string, unknown>> | null;
+          error: { message?: string; code?: string } | null;
+        });
     }
 
     if (feesError) {

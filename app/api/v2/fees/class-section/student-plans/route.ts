@@ -144,9 +144,28 @@ export async function GET(request: NextRequest) {
         .ilike('section', section)
         .order('roll_number', { ascending: true, nullsFirst: false });
 
-    let { data: students, error: studentErr } = await selectStudentsWithRte();
+    let { data: students, error: studentErr }: {
+      data: Array<{
+        id: string;
+        student_name?: string | null;
+        admission_no?: string | null;
+        roll_number?: string | null;
+        is_rte?: boolean | null;
+      }> | null;
+      error: { message?: string; code?: string } | null;
+    } = await selectStudentsWithRte();
     if (studentErr && isMissingStudentsIsRteColumn(studentErr)) {
-      ({ data: students, error: studentErr } = await selectStudentsLegacy());
+      ({ data: students, error: studentErr } =
+        (await selectStudentsLegacy()) as unknown as {
+          data: Array<{
+            id: string;
+            student_name?: string | null;
+            admission_no?: string | null;
+            roll_number?: string | null;
+            is_rte?: boolean | null;
+          }> | null;
+          error: { message?: string; code?: string } | null;
+        });
     }
 
     if (studentErr) {
