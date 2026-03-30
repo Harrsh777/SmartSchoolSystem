@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
 import { isMissingFeeStructuresDeletedAtColumn } from '@/lib/fees/fee-structure-deleted-at-compat';
+import {
+  anchorYearFromAcademicYearLabel,
+  computeInstallmentMonthsFromStructure,
+} from '@/lib/fees/structure-installment-months';
 
 /**
  * GET /api/v2/fees/fee-structures
@@ -139,12 +143,15 @@ export async function POST(request: NextRequest) {
     const {
       school_code,
       name,
+      class_id,
       class_name,
       section,
       academic_year,
       start_month,
       end_month,
       frequency,
+      frequency_mode,
+      plans,
       payment_due_day,
       late_fee_type,
       late_fee_value,
@@ -176,6 +183,10 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceRoleClient();
     const normalizedSchoolCode = school_code.toUpperCase();
+    const normalizedAcademicYear = academic_year?.trim() || null;
+    const normalizedSection = section?.trim() || null;
+    const normalizedClassName = class_name?.trim();
+    const normalizedClassId = class_id ? String(class_id).trim() : null;
 
     // Get school_id
     const { data: school, error: schoolError } = await supabase
@@ -204,6 +215,41 @@ export async function POST(request: NextRequest) {
       createdBy = staff?.id || null;
     }
 
+    // HARD CONSTRAINT: one fee structure per class-section-session for active session.
+    // Soft-deleted rows also block (unless fully deleted) because we intentionally do NOT filter deleted_at.
+    const existingQuery = supabase
+      .from('fee_structures')
+      .select('id, name')
+      .eq('school_code', normalizedSchoolCode)
+      .eq('class_name', normalizedClassName)
+      .is('session_archived', false)
+      .limit(1);
+    const existingWithSection = normalizedSection
+      ? existingQuery.eq('section', normalizedSection)
+      : existingQuery.is('section', null);
+    const existingWithYear = normalizedAcademicYear
+      ? existingWithSection.eq('academic_year', normalizedAcademicYear)
+      : existingWithSection.is('academic_year', null);
+    const { data: existingRows, error: existingErr } = await existingWithYear;
+    if (existingErr) {
+      return NextResponse.json(
+        { error: 'Failed to check existing structure', details: existingErr.message },
+        { status: 500 }
+      );
+    }
+    const existing = Array.isArray(existingRows) && existingRows.length > 0 ? existingRows[0] : null;
+    if (existing) {
+      return NextResponse.json(
+        {
+          error: 'Fee structure already exists for this class & section.',
+          code: 'FEE_STRUCTURE_EXISTS',
+          existing_structure_id: String(existing.id),
+          existing_structure_name: String(existing.name || ''),
+        },
+        { status: 409 }
+      );
+    }
+
     // Create fee structure
     const dueDay = payment_due_day != null ? Math.min(31, Math.max(1, Number(payment_due_day))) : 15;
     const { data: feeStructure, error: insertError } = await supabase
@@ -212,12 +258,17 @@ export async function POST(request: NextRequest) {
         school_id: school.id,
         school_code: normalizedSchoolCode,
         name: name.trim(),
-        class_name: class_name.trim(),
-        section: section?.trim() || null,
-        academic_year: academic_year?.trim() || null,
+        class_id: normalizedClassId,
+        class_name: normalizedClassName,
+        section: normalizedSection,
+        academic_year: normalizedAcademicYear,
         start_month: typeof start_month === 'string' ? parseInt(start_month) : (Number(start_month) || 0),
         end_month: typeof end_month === 'string' ? parseInt(end_month) : (Number(end_month) || 0),
         frequency,
+        frequency_mode:
+          frequency_mode === 'multiple'
+            ? 'multiple'
+            : 'single',
         payment_due_day: dueDay,
         late_fee_type: late_fee_type || null,
         late_fee_value: late_fee_value ? (typeof late_fee_value === 'string' ? parseFloat(late_fee_value) : Number(late_fee_value)) : 0,
@@ -229,6 +280,16 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
+      const maybeCode = (insertError as { code?: string }).code;
+      if (maybeCode === '23505') {
+        return NextResponse.json(
+          {
+            error: 'Fee structure already exists for this class & section.',
+            code: 'FEE_STRUCTURE_EXISTS',
+          },
+          { status: 409 }
+        );
+      }
       console.error('Error creating fee structure:', insertError);
       return NextResponse.json(
         { error: 'Failed to create fee structure', details: insertError.message },
@@ -236,7 +297,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create fee structure items
+    // Create fee structure items (legacy summary items).
     const structureItems = items.map((item: { fee_head_id: string; amount: number }) => ({
       fee_structure_id: feeStructure.id,
       fee_head_id: item.fee_head_id,
@@ -259,6 +320,114 @@ export async function POST(request: NextRequest) {
         { error: 'Failed to create fee structure items', details: itemsError.message },
         { status: 500 }
       );
+    }
+
+    // New model: create plan(s), period(s), and per-period components.
+    const normalizedPlans: Array<{
+      frequency: 'monthly' | 'quarterly' | 'yearly';
+      start_month: number;
+      end_month: number;
+      payment_due_day: number;
+      period_components?: Record<string, Array<{ fee_head_id: string; amount: number; is_enabled?: boolean }>>;
+      default_components?: Array<{ fee_head_id: string; amount: number; is_enabled?: boolean }>;
+    }> = Array.isArray(plans) && plans.length > 0
+      ? plans
+      : [
+          {
+            frequency: frequency as 'monthly' | 'quarterly' | 'yearly',
+            start_month: Number(start_month),
+            end_month: Number(end_month),
+            payment_due_day: dueDay,
+            default_components: items,
+          },
+        ];
+
+    const anchorYear = anchorYearFromAcademicYearLabel(normalizedAcademicYear || '');
+
+    for (const plan of normalizedPlans) {
+      const freq = String(plan.frequency || '').toLowerCase();
+      if (!['monthly', 'quarterly', 'yearly'].includes(freq)) continue;
+      const pStart = Math.min(12, Math.max(1, Number(plan.start_month || start_month)));
+      const pEnd = Math.min(12, Math.max(1, Number(plan.end_month || end_month)));
+      const pDue = Math.min(31, Math.max(1, Number(plan.payment_due_day || dueDay)));
+
+      const { data: createdPlan, error: planErr } = await supabase
+        .from('fee_structure_frequency_plans')
+        .insert({
+          fee_structure_id: feeStructure.id,
+          frequency: freq,
+          start_month: pStart,
+          end_month: pEnd,
+          payment_due_day: pDue,
+          is_active: true,
+        })
+        .select('id, frequency')
+        .single();
+
+      if (planErr || !createdPlan) {
+        await supabase.from('fee_structures').delete().eq('id', feeStructure.id);
+        return NextResponse.json(
+          { error: 'Failed to create frequency plan', details: planErr?.message || 'No plan created' },
+          { status: 500 }
+        );
+      }
+
+      const periods = computeInstallmentMonthsFromStructure(
+        {
+          start_month: pStart,
+          end_month: pEnd,
+          frequency: freq,
+          payment_due_day: pDue,
+        },
+        anchorYear
+      );
+
+      const periodRows = periods.map((p, idx) => ({
+        fee_plan_id: createdPlan.id,
+        period_key: freq === 'quarterly' ? `Q${idx + 1}` : p.due_month,
+        period_label: freq === 'quarterly' ? `Q${idx + 1}` : p.due_month,
+        due_month: p.due_month,
+        due_date: p.due_date,
+        sequence_no: idx + 1,
+      }));
+
+      const { data: createdPeriods, error: periodErr } = await supabase
+        .from('fee_plan_periods')
+        .insert(periodRows)
+        .select('id, period_key');
+
+      if (periodErr || !createdPeriods) {
+        await supabase.from('fee_structures').delete().eq('id', feeStructure.id);
+        return NextResponse.json(
+          { error: 'Failed to create plan periods', details: periodErr?.message || 'No periods created' },
+          { status: 500 }
+        );
+      }
+
+      for (const period of createdPeriods) {
+        const explicit = plan.period_components?.[String(period.period_key)] || null;
+        const baseComponents = explicit && explicit.length > 0 ? explicit : (plan.default_components || items);
+        const compRows = baseComponents
+          .filter((c) => c && c.fee_head_id)
+          .filter((c) => c.is_enabled !== false)
+          .map((c) => ({
+            fee_plan_period_id: period.id,
+            fee_head_id: c.fee_head_id,
+            amount: Math.max(0, Number(c.amount || 0)),
+            is_enabled: c.is_enabled !== false,
+          }));
+        if (compRows.length === 0) continue;
+        const { error: compErr } = await supabase
+          .from('fee_plan_period_components')
+          .insert(compRows);
+        if (compErr) {
+          await supabase.from('fee_structures').delete().eq('id', feeStructure.id);
+          return NextResponse.json(
+            { error: 'Failed to create period components', details: compErr.message },
+            { status: 500 }
+          );
+        }
+      }
     }
 
     return NextResponse.json({

@@ -124,6 +124,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Resolve max marks from DB (source of truth) instead of trusting client payload.
+    const subjectIdsForMax = Array.from(
+      new Set(
+        (marks || [])
+          .map((m: { subject_id?: string } | any) => String(m?.subject_id || ''))
+          .filter(Boolean)
+      )
+    );
+    const { data: examSubjectMappings } = await supabase
+      .from('exam_subject_mappings')
+      .select('subject_id, max_marks')
+      .eq('exam_id', exam_id)
+      .in('subject_id', subjectIdsForMax);
+
+    const maxMarksBySubjectId = new Map<string, number>(
+      (examSubjectMappings || []).map((r: { subject_id: string; max_marks: unknown }) => [
+        String(r.subject_id),
+        Number(r.max_marks) || 0,
+      ])
+    );
+
     // Validate marks (special codes AB / NA / EXEMPT skip numeric cap)
     for (const mark of marks) {
       const code = normalizeMarksEntryCode((mark as { marks_entry_code?: unknown }).marks_entry_code);
@@ -135,7 +156,11 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      const maxM = Number((mark as { max_marks?: unknown }).max_marks) || 0;
+      const subjectId = String((mark as { subject_id?: unknown }).subject_id || '');
+      const maxM =
+        maxMarksBySubjectId.get(subjectId) ??
+        Number((mark as { max_marks?: unknown }).max_marks) ??
+        0;
       if (obtained != null && obtained !== '' && Number(obtained) > maxM) {
         return NextResponse.json(
           { error: `Marks obtained (${obtained}) cannot exceed max marks (${maxM})` },
@@ -154,7 +179,11 @@ export async function POST(request: NextRequest) {
     }
     const maxMarksValues = (m: MarkInput) => {
       const code = normalizeMarksEntryCode(m.marks_entry_code);
-      const maxMarks = parseInt(String(m.max_marks || '0')) || 0;
+      const resolvedFromDb = maxMarksBySubjectId.get(String(m.subject_id));
+      const maxMarks =
+        resolvedFromDb != null
+          ? resolvedFromDb
+          : parseInt(String(m.max_marks || '0')) || 0;
       if (code) {
         return { maxMarks, marksObtained: 0, marks_entry_code: code as string };
       }

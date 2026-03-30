@@ -176,6 +176,7 @@ export default function PaymentCollectionPage({
   const [discountAddPercent, setDiscountAddPercent] = useState<string>('');
   const [discountAddFlat, setDiscountAddFlat] = useState<string>('');
   const [lineSaving, setLineSaving] = useState<boolean>(false);
+  const [partialAmount, setPartialAmount] = useState<string>('');
 
   const fetchAcademicYears = useCallback(async () => {
     if (!schoolCode) return;
@@ -228,6 +229,7 @@ export default function PaymentCollectionPage({
         setStudentFees([]);
         setRecentPayments([]);
         setAllocations({});
+        setPartialAmount('');
         setExpandedStructureId(null);
         return;
       }
@@ -350,6 +352,7 @@ export default function PaymentCollectionPage({
     setStudentFees([]);
     setRecentPayments([]);
     setAllocations({});
+    setPartialAmount('');
     setError('');
     setSuccess('');
 
@@ -410,6 +413,7 @@ export default function PaymentCollectionPage({
     if (activeFeeId === fee.id) {
       setActiveFeeId(null);
       setAllocations({});
+      setPartialAmount('');
       return;
     }
 
@@ -417,6 +421,7 @@ export default function PaymentCollectionPage({
 
     const amt = Math.round(Number(fee.total_due || 0) * 100) / 100;
     setAllocations(amt > 0 ? { [fee.id]: amt } : {});
+    setPartialAmount(amt > 0 ? String(amt) : '');
 
     // Receipt-scoped inputs should start fresh per installment.
     setMiscAddLabel('');
@@ -424,6 +429,23 @@ export default function PaymentCollectionPage({
     setDiscountAddMode('percent');
     setDiscountAddPercent('');
     setDiscountAddFlat('');
+  };
+
+  const applyPartialAllocation = () => {
+    if (!activeSelectedFee) return;
+    const due = Math.max(0, Number(activeSelectedFee.total_due || 0));
+    const entered = Number(partialAmount);
+    if (!Number.isFinite(entered) || entered <= 0) {
+      setError('Partial payment amount must be greater than 0');
+      return;
+    }
+    if (entered > due) {
+      setError(`Partial amount cannot exceed due amount ${formatCurrency(due)}`);
+      return;
+    }
+    setError('');
+    const safe = Math.round(entered * 100) / 100;
+    setAllocations({ [activeSelectedFee.id]: safe });
   };
 
   const reloadSelectedStudentFees = async () => {
@@ -622,6 +644,7 @@ export default function PaymentCollectionPage({
         setStudentFees([]);
         setRecentPayments([]);
         setAllocations({});
+        setPartialAmount('');
         setReferenceNo('');
         setReceiptModalOpen(false);
         setActiveFeeId(null);
@@ -728,12 +751,14 @@ export default function PaymentCollectionPage({
     if (!selectedStudent || !expandedStructureId) {
       setActiveFeeId(null);
       setAllocations({});
+      setPartialAmount('');
       return;
     }
 
     // Wait for explicit installment selection (single-select).
     setActiveFeeId(null);
     setAllocations({});
+    setPartialAmount('');
 
     // Receipt-scoped inputs should start fresh.
     setMiscAddLabel('');
@@ -746,6 +771,7 @@ export default function PaymentCollectionPage({
   // Restrict allocations to the currently expanded fee-structure group
   useEffect(() => {
     setAllocations({});
+    setPartialAmount('');
     setMiscAddLabel('');
     setMiscAddAmount('');
     setDiscountAddPercent('');
@@ -1395,6 +1421,36 @@ export default function PaymentCollectionPage({
                                                 </div>
                                               ))}
                                             </div>
+                                            {manual.length > 0 && (
+                                              <div className="mt-3">
+                                                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
+                                                  Misc & discounts
+                                                </p>
+                                                <ul className="rounded-lg border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-800">
+                                                  {manual.map((ln) => (
+                                                    <li
+                                                      key={ln.id}
+                                                      className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 text-sm text-gray-800 dark:text-slate-200"
+                                                    >
+                                                      <span className="min-w-0">
+                                                        {ln.label}{' '}
+                                                        <span className="text-gray-500 text-xs">({ln.kind})</span>
+                                                      </span>
+                                                      <span
+                                                        className={`tabular-nums font-medium text-right shrink-0 ${
+                                                          ln.amount < 0
+                                                            ? 'text-green-600 dark:text-green-400'
+                                                            : 'text-red-600 dark:text-red-400'
+                                                        }`}
+                                                      >
+                                                        {ln.amount < 0 ? '−' : '+'}
+                                                        {formatCurrency(Math.abs(ln.amount))}
+                                                      </span>
+                                                    </li>
+                                                  ))}
+                                                </ul>
+                                              </div>
+                                            )}
                                           </div>
                                         )}
 
@@ -1473,37 +1529,6 @@ export default function PaymentCollectionPage({
                                                 </span>
                                               </span>
                                             )}
-                                          </div>
-                                        )}
-
-                                        {manual.length > 0 && (
-                                          <div>
-                                            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
-                                              Misc & discounts
-                                            </p>
-                                            <ul className="rounded-lg border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-800">
-                                              {manual.map((ln) => (
-                                                <li
-                                                  key={ln.id}
-                                                  className="flex justify-between gap-3 px-3 py-2 text-sm text-gray-800 dark:text-slate-200"
-                                                >
-                                                  <span className="min-w-0">
-                                                    {ln.label}{' '}
-                                                    <span className="text-gray-500 text-xs">({ln.kind})</span>
-                                                  </span>
-                                                  <span
-                                                    className={`tabular-nums font-medium shrink-0 ${
-                                                      ln.amount < 0
-                                                        ? 'text-green-600 dark:text-green-400'
-                                                        : 'text-red-600 dark:text-red-400'
-                                                    }`}
-                                                  >
-                                                    {ln.amount < 0 ? '−' : '+'}
-                                                    {formatCurrency(Math.abs(ln.amount))}
-                                                  </span>
-                                                </li>
-                                              ))}
-                                            </ul>
                                           </div>
                                         )}
 
@@ -1867,6 +1892,33 @@ export default function PaymentCollectionPage({
                                         ))
                                       )}
                                     </div>
+                                    {manual.length > 0 && (
+                                      <div className="mt-3">
+                                        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
+                                          Misc & discounts
+                                        </p>
+                                        <ul className="rounded-lg border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-800">
+                                          {manual.map((ln) => (
+                                            <li key={ln.id} className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 text-sm">
+                                              <span className="min-w-0">
+                                                {ln.label}{' '}
+                                                <span className="text-gray-500 text-xs">({ln.kind})</span>
+                                              </span>
+                                              <span
+                                                className={`tabular-nums font-medium text-right ${
+                                                  ln.amount < 0
+                                                    ? 'text-green-600 dark:text-green-400'
+                                                    : 'text-red-600 dark:text-red-400'
+                                                }`}
+                                              >
+                                                {ln.amount < 0 ? '−' : '+'}
+                                                {formatCurrency(Math.abs(ln.amount))}
+                                              </span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
                                   </div>
 
                                   {/* Transport snapshot + rules (if any) */}
@@ -1892,34 +1944,6 @@ export default function PaymentCollectionPage({
                                     </div>
 
                                     <div className="space-y-5">
-                                      {/* Misc/discount */}
-                                      {manual.length > 0 && (
-                                        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50/40 dark:bg-slate-900/20 p-4">
-                                          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-3">
-                                            Misc & discounts
-                                          </p>
-                                          <ul className="rounded-lg border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-800">
-                                            {manual.map((ln) => (
-                                              <li key={ln.id} className="flex justify-between gap-3 px-3 py-2 text-sm">
-                                                <span className="min-w-0">
-                                                  {ln.label}{' '}
-                                                  <span className="text-gray-500 text-xs">({ln.kind})</span>
-                                                </span>
-                                                <span
-                                                  className={`tabular-nums font-medium ${
-                                                    ln.amount < 0
-                                                      ? 'text-green-600 dark:text-green-400'
-                                                      : 'text-red-600 dark:text-red-400'
-                                                  }`}
-                                                >
-                                                  {ln.amount < 0 ? '−' : '+'}
-                                                  {formatCurrency(Math.abs(ln.amount))}
-                                                </span>
-                                              </li>
-                                            ))}
-                                          </ul>
-                                        </div>
-                                      )}
                                       {!isPaid && (
                                         <div className="rounded-xl border border-dashed border-gray-300 dark:border-slate-600 bg-gray-50/60 dark:bg-slate-900/20 p-4">
                                           <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-3">
@@ -2105,6 +2129,47 @@ export default function PaymentCollectionPage({
                           Total Due (all visible rows) {formatCurrency(totalDue)}
                         </p>
                       </div>
+                      {activeSelectedFee && activeSelectedFee.total_due > 0.009 && (
+                        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-950/20 p-3 space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                            Partial Payment
+                          </p>
+                          <p className="text-xs text-gray-600 dark:text-slate-300">
+                            Due for selected installment {formatCurrency(Number(activeSelectedFee.total_due || 0))}
+                          </p>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <Input
+                              type="number"
+                              step={0.01}
+                              min={0}
+                              value={partialAmount}
+                              onChange={(e) => setPartialAmount(e.target.value)}
+                              placeholder="Enter amount to collect"
+                              className="h-10"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-10"
+                              onClick={applyPartialAllocation}
+                            >
+                              Apply amount
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-10"
+                              onClick={() => {
+                                const due = Math.round(Number(activeSelectedFee.total_due || 0) * 100) / 100;
+                                setPartialAmount(String(due));
+                                setAllocations(due > 0 ? { [activeSelectedFee.id]: due } : {});
+                              }}
+                            >
+                              Full due
+                            </Button>
+                          </div>
+                        </div>
+                      )}
 
                       <Button
                         onClick={() => {

@@ -22,6 +22,17 @@ interface Class {
   academic_year: string;
 }
 
+type FrequencyOption = 'monthly' | 'quarterly' | 'yearly';
+
+type CompositionSnapshot = {
+  selectedFeeHeads: Record<string, number>;
+  selectedFeeHeadsByMonth: Record<string, Record<string, number>>;
+  selectedFeeHeadsByQuarter: Record<string, Record<string, number>>;
+  sameFeeAllPeriods: boolean;
+  uniformPeriodAmounts: Record<string, number>;
+  activeCompositionTab: string;
+};
+
 function sumAmountRecord(rec: Record<string, number>): number {
   return Object.values(rec).reduce((s, a) => s + (Number(a) || 0), 0);
 }
@@ -33,12 +44,15 @@ function hasNegativeAmount(rec: Record<string, number>): boolean {
 /** All fee heads with amounts (default 0) for consistent line items including explicit zeros. */
 function itemsForHeads(
   feeHeads: FeeHead[],
-  amountsByHeadId: Record<string, number> | undefined
+  amountsByHeadId: Record<string, number> | undefined,
+  isHeadEnabled: (headId: string) => boolean
 ): { fee_head_id: string; amount: number }[] {
-  return feeHeads.map((h) => ({
-    fee_head_id: h.id,
-    amount: Math.max(0, Number(amountsByHeadId?.[h.id] ?? 0)),
-  }));
+  return feeHeads
+    .filter((h) => isHeadEnabled(h.id))
+    .map((h) => ({
+      fee_head_id: h.id,
+      amount: Math.max(0, Number(amountsByHeadId?.[h.id] ?? 0)),
+    }));
 }
 
 const MONTHS = [
@@ -80,6 +94,9 @@ export default function CreateFeeStructurePage({
   const [startMonth, setStartMonth] = useState(4); // April
   const [endMonth, setEndMonth] = useState(3); // March (next year)
   const [frequency, setFrequency] = useState('monthly');
+  const [frequencyMode, setFrequencyMode] = useState<'single' | 'multiple'>('single');
+  const [selectedFrequencies, setSelectedFrequencies] = useState<FrequencyOption[]>(['monthly']);
+  const [compositionByFrequency, setCompositionByFrequency] = useState<Record<string, CompositionSnapshot>>({});
   const [paymentDueDay, setPaymentDueDay] = useState(15); // Last date of payment (1-31)
   
   // Step 3: Fee Composition - yearly: single; monthly: by month; quarterly: by Q1–Q4
@@ -95,6 +112,7 @@ export default function CreateFeeStructurePage({
   const [sameFeeAllPeriods, setSameFeeAllPeriods] = useState(false);
   const [uniformPeriodAmounts, setUniformPeriodAmounts] = useState<Record<string, number>>({});
   const [activeCompositionTab, setActiveCompositionTab] = useState<string>(''); // month number or Q1–Q4
+  const [enabledFeeHeadIds, setEnabledFeeHeadIds] = useState<Record<string, boolean>>({});
   
   // Step 4: Late Fee Rules
   const [lateFeeType, setLateFeeType] = useState('');
@@ -127,11 +145,19 @@ export default function CreateFeeStructurePage({
 
         // Fetch fee heads
         const headsRes = await fetch(
-          `/api/v2/fees/fee-heads?school_code=${encodeURIComponent(schoolCode)}&active_only=true`
+          `/api/v2/fees/fee-heads?school_code=${encodeURIComponent(schoolCode)}`
         );
         const headsData = await headsRes.json();
         if (headsRes.ok) {
-          setFeeHeads(headsData.data || []);
+          const allHeads = headsData.data || [];
+          setFeeHeads(allHeads);
+          setEnabledFeeHeadIds((prev) => {
+            const next = { ...prev };
+            allHeads.forEach((h: FeeHead) => {
+              if (typeof next[h.id] === 'undefined') next[h.id] = true;
+            });
+            return next;
+          });
         }
       } catch (err) {
         console.error('Error fetching data:', err);
@@ -149,9 +175,13 @@ export default function CreateFeeStructurePage({
       const sectionSummary = classSectionMap
         .map((e) => (e.sections.length === 0 ? 'all' : `(${e.sections.join(', ')})`))
         .join(' ');
-      setStructureName(`${classNames} ${sectionSummary} ${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Fee ${startMonthName}-${endMonthName}`);
+      const freqLabel =
+        frequencyMode === 'multiple'
+          ? 'Multi-Frequency'
+          : `${frequency.charAt(0).toUpperCase() + frequency.slice(1)}`;
+      setStructureName(`${classNames} ${sectionSummary} ${freqLabel} Fee ${startMonthName}-${endMonthName}`);
     }
-  }, [classSectionMap, frequency, startMonth, endMonth]);
+  }, [classSectionMap, frequency, startMonth, endMonth, frequencyMode]);
 
   const uniqueClassNames = Array.from(new Set(classes.map((c) => c.class))).sort();
 
@@ -190,6 +220,52 @@ export default function CreateFeeStructurePage({
     { id: 'Q3', label: 'Q3 (Oct–Dec)' },
     { id: 'Q4', label: 'Q4 (Jan–Mar)' },
   ];
+  const frequencyOptions: Array<{ id: FrequencyOption; title: string; desc: string }> = [
+    {
+      id: 'monthly',
+      title: 'Monthly',
+      desc: 'One installment per month across your start–end range.',
+    },
+    {
+      id: 'quarterly',
+      title: 'Quarterly',
+      desc: 'Four installments (Q1–Q4) aligned with Apr–Mar style terms.',
+    },
+    {
+      id: 'yearly',
+      title: 'Yearly',
+      desc: 'Single annual fee for the whole period.',
+    },
+  ];
+
+  const cloneNestedRecord = (src: Record<string, Record<string, number>>) =>
+    Object.fromEntries(
+      Object.entries(src).map(([k, v]) => [k, { ...(v || {}) }])
+    ) as Record<string, Record<string, number>>;
+
+  const getCurrentCompositionSnapshot = (): CompositionSnapshot => ({
+    selectedFeeHeads: { ...selectedFeeHeads },
+    selectedFeeHeadsByMonth: cloneNestedRecord(selectedFeeHeadsByMonth),
+    selectedFeeHeadsByQuarter: cloneNestedRecord(selectedFeeHeadsByQuarter),
+    sameFeeAllPeriods,
+    uniformPeriodAmounts: { ...uniformPeriodAmounts },
+    activeCompositionTab,
+  });
+
+  const loadCompositionSnapshot = (snap?: CompositionSnapshot) => {
+    if (!snap) {
+      resetAllCompositionState();
+      return;
+    }
+    setSelectedFeeHeads({ ...(snap.selectedFeeHeads || {}) });
+    setSelectedFeeHeadsByMonth(cloneNestedRecord(snap.selectedFeeHeadsByMonth || {}));
+    setSelectedFeeHeadsByQuarter(
+      cloneNestedRecord(snap.selectedFeeHeadsByQuarter || { Q1: {}, Q2: {}, Q3: {}, Q4: {} })
+    );
+    setSameFeeAllPeriods(Boolean(snap.sameFeeAllPeriods));
+    setUniformPeriodAmounts({ ...(snap.uniformPeriodAmounts || {}) });
+    setActiveCompositionTab(snap.activeCompositionTab || '');
+  };
 
   const hasCompositionData = () => {
     if (frequency === 'yearly') {
@@ -241,6 +317,76 @@ export default function CreateFeeStructurePage({
     }
     setFrequency(newFrequency);
     if (newFrequency === 'yearly') setSameFeeAllPeriods(false);
+  };
+
+  const saveCurrentFrequencyComposition = (freq: FrequencyOption) => {
+    setCompositionByFrequency((prev) => ({
+      ...prev,
+      [freq]: getCurrentCompositionSnapshot(),
+    }));
+  };
+
+  const switchCompositionFrequency = (nextFrequency: FrequencyOption) => {
+    const currentFrequency = frequency as FrequencyOption;
+    saveCurrentFrequencyComposition(currentFrequency);
+    setFrequency(nextFrequency);
+    loadCompositionSnapshot(compositionByFrequency[nextFrequency]);
+    if (nextFrequency === 'yearly') setSameFeeAllPeriods(false);
+  };
+
+  const toggleFrequencySelection = (freq: FrequencyOption) => {
+    setSelectedFrequencies((prev) => {
+      const has = prev.includes(freq);
+      const next = has ? prev.filter((f) => f !== freq) : [...prev, freq];
+      if (next.length === 0) return prev;
+      return next;
+    });
+  };
+
+  const validateFrequencyComposition = (
+    freq: FrequencyOption,
+    snap: CompositionSnapshot
+  ): string | null => {
+    if (freq === 'yearly') {
+      const yearlyEnabled = getEnabledAmounts(snap.selectedFeeHeads || {});
+      if (Object.keys(yearlyEnabled).length === 0 || hasNegativeAmount(yearlyEnabled) || sumAmountRecord(yearlyEnabled) <= 0) {
+        return 'Yearly composition must have at least one enabled fee head and total > 0.';
+      }
+      return null;
+    }
+    if (freq === 'quarterly') {
+      if (snap.sameFeeAllPeriods) {
+        const uniformEnabled = getEnabledAmounts(snap.uniformPeriodAmounts || {});
+        if (Object.keys(uniformEnabled).length === 0 || hasNegativeAmount(uniformEnabled) || sumAmountRecord(uniformEnabled) <= 0) {
+          return 'Quarterly (same for all quarters) total must be greater than zero.';
+        }
+        return null;
+      }
+      const missingQuarters = QUARTERS.filter((q) => {
+        const amts = getEnabledAmounts((snap.selectedFeeHeadsByQuarter || {})[q.id] || {});
+        return sumAmountRecord(amts) <= 0 || hasNegativeAmount(amts);
+      });
+      if (missingQuarters.length > 0) {
+        return `Quarterly composition incomplete. Complete: ${missingQuarters.map((q) => q.id).join(', ')}.`;
+      }
+      return null;
+    }
+    // monthly
+    if (snap.sameFeeAllPeriods) {
+      const uniformEnabled = getEnabledAmounts(snap.uniformPeriodAmounts || {});
+      if (Object.keys(uniformEnabled).length === 0 || hasNegativeAmount(uniformEnabled) || sumAmountRecord(uniformEnabled) <= 0) {
+        return 'Monthly (same for all months) total must be greater than zero.';
+      }
+      return null;
+    }
+    const badMonths = getMonthsInRange().filter((mo) => {
+      const amts = getEnabledAmounts((snap.selectedFeeHeadsByMonth || {})[String(mo.value)] || {});
+      return sumAmountRecord(amts) <= 0 || hasNegativeAmount(amts);
+    });
+    if (badMonths.length > 0) {
+      return `Monthly composition incomplete. Check: ${badMonths.map((m) => m.label).join(', ')}.`;
+    }
+    return null;
   };
 
   const handleSameFeeAllPeriodsChange = (next: boolean) => {
@@ -299,6 +445,11 @@ export default function CreateFeeStructurePage({
 
   const step1HasAnyClass = classSectionMap.length > 0;
   const step1HasAnySectionSelected = classSectionMap.some((e) => e.sections.length > 0);
+  const isHeadEnabled = (headId: string) => enabledFeeHeadIds[headId] !== false;
+  const getEnabledAmounts = (rec: Record<string, number> | undefined) =>
+    Object.fromEntries(
+      Object.entries(rec || {}).filter(([headId]) => isHeadEnabled(headId))
+    ) as Record<string, number>;
 
   const handleNext = () => {
     setError('');
@@ -313,36 +464,79 @@ export default function CreateFeeStructurePage({
         setError('Please select at least one section for at least one class to continue (use "All" to quickly select all sections).');
         return;
       }
+    } else if (step === 2) {
+      if (frequencyMode === 'multiple') {
+        if (selectedFrequencies.length < 2) {
+          setError('Please select at least two billing frequencies in Multiple mode.');
+          return;
+        }
+        const first = selectedFrequencies[0];
+        if (first && first !== frequency) {
+          setFrequency(first);
+          loadCompositionSnapshot(compositionByFrequency[first]);
+        }
+      } else {
+        if (!frequency) {
+          setError('Please select one billing frequency.');
+          return;
+        }
+        setSelectedFrequencies([frequency as FrequencyOption]);
+      }
     } else if (step === 3) {
+      if (feeHeads.length > 0 && feeHeads.every((h) => !isHeadEnabled(h.id))) {
+        setError('Please turn on at least one fee head in fee composition to continue');
+        return;
+      }
+      if (frequencyMode === 'multiple') {
+        const current = frequency as FrequencyOption;
+        const merged: Record<string, CompositionSnapshot> = {
+          ...compositionByFrequency,
+          [current]: getCurrentCompositionSnapshot(),
+        };
+        for (const freq of selectedFrequencies) {
+          const snap = merged[freq];
+          if (!snap) {
+            setError(`Please complete ${freq} composition before continuing.`);
+            return;
+          }
+          const freqErr = validateFrequencyComposition(freq, snap);
+          if (freqErr) {
+            setError(freqErr);
+            return;
+          }
+        }
+      }
       if (frequency === 'yearly') {
-        if (Object.keys(selectedFeeHeads).length === 0) {
+        const yearlyEnabled = getEnabledAmounts(selectedFeeHeads);
+        if (Object.keys(yearlyEnabled).length === 0) {
           setError('Please enter amounts for at least one fee head (₹0 is allowed for optional heads if the total is above zero)');
           return;
         }
-        if (hasNegativeAmount(selectedFeeHeads)) {
+        if (hasNegativeAmount(yearlyEnabled)) {
           setError('Amounts cannot be negative');
           return;
         }
-        if (sumAmountRecord(selectedFeeHeads) <= 0) {
+        if (sumAmountRecord(yearlyEnabled) <= 0) {
           setError('Total fee amount for the year must be greater than zero');
           return;
         }
       } else if (frequency === 'quarterly' && sameFeeAllPeriods) {
-        if (Object.keys(uniformPeriodAmounts).length === 0) {
+        const uniformEnabled = getEnabledAmounts(uniformPeriodAmounts);
+        if (Object.keys(uniformEnabled).length === 0) {
           setError('Please enter amounts for at least one fee head (₹0 is allowed on heads if the total is above zero).');
           return;
         }
-        if (hasNegativeAmount(uniformPeriodAmounts)) {
+        if (hasNegativeAmount(uniformEnabled)) {
           setError('Amounts cannot be negative');
           return;
         }
-        if (sumAmountRecord(uniformPeriodAmounts) <= 0) {
+        if (sumAmountRecord(uniformEnabled) <= 0) {
           setError('Total fee per quarter must be greater than zero (same breakdown will apply to Q1–Q4).');
           return;
         }
       } else if (frequency === 'quarterly') {
         const atLeastOneComplete = QUARTERS.some((q) => {
-          const amts = selectedFeeHeadsByQuarter[q.id] || {};
+          const amts = getEnabledAmounts(selectedFeeHeadsByQuarter[q.id] || {});
           return sumAmountRecord(amts) > 0 && !hasNegativeAmount(amts);
         });
         if (!atLeastOneComplete) {
@@ -350,22 +544,23 @@ export default function CreateFeeStructurePage({
           return;
         }
       } else if (frequency === 'monthly' && sameFeeAllPeriods) {
-        if (Object.keys(uniformPeriodAmounts).length === 0) {
+        const uniformEnabled = getEnabledAmounts(uniformPeriodAmounts);
+        if (Object.keys(uniformEnabled).length === 0) {
           setError('Please enter amounts for at least one fee head (₹0 is allowed on heads if the total is above zero).');
           return;
         }
-        if (hasNegativeAmount(uniformPeriodAmounts)) {
+        if (hasNegativeAmount(uniformEnabled)) {
           setError('Amounts cannot be negative');
           return;
         }
-        if (sumAmountRecord(uniformPeriodAmounts) <= 0) {
+        if (sumAmountRecord(uniformEnabled) <= 0) {
           setError('Total fee per month must be greater than zero (same breakdown will apply to every month in your duration).');
           return;
         }
       } else if (frequency === 'monthly') {
         const months = getMonthsInRange();
         for (const mo of months) {
-          const amts = selectedFeeHeadsByMonth[String(mo.value)] || {};
+          const amts = getEnabledAmounts(selectedFeeHeadsByMonth[String(mo.value)] || {});
           if (hasNegativeAmount(amts)) {
             setError(`Amounts cannot be negative for ${mo.label}`);
             return;
@@ -384,6 +579,9 @@ export default function CreateFeeStructurePage({
   };
 
   const handleBack = () => {
+    if (step === 4 && frequencyMode === 'multiple') {
+      saveCurrentFrequencyComposition(frequency as FrequencyOption);
+    }
     setStep(step - 1);
     setError('');
   };
@@ -399,14 +597,15 @@ export default function CreateFeeStructurePage({
       return;
     }
 
-    if (frequency === 'quarterly' && sameFeeAllPeriods) {
-      if (sumAmountRecord(uniformPeriodAmounts) <= 0 || hasNegativeAmount(uniformPeriodAmounts)) {
+    if (frequencyMode !== 'multiple' && frequency === 'quarterly' && sameFeeAllPeriods) {
+      const uniformEnabled = getEnabledAmounts(uniformPeriodAmounts);
+      if (sumAmountRecord(uniformEnabled) <= 0 || hasNegativeAmount(uniformEnabled)) {
         setError('Uniform quarterly fee total must be greater than zero and amounts cannot be negative');
         return;
       }
-    } else if (frequency === 'quarterly') {
+    } else if (frequencyMode !== 'multiple' && frequency === 'quarterly') {
       const missingQuarters = QUARTERS.filter((q) => {
-        const amts = selectedFeeHeadsByQuarter[q.id] || {};
+        const amts = getEnabledAmounts(selectedFeeHeadsByQuarter[q.id] || {});
         return sumAmountRecord(amts) <= 0 || hasNegativeAmount(amts);
       });
       if (missingQuarters.length > 0) {
@@ -417,14 +616,15 @@ export default function CreateFeeStructurePage({
       }
     }
 
-    if (frequency === 'monthly' && sameFeeAllPeriods) {
-      if (sumAmountRecord(uniformPeriodAmounts) <= 0 || hasNegativeAmount(uniformPeriodAmounts)) {
+    if (frequencyMode !== 'multiple' && frequency === 'monthly' && sameFeeAllPeriods) {
+      const uniformEnabled = getEnabledAmounts(uniformPeriodAmounts);
+      if (sumAmountRecord(uniformEnabled) <= 0 || hasNegativeAmount(uniformEnabled)) {
         setError('Uniform monthly fee total must be greater than zero and amounts cannot be negative');
         return;
       }
-    } else if (frequency === 'monthly') {
+    } else if (frequencyMode !== 'multiple' && frequency === 'monthly') {
       const badMonths = getMonthsInRange().filter((mo) => {
-        const amts = selectedFeeHeadsByMonth[String(mo.value)] || {};
+        const amts = getEnabledAmounts(selectedFeeHeadsByMonth[String(mo.value)] || {});
         return sumAmountRecord(amts) <= 0 || hasNegativeAmount(amts);
       });
       if (badMonths.length > 0) {
@@ -435,8 +635,9 @@ export default function CreateFeeStructurePage({
       }
     }
 
-    if (frequency === 'yearly') {
-      if (sumAmountRecord(selectedFeeHeads) <= 0 || hasNegativeAmount(selectedFeeHeads)) {
+    if (frequencyMode !== 'multiple' && frequency === 'yearly') {
+      const yearlyEnabled = getEnabledAmounts(selectedFeeHeads);
+      if (sumAmountRecord(yearlyEnabled) <= 0 || hasNegativeAmount(yearlyEnabled)) {
         setError('Year total must be greater than zero and amounts cannot be negative');
         return;
       }
@@ -457,53 +658,114 @@ export default function CreateFeeStructurePage({
         }
       });
 
-      type CreatePayload = { class_name: string; section: string | null; name: string; items: { fee_head_id: string; amount: number }[] };
+      type PlanComponent = { fee_head_id: string; amount: number; is_enabled?: boolean };
+      type PlanPayload = {
+        frequency: 'monthly' | 'quarterly' | 'yearly';
+        start_month: number;
+        end_month: number;
+        payment_due_day: number;
+        period_components?: Record<string, PlanComponent[]>;
+        default_components?: PlanComponent[];
+      };
+      type CreatePayload = {
+        class_name: string;
+        section: string | null;
+        name: string;
+        items: { fee_head_id: string; amount: number }[];
+        plans: PlanPayload[];
+        frequency_mode: 'single' | 'multiple';
+      };
       const toCreate: CreatePayload[] = [];
 
-      if (frequency === 'yearly') {
-        const items = itemsForHeads(feeHeads, selectedFeeHeads);
-        baseCombinations.forEach(({ class_name, section }) => {
-          const nameSuffix = section ? ` - ${section}` : '';
-          toCreate.push({
-            class_name,
-            section,
-            name: `${structureName}${nameSuffix}`.trim(),
-            items,
+      const workingSnapshot = getCurrentCompositionSnapshot();
+      const mergedSnapshots: Record<string, CompositionSnapshot> = {
+        ...compositionByFrequency,
+        [frequency]: workingSnapshot,
+      };
+      const frequenciesToUse: FrequencyOption[] =
+        frequencyMode === 'multiple'
+          ? selectedFrequencies
+          : [frequency as FrequencyOption];
+
+      const buildPlanPayloadFor = (freq: FrequencyOption, snap: CompositionSnapshot): PlanPayload => {
+        const out: PlanPayload = {
+          frequency: freq,
+          start_month: startMonth,
+          end_month: endMonth,
+          payment_due_day: paymentDueDay,
+        };
+        if (freq === 'yearly') {
+          out.default_components = itemsForHeads(feeHeads, snap.selectedFeeHeads, isHeadEnabled);
+          return out;
+        }
+        if (freq === 'quarterly') {
+          if (snap.sameFeeAllPeriods) {
+            out.default_components = itemsForHeads(feeHeads, snap.uniformPeriodAmounts, isHeadEnabled);
+            out.period_components = {
+              Q1: itemsForHeads(feeHeads, snap.uniformPeriodAmounts, isHeadEnabled),
+              Q2: itemsForHeads(feeHeads, snap.uniformPeriodAmounts, isHeadEnabled),
+              Q3: itemsForHeads(feeHeads, snap.uniformPeriodAmounts, isHeadEnabled),
+              Q4: itemsForHeads(feeHeads, snap.uniformPeriodAmounts, isHeadEnabled),
+            };
+          } else {
+            out.period_components = {
+              Q1: itemsForHeads(feeHeads, snap.selectedFeeHeadsByQuarter?.Q1 || {}, isHeadEnabled),
+              Q2: itemsForHeads(feeHeads, snap.selectedFeeHeadsByQuarter?.Q2 || {}, isHeadEnabled),
+              Q3: itemsForHeads(feeHeads, snap.selectedFeeHeadsByQuarter?.Q3 || {}, isHeadEnabled),
+              Q4: itemsForHeads(feeHeads, snap.selectedFeeHeadsByQuarter?.Q4 || {}, isHeadEnabled),
+            };
+            out.default_components = out.period_components.Q1;
+          }
+          return out;
+        }
+        // monthly
+        if (snap.sameFeeAllPeriods) {
+          out.default_components = itemsForHeads(feeHeads, snap.uniformPeriodAmounts, isHeadEnabled);
+        } else {
+          const monthMap: Record<string, PlanComponent[]> = {};
+          getMonthsInRange().forEach((mo) => {
+            const key = String(mo.value);
+            monthMap[key] = itemsForHeads(feeHeads, snap.selectedFeeHeadsByMonth?.[key] || {}, isHeadEnabled);
           });
-        });
-      } else if (frequency === 'quarterly') {
-        QUARTERS.forEach((q) => {
-          const amounts = sameFeeAllPeriods ? uniformPeriodAmounts : selectedFeeHeadsByQuarter[q.id];
-          const items = itemsForHeads(feeHeads, amounts);
-          baseCombinations.forEach(({ class_name, section }) => {
-            const nameSuffix = section ? ` - ${section}` : '';
-            toCreate.push({
-              class_name,
-              section,
-              name: `${structureName} ${q.id}${nameSuffix}`.trim(),
-              items,
-            });
-          });
-        });
-      } else if (frequency === 'monthly') {
-        const months = getMonthsInRange();
-        months.forEach((mo) => {
-          const key = String(mo.value);
-          const amounts = sameFeeAllPeriods ? uniformPeriodAmounts : selectedFeeHeadsByMonth[key];
-          const items = itemsForHeads(feeHeads, amounts);
-          baseCombinations.forEach(({ class_name, section }) => {
-            const nameSuffix = section ? ` - ${section}` : '';
-            toCreate.push({
-              class_name,
-              section,
-              name: `${structureName} - ${mo.label}${nameSuffix}`.trim(),
-              items,
-            });
-          });
-        });
+          out.period_components = monthMap;
+          out.default_components = monthMap[String(startMonth)] || [];
+        }
+        return out;
+      };
+
+      for (const freq of frequenciesToUse) {
+        const snap = mergedSnapshots[freq];
+        if (!snap) {
+          setError(`Please complete ${freq} composition before saving.`);
+          setLoading(false);
+          return;
+        }
+        const freqErr = validateFrequencyComposition(freq, snap);
+        if (freqErr) {
+          setError(freqErr);
+          setLoading(false);
+          return;
+        }
       }
 
-      const createPromises = toCreate.map(({ class_name, section, name: structureNameWithSuffix, items: itemsPayload }) =>
+      const plansPayload = frequenciesToUse.map((freq) =>
+        buildPlanPayloadFor(freq, mergedSnapshots[freq])
+      );
+      const baseItems = plansPayload[0]?.default_components || [];
+
+      baseCombinations.forEach(({ class_name, section }) => {
+        const nameSuffix = section ? ` - ${section}` : '';
+        toCreate.push({
+          class_name,
+          section,
+          name: `${structureName}${nameSuffix}`.trim(),
+          items: baseItems,
+          plans: plansPayload,
+          frequency_mode: frequencyMode === 'multiple' ? 'multiple' : 'single',
+        });
+      });
+
+      const createPromises = toCreate.map(({ class_name, section, name: structureNameWithSuffix, items: itemsPayload, plans, frequency_mode }) =>
         fetch('/api/v2/fees/fee-structures', {
           method: 'POST',
           headers: {
@@ -519,6 +781,8 @@ export default function CreateFeeStructurePage({
             start_month: startMonth,
             end_month: endMonth,
             frequency,
+            frequency_mode,
+            plans,
             payment_due_day: paymentDueDay,
             late_fee_type: lateFeeType || null,
             late_fee_value: lateFeeValue ? parseFloat(lateFeeValue) : 0,
@@ -529,12 +793,26 @@ export default function CreateFeeStructurePage({
       );
 
       const responses = await Promise.all(createPromises);
-      const results = await Promise.all(responses.map(r => r.json()));
+      const results = await Promise.all(responses.map(async (r) => ({
+        ok: r.ok,
+        status: r.status,
+        body: await r.json().catch(() => ({})),
+      })));
 
-      const hasError = results.some(r => !r.data);
+      const hasError = results.some((r) => !r.ok || !r.body?.data);
       if (hasError) {
-        const errorResult = results.find(r => !r.data);
-        setError(errorResult?.error || 'Failed to create some fee structures');
+        const duplicate = results.find((r) => r.status === 409 || r.body?.code === 'FEE_STRUCTURE_EXISTS');
+        if (duplicate) {
+          const existingId = duplicate.body?.existing_structure_id;
+          if (existingId && confirm('Fee structure already exists for this class & section. Click OK to edit existing.')) {
+            router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures/${existingId}`);
+            return;
+          }
+          setError(duplicate.body?.error || 'Fee structure already exists for this class & section.');
+          return;
+        }
+        const errorResult = results.find((r) => !r.ok || !r.body?.data);
+        setError(errorResult?.body?.error || 'Failed to create some fee structures');
       } else {
         router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures`);
       }
@@ -546,8 +824,25 @@ export default function CreateFeeStructurePage({
     }
   };
 
+  const getReviewSnapshot = (freq: FrequencyOption): CompositionSnapshot => {
+    if (frequencyMode === 'multiple') {
+      if (freq === frequency) return getCurrentCompositionSnapshot();
+      return (
+        compositionByFrequency[freq] || {
+          selectedFeeHeads: {},
+          selectedFeeHeadsByMonth: {},
+          selectedFeeHeadsByQuarter: { Q1: {}, Q2: {}, Q3: {}, Q4: {} },
+          sameFeeAllPeriods: false,
+          uniformPeriodAmounts: {},
+          activeCompositionTab: '',
+        }
+      );
+    }
+    return getCurrentCompositionSnapshot();
+  };
+
   const getTotalAmount = () => {
-    return sumAmountRecord(selectedFeeHeads);
+    return sumAmountRecord(getEnabledAmounts(selectedFeeHeads));
   };
 
   const stepTitles = [
@@ -822,32 +1117,53 @@ export default function CreateFeeStructurePage({
                   <p className="text-xs text-gray-500 mb-3">
                     Choose how often installments are created: every month, every quarter, or once for the full academic period.
                   </p>
+                  <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFrequencyMode('single')}
+                      className={`rounded-lg border px-3 py-2 text-sm text-left ${
+                        frequencyMode === 'single'
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
+                          : 'border-gray-200 bg-white text-gray-700'
+                      }`}
+                    >
+                      <span className="font-semibold">Single Frequency</span>
+                      <span className="block text-xs mt-0.5">One frequency for all students in this structure.</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFrequencyMode('multiple')}
+                      className={`rounded-lg border px-3 py-2 text-sm text-left ${
+                        frequencyMode === 'multiple'
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
+                          : 'border-gray-200 bg-white text-gray-700'
+                      }`}
+                    >
+                      <span className="font-semibold">Multiple Frequencies</span>
+                      <span className="block text-xs mt-0.5">Choose more than one frequency and compose each one.</span>
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {(
-                      [
-                        {
-                          id: 'monthly',
-                          title: 'Monthly',
-                          desc: 'One installment per month across your start–end range.',
-                        },
-                        {
-                          id: 'quarterly',
-                          title: 'Quarterly',
-                          desc: 'Four installments (Q1–Q4) aligned with Apr–Mar style terms.',
-                        },
-                        {
-                          id: 'yearly',
-                          title: 'Yearly',
-                          desc: 'Single annual fee for the whole period.',
-                        },
-                      ] as const
-                    ).map((opt) => {
-                      const selected = frequency === opt.id;
+                    {frequencyOptions.map((opt) => {
+                      const selected =
+                        frequencyMode === 'multiple'
+                          ? selectedFrequencies.includes(opt.id)
+                          : frequency === opt.id;
                       return (
                         <button
                           key={opt.id}
                           type="button"
-                          onClick={() => handleFrequencyChange(opt.id)}
+                          onClick={() => {
+                            if (frequencyMode === 'multiple') {
+                              toggleFrequencySelection(opt.id);
+                              if (!selectedFrequencies.includes(opt.id)) {
+                                handleFrequencyChange(opt.id);
+                              }
+                            } else {
+                              handleFrequencyChange(opt.id);
+                              setSelectedFrequencies([opt.id]);
+                            }
+                          }}
                           className={`text-left rounded-xl border-2 px-4 py-3 transition-all ${
                             selected
                               ? 'border-indigo-600 bg-indigo-50 shadow-sm ring-1 ring-indigo-200'
@@ -864,6 +1180,11 @@ export default function CreateFeeStructurePage({
                       );
                     })}
                   </div>
+                  {frequencyMode === 'multiple' && (
+                    <p className="mt-2 text-xs text-gray-600">
+                      Selected: {selectedFrequencies.map((f) => f[0].toUpperCase() + f.slice(1)).join(', ')}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -891,12 +1212,58 @@ export default function CreateFeeStructurePage({
                   <IndianRupee size={24} className="text-indigo-600" />
                   Step 3: Fee Composition
                 </h2>
+                {frequencyMode === 'multiple' && (
+                  <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                    <p className="text-sm font-semibold text-indigo-900">
+                      Compose selected frequencies one by one
+                    </p>
+                    <p className="text-xs text-indigo-800 mt-0.5">
+                      Complete each selected frequency before moving to Step 4.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedFrequencies.map((freq) => {
+                        const isActive = frequency === freq;
+                        return (
+                          <button
+                            key={freq}
+                            type="button"
+                            onClick={() => switchCompositionFrequency(freq)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                              isActive
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-white text-indigo-700 border border-indigo-200'
+                            }`}
+                          >
+                            {freq[0].toUpperCase() + freq.slice(1)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {frequency === 'yearly' && (
                   <>
                     <div className="space-y-3">
                       {feeHeads.map((head) => (
                         <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={isHeadEnabled(head.id)}
+                            onClick={() =>
+                              setEnabledFeeHeadIds((prev) => ({ ...prev, [head.id]: !isHeadEnabled(head.id) }))
+                            }
+                            className={`relative w-11 h-6 rounded-full transition-colors ${
+                              isHeadEnabled(head.id) ? 'bg-indigo-600' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                                isHeadEnabled(head.id) ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-gray-900">{head.name}</span>
@@ -913,6 +1280,7 @@ export default function CreateFeeStructurePage({
                               type="number"
                               placeholder="Amount"
                               value={selectedFeeHeads[head.id] || ''}
+                              disabled={!isHeadEnabled(head.id)}
                               onChange={(e) => {
                                 const amt = parseFloat(e.target.value) || 0;
                                 setSelectedFeeHeads({ ...selectedFeeHeads, [head.id]: amt });
@@ -981,6 +1349,23 @@ export default function CreateFeeStructurePage({
                         <div className="space-y-3">
                           {feeHeads.map((head) => (
                             <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={isHeadEnabled(head.id)}
+                                onClick={() =>
+                                  setEnabledFeeHeadIds((prev) => ({ ...prev, [head.id]: !isHeadEnabled(head.id) }))
+                                }
+                                className={`relative w-11 h-6 rounded-full transition-colors ${
+                                  isHeadEnabled(head.id) ? 'bg-indigo-600' : 'bg-gray-300'
+                                }`}
+                              >
+                                <span
+                                  className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                                    isHeadEnabled(head.id) ? 'translate-x-5' : 'translate-x-0'
+                                  }`}
+                                />
+                              </button>
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold text-gray-900">{head.name}</span>
@@ -999,6 +1384,7 @@ export default function CreateFeeStructurePage({
                                   type="number"
                                   placeholder="Amount"
                                   value={uniformPeriodAmounts[head.id] ?? ''}
+                                  disabled={!isHeadEnabled(head.id)}
                                   onChange={(e) => {
                                     const amt = parseFloat(e.target.value) || 0;
                                     setUniformPeriodAmounts((prev) => ({ ...prev, [head.id]: amt }));
@@ -1014,7 +1400,7 @@ export default function CreateFeeStructurePage({
                           <div className="flex justify-between items-center">
                             <span className="font-bold text-gray-900">Total per month:</span>
                             <span className="text-2xl font-bold text-indigo-600">
-                              ₹{sumAmountRecord(uniformPeriodAmounts).toFixed(2)}
+                              ₹{sumAmountRecord(getEnabledAmounts(uniformPeriodAmounts)).toFixed(2)}
                             </span>
                           </div>
                         </div>
@@ -1029,7 +1415,7 @@ export default function CreateFeeStructurePage({
                       {getMonthsInRange().map((mo) => {
                         const key = String(mo.value);
                         const isActive = activeCompositionTab === key;
-                        const amts = selectedFeeHeadsByMonth[key] || {};
+                        const amts = getEnabledAmounts(selectedFeeHeadsByMonth[key] || {});
                         const total = sumAmountRecord(amts);
                         return (
                           <button
@@ -1049,6 +1435,23 @@ export default function CreateFeeStructurePage({
                       <div className="space-y-3 mt-4">
                         {feeHeads.map((head) => (
                           <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isHeadEnabled(head.id)}
+                              onClick={() =>
+                                setEnabledFeeHeadIds((prev) => ({ ...prev, [head.id]: !isHeadEnabled(head.id) }))
+                              }
+                              className={`relative w-11 h-6 rounded-full transition-colors ${
+                                isHeadEnabled(head.id) ? 'bg-indigo-600' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                                  isHeadEnabled(head.id) ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
                             <div className="flex-1">
                               <span className="font-semibold text-gray-900">{head.name}</span>
                             </div>
@@ -1057,6 +1460,7 @@ export default function CreateFeeStructurePage({
                                 type="number"
                                 placeholder="Amount"
                                 value={selectedFeeHeadsByMonth[activeCompositionTab]?.[head.id] ?? ''}
+                                disabled={!isHeadEnabled(head.id)}
                                 onChange={(e) => {
                                   const amt = parseFloat(e.target.value) || 0;
                                   setSelectedFeeHeadsByMonth((prev) => ({
@@ -1077,9 +1481,8 @@ export default function CreateFeeStructurePage({
                           <span className="font-bold text-gray-900">Total for this month: </span>
                           <span className="text-xl font-bold text-indigo-600">
                             ₹
-                            {Object.values(selectedFeeHeadsByMonth[activeCompositionTab] || {}).reduce(
-                              (s, a) => s + a,
-                              0
+                            {sumAmountRecord(
+                              getEnabledAmounts(selectedFeeHeadsByMonth[activeCompositionTab] || {})
                             ).toFixed(2)}
                           </span>
                         </div>
@@ -1137,6 +1540,23 @@ export default function CreateFeeStructurePage({
                         <div className="space-y-3">
                           {feeHeads.map((head) => (
                             <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={isHeadEnabled(head.id)}
+                                onClick={() =>
+                                  setEnabledFeeHeadIds((prev) => ({ ...prev, [head.id]: !isHeadEnabled(head.id) }))
+                                }
+                                className={`relative w-11 h-6 rounded-full transition-colors ${
+                                  isHeadEnabled(head.id) ? 'bg-indigo-600' : 'bg-gray-300'
+                                }`}
+                              >
+                                <span
+                                  className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                                    isHeadEnabled(head.id) ? 'translate-x-5' : 'translate-x-0'
+                                  }`}
+                                />
+                              </button>
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold text-gray-900">{head.name}</span>
@@ -1155,6 +1575,7 @@ export default function CreateFeeStructurePage({
                                   type="number"
                                   placeholder="Amount"
                                   value={uniformPeriodAmounts[head.id] ?? ''}
+                                  disabled={!isHeadEnabled(head.id)}
                                   onChange={(e) => {
                                     const amt = parseFloat(e.target.value) || 0;
                                     setUniformPeriodAmounts((prev) => ({ ...prev, [head.id]: amt }));
@@ -1170,7 +1591,7 @@ export default function CreateFeeStructurePage({
                           <div className="flex justify-between items-center">
                             <span className="font-bold text-gray-900">Total per quarter:</span>
                             <span className="text-2xl font-bold text-indigo-600">
-                              ₹{sumAmountRecord(uniformPeriodAmounts).toFixed(2)}
+                              ₹{sumAmountRecord(getEnabledAmounts(uniformPeriodAmounts)).toFixed(2)}
                             </span>
                           </div>
                         </div>
@@ -1184,7 +1605,7 @@ export default function CreateFeeStructurePage({
                     <div className="flex gap-2 flex-wrap border-b border-gray-200 pb-2">
                       {QUARTERS.map((q) => {
                         const isActive = activeCompositionTab === q.id;
-                        const amts = selectedFeeHeadsByQuarter[q.id] || {};
+                        const amts = getEnabledAmounts(selectedFeeHeadsByQuarter[q.id] || {});
                         const total = sumAmountRecord(amts);
                         return (
                           <button
@@ -1204,6 +1625,23 @@ export default function CreateFeeStructurePage({
                       <div className="space-y-3 mt-4">
                         {feeHeads.map((head) => (
                           <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isHeadEnabled(head.id)}
+                              onClick={() =>
+                                setEnabledFeeHeadIds((prev) => ({ ...prev, [head.id]: !isHeadEnabled(head.id) }))
+                              }
+                              className={`relative w-11 h-6 rounded-full transition-colors ${
+                                isHeadEnabled(head.id) ? 'bg-indigo-600' : 'bg-gray-300'
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                                  isHeadEnabled(head.id) ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
                             <div className="flex-1">
                               <span className="font-semibold text-gray-900">{head.name}</span>
                             </div>
@@ -1212,6 +1650,7 @@ export default function CreateFeeStructurePage({
                                 type="number"
                                 placeholder="Amount"
                                 value={selectedFeeHeadsByQuarter[activeCompositionTab]?.[head.id] ?? ''}
+                                disabled={!isHeadEnabled(head.id)}
                                 onChange={(e) => {
                                   const amt = parseFloat(e.target.value) || 0;
                                   setSelectedFeeHeadsByQuarter((prev) => ({
@@ -1232,9 +1671,8 @@ export default function CreateFeeStructurePage({
                           <span className="font-bold text-gray-900">Total for this quarter: </span>
                           <span className="text-xl font-bold text-indigo-600">
                             ₹
-                            {Object.values(selectedFeeHeadsByQuarter[activeCompositionTab] || {}).reduce(
-                              (s, a) => s + a,
-                              0
+                            {sumAmountRecord(
+                              getEnabledAmounts(selectedFeeHeadsByQuarter[activeCompositionTab] || {})
                             ).toFixed(2)}
                           </span>
                         </div>
@@ -1327,8 +1765,12 @@ export default function CreateFeeStructurePage({
                     </div>
                     <div>
                       <span className="text-sm text-gray-600">Frequency:</span>
-                      <p className="font-semibold text-gray-900 capitalize">{frequency}</p>
-                      {(frequency === 'monthly' || frequency === 'quarterly') && (
+                      <p className="font-semibold text-gray-900 capitalize">
+                        {frequencyMode === 'multiple'
+                          ? selectedFrequencies.join(', ')
+                          : frequency}
+                      </p>
+                      {frequencyMode === 'single' && (frequency === 'monthly' || frequency === 'quarterly') && (
                         <p className="text-xs text-gray-500 mt-1">
                           Composition:{' '}
                           {sameFeeAllPeriods
@@ -1361,142 +1803,150 @@ export default function CreateFeeStructurePage({
 
                   <div className="mt-4 border-t border-gray-200 pt-4">
                     <span className="text-sm font-semibold text-gray-800">Amount summary</span>
-                    {frequency === 'yearly' && (
-                      <p className="mt-1 text-lg font-bold text-indigo-600">Year total: ₹{getTotalAmount().toFixed(2)}</p>
-                    )}
-                    {frequency === 'quarterly' && (
-                      <ul className="mt-2 space-y-1 text-sm">
-                        {QUARTERS.map((q) => (
-                          <li key={q.id} className="flex justify-between max-w-md">
-                            <span className="text-gray-700">{q.label}</span>
-                            <span className="font-mono font-semibold text-indigo-600">
-                              ₹
-                              {sumAmountRecord(
-                                sameFeeAllPeriods
-                                  ? uniformPeriodAmounts
-                                  : selectedFeeHeadsByQuarter[q.id] || {}
-                              ).toFixed(2)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {frequency === 'monthly' && (
-                      <ul className="mt-2 space-y-1 text-sm max-h-44 overflow-y-auto pr-1">
-                        {getMonthsInRange().map((mo) => (
-                          <li key={mo.value} className="flex justify-between max-w-md">
-                            <span className="text-gray-700">{mo.label}</span>
-                            <span className="font-mono font-semibold text-indigo-600">
-                              ₹
-                              {sumAmountRecord(
-                                sameFeeAllPeriods
-                                  ? uniformPeriodAmounts
-                                  : selectedFeeHeadsByMonth[String(mo.value)] || {}
-                              ).toFixed(2)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    {(frequencyMode === 'multiple' ? selectedFrequencies : [frequency as FrequencyOption]).map((freq) => {
+                      const snap = getReviewSnapshot(freq);
+                      return (
+                        <div key={`amount-${freq}`} className="mt-2">
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                            {freq}
+                          </p>
+                          {freq === 'yearly' && (
+                            <p className="mt-1 text-lg font-bold text-indigo-600">
+                              Year total: ₹{sumAmountRecord(getEnabledAmounts(snap.selectedFeeHeads || {})).toFixed(2)}
+                            </p>
+                          )}
+                          {freq === 'quarterly' && (
+                            <ul className="space-y-1 text-sm">
+                              {QUARTERS.map((q) => (
+                                <li key={`${freq}-${q.id}`} className="flex justify-between max-w-md">
+                                  <span className="text-gray-700">{q.label}</span>
+                                  <span className="font-mono font-semibold text-indigo-600">
+                                    ₹
+                                    {sumAmountRecord(
+                                      getEnabledAmounts(
+                                        snap.sameFeeAllPeriods
+                                          ? snap.uniformPeriodAmounts
+                                          : snap.selectedFeeHeadsByQuarter[q.id] || {}
+                                      )
+                                    ).toFixed(2)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {freq === 'monthly' && (
+                            <ul className="space-y-1 text-sm max-h-44 overflow-y-auto pr-1">
+                              {getMonthsInRange().map((mo) => (
+                                <li key={`${freq}-${mo.value}`} className="flex justify-between max-w-md">
+                                  <span className="text-gray-700">{mo.label}</span>
+                                  <span className="font-mono font-semibold text-indigo-600">
+                                    ₹
+                                    {sumAmountRecord(
+                                      getEnabledAmounts(
+                                        snap.sameFeeAllPeriods
+                                          ? snap.uniformPeriodAmounts
+                                          : snap.selectedFeeHeadsByMonth[String(mo.value)] || {}
+                                      )
+                                    ).toFixed(2)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div className="mt-4 border-t border-gray-200 pt-4">
                     <span className="text-sm font-semibold text-gray-800">Fee heads (all amounts, including ₹0)</span>
-                    {frequency === 'yearly' && (
-                      <ul className="mt-2 space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
-                        {feeHeads.map((h) => {
-                          const amt = Number(selectedFeeHeads[h.id] ?? 0);
-                          return (
-                            <li key={h.id} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
-                              <span className="text-gray-800">{h.name}</span>
-                              <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                    {frequency === 'quarterly' && sameFeeAllPeriods && (
-                      <div className="mt-2">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
-                          Fee heads (repeated for Q1–Q4)
-                        </p>
-                        <ul className="space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
-                          {feeHeads.map((h) => {
-                            const amt = Number(uniformPeriodAmounts[h.id] ?? 0);
-                            return (
-                              <li
-                                key={h.id}
-                                className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0"
-                              >
-                                <span className="text-gray-800">{h.name}</span>
-                                <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    )}
-                    {frequency === 'quarterly' && !sameFeeAllPeriods && (
-                      <div className="mt-2 space-y-3">
-                        {QUARTERS.map((q) => (
-                          <div key={q.id}>
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{q.label}</p>
-                            <ul className="mt-1 space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
-                              {feeHeads.map((h) => {
-                                const amt = Number(selectedFeeHeadsByQuarter[q.id]?.[h.id] ?? 0);
+                    {(frequencyMode === 'multiple' ? selectedFrequencies : [frequency as FrequencyOption]).map((freq) => {
+                      const snap = getReviewSnapshot(freq);
+                      return (
+                        <div key={`heads-${freq}`} className="mt-2">
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">{freq}</p>
+                          {freq === 'yearly' && (
+                            <ul className="space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
+                              {feeHeads.filter((h) => isHeadEnabled(h.id)).map((h) => {
+                                const amt = Number(snap.selectedFeeHeads[h.id] ?? 0);
                                 return (
-                                  <li key={h.id} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
+                                  <li key={`${freq}-${h.id}`} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
                                     <span className="text-gray-800">{h.name}</span>
                                     <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
                                   </li>
                                 );
                               })}
                             </ul>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {frequency === 'monthly' && sameFeeAllPeriods && (
-                      <div className="mt-2">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
-                          Fee heads (repeated for each month in range)
-                        </p>
-                        <ul className="space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
-                          {feeHeads.map((h) => {
-                            const amt = Number(uniformPeriodAmounts[h.id] ?? 0);
-                            return (
-                              <li
-                                key={h.id}
-                                className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0"
-                              >
-                                <span className="text-gray-800">{h.name}</span>
-                                <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    )}
-                    {frequency === 'monthly' && !sameFeeAllPeriods && (
-                      <div className="mt-2 space-y-3 max-h-72 overflow-y-auto pr-1">
-                        {getMonthsInRange().map((mo) => (
-                          <div key={mo.value}>
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{mo.label}</p>
-                            <ul className="mt-1 space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
-                              {feeHeads.map((h) => {
-                                const amt = Number(selectedFeeHeadsByMonth[String(mo.value)]?.[h.id] ?? 0);
+                          )}
+                          {freq === 'quarterly' && snap.sameFeeAllPeriods && (
+                            <ul className="space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
+                              {feeHeads.filter((h) => isHeadEnabled(h.id)).map((h) => {
+                                const amt = Number(snap.uniformPeriodAmounts[h.id] ?? 0);
                                 return (
-                                  <li key={h.id} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
+                                  <li key={`${freq}-${h.id}`} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
                                     <span className="text-gray-800">{h.name}</span>
                                     <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
                                   </li>
                                 );
                               })}
                             </ul>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          )}
+                          {freq === 'quarterly' && !snap.sameFeeAllPeriods && (
+                            <div className="space-y-3">
+                              {QUARTERS.map((q) => (
+                                <div key={`${freq}-${q.id}`}>
+                                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{q.label}</p>
+                                  <ul className="mt-1 space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
+                                    {feeHeads.filter((h) => isHeadEnabled(h.id)).map((h) => {
+                                      const amt = Number(snap.selectedFeeHeadsByQuarter[q.id]?.[h.id] ?? 0);
+                                      return (
+                                        <li key={`${freq}-${q.id}-${h.id}`} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
+                                          <span className="text-gray-800">{h.name}</span>
+                                          <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {freq === 'monthly' && snap.sameFeeAllPeriods && (
+                            <ul className="space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
+                              {feeHeads.filter((h) => isHeadEnabled(h.id)).map((h) => {
+                                const amt = Number(snap.uniformPeriodAmounts[h.id] ?? 0);
+                                return (
+                                  <li key={`${freq}-${h.id}`} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
+                                    <span className="text-gray-800">{h.name}</span>
+                                    <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                          {freq === 'monthly' && !snap.sameFeeAllPeriods && (
+                            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                              {getMonthsInRange().map((mo) => (
+                                <div key={`${freq}-${mo.value}`}>
+                                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{mo.label}</p>
+                                  <ul className="mt-1 space-y-1 text-sm bg-white border border-gray-200 rounded-lg p-3">
+                                    {feeHeads.filter((h) => isHeadEnabled(h.id)).map((h) => {
+                                      const amt = Number(snap.selectedFeeHeadsByMonth[String(mo.value)]?.[h.id] ?? 0);
+                                      return (
+                                        <li key={`${freq}-${mo.value}-${h.id}`} className="flex justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
+                                          <span className="text-gray-800">{h.name}</span>
+                                          <span className="font-mono tabular-nums shrink-0">₹{amt.toFixed(2)}</span>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {lateFeeType && (

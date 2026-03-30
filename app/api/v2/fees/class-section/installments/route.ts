@@ -13,6 +13,8 @@ type InstallmentKey = string;
 
 type InstallmentRow = {
   fee_structure_id: string;
+  fee_plan_id?: string;
+  frequency?: string;
   due_month: string;
   due_date: string;
   structure_name: string;
@@ -122,8 +124,8 @@ function mergeInstallmentRowsByDuplicateStructure(
   for (const row of rows) {
     const st = structById.get(row.fee_structure_id);
     const groupKey = st
-      ? `${structureScheduleBaseDedupeKey(st)}::${row.due_month}`
-      : `${row.fee_structure_id}::${row.due_month}`;
+      ? `${structureScheduleBaseDedupeKey(st)}::${row.frequency || ''}::${row.due_month}`
+      : `${row.fee_structure_id}::${row.frequency || ''}::${row.due_month}`;
     const arr = groups.get(groupKey) ?? [];
     arr.push(row);
     groups.set(groupKey, arr);
@@ -155,6 +157,8 @@ function mergeInstallmentRowsByDuplicateStructure(
 
     merged.push({
       fee_structure_id: canonical.fee_structure_id,
+      fee_plan_id: canonical.fee_plan_id,
+      frequency: canonical.frequency,
       due_month: canonical.due_month,
       due_date: canonical.due_date,
       structure_name: canonStruct
@@ -232,6 +236,7 @@ export async function GET(request: NextRequest) {
           `
         id,
         fee_structure_id,
+        fee_plan_id,
         due_month,
         due_date,
         status,
@@ -255,6 +260,19 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: feeErr.message }, { status: 500 });
       }
 
+      const feePlanIds = Array.from(
+        new Set((rawFees || []).map((f) => String(f.fee_plan_id || '')).filter(Boolean))
+      );
+      const { data: feePlans } = feePlanIds.length
+        ? await supabase
+            .from('fee_structure_frequency_plans')
+            .select('id, frequency')
+            .in('id', feePlanIds)
+        : { data: [] as Array<{ id: string; frequency: string }> };
+      const frequencyByPlanId = new Map<string, string>(
+        (feePlans || []).map((p) => [String(p.id), String(p.frequency || '')])
+      );
+
       for (const f of rawFees || []) {
         const structure = f.fee_structure as {
           id?: string;
@@ -275,9 +293,11 @@ export async function GET(request: NextRequest) {
         if (!isActive && paid <= 0) continue;
 
         const fsid = String(f.fee_structure_id);
+        const feePlanId = String(f.fee_plan_id || '');
+        const rowFrequency = frequencyByPlanId.get(feePlanId) || String(structure.frequency || 'monthly');
         feeCountByStructureId.set(fsid, (feeCountByStructureId.get(fsid) || 0) + 1);
         const dm = String(f.due_month ?? '');
-        const key = `${fsid}::${dm}`;
+        const key = `${fsid}::${rowFrequency}::${dm}`;
         const isPaidStatus = String(f.status || '').toLowerCase() === 'paid';
         const existing = byKey.get(key);
         if (!existing) {
@@ -287,13 +307,15 @@ export async function GET(request: NextRequest) {
           const endMonth = Number.isFinite(em) && em >= 1 && em <= 12 ? em : 12;
           const displayName = installmentDisplayLabel({
             structureName: String(structure.name || 'Fee structure'),
-            frequency: structure.frequency,
+            frequency: rowFrequency,
             startMonth,
             endMonth,
             dueMonth: dm,
           });
           byKey.set(key, {
             fee_structure_id: fsid,
+            fee_plan_id: feePlanId || undefined,
+            frequency: rowFrequency,
             due_month: dm,
             due_date: String(f.due_date ?? ''),
             structure_name: displayName,
@@ -353,21 +375,61 @@ export async function GET(request: NextRequest) {
       feeCountByStructureId
     );
 
+    const slotStructureIds = structuresForInstallmentSlots.map((s) => String(s.id));
+    const { data: slotPlans } = slotStructureIds.length
+      ? await supabase
+          .from('fee_structure_frequency_plans')
+          .select('id, fee_structure_id, frequency, is_active')
+          .in('fee_structure_id', slotStructureIds)
+          .eq('is_active', true)
+      : { data: [] as Array<{ id: string; fee_structure_id: string; frequency: string; is_active: boolean }> };
+    const plansByStructureId = new Map<string, Array<{ id: string; frequency: string }>>();
+    for (const p of slotPlans || []) {
+      const sid = String(p.fee_structure_id);
+      const arr = plansByStructureId.get(sid) || [];
+      arr.push({ id: String(p.id), frequency: String(p.frequency || 'monthly') });
+      plansByStructureId.set(sid, arr);
+    }
+
+    const slotPlanIds = Array.from(new Set((slotPlans || []).map((p) => String(p.id))));
+    const { data: slotPeriods } = slotPlanIds.length
+      ? await supabase
+          .from('fee_plan_periods')
+          .select('id, fee_plan_id, due_month, due_date, sequence_no')
+          .in('fee_plan_id', slotPlanIds)
+          .order('sequence_no', { ascending: true })
+      : { data: [] as Array<{ id: string; fee_plan_id: string; due_month: string; due_date: string; sequence_no: number }> };
+    const periodsByPlanId = new Map<string, Array<{ id: string; due_month: string; due_date: string }>>();
+    for (const p of slotPeriods || []) {
+      const pid = String(p.fee_plan_id);
+      const arr = periodsByPlanId.get(pid) || [];
+      arr.push({
+        id: String(p.id),
+        due_month: String(p.due_month || ''),
+        due_date: String(p.due_date || ''),
+      });
+      periodsByPlanId.set(pid, arr);
+    }
+
+    const slotPeriodIds = Array.from(new Set((slotPeriods || []).map((p) => String(p.id))));
+    const { data: slotComponents } = slotPeriodIds.length
+      ? await supabase
+          .from('fee_plan_period_components')
+          .select('fee_plan_period_id, amount, is_enabled')
+          .in('fee_plan_period_id', slotPeriodIds)
+      : { data: [] as Array<{ fee_plan_period_id: string; amount: number; is_enabled: boolean }> };
+    const baseByPeriodId = new Map<string, number>();
+    for (const c of slotComponents || []) {
+      if (c.is_enabled === false) continue;
+      const k = String(c.fee_plan_period_id);
+      baseByPeriodId.set(k, (baseByPeriodId.get(k) || 0) + Number(c.amount || 0));
+    }
+
     const anchorYear = anchorYearFromAcademicYearLabel(academicYear);
 
     for (const st of structuresForInstallmentSlots) {
       const items = (st.items as Array<{ amount?: number }> | null) || [];
       const baseFromItems = items.reduce((sum, it) => sum + Number(it.amount || 0), 0);
-
-      const months = computeInstallmentMonthsFromStructure(
-        {
-          start_month: Number(st.start_month),
-          end_month: Number(st.end_month),
-          frequency: String(st.frequency || 'monthly'),
-          payment_due_day: st.payment_due_day as number | null | undefined,
-        },
-        anchorYear
-      );
 
       const fsid = String(st.id);
       const ay = (st.academic_year ?? '').toString().trim();
@@ -377,32 +439,74 @@ export async function GET(request: NextRequest) {
       const startMonthSt = Number.isFinite(smSt) && smSt >= 1 && smSt <= 12 ? smSt : 1;
       const endMonthSt = Number.isFinite(emSt) && emSt >= 1 && emSt <= 12 ? emSt : 12;
 
-      for (const { due_month, due_date } of months) {
-        const key = `${fsid}::${due_month}`;
-        if (byKey.has(key)) continue;
-
-        const displayName = installmentDisplayLabel({
-          structureName: String(st.name || 'Fee structure'),
-          frequency: st.frequency as string | null,
-          startMonth: startMonthSt,
-          endMonth: endMonthSt,
-          dueMonth: due_month,
-        });
-
-        byKey.set(key, {
-          fee_structure_id: fsid,
-          due_month,
-          due_date,
-          structure_name: displayName,
-          academic_year: ay || academicYear,
-          is_active: true,
-          sample_student_fee_id: '',
-          student_fee_ids: [],
-          base_amount: baseFromItems,
-          paid_installment_count: 0,
-          unpaid_installment_count: 0,
-          from_structure_only: true,
-        });
+      const plansForStructure = plansByStructureId.get(fsid) || [];
+      if (plansForStructure.length > 0) {
+        for (const pl of plansForStructure) {
+          const periods = periodsByPlanId.get(pl.id) || [];
+          for (const period of periods) {
+            const key = `${fsid}::${pl.frequency}::${period.due_month}`;
+            if (byKey.has(key)) continue;
+            const displayName = installmentDisplayLabel({
+              structureName: String(st.name || 'Fee structure'),
+              frequency: pl.frequency,
+              startMonth: startMonthSt,
+              endMonth: endMonthSt,
+              dueMonth: period.due_month,
+            });
+            byKey.set(key, {
+              fee_structure_id: fsid,
+              fee_plan_id: pl.id,
+              frequency: pl.frequency,
+              due_month: period.due_month,
+              due_date: period.due_date,
+              structure_name: displayName,
+              academic_year: ay || academicYear,
+              is_active: true,
+              sample_student_fee_id: '',
+              student_fee_ids: [],
+              base_amount: Number(baseByPeriodId.get(period.id) || baseFromItems),
+              paid_installment_count: 0,
+              unpaid_installment_count: 0,
+              from_structure_only: true,
+            });
+          }
+        }
+      } else {
+        const months = computeInstallmentMonthsFromStructure(
+          {
+            start_month: Number(st.start_month),
+            end_month: Number(st.end_month),
+            frequency: String(st.frequency || 'monthly'),
+            payment_due_day: st.payment_due_day as number | null | undefined,
+          },
+          anchorYear
+        );
+        for (const { due_month, due_date } of months) {
+          const key = `${fsid}::${String(st.frequency || 'monthly')}::${due_month}`;
+          if (byKey.has(key)) continue;
+          const displayName = installmentDisplayLabel({
+            structureName: String(st.name || 'Fee structure'),
+            frequency: st.frequency as string | null,
+            startMonth: startMonthSt,
+            endMonth: endMonthSt,
+            dueMonth: due_month,
+          });
+          byKey.set(key, {
+            fee_structure_id: fsid,
+            frequency: String(st.frequency || 'monthly'),
+            due_month,
+            due_date,
+            structure_name: displayName,
+            academic_year: ay || academicYear,
+            is_active: true,
+            sample_student_fee_id: '',
+            student_fee_ids: [],
+            base_amount: baseFromItems,
+            paid_installment_count: 0,
+            unpaid_installment_count: 0,
+            from_structure_only: true,
+          });
+        }
       }
     }
 

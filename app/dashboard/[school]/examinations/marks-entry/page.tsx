@@ -1080,6 +1080,20 @@ export default function MarksEntryPage({
                                   step="0.01"
                                   value={marksObtained || ''}
                                   onChange={(e) => handleMarksChange(student.id, subject.id, e.target.value)}
+                                  onBlur={(e) => {
+                                    const raw = e.target.value;
+                                    const v = raw === '' ? 0 : parseFloat(raw);
+                                    if (!Number.isFinite(v)) return;
+                                    if (v < 0) {
+                                      alert('Marks cannot be negative.');
+                                      handleMarksChange(student.id, subject.id, '0');
+                                      return;
+                                    }
+                                    if (v > subject.max_marks) {
+                                      alert(`Marks cannot exceed ${subject.max_marks}`);
+                                      handleMarksChange(student.id, subject.id, String(subject.max_marks));
+                                    }
+                                  }}
                                   placeholder="0"
                                   className={`w-20 text-center text-sm font-medium ${
                                     isPass 

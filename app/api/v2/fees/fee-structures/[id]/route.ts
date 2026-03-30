@@ -61,10 +61,17 @@ export async function GET(
       console.error('Error fetching fee structure items:', itemsError);
     }
 
+    const { data: plans } = await supabase
+      .from('fee_structure_frequency_plans')
+      .select('id, frequency, start_month, end_month, payment_due_day, is_active')
+      .eq('fee_structure_id', id)
+      .order('frequency', { ascending: true });
+
     return NextResponse.json({
       data: {
         ...structure,
         items: items || [],
+        plans: plans || [],
       },
     }, { status: 200 });
   } catch (error) {

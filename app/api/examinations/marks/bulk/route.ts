@@ -129,6 +129,13 @@ export async function POST(request: NextRequest) {
       .select('subject_id, max_marks, pass_marks')
       .eq('exam_id', exam_id);
 
+    const maxMarksBySubjectId = new Map<string, number>(
+      (examSubjects || []).map((es: { subject_id: string; max_marks: unknown }) => [
+        String(es.subject_id),
+        Number(es.max_marks) || 0,
+      ])
+    );
+
     // Prepare all marks records
     // Note: grade, percentage, passing_status, and status columns don't exist in the table
     // They may be calculated by database triggers or views
@@ -183,7 +190,9 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const maxMarks = parseFloat(String(max_marks || '0')) || 0;
+        const payloadMaxMarks = parseFloat(String(max_marks || '0')) || 0;
+        const resolvedMaxMarks = maxMarksBySubjectId.get(String(subject_id)) ?? payloadMaxMarks;
+        const maxMarks = resolvedMaxMarks;
         const marksObtained = entryCode ? 0 : parseFloat(String(marks_obtained ?? '0')) || 0;
 
         if (maxMarks <= 0) {

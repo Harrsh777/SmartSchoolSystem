@@ -66,7 +66,6 @@ export default function FeeStructuresPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [generating, setGenerating] = useState<string | null>(null);
   const [deactivateModal, setDeactivateModal] = useState<{
     structureId: string;
     structureName: string;
@@ -237,82 +236,6 @@ export default function FeeStructuresPage({
     }
   };
 
-  const handleGenerateFees = async (structureId: string) => {
-    if (!confirm('Generate student fees for this structure? This will create fee records for all applicable students.')) {
-      return;
-    }
-
-    try {
-      setGenerating(structureId);
-      setError('');
-      const response = await fetch(`/api/v2/fees/fee-structures/${structureId}/generate-fees`, {
-        method: 'POST',
-        headers: {
-          'x-staff-id': sessionStorage.getItem('staff_id') || '',
-        },
-      });
-
-      const result = await response.json();
-
-      console.log('Fee generation response:', result);
-
-      if (response.ok) {
-        const feesGenerated = result.data?.fees_generated ?? 0;
-        const studentsProcessed = result.data?.students_processed ?? 0;
-        const insertionErrors = result.data?.errors ?? 0;
-        
-        if (feesGenerated === 0) {
-          // With `upsert ... ignoreDuplicates`, it's normal that no new rows are created
-          // if fees were already generated earlier.
-          if (insertionErrors === 0) {
-            setSuccess(
-              `✅ Fees are already generated for this structure.\n\n📊 Summary:\n- New fee records created: 0\n- Students processed: ${studentsProcessed}\n- Months generated: ${result.data?.months_generated || 0}`
-            );
-          } else {
-            // Backward compatible: show detailed error when Supabase actually failed to insert.
-            const details = result.details
-              ? `\n\nSearched for:\n- Class: "${result.details.class_name}"\n- Section: "${result.details.section || 'all'}"\n- Academic Year: "${result.details.academic_year || 'all'}"\n- School Code: "${result.details.school_code}"`
-              : '';
-
-            const debugInfo = result.debug
-              ? `\n\nStudents in school: ${result.debug.total_students_in_school}\nClasses found: ${result.debug.sample_classes_found?.join(', ') || 'none'}\nSections found: ${result.debug.sample_sections_found?.join(', ') || 'none'}`
-              : '';
-
-            setError(
-              result.message ||
-                `No new fee records created (errors: ${insertionErrors}).${details}${debugInfo}\n\nPlease verify that:\n1. Students exist with the exact class and section values\n2. The class and section values match exactly (case-sensitive)\n3. Students belong to the correct school`
-            );
-          }
-        } else {
-          // Success message with detailed information
-          let successMsg = `✅ Student fees generated successfully!\n\n📊 Summary:\n- Fee records created: ${feesGenerated}\n- Students processed: ${studentsProcessed}\n- Months generated: ${result.data?.months_generated || 0}`;
-          
-          if (result.warning) {
-            successMsg += `\n\n⚠️ Note: ${result.warning}`;
-          }
-          
-          if (result.data?.errors && result.data.errors > 0) {
-            successMsg += `\n\n❌ Errors: ${result.data.errors} fee records failed to insert`;
-          }
-          
-          setSuccess(successMsg);
-        }
-        setTimeout(() => {
-          setSuccess('');
-          setError('');
-          fetchStructures(); // Refresh to show updated data
-        }, feesGenerated === 0 ? 10000 : 5000);
-      } else {
-        setError(result.error || 'Failed to generate fees');
-      }
-    } catch (err) {
-      console.error('Error generating fees:', err);
-      setError(`Failed to generate fees: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setGenerating(null);
-    }
-  };
-
   const getTotalAmount = (structure: FeeStructure) => {
     return structure.items?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
   };
@@ -323,17 +246,64 @@ export default function FeeStructuresPage({
 
   // Base name for grouping:
   // - remove trailing section suffixes like " - A"
-  // - remove trailing quarter/month tokens like "Q1", "Q2", "M1"
+  // - remove trailing quarter/month tokens like "Q1", "Q2", "M1", "April"
   const getBaseName = (name: string) => {
+    const monthPattern =
+      '(January|February|March|April|May|June|July|August|September|October|November|December)';
     return name
       .replace(/\s*-\s*[A-Z]\s*$/i, '')
       .replace(/\s*[-–]?\s*(Q[1-4]|M[0-9]{1,2}|MONTH\s*[0-9]{1,2})\s*$/i, '')
+      .replace(new RegExp(`\\s*[-–]?\\s*${monthPattern}\\s*$`, 'i'), '')
       .trim() || name;
+  };
+
+  const getPeriodLabelFromName = (name: string) => {
+    const quarter = name.match(/\b(Q[1-4])\s*$/i) || name.match(/\b(Q[1-4])\b/i);
+    if (quarter?.[1]) return quarter[1].toUpperCase();
+
+    // Prefer trailing month token (e.g. "... - September"), avoid matching "April" from "April-March".
+    const trailingMonth = name.match(
+      /(?:-|–|\s)\s*(January|February|March|April|May|June|July|August|September|October|November|December)\s*$/i
+    );
+    if (trailingMonth?.[1]) {
+      const m = trailingMonth[1];
+      return `${m.charAt(0).toUpperCase()}${m.slice(1).toLowerCase()}`;
+    }
+    return '';
+  };
+
+  const periodSortValue = (s: FeeStructure) => {
+    const label = getPeriodLabelFromName(s.name);
+    const quarterMap: Record<string, number> = { Q1: 1, Q2: 2, Q3: 3, Q4: 4 };
+    if (quarterMap[label]) return quarterMap[label];
+    const monthIndex = MONTHS.findIndex((m) => m.label.toLowerCase() === label.toLowerCase());
+    if (monthIndex >= 0) return monthIndex + 1;
+    return 999;
+  };
+
+  const nextMonthNumber = (start: number, offset: number) => {
+    const normalized = ((Number(start) - 1 + Number(offset)) % 12 + 12) % 12;
+    return normalized + 1;
+  };
+
+  const fallbackPeriodLabel = (s: FeeStructure, index: number) => {
+    const freq = String(s.frequency || '').toLowerCase();
+    if (freq === 'quarterly') return `Q${Math.min(4, Math.max(1, index + 1))}`;
+    if (freq === 'monthly') return getMonthName(nextMonthNumber(s.start_month, index));
+    if (freq === 'yearly') return 'Yearly';
+    return '';
   };
 
   const getGroupKey = (s: FeeStructure) => {
     const base = getBaseName(s.name);
-    return `${base}|${s.academic_year || ''}`;
+    return [
+      base,
+      s.class_name || '',
+      s.section || '',
+      s.academic_year || '',
+      String(s.start_month || ''),
+      String(s.end_month || ''),
+    ].join('|');
   };
 
   // Group structures so one logical structure (same name base + period + frequency) appears once
@@ -348,12 +318,15 @@ export default function FeeStructuresPage({
       key,
       displayName: getBaseName(list[0].name),
       structures: list.sort((a, b) =>
-        a.class_name.localeCompare(b.class_name) || (a.section || '').localeCompare(b.section || '')
+        periodSortValue(a) - periodSortValue(b) ||
+        a.class_name.localeCompare(b.class_name) ||
+        (a.section || '').localeCompare(b.section || '')
       ),
     }));
   }, [structures]);
 
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [selectedFrequencyByGroup, setSelectedFrequencyByGroup] = useState<Record<string, string>>({});
 
   const runGroupAction = async (
     groupKey: string,
@@ -402,6 +375,49 @@ export default function FeeStructuresPage({
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to ${action} structure group`);
+    } finally {
+      setGroupActionKey(null);
+    }
+  };
+
+  const handleDeleteGroup = async (groupKey: string, groupStructures: FeeStructure[]) => {
+    if (groupStructures.some((s) => s.is_active)) {
+      setError('Deactivate the whole structure first, then delete it.');
+      return;
+    }
+    if (
+      !confirm(
+        `Delete whole structure (${groupStructures.length} entries)?\n\n` +
+          'If student fees already exist, this removes entries from list only; installments and payments stay.'
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setGroupActionKey(groupKey);
+      setError('');
+      setSuccess('');
+      setFeeStructureSchemaSql(null);
+      const staffId = sessionStorage.getItem('staff_id') || '';
+
+      for (const structure of groupStructures) {
+        const response = await fetch(`/api/v2/fees/fee-structures/${structure.id}`, {
+          method: 'DELETE',
+          headers: staffId ? { 'x-staff-id': staffId } : {},
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setFeeStructureSchemaSql(typeof result.apply_sql === 'string' ? result.apply_sql : null);
+          throw new Error(result.error || `Failed to delete ${structure.name}`);
+        }
+      }
+
+      setSuccess('Whole structure deleted successfully');
+      fetchStructures();
+      setTimeout(() => setSuccess(''), 4000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete whole structure');
     } finally {
       setGroupActionKey(null);
     }
@@ -540,6 +556,19 @@ export default function FeeStructuresPage({
           filteredGroups.map((group) => {
             const isExpanded = expandedKey === group.key;
             const first = group.structures[0];
+            const frequencies = Array.from(
+              new Set(group.structures.map((s) => String(s.frequency || '').toLowerCase()).filter(Boolean))
+            );
+            const selectedFrequency =
+              selectedFrequencyByGroup[group.key] ||
+              (frequencies.includes('monthly')
+                ? 'monthly'
+                : frequencies.includes('quarterly')
+                  ? 'quarterly'
+                  : frequencies[0] || String(first.frequency || ''));
+            const visibleStructures = group.structures.filter(
+              (s) => String(s.frequency || '').toLowerCase() === selectedFrequency
+            );
             const activeCount = group.structures.filter((s) => s.is_active).length;
             const totalAmount = getTotalAmount(first);
             const isGroupBusy = groupActionKey === group.key;
@@ -554,7 +583,16 @@ export default function FeeStructuresPage({
                   className={`border-2 transition-all cursor-pointer select-none ${
                     activeCount > 0 ? 'border-green-200 hover:border-green-300' : 'border-gray-200 hover:border-gray-300'
                   }`}
-                  onClick={() => setExpandedKey(isExpanded ? null : group.key)}
+                  onClick={() => {
+                    if (isExpanded) {
+                      setExpandedKey(null);
+                      return;
+                    }
+                    setExpandedKey(group.key);
+                    if (!selectedFrequencyByGroup[group.key] && selectedFrequency) {
+                      setSelectedFrequencyByGroup((prev) => ({ ...prev, [group.key]: selectedFrequency }));
+                    }
+                  }}
                 >
                   <div className="flex items-center justify-between gap-4 py-1">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -620,15 +658,52 @@ export default function FeeStructuresPage({
                                   {isGroupBusy ? <Loader2 size={14} className="animate-spin" /> : 'Deactivate Whole Structure'}
                                 </Button>
                               ) : null}
+                              {activeCount === 0 ? (
+                                <Button
+                                  onClick={() => handleDeleteGroup(group.key, group.structures)}
+                                  disabled={isGroupBusy}
+                                  className="bg-gray-700 hover:bg-gray-800 text-white text-xs py-1.5 px-2"
+                                  size="sm"
+                                >
+                                  {isGroupBusy ? <Loader2 size={14} className="animate-spin" /> : 'Delete Whole Structure'}
+                                </Button>
+                              ) : null}
                             </div>
                           </div>
-                          {group.structures.map((structure) => (
+                          {frequencies.length > 1 && (
+                            <div className="flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-2">
+                              <span className="text-xs font-semibold text-indigo-900">Choose frequency:</span>
+                              {frequencies.map((f) => (
+                                <Button
+                                  key={`${group.key}-${f}`}
+                                  type="button"
+                                  size="sm"
+                                  variant={selectedFrequency === f ? 'primary' : 'outline'}
+                                  className="text-xs capitalize"
+                                  onClick={() =>
+                                    setSelectedFrequencyByGroup((prev) => ({
+                                      ...prev,
+                                      [group.key]: f,
+                                    }))
+                                  }
+                                >
+                                  {f}
+                                </Button>
+                              ))}
+                            </div>
+                          )}
+                          {visibleStructures.map((structure, idx) => (
                             <div
                               key={structure.id}
                               className="p-4 rounded-lg bg-gray-50 border border-gray-200"
                             >
                               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                                 <div className="flex items-center gap-2 text-sm">
+                                  {(getPeriodLabelFromName(structure.name) || fallbackPeriodLabel(structure, idx)) && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-indigo-100 text-indigo-800 rounded-full">
+                                      {getPeriodLabelFromName(structure.name) || fallbackPeriodLabel(structure, idx)}
+                                    </span>
+                                  )}
                                   <span className="font-semibold text-gray-900">
                                     {structure.class_name}
                                     {structure.section && (
@@ -668,38 +743,21 @@ export default function FeeStructuresPage({
                                       Activate
                                     </Button>
                                   ) : (
-                                    <>
-                                      <Button
-                                        onClick={() => handleGenerateFees(structure.id)}
-                                        disabled={generating === structure.id}
-                                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs py-1.5 px-2"
-                                        size="sm"
-                                      >
-                                        {generating === structure.id ? (
-                                          <Loader2 size={14} className="animate-spin" />
-                                        ) : (
-                                          <>
-                                            <Calendar size={14} className="mr-1" />
-                                            Generate Fees
-                                          </>
-                                        )}
-                                      </Button>
-                                      <Button
-                                        onClick={() => handleDeactivate(structure.id, structure.name)}
-                                        disabled={deactivating === structure.id}
-                                        className="bg-red-600 hover:bg-red-700 text-white text-xs py-1.5 px-2"
-                                        size="sm"
-                                      >
-                                        {deactivating === structure.id ? (
-                                          <Loader2 size={14} className="animate-spin" />
-                                        ) : (
-                                          <>
-                                            <PowerOff size={14} className="mr-1" />
-                                            Deactivate
-                                          </>
-                                        )}
-                                      </Button>
-                                    </>
+                                    <Button
+                                      onClick={() => handleDeactivate(structure.id, structure.name)}
+                                      disabled={deactivating === structure.id}
+                                      className="bg-red-600 hover:bg-red-700 text-white text-xs py-1.5 px-2"
+                                      size="sm"
+                                    >
+                                      {deactivating === structure.id ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                      ) : (
+                                        <>
+                                          <PowerOff size={14} className="mr-1" />
+                                          Deactivate
+                                        </>
+                                      )}
+                                    </Button>
                                   )}
                                   {!structure.is_active && (
                                     <Button

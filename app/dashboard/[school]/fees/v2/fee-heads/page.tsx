@@ -36,7 +36,6 @@ export default function FeeHeadsPage({
     is_active: true,
   });
   const [saving, setSaving] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -131,31 +130,6 @@ export default function FeeHeadsPage({
     }
   };
 
-  const handleToggleApplicable = async (head: FeeHead, nextActive: boolean) => {
-    setTogglingId(head.id);
-    setError('');
-    try {
-      const response = await fetch(`/api/v2/fees/fee-heads/${head.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: nextActive }),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        setError(result.error || 'Failed to update fee head');
-        return;
-      }
-      setFeeHeads((prev) =>
-        prev.map((h) => (h.id === head.id ? { ...h, is_active: nextActive } : h))
-      );
-    } catch (err) {
-      setError('Failed to update fee head');
-      console.error(err);
-    } finally {
-      setTogglingId(null);
-    }
-  };
-
   const handleDelete = async (head: FeeHead) => {
     if (!confirm(`Are you sure you want to delete "${head.name}"? This action cannot be undone.`)) {
       return;
@@ -214,8 +188,8 @@ export default function FeeHeadsPage({
               Fee Heads Management
             </h1>
             <p className="text-gray-600">
-              Manage fee types (Tuition, Transport, Library, etc.). Use <strong>Applicable</strong> to turn
-              heads on or off: when off, the head stays in the list but is not used for new fee structures.
+              Manage fee types (Tuition, Transport, Library, etc.). You can enable/disable fee heads
+              while creating a fee structure in Step 3.
             </p>
           </div>
         </div>
@@ -270,26 +244,18 @@ export default function FeeHeadsPage({
             </div>
           ) : (
             filteredHeads.map((head) => {
-              const applicable = head.is_active !== false;
               return (
               <motion.div
                 key={head.id}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className={`flex items-center justify-between gap-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors ${
-                  !applicable ? 'opacity-70 bg-gray-50/80' : ''
-                }`}
+                className="flex items-center justify-between gap-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h3 className="font-semibold text-gray-900">{head.name}</h3>
                     {head.is_optional && (
                       <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">Optional</span>
-                    )}
-                    {!applicable && (
-                      <span className="px-2 py-1 text-xs bg-amber-100 text-amber-900 rounded border border-amber-200">
-                        Not applicable
-                      </span>
                     )}
                   </div>
                   {head.description && (
@@ -300,26 +266,6 @@ export default function FeeHeadsPage({
                   className="flex items-center gap-3 shrink-0"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-[10px] uppercase tracking-wide text-gray-500">Applicable</span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={applicable}
-                      aria-label={`${applicable ? 'Disable' : 'Enable'} ${head.name}`}
-                      disabled={togglingId === head.id}
-                      onClick={() => void handleToggleApplicable(head, !applicable)}
-                      className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 ${
-                        applicable ? 'bg-indigo-600' : 'bg-gray-300'
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                          applicable ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -389,18 +335,6 @@ export default function FeeHeadsPage({
                 </label>
               </div>
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
-                />
-                <label htmlFor="is_active" className="text-sm text-gray-700">
-                  Applicable — include when creating fee structures (turn off to keep the head inactive)
-                </label>
-              </div>
             </div>
 
             <div className="flex gap-3 mt-6">
