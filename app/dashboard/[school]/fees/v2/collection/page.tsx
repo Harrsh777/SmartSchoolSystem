@@ -431,21 +431,31 @@ export default function PaymentCollectionPage({
     setDiscountAddFlat('');
   };
 
-  const applyPartialAllocation = () => {
+  const handlePartialAmountChange = (raw: string) => {
+    setPartialAmount(raw);
     if (!activeSelectedFee) return;
+
     const due = Math.max(0, Number(activeSelectedFee.total_due || 0));
-    const entered = Number(partialAmount);
+    if (raw.trim() === '') {
+      setAllocations({});
+      setError('');
+      return;
+    }
+
+    const entered = Number(raw);
     if (!Number.isFinite(entered) || entered <= 0) {
       setError('Partial payment amount must be greater than 0');
       return;
     }
+
+    const safe = Math.round(Math.min(entered, due) * 100) / 100;
     if (entered > due) {
-      setError(`Partial amount cannot exceed due amount ${formatCurrency(due)}`);
-      return;
+      setError(`Amount capped to due ${formatCurrency(due)}`);
+      setPartialAmount(String(safe));
+    } else {
+      setError('');
     }
-    setError('');
-    const safe = Math.round(entered * 100) / 100;
-    setAllocations({ [activeSelectedFee.id]: safe });
+    setAllocations(safe > 0 ? { [activeSelectedFee.id]: safe } : {});
   };
 
   const reloadSelectedStudentFees = async () => {
@@ -1685,7 +1695,7 @@ export default function PaymentCollectionPage({
                                           </div>
                                           {typeof fee.final_amount === 'number' && (
                                             <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
-                                              <span>After rules / lines</span>
+                                              <span>After adjustments</span>
                                               <span className="tabular-nums font-medium">
                                                 {formatCurrency(fee.final_amount)}
                                               </span>
@@ -1846,6 +1856,8 @@ export default function PaymentCollectionPage({
                           const allocated = allocations[fee.id] || 0;
                           const isPaid = fee.total_due <= 0.009 || fee.status === 'paid';
                           const amountDuePreview = Math.max(0, Number(fee.total_due || 0) - allocated);
+                          const totalPaidAfterAllocation =
+                            Math.round((Number(fee.paid_amount || 0) + allocated) * 100) / 100;
                           return (
                             <div className="space-y-5">
                               <div className="rounded-2xl border border-gray-200 dark:border-slate-700 overflow-hidden">
@@ -2043,21 +2055,18 @@ export default function PaymentCollectionPage({
                                       <span className="tabular-nums font-medium">{formatCurrency(Number(fee.base_amount || 0))}</span>
                                     </div>
                                     <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
-                                      <span>After rules / lines</span>
+                                      <span>After adjustments</span>
                                       <span className="tabular-nums font-medium">
                                         {typeof fee.final_amount === 'number' ? formatCurrency(fee.final_amount) : formatCurrency(Number(fee.base_amount || 0))}
                                       </span>
                                     </div>
                                     <div className="flex justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-base font-bold text-gray-900 dark:text-white">
-                                      <span>Amount due</span>
-                                      <span className="tabular-nums">{formatCurrency(Number(fee.total_due || 0))}</span>
+                                      <span>Total fees paid</span>
+                                      <span className="tabular-nums">{formatCurrency(totalPaidAfterAllocation)}</span>
                                     </div>
-                                    {allocated > 0 && !isPaid && (
-                                      <p className="text-xs font-medium text-blue-700 dark:text-blue-300 flex items-center gap-1.5 pt-1">
-                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                        {formatCurrency(allocated)} allocated from payment for this installment
-                                      </p>
-                                    )}
+                                    <p className="text-xs text-gray-600 dark:text-slate-300">
+                                      Amount due {formatCurrency(amountDuePreview)}
+                                    </p>
                                   </div>
                                 </div>
                               </div>
@@ -2137,36 +2146,31 @@ export default function PaymentCollectionPage({
                           <p className="text-xs text-gray-600 dark:text-slate-300">
                             Due for selected installment {formatCurrency(Number(activeSelectedFee.total_due || 0))}
                           </p>
-                          <div className="flex flex-col sm:flex-row gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-center">
                             <Input
                               type="number"
                               step={0.01}
                               min={0}
                               value={partialAmount}
-                              onChange={(e) => setPartialAmount(e.target.value)}
+                              onChange={(e) => handlePartialAmountChange(e.target.value)}
                               placeholder="Enter amount to collect"
                               className="h-10"
                             />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-10"
-                              onClick={applyPartialAllocation}
-                            >
-                              Apply amount
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-10"
-                              onClick={() => {
-                                const due = Math.round(Number(activeSelectedFee.total_due || 0) * 100) / 100;
-                                setPartialAmount(String(due));
-                                setAllocations(due > 0 ? { [activeSelectedFee.id]: due } : {});
-                              }}
-                            >
-                              Full due
-                            </Button>
+                            <div className="flex gap-2 sm:justify-end">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 whitespace-nowrap"
+                                onClick={() => {
+                                  const due = Math.round(Number(activeSelectedFee.total_due || 0) * 100) / 100;
+                                  setPartialAmount(String(due));
+                                  setAllocations(due > 0 ? { [activeSelectedFee.id]: due } : {});
+                                  setError('');
+                                }}
+                              >
+                                Full due
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -2452,7 +2456,7 @@ export default function PaymentCollectionPage({
                               </div>
                               {typeof fee.final_amount === 'number' && (
                                 <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
-                                  <span>After rules / lines</span>
+                                  <span>After adjustments</span>
                                   <span className="tabular-nums font-medium">{formatCurrency(fee.final_amount)}</span>
                                 </div>
                               )}
@@ -2462,14 +2466,17 @@ export default function PaymentCollectionPage({
                                   <span className="tabular-nums font-semibold">+{formatCurrency(fee.late_fee)}</span>
                                 </div>
                               )}
-                              {!isPaid && (
-                                <div className="flex justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-base font-bold text-gray-900 dark:text-white">
-                                  <span>Amount due (after all allocations)</span>
-                                  <span className="tabular-nums">
-                                    {formatCurrency(Math.max(0, fee.total_due - (allocations[fee.id] ?? 0)))}
-                                  </span>
-                                </div>
-                              )}
+                              <div className="flex justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-base font-bold text-gray-900 dark:text-white">
+                                <span>Total fees paid</span>
+                                <span className="tabular-nums">
+                                  {formatCurrency(
+                                    Math.round((Number(fee.paid_amount || 0) + Number(allocations[fee.id] || 0)) * 100) / 100
+                                  )}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-600 dark:text-slate-300">
+                                Amount due {formatCurrency(Math.max(0, fee.total_due - (allocations[fee.id] ?? 0)))}
+                              </p>
                             </div>
                           </div>
                         </div>

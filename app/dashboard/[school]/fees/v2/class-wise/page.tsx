@@ -943,16 +943,21 @@ export default function ClassWiseFeesPage({
                                                     {detail.editable && (
                                                       <button
                                                         type="button"
-                                                        className="text-[10px] text-red-600 hover:underline"
+                                                        className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-100"
                                                         onClick={() => removeClassLine(inst, ln.id)}
                                                       >
-                                                        ×
+                                                        Remove
                                                       </button>
                                                     )}
                                                   </span>
                                                 </li>
                                               ))}
                                             </ul>
+                                          )}
+                                          {!detail.editable && detail.manual_lines.length > 0 && (
+                                            <p className="mt-1 text-[10px] text-amber-700">
+                                              Removal is disabled after all student invoices in this installment are fully paid.
+                                            </p>
                                           )}
                                         </div>
                                       </div>

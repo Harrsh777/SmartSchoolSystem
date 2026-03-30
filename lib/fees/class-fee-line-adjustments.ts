@@ -107,9 +107,19 @@ export function mergeStudentAndClassManualLines(
     amount: number;
     kind: 'misc' | 'discount';
     created_at: string;
+    source_class_adjustment_id?: string | null;
   }>,
   classLines: ClassFeeLineRow[]
 ): MergedManualLine[] {
+  const classLineIdsAlreadyMaterialized = new Set(
+    studentLines
+      .map((l) => (l.source_class_adjustment_id ? String(l.source_class_adjustment_id) : ''))
+      .filter(Boolean)
+  );
+  const classSignaturesAlreadyMaterialized = new Set(
+    studentLines.map((l) => `${l.kind}::${Number(l.amount || 0).toFixed(2)}::${String(l.label || '').trim().toLowerCase()}`)
+  );
+
   const a: MergedManualLine[] = studentLines.map((l) => ({
     id: l.id,
     label: l.label,
@@ -118,7 +128,14 @@ export function mergeStudentAndClassManualLines(
     created_at: l.created_at,
     source: 'student',
   }));
-  const b = classLinesToMergedManual(classLines);
+  const b = classLinesToMergedManual(
+    classLines.filter((cl) => {
+      if (classLineIdsAlreadyMaterialized.has(String(cl.id))) return false;
+      const sig = `${cl.kind}::${Number(cl.amount || 0).toFixed(2)}::${String(cl.label || '').trim().toLowerCase()}`;
+      if (classSignaturesAlreadyMaterialized.has(sig)) return false;
+      return true;
+    })
+  );
   return [...a, ...b].sort(
     (x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime()
   );

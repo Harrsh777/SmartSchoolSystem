@@ -233,8 +233,9 @@ export async function PATCH(
 /**
  * DELETE /api/v2/fees/fee-structures/[id]
  * Allowed only when inactive.
- * - If student_fees exist: soft-delete (set deleted_at) so installments and payments stay in Collect Payment.
- * - If none: hard-delete structure + items.
+ * - Keep only already-paid invoices (paid_amount > 0) so history remains visible in Student-wise.
+ * - Remove unpaid generated rows and their line adjustments/allocations.
+ * - Soft-delete structure so it disappears from active lists.
  */
 export async function DELETE(
   request: NextRequest,
@@ -284,67 +285,103 @@ export async function DELETE(
       );
     }
 
-    const { count, error: countError } = await supabase
+    const { data: paidFees, error: paidFeesErr } = await supabase
       .from('student_fees')
-      .select('id', { count: 'exact', head: true })
+      .select('id')
+      .eq('fee_structure_id', id)
+      .gt('paid_amount', 0);
+
+    if (paidFeesErr) {
+      return NextResponse.json(
+        { error: 'Failed to inspect structure invoices', details: paidFeesErr.message },
+        { status: 500 }
+      );
+    }
+
+    const paidFeeIds = (paidFees || []).map((r) => String(r.id));
+    const hasPaidInvoices = paidFeeIds.length > 0;
+    const { data: allFeeRows, error: allFeesErr } = await supabase
+      .from('student_fees')
+      .select('id')
       .eq('fee_structure_id', id);
+    if (allFeesErr) {
+      return NextResponse.json(
+        { error: 'Failed to inspect structure invoices', details: allFeesErr.message },
+        { status: 500 }
+      );
+    }
+    const allFeeIds = (allFeeRows || []).map((r) => String(r.id));
+    const unpaidFeeIds = allFeeIds.filter((fid) => !paidFeeIds.includes(fid));
 
-    const hasStudentFees = !countError && count != null && count > 0;
+    if (unpaidFeeIds.length > 0) {
+      await supabase
+        .from('student_fee_line_adjustments')
+        .delete()
+        .in('student_fee_id', unpaidFeeIds);
+      await supabase
+        .from('payment_allocations')
+        .delete()
+        .in('student_fee_id', unpaidFeeIds);
+      await supabase
+        .from('student_fees')
+        .delete()
+        .in('id', unpaidFeeIds);
+    }
 
-    if (hasStudentFees) {
-      const now = new Date().toISOString();
-      const { error: softErr } = await supabase
+    if (!hasPaidInvoices) {
+      await supabase.from('fee_structure_items').delete().eq('fee_structure_id', id);
+      const { error: deleteError } = await supabase
         .from('fee_structures')
-        .update({
-          deleted_at: now,
-          is_active: false,
-          activated_at: null,
-          activated_by: null,
-        })
+        .delete()
         .eq('id', id);
 
-      if (softErr) {
-        if (isSoftDeleteBlockedByMissingDeletedAtColumn(softErr)) {
-          return NextResponse.json(
-            {
-              error:
-                'One-time database update required: add column fee_structures.deleted_at (see SQL below). Then in Supabase: Settings → Data API → Reload schema if the app still errors. After that, remove this structure again.',
-              apply_sql: FEE_STRUCTURES_DELETED_AT_SQL,
-            },
-            { status: 422 }
-          );
-        }
-        console.error('Error soft-deleting fee structure:', softErr);
+      if (deleteError) {
+        console.error('Error deleting fee structure:', deleteError);
         return NextResponse.json(
-          { error: 'Failed to remove fee structure', details: softErr.message },
+          { error: 'Failed to delete fee structure', details: deleteError.message },
           { status: 500 }
         );
       }
 
       return NextResponse.json({
-        message:
-          'Fee structure removed from your list. Existing student fee records and collected payments are unchanged.',
-        data: { id, soft_deleted: true },
+        message: 'Fee structure deleted successfully',
+        data: { id, soft_deleted: false, kept_paid_invoices: 0 },
       }, { status: 200 });
     }
 
-    await supabase.from('fee_structure_items').delete().eq('fee_structure_id', id);
-    const { error: deleteError } = await supabase
+    const now = new Date().toISOString();
+    const { error: softErr } = await supabase
       .from('fee_structures')
-      .delete()
+      .update({
+        deleted_at: now,
+        is_active: false,
+        activated_at: null,
+        activated_by: null,
+      })
       .eq('id', id);
 
-    if (deleteError) {
-      console.error('Error deleting fee structure:', deleteError);
+    if (softErr) {
+      if (isSoftDeleteBlockedByMissingDeletedAtColumn(softErr)) {
+        return NextResponse.json(
+          {
+            error:
+              'One-time database update required: add column fee_structures.deleted_at (see SQL below). Then in Supabase: Settings → Data API → Reload schema if the app still errors. After that, remove this structure again.',
+            apply_sql: FEE_STRUCTURES_DELETED_AT_SQL,
+          },
+          { status: 422 }
+        );
+      }
+      console.error('Error soft-deleting fee structure:', softErr);
       return NextResponse.json(
-        { error: 'Failed to delete fee structure', details: deleteError.message },
+        { error: 'Failed to remove fee structure', details: softErr.message },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
-      message: 'Fee structure deleted successfully',
-      data: { id, soft_deleted: false },
+      message:
+        'Fee structure removed. Unpaid generated rows were deleted; paid invoices were kept for history.',
+      data: { id, soft_deleted: true, kept_paid_invoices: paidFeeIds.length },
     }, { status: 200 });
   } catch (error) {
     console.error('Error in DELETE /api/v2/fees/fee-structures/[id]:', error);

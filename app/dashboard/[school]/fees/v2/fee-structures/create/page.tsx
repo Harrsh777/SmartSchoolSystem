@@ -121,6 +121,7 @@ export default function CreateFeeStructurePage({
   
   // Step 5: Review
   const [structureName, setStructureName] = useState('');
+  const [structureNameEdited, setStructureNameEdited] = useState(false);
 
   useEffect(() => {
     if (step === 3) {
@@ -166,9 +167,9 @@ export default function CreateFeeStructurePage({
     fetchData();
   }, [schoolCode]);
 
-  // Auto-generate structure name from classSectionMap
+  // Auto-generate structure name from classSectionMap until user edits manually.
   useEffect(() => {
-    if (classSectionMap.length > 0 && frequency && startMonth && endMonth) {
+    if (!structureNameEdited && classSectionMap.length > 0 && frequency && startMonth && endMonth) {
       const startMonthName = MONTHS.find(m => m.value === startMonth)?.label || '';
       const endMonthName = MONTHS.find(m => m.value === endMonth)?.label || '';
       const classNames = classSectionMap.map((e) => e.class).join(', ');
@@ -181,7 +182,7 @@ export default function CreateFeeStructurePage({
           : `${frequency.charAt(0).toUpperCase() + frequency.slice(1)}`;
       setStructureName(`${classNames} ${sectionSummary} ${freqLabel} Fee ${startMonthName}-${endMonthName}`);
     }
-  }, [classSectionMap, frequency, startMonth, endMonth, frequencyMode]);
+  }, [classSectionMap, frequency, startMonth, endMonth, frequencyMode, structureNameEdited]);
 
   const uniqueClassNames = Array.from(new Set(classes.map((c) => c.class))).sort();
 
@@ -435,6 +436,27 @@ export default function CreateFeeStructurePage({
     setClassSectionMap((prev) =>
       prev.map((e) => (e.class === className ? { ...e, sections: all } : e))
     );
+  };
+
+  const applyActiveMonthToAllMonths = () => {
+    if (!activeCompositionTab) return;
+    const source = { ...(selectedFeeHeadsByMonth[activeCompositionTab] || {}) };
+    const next: Record<string, Record<string, number>> = {};
+    getMonthsInRange().forEach((mo) => {
+      next[String(mo.value)] = { ...source };
+    });
+    setSelectedFeeHeadsByMonth(next);
+  };
+
+  const applyActiveQuarterToAllQuarters = () => {
+    if (!activeCompositionTab) return;
+    const source = { ...(selectedFeeHeadsByQuarter[activeCompositionTab] || {}) };
+    setSelectedFeeHeadsByQuarter({
+      Q1: { ...source },
+      Q2: { ...source },
+      Q3: { ...source },
+      Q4: { ...source },
+    });
   };
 
   const handleClearSections = (className: string) => {
@@ -937,6 +959,15 @@ export default function CreateFeeStructurePage({
                 </p>
 
                 <div className="space-y-4">
+                  <Input
+                    label="Structure Name *"
+                    value={structureName}
+                    onChange={(e) => {
+                      setStructureName(e.target.value);
+                      setStructureNameEdited(true);
+                    }}
+                    placeholder="Enter fee structure name"
+                  />
                   <div className="font-medium text-gray-700">Selected Classes & Sections</div>
                   {classSectionMap.length === 0 ? (
                     <p className="text-sm text-gray-500 py-2">No classes added yet. Use &quot;Add class&quot; below.</p>
@@ -1432,6 +1463,18 @@ export default function CreateFeeStructurePage({
                       })}
                     </div>
                     {activeCompositionTab && (
+                      <div className="pt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={applyActiveMonthToAllMonths}
+                          className="text-xs"
+                        >
+                          Apply this month to all months
+                        </Button>
+                      </div>
+                    )}
+                    {activeCompositionTab && (
                       <div className="space-y-3 mt-4">
                         {feeHeads.map((head) => (
                           <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
@@ -1622,6 +1665,18 @@ export default function CreateFeeStructurePage({
                       })}
                     </div>
                     {activeCompositionTab && (
+                      <div className="pt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={applyActiveQuarterToAllQuarters}
+                          className="text-xs"
+                        >
+                          Apply this quarter to all quarters
+                        </Button>
+                      </div>
+                    )}
+                    {activeCompositionTab && (
                       <div className="space-y-3 mt-4">
                         {feeHeads.map((head) => (
                           <div key={head.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
@@ -1743,7 +1798,10 @@ export default function CreateFeeStructurePage({
                 <Input
                   label="Structure Name *"
                   value={structureName}
-                  onChange={(e) => setStructureName(e.target.value)}
+                  onChange={(e) => {
+                    setStructureName(e.target.value);
+                    setStructureNameEdited(true);
+                  }}
                   placeholder="Fee structure name"
                 />
 

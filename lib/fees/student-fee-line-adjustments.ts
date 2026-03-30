@@ -6,6 +6,7 @@ export type LineAdjustmentRow = {
   amount: number;
   kind: 'misc' | 'discount';
   created_at: string;
+  source_class_adjustment_id?: string | null;
 };
 
 export async function fetchLineAdjustmentSumByFeeIds(
@@ -43,7 +44,7 @@ export async function fetchLineAdjustmentsGroupedByFeeIds(
 
   const { data, error } = await supabase
     .from('student_fee_line_adjustments')
-    .select('id, student_fee_id, label, amount, kind, created_at')
+    .select('id, student_fee_id, label, amount, kind, created_at, source_class_adjustment_id')
     .in('student_fee_id', studentFeeIds)
     .order('created_at', { ascending: true });
 
@@ -58,6 +59,8 @@ export async function fetchLineAdjustmentsGroupedByFeeIds(
       amount: Number(row.amount),
       kind: row.kind as 'misc' | 'discount',
       created_at: String(row.created_at),
+      source_class_adjustment_id:
+        row.source_class_adjustment_id != null ? String(row.source_class_adjustment_id) : null,
     });
   }
   return map;
