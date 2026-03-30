@@ -7,6 +7,22 @@ import {
   studentMatchesCollectPaymentFilters,
 } from '@/lib/fees/fee-structure-class-match';
 
+function comparePendingStudentsByRoll(
+  a: { roll_number: string; student_name: string },
+  b: { roll_number: string; student_name: string }
+): number {
+  const ra = String(a.roll_number || '').trim();
+  const rb = String(b.roll_number || '').trim();
+  if (!ra && !rb) {
+    return a.student_name.localeCompare(b.student_name, undefined, { sensitivity: 'base' });
+  }
+  if (!ra) return 1;
+  if (!rb) return -1;
+  const cmp = ra.localeCompare(rb, undefined, { numeric: true, sensitivity: 'base' });
+  if (cmp !== 0) return cmp;
+  return a.student_name.localeCompare(b.student_name, undefined, { sensitivity: 'base' });
+}
+
 function isMissingStudentsIsRteColumn(error: unknown): boolean {
   const msg = (error as { message?: string } | null)?.message || '';
   const code = (error as { code?: string } | null)?.code || '';
@@ -58,6 +74,7 @@ export async function GET(request: NextRequest) {
           id,
           student_name,
           admission_no,
+          roll_number,
           class,
           section,
           school_code,
@@ -95,6 +112,7 @@ export async function GET(request: NextRequest) {
           id,
           student_name,
           admission_no,
+          roll_number,
           class,
           section,
           school_code
@@ -153,6 +171,7 @@ export async function GET(request: NextRequest) {
         id: string;
         student_name: string;
         admission_no: string;
+        roll_number: string;
         class: string;
         section: string;
         pending_amount: number;
@@ -162,11 +181,14 @@ export async function GET(request: NextRequest) {
       }
     >();
 
+    const DUE_EPS = 0.01;
+
     enriched.forEach((fee) => {
       const student = fee.student as unknown as {
         id: string;
         student_name?: string;
         admission_no?: string;
+        roll_number?: string | null;
         class?: string;
         section?: string;
         is_rte?: boolean;
@@ -175,41 +197,41 @@ export async function GET(request: NextRequest) {
       if (!student?.id) return;
       if (student.is_rte === true) return;
 
-      const totalDue = fee.total_due;
-      if (totalDue <= 0) return;
+      const totalDue = Number(fee.total_due || 0);
+      if (totalDue <= DUE_EPS) return;
 
       if (!studentMap.has(student.id)) {
         studentMap.set(student.id, {
           id: student.id,
           student_name: student.student_name || 'Unknown',
           admission_no: student.admission_no || '',
+          roll_number: student.roll_number != null ? String(student.roll_number) : '',
           class: student.class || '',
           section: student.section || '',
           pending_amount: 0,
           late_fee_amount: 0,
-          due_date: String(fee.due_date),
-          latest_due_date: String(fee.due_date || ''),
+          due_date: '',
+          latest_due_date: '',
         });
       }
 
       const data = studentMap.get(student.id)!;
-      const feeDueDate = fee.due_date || '';
-      const prevLatest = data.latest_due_date ? new Date(data.latest_due_date) : null;
-      const currentDue = feeDueDate ? new Date(feeDueDate) : null;
+      data.pending_amount += totalDue;
+      data.late_fee_amount += Number(fee.late_fee || 0);
 
-      if (!prevLatest || (currentDue && currentDue > prevLatest)) {
-        data.latest_due_date = feeDueDate;
-        data.pending_amount = totalDue;
-        data.late_fee_amount = fee.late_fee;
-        data.due_date = feeDueDate;
-      } else if (currentDue && prevLatest && currentDue.getTime() === prevLatest.getTime()) {
-        data.pending_amount += totalDue;
-        data.late_fee_amount += fee.late_fee;
+      const feeDueDate = String(fee.due_date || '').trim();
+      if (feeDueDate) {
+        if (!data.due_date || feeDueDate < data.due_date) {
+          data.due_date = feeDueDate;
+        }
+        if (!data.latest_due_date || feeDueDate > data.latest_due_date) {
+          data.latest_due_date = feeDueDate;
+        }
       }
     });
 
     const pendingStudents = Array.from(studentMap.values())
-      .sort((a, b) => b.pending_amount - a.pending_amount)
+      .sort(comparePendingStudentsByRoll)
       .slice(0, limit);
 
     return NextResponse.json({ data: pendingStudents });

@@ -67,11 +67,28 @@ export async function GET(
       .eq('fee_structure_id', id)
       .order('frequency', { ascending: true });
 
+    const { data: studentFeesRows } = await supabase
+      .from('student_fees')
+      .select('created_at')
+      .eq('fee_structure_id', id);
+
+    let fees_generated = false;
+    let fees_generated_at: string | null = null;
+    (studentFeesRows || []).forEach((row: { created_at?: string }) => {
+      fees_generated = true;
+      const createdAt = row.created_at ? String(row.created_at) : '';
+      if (createdAt && (!fees_generated_at || createdAt > fees_generated_at)) {
+        fees_generated_at = createdAt;
+      }
+    });
+
     return NextResponse.json({
       data: {
         ...structure,
         items: items || [],
         plans: plans || [],
+        fees_generated,
+        fees_generated_at,
       },
     }, { status: 200 });
   } catch (error) {

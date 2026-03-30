@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { classMatches, sectionMatches } from '@/lib/marks-filters';
 import archiver from 'archiver';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
@@ -89,8 +90,8 @@ export async function GET(request: NextRequest) {
     if (classId || section) {
       filteredSummaries = summaries.filter((s: SummaryWithStudent) => {
         const student = s.student;
-        if (classId && student?.class !== classId) return false;
-        if (section && student?.section !== section) return false;
+        if (!classMatches(student?.class, classId)) return false;
+        if (!sectionMatches(student?.section, section)) return false;
         return true;
       });
     }

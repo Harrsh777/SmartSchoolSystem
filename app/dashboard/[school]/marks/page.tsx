@@ -90,15 +90,14 @@ export default function MarksDashboardPage({
   const router = useRouter();
 
   // State
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [marks, setMarks] = useState<StudentMark[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [classes, setClasses] = useState<Array<{ id: string; class: string; section?: string }>>([]);
   const [examinations, setExaminations] = useState<Array<{ id: string; exam_name: string; name?: string }>>([]);
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
-  const [sections, setSections] = useState<string[]>([]);
 
-  // Filters
+  // Filters (class_id holds class *name* for /api/marks/view — same as students.class)
   const [filters, setFilters] = useState({
     class_id: '',
     section: '',
@@ -118,11 +117,15 @@ export default function MarksDashboardPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
-  // Fetch marks when filters change
+  // Fetch marks when filters change (exam required)
   useEffect(() => {
-    if (filters.exam_id) {
-      fetchMarks();
+    if (!filters.exam_id) {
+      setMarks([]);
+      setAnalytics(null);
+      setLoading(false);
+      return;
     }
+    fetchMarks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, schoolCode]);
 
@@ -132,12 +135,6 @@ export default function MarksDashboardPage({
       const result = await response.json();
       if (response.ok && result.data) {
         setClasses(result.data);
-        // Extract unique sections
-        const sectionsArray = (result.data as Array<{ section?: string }>)
-          .map((c) => c.section)
-          .filter((s): s is string => typeof s === 'string' && s.length > 0);
-        const uniqueSections: string[] = [...new Set(sectionsArray)];
-        setSections(uniqueSections.sort());
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
@@ -214,6 +211,20 @@ export default function MarksDashboardPage({
 
   const totalPages = Math.ceil(filteredMarks.length / itemsPerPage);
 
+  const uniqueClassNames = useMemo(() => {
+    const names = classes.map((c) => String(c.class ?? '').trim()).filter(Boolean);
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [classes]);
+
+  const sectionsForSelectedClass = useMemo(() => {
+    if (!filters.class_id) return [];
+    const selected = String(filters.class_id).trim();
+    const secs = classes
+      .filter((c) => String(c.class ?? '').trim().toLowerCase() === selected.toLowerCase())
+      .map((c) => String(c.section ?? '').trim())
+      .filter(Boolean);
+    return [...new Set(secs)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [classes, filters.class_id]);
 
   // Download handlers
   const handleDownloadReportCard = async (studentId: string, examId: string) => {
@@ -387,9 +398,9 @@ export default function MarksDashboardPage({
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
                 >
                   <option value="">All Classes</option>
-                  {classes.map((cls) => (
-                    <option key={cls.id} value={cls.class}>
-                      {cls.class} {cls.section ? `- ${cls.section}` : ''}
+                  {uniqueClassNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
                     </option>
                   ))}
                 </select>
@@ -405,7 +416,7 @@ export default function MarksDashboardPage({
                   disabled={!filters.class_id}
                 >
                   <option value="">All Sections</option>
-                  {sections.map((sec) => (
+                  {sectionsForSelectedClass.map((sec) => (
                     <option key={sec} value={sec}>
                       {sec}
                     </option>
@@ -603,7 +614,11 @@ export default function MarksDashboardPage({
         ) : filteredMarks.length === 0 ? (
           <div className="text-center py-12">
             <AlertCircle className="text-gray-400 dark:text-gray-600 mx-auto mb-4" size={48} />
-            <p className="text-gray-600 dark:text-gray-400">No marks found. Please apply filters to view marks.</p>
+            <p className="text-gray-600 dark:text-gray-400">
+              {!filters.exam_id
+                ? 'Select an examination to load marks. Optionally narrow by class and section.'
+                : 'No marks match the current filters.'}
+            </p>
           </div>
         ) : (
           <>

@@ -268,15 +268,22 @@ export async function POST(request: NextRequest) {
       studentFeesRaw as never
     );
 
-    // Validate allocations don't exceed amount still due (including late fee on that row)
+    // Validate allocations don't exceed enriched total still due (base + adj + late − paid)
+    const PAY_EPS = 0.02;
     for (const allocation of allocations) {
       const fee = studentFeesEnriched.find((f) => f.id === allocation.student_fee_id);
       if (!fee) continue;
 
-      const maxForRow = fee.balance_due + fee.late_fee;
-      if (parseFloat(String(allocation.allocated_amount)) > maxForRow + 0.01) {
+      const maxForRow = Math.round(Number(fee.total_due || 0) * 100) / 100;
+      const allocAmt = Number(allocation.allocated_amount);
+      if (!Number.isFinite(allocAmt) || allocAmt <= 0) {
+        return NextResponse.json({ error: 'Each allocation must be a positive amount' }, { status: 400 });
+      }
+      if (allocAmt > maxForRow + PAY_EPS) {
         return NextResponse.json(
-          { error: `Allocation amount exceeds balance due for fee ${fee.id}` },
+          {
+            error: `Allocation (${allocAmt}) exceeds amount due (${maxForRow}) for this installment`,
+          },
           { status: 400 }
         );
       }
@@ -336,12 +343,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Update student_fees paid_amount
+    // 3. Update student_fees paid_amount (numeric coercion — DB may return strings)
     for (const allocation of allocations) {
       const fee = studentFees.find(f => f.id === allocation.student_fee_id);
       if (!fee) continue;
 
-      const newPaidAmount = fee.paid_amount + parseFloat(allocation.allocated_amount);
+      const prevPaid = Number(fee.paid_amount || 0);
+      const allocAmt = Number(allocation.allocated_amount);
+      const newPaidAmount = Math.round((prevPaid + allocAmt) * 100) / 100;
 
       const { error: updateError } = await supabase
         .from('student_fees')
@@ -358,6 +367,66 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+    }
+
+    // 3b. Sync installment status (paid / partial / pending / overdue) from enriched balances
+    try {
+      const { data: refreshedFees } = await supabase
+        .from('student_fees')
+        .select(`
+          id,
+          student_id,
+          fee_structure_id,
+          base_amount,
+          paid_amount,
+          adjustment_amount,
+          due_date,
+          due_month,
+          status,
+          fee_source,
+          transport_snapshot,
+          fee_structure:fee_structure_id (
+            name,
+            academic_year,
+            late_fee_type,
+            late_fee_value,
+            grace_period_days
+          )
+        `)
+        .eq('student_id', student_id)
+        .in('id', studentFeeIds);
+
+      if (refreshedFees && refreshedFees.length > 0) {
+        const enrichedRefreshed = await enrichStudentFeesWithAdjustments(
+          supabase,
+          normalizedSchoolCode,
+          studentCtx,
+          refreshedFees as never
+        );
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        for (const ef of enrichedRefreshed) {
+          const due = Number(ef.total_due || 0);
+          const paidNum = Number(ef.paid_amount || 0);
+          let nextStatus: string;
+          if (due <= 0.02) {
+            nextStatus = 'paid';
+          } else if (paidNum > 0) {
+            nextStatus = 'partial';
+          } else {
+            const d = ef.due_date ? new Date(String(ef.due_date)) : null;
+            if (d) {
+              d.setHours(0, 0, 0, 0);
+              nextStatus = d < today ? 'overdue' : 'pending';
+            } else {
+              nextStatus = 'pending';
+            }
+          }
+          await supabase.from('student_fees').update({ status: nextStatus }).eq('id', ef.id);
+        }
+      }
+    } catch (statusSyncErr) {
+      console.warn('Fee status sync after payment (non-fatal):', statusSyncErr);
     }
 
     // 4. Generate receipt

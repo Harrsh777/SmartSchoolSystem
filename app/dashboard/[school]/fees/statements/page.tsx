@@ -35,6 +35,7 @@ interface FeeRecord {
   base_amount: number;
   paid_amount: number;
   adjustment_amount: number;
+  line_adjustments_sum?: number;
   late_fee: number;
   total_due: number;
   balance_due: number;
@@ -181,13 +182,17 @@ export default function FeeStatementsPage({
   }, [schoolCode, searchQuery, selectedClass, selectedSection]);
 
   const loadClassRoster = useCallback(async () => {
+    if (!selectedClass || !selectedSection) {
+      setStudents([]);
+      return;
+    }
     try {
       const params = new URLSearchParams({
         school_code: schoolCode,
         limit: '80',
       });
-      if (selectedClass) params.append('class', selectedClass);
-      if (selectedSection) params.append('section', selectedSection);
+      params.append('class', selectedClass);
+      params.append('section', selectedSection);
 
       const response = await fetch(`/api/students?${params.toString()}`);
       const result = await response.json();
@@ -204,15 +209,15 @@ export default function FeeStatementsPage({
 
   useEffect(() => {
     const q = searchQuery.trim();
+    if (!selectedClass || !selectedSection) {
+      setStudents([]);
+      return;
+    }
     if (q.length >= 2) {
       void searchStudents();
       return;
     }
-    if (selectedClass) {
-      void loadClassRoster();
-      return;
-    }
-    setStudents([]);
+    void loadClassRoster();
   }, [searchQuery, selectedClass, selectedSection, searchStudents, loadClassRoster]);
 
   const fetchClasses = async () => {
@@ -249,14 +254,18 @@ export default function FeeStatementsPage({
   };
 
   const fetchRecentPending = async () => {
+    if (!selectedClass || !selectedSection) {
+      setRecentPending([]);
+      return;
+    }
     try {
       setLoadingRecent(true);
       const params = new URLSearchParams({
         school_code: schoolCode,
         limit: '25',
       });
-      if (selectedClass) params.set('class', selectedClass);
-      if (selectedSection) params.set('section', selectedSection);
+      params.set('class', selectedClass);
+      params.set('section', selectedSection);
       if (academicYear) params.set('academic_year', academicYear);
 
       const res = await fetch(`/api/v2/fees/students/pending?${params.toString()}`);
@@ -455,7 +464,7 @@ export default function FeeStatementsPage({
               />
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Pick a <span className="font-medium">class</span> to list students here, or type at least 2 characters to search.
+              Select <span className="font-medium">class + section</span>, then search by name or admission no.
             </p>
             {students.length > 0 && (
               <div className="mt-2 border border-gray-200 rounded-lg bg-white shadow-lg max-h-60 overflow-y-auto z-10">
@@ -479,11 +488,13 @@ export default function FeeStatementsPage({
               value={selectedClass}
               onChange={(e) => {
                 setSelectedClass(e.target.value);
-                setSelectedSection(''); // Reset section when class changes
+                setSelectedSection('');
+                setSelectedStudent(null);
+                setFeeStatement(null);
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2F6FED]"
             >
-              <option value="">All Classes</option>
+              <option value="">Select class</option>
               {classes.map((cls, idx) => (
                 <option key={idx} value={cls.class}>{cls.class}</option>
               ))}
@@ -494,11 +505,15 @@ export default function FeeStatementsPage({
             <label className="block text-sm font-medium text-gray-700 mb-2">Section</label>
             <select
               value={selectedSection}
-              onChange={(e) => setSelectedSection(e.target.value)}
+              onChange={(e) => {
+                setSelectedSection(e.target.value);
+                setSelectedStudent(null);
+                setFeeStatement(null);
+              }}
               disabled={!selectedClass}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2F6FED] disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
-              <option value="">All Sections</option>
+              <option value="">Select section</option>
               {selectedClass && classes.find(c => c.class === selectedClass)?.sections.map((section, idx) => (
                 <option key={idx} value={section}>{section}</option>
               ))}
@@ -727,6 +742,14 @@ export default function FeeStatementsPage({
                                     <span className="text-gray-600">Adjustment:</span>
                                     <span className={`ml-2 font-medium ${fee.adjustment_amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
                                       {fee.adjustment_amount > 0 ? '+' : ''}₹{fee.adjustment_amount.toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+                                )}
+                                {!!fee.line_adjustments_sum && Math.abs(fee.line_adjustments_sum) > 0.001 && (
+                                  <div>
+                                    <span className="text-gray-600">Misc/Discount:</span>
+                                    <span className={`ml-2 font-medium ${fee.line_adjustments_sum < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                      {fee.line_adjustments_sum > 0 ? '+' : ''}₹{fee.line_adjustments_sum.toLocaleString('en-IN')}
                                     </span>
                                   </div>
                                 )}
@@ -964,15 +987,16 @@ export default function FeeStatementsPage({
               </div>
 
               <p className="text-sm text-gray-500">
-                Or choose a class (and section) above, or search by name / admission number.
+                Choose class and section above, then search/select a student.
               </p>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <IndianRupee className="mx-auto text-gray-400 mb-4" size={48} />
               <p className="text-gray-500">
-                No students with pending dues in this filter. Select a <span className="font-medium">class</span> to list
-                students, or search by name (full name narrows results) or admission number.
+                {!selectedClass || !selectedSection
+                  ? 'Select class and section to fetch statements.'
+                  : 'No students with pending dues in this class-section filter.'}
               </p>
             </div>
           )}

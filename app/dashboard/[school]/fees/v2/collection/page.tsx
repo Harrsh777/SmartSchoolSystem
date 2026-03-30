@@ -90,6 +90,13 @@ interface StudentFee {
   };
 }
 
+/** Align with payment validation / pending list — float noise and rounding */
+const FEE_SETTLED_EPS = 0.02;
+
+function isInstallmentSettled(fee: Pick<StudentFee, 'total_due'>): boolean {
+  return Number(fee.total_due || 0) <= FEE_SETTLED_EPS;
+}
+
 interface FeeStructureGroup {
   key: string;
   name: string;
@@ -103,6 +110,7 @@ interface FeeStructureGroup {
 interface PendingStudent {
   id: string;
   admission_no: string;
+  roll_number?: string;
   student_name: string;
   class: string;
   section: string;
@@ -176,6 +184,8 @@ export default function PaymentCollectionPage({
   const [discountAddPercent, setDiscountAddPercent] = useState<string>('');
   const [discountAddFlat, setDiscountAddFlat] = useState<string>('');
   const [lineSaving, setLineSaving] = useState<boolean>(false);
+  /** Shown next to misc/discount actions (global banner is easy to miss when scrolled) */
+  const [feeLineError, setFeeLineError] = useState('');
   const [partialAmount, setPartialAmount] = useState<string>('');
 
   const fetchAcademicYears = useCallback(async () => {
@@ -220,7 +230,7 @@ export default function PaymentCollectionPage({
     fetchClassRows();
   }, [fetchClassRows]);
 
-  const fetchPendingStudents = useCallback(async () => {
+  const fetchPendingStudents = useCallback(async (opts?: { quiet?: boolean }) => {
     try {
       // Only show results once a specific class + section is selected.
       if (!classFilter || !sectionFilter) {
@@ -234,7 +244,7 @@ export default function PaymentCollectionPage({
         return;
       }
 
-      setLoading(true);
+      if (!opts?.quiet) setLoading(true);
       setError('');
       const q = new URLSearchParams({ school_code: schoolCode, limit: '300' });
       if (classFilter) q.set('class', classFilter);
@@ -242,7 +252,7 @@ export default function PaymentCollectionPage({
       if (currentAcademicYear) q.set('academic_year', currentAcademicYear);
 
       const pendingUrl = `/api/v2/fees/students/pending?${q.toString()}`;
-      const pendingRes = await fetch(pendingUrl);
+      const pendingRes = await fetch(pendingUrl, { cache: 'no-store' });
       const pendingJson = await pendingRes.json();
 
       if (pendingRes.ok) setPendingStudents(pendingJson.data || []);
@@ -256,7 +266,7 @@ export default function PaymentCollectionPage({
       setError('Failed to load students');
       setPendingStudents([]);
     } finally {
-      setLoading(false);
+      if (!opts?.quiet) setLoading(false);
     }
   }, [schoolCode, classFilter, sectionFilter, currentAcademicYear]);
 
@@ -276,6 +286,12 @@ export default function PaymentCollectionPage({
       // ignore
     }
   }, [schoolCode]);
+
+  const canAddFeeLines = Boolean(selectedCollector?.trim());
+
+  useEffect(() => {
+    setFeeLineError('');
+  }, [selectedCollector, activeFeeId, expandedStructureId]);
 
   const resolveStaffId = (): string => {
     if (selectedCollector) return selectedCollector;
@@ -342,6 +358,7 @@ export default function PaymentCollectionPage({
       id: student.id,
       student_name: student.student_name,
       admission_no: student.admission_no,
+      roll_number: student.roll_number,
       class: student.class,
       section: student.section,
       pending_amount:
@@ -354,6 +371,7 @@ export default function PaymentCollectionPage({
     setAllocations({});
     setPartialAmount('');
     setError('');
+    setFeeLineError('');
     setSuccess('');
 
     try {
@@ -362,15 +380,28 @@ export default function PaymentCollectionPage({
         ? `/api/v2/fees/students/${student.id}/fees?school_code=${schoolCode}&academic_year=${encodeURIComponent(currentAcademicYear)}`
         : `/api/v2/fees/students/${student.id}/fees?school_code=${schoolCode}`;
       const [feesRes, paymentsRes] = await Promise.all([
-        fetch(feesUrl),
-        fetch(`/api/v2/fees/payments?school_code=${schoolCode}&student_id=${student.id}`),
+        fetch(feesUrl, { cache: 'no-store' }),
+        fetch(`/api/v2/fees/payments?school_code=${schoolCode}&student_id=${student.id}`, {
+          cache: 'no-store',
+        }),
       ]);
 
       const feesResult = await feesRes.json();
       const paymentsResult = await paymentsRes.json();
 
-      if (feesRes.ok) setStudentFees(feesResult.data || []);
-      else setError(feesResult.error || 'Failed to load fees');
+      if (feesRes.ok) {
+        const feesList = Array.isArray(feesResult.data) ? feesResult.data : [];
+        setStudentFees(feesList);
+        const sumOutstanding = feesList.reduce(
+          (s: number, f: StudentFee) => s + Math.max(0, Number(f.total_due) || 0),
+          0
+        );
+        setSelectedStudent((prev) =>
+          prev && prev.id === student.id
+            ? { ...prev, pending_amount: Math.round(sumOutstanding * 100) / 100 }
+            : prev
+        );
+      } else setError(feesResult.error || 'Failed to load fees');
 
       if (paymentsRes.ok) {
         const list = Array.isArray(paymentsResult.data) ? paymentsResult.data : [];
@@ -389,10 +420,22 @@ export default function PaymentCollectionPage({
     let cancelled = false;
     setFeesLoading(true);
     const feesUrl = `/api/v2/fees/students/${selectedStudent.id}/fees?school_code=${schoolCode}&academic_year=${encodeURIComponent(currentAcademicYear)}`;
-    fetch(feesUrl)
+    fetch(feesUrl, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
-        if (!cancelled && data.data) setStudentFees(Array.isArray(data.data) ? data.data : []);
+        if (!cancelled && data.data) {
+          const feesList = Array.isArray(data.data) ? data.data : [];
+          setStudentFees(feesList);
+          const sumOutstanding = feesList.reduce(
+            (s: number, f: StudentFee) => s + Math.max(0, Number(f.total_due) || 0),
+            0
+          );
+          setSelectedStudent((prev) =>
+            prev && prev.id === selectedStudent.id
+              ? { ...prev, pending_amount: Math.round(sumOutstanding * 100) / 100 }
+              : prev
+          );
+        }
       })
       .catch(() => {
         if (!cancelled) setError('Failed to load fees for selected year');
@@ -404,26 +447,34 @@ export default function PaymentCollectionPage({
   }, [currentAcademicYear, schoolCode, selectedStudent?.id]);
 
   const handleInstallmentSelect = (fee: StudentFee) => {
-    const isPaid = fee.total_due <= 0.009 || fee.status === 'paid';
-    if (isPaid) return;
+    const settled = isInstallmentSettled(fee);
 
-    // Single-installment selection:
-    // - selecting a different installment switches the receipt preview
-    // - selecting the same installment again clears selection
     if (activeFeeId === fee.id) {
       setActiveFeeId(null);
       setAllocations({});
       setPartialAmount('');
+      setReceiptModalOpen(false);
       return;
     }
 
     setActiveFeeId(fee.id);
+    setReceiptModalOpen(false);
+
+    if (settled) {
+      setAllocations({});
+      setPartialAmount('');
+      setMiscAddLabel('');
+      setMiscAddAmount('');
+      setDiscountAddMode('percent');
+      setDiscountAddPercent('');
+      setDiscountAddFlat('');
+      return;
+    }
 
     const amt = Math.round(Number(fee.total_due || 0) * 100) / 100;
     setAllocations(amt > 0 ? { [fee.id]: amt } : {});
     setPartialAmount(amt > 0 ? String(amt) : '');
 
-    // Receipt-scoped inputs should start fresh per installment.
     setMiscAddLabel('');
     setMiscAddAmount('');
     setDiscountAddMode('percent');
@@ -433,7 +484,7 @@ export default function PaymentCollectionPage({
 
   const handlePartialAmountChange = (raw: string) => {
     setPartialAmount(raw);
-    if (!activeSelectedFee) return;
+    if (!activeSelectedFee || isInstallmentSettled(activeSelectedFee)) return;
 
     const due = Math.max(0, Number(activeSelectedFee.total_due || 0));
     if (raw.trim() === '') {
@@ -466,10 +517,22 @@ export default function PaymentCollectionPage({
         ? `/api/v2/fees/students/${selectedStudent.id}/fees?school_code=${schoolCode}&academic_year=${encodeURIComponent(currentAcademicYear)}`
         : `/api/v2/fees/students/${selectedStudent.id}/fees?school_code=${schoolCode}`;
 
-      const res = await fetch(feesUrl);
+      const res = await fetch(feesUrl, { cache: 'no-store' });
       const data = await res.json();
-      if (res.ok) setStudentFees(Array.isArray(data.data) ? data.data : []);
-      else setError(data.error || 'Failed to reload fees');
+      if (res.ok) {
+        const feesList = Array.isArray(data.data) ? data.data : [];
+        setStudentFees(feesList);
+        const sumOutstanding = feesList.reduce(
+          (s: number, f: StudentFee) => s + Math.max(0, Number(f.total_due) || 0),
+          0
+        );
+        setSelectedStudent((prev) =>
+          prev && prev.id === selectedStudent.id
+            ? { ...prev, pending_amount: Math.round(sumOutstanding * 100) / 100 }
+            : prev
+        );
+        void fetchPendingStudents({ quiet: true });
+      } else setError(data.error || 'Failed to reload fees');
     } catch (e) {
       console.error(e);
       setError('Failed to reload fees');
@@ -481,19 +544,19 @@ export default function PaymentCollectionPage({
   const handleAddMiscLine = async (feeId: string) => {
     const staffId = resolveStaffId();
     if (!staffId) {
-      setError('Unable to identify staff. Please select a collector.');
+      setFeeLineError('Select a fee collector in the payment section above before adding misc or discount.');
       return;
     }
     const label = miscAddLabel.trim() || 'Misc fee';
     const amountNum = Number(miscAddAmount);
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      setError('Misc amount must be greater than 0');
+      setFeeLineError('Misc amount must be greater than 0');
       return;
     }
 
     try {
       setLineSaving(true);
-      setError('');
+      setFeeLineError('');
       const res = await fetch(`/api/v2/fees/student-fees/${feeId}/lines`, {
         method: 'POST',
         headers: {
@@ -510,7 +573,7 @@ export default function PaymentCollectionPage({
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to add misc line');
+        setFeeLineError(data.error || 'Failed to add misc line');
         return;
       }
 
@@ -519,7 +582,7 @@ export default function PaymentCollectionPage({
       await reloadSelectedStudentFees();
     } catch (e) {
       console.error(e);
-      setError('Failed to add misc line');
+      setFeeLineError('Failed to add misc line');
     } finally {
       setLineSaving(false);
     }
@@ -528,7 +591,7 @@ export default function PaymentCollectionPage({
   const handleAddDiscountLine = async (feeId: string) => {
     const staffId = resolveStaffId();
     if (!staffId) {
-      setError('Unable to identify staff. Please select a collector.');
+      setFeeLineError('Select a fee collector in the payment section above before adding misc or discount.');
       return;
     }
 
@@ -538,14 +601,14 @@ export default function PaymentCollectionPage({
     if (discountAddMode === 'percent') {
       const p = Number(discountAddPercent);
       if (!Number.isFinite(p) || p <= 0) {
-        setError('Discount % must be greater than 0');
+        setFeeLineError('Discount % must be greater than 0');
         return;
       }
       discountAmount = (baseAmount * p) / 100;
     } else {
       const flat = Number(discountAddFlat);
       if (!Number.isFinite(flat) || flat <= 0) {
-        setError('Discount amount must be greater than 0');
+        setFeeLineError('Discount amount must be greater than 0');
         return;
       }
       discountAmount = flat;
@@ -553,7 +616,7 @@ export default function PaymentCollectionPage({
 
     discountAmount = Math.round(discountAmount * 100) / 100;
     if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
-      setError('Invalid discount amount');
+      setFeeLineError('Invalid discount amount');
       return;
     }
 
@@ -564,7 +627,7 @@ export default function PaymentCollectionPage({
 
     try {
       setLineSaving(true);
-      setError('');
+      setFeeLineError('');
       const res = await fetch(`/api/v2/fees/student-fees/${feeId}/lines`, {
         method: 'POST',
         headers: {
@@ -581,7 +644,7 @@ export default function PaymentCollectionPage({
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to add discount line');
+        setFeeLineError(data.error || 'Failed to add discount line');
         return;
       }
 
@@ -590,7 +653,7 @@ export default function PaymentCollectionPage({
       await reloadSelectedStudentFees();
     } catch (e) {
       console.error(e);
-      setError('Failed to add discount line');
+      setFeeLineError('Failed to add discount line');
     } finally {
       setLineSaving(false);
     }
@@ -671,15 +734,32 @@ export default function PaymentCollectionPage({
     }
   };
 
-  const filteredStudents = useMemo(
-    () =>
-      pendingStudents.filter(
-        (s) =>
-          s.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          s.admission_no.toLowerCase().includes(searchQuery.toLowerCase())
-      ),
-    [pendingStudents, searchQuery]
-  );
+  const filteredStudents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const list = q
+      ? pendingStudents.filter(
+          (s) =>
+            s.student_name.toLowerCase().includes(q) ||
+            s.admission_no.toLowerCase().includes(q) ||
+            String(s.roll_number || '')
+              .toLowerCase()
+              .includes(q)
+        )
+      : [...pendingStudents];
+    list.sort((a, b) => {
+      const ra = String(a.roll_number || '').trim();
+      const rb = String(b.roll_number || '').trim();
+      if (!ra && !rb) {
+        return a.student_name.localeCompare(b.student_name, undefined, { sensitivity: 'base' });
+      }
+      if (!ra) return 1;
+      if (!rb) return -1;
+      const cmp = ra.localeCompare(rb, undefined, { numeric: true, sensitivity: 'base' });
+      if (cmp !== 0) return cmp;
+      return a.student_name.localeCompare(b.student_name, undefined, { sensitivity: 'base' });
+    });
+    return list;
+  }, [pendingStudents, searchQuery]);
 
   const totalDue = studentFees.reduce((sum, f) => sum + f.total_due, 0);
   const totalDueForDisplay = selectedStudent ? selectedStudent.pending_amount : totalDue;
@@ -739,7 +819,7 @@ export default function PaymentCollectionPage({
       g.fees.sort((a, b) => String(a.due_month).localeCompare(String(b.due_month)));
       g.sumDue = g.fees.reduce((s, f) => s + f.total_due, 0);
       g.sumPaid = g.fees.reduce((s, f) => s + f.paid_amount, 0);
-      g.pendingInstallments = g.fees.filter((f) => f.total_due > 0.009).length;
+      g.pendingInstallments = g.fees.filter((f) => !isInstallmentSettled(f)).length;
       out.push(g);
     }
     out.sort((a, b) => a.name.localeCompare(b.name));
@@ -948,7 +1028,7 @@ export default function PaymentCollectionPage({
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                   <Input
                     type="text"
-                    placeholder="Name or admission number"
+                    placeholder="Name, admission no., or roll no."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 h-11 w-full"
@@ -1010,6 +1090,9 @@ export default function PaymentCollectionPage({
                 <div>
                   <p className="font-semibold text-gray-900 dark:text-white">{selectedStudent.student_name}</p>
                   <p className="text-sm text-gray-600 dark:text-slate-400 font-mono">
+                    {selectedStudent.roll_number?.trim()
+                      ? `Roll ${selectedStudent.roll_number.trim()} • `
+                      : ''}
                     {selectedStudent.admission_no} • {selectedStudent.class}-{selectedStudent.section}
                   </p>
                 </div>
@@ -1049,6 +1132,9 @@ export default function PaymentCollectionPage({
                       <span className="text-xs font-medium uppercase tracking-wide">Student Name</span>
                     </div>
                     <p className="text-lg font-bold truncate">{selectedStudent.student_name}</p>
+                    <p className="text-xs text-blue-100/90 mt-1 font-mono truncate">
+                      {selectedStudent.class}-{selectedStudent.section} · {selectedStudent.admission_no}
+                    </p>
                   </Card>
                   <Card className="p-4">
                     <div className="flex items-center gap-2 text-gray-500 dark:text-slate-400 mb-1">
@@ -1056,7 +1142,7 @@ export default function PaymentCollectionPage({
                       <span className="text-xs font-medium uppercase tracking-wide">Roll Number</span>
                     </div>
                     <p className="text-lg font-bold text-gray-900 dark:text-white font-mono">
-                      {selectedStudent.admission_no} • {selectedStudent.class}-{selectedStudent.section}
+                      {selectedStudent.roll_number?.trim() || '—'}
                     </p>
                   </Card>
                   <Card className="p-4">
@@ -1222,6 +1308,10 @@ export default function PaymentCollectionPage({
                                     <p className="text-sm text-blue-100/90 mt-1">
                                       {selectedStudent.student_name}
                                       <span className="text-blue-200/80"> · </span>
+                                      <span className="font-mono">
+                                        Roll {selectedStudent.roll_number?.trim() || '—'}
+                                      </span>
+                                      <span className="text-blue-200/80"> · </span>
                                       <span className="font-mono">{selectedStudent.admission_no}</span>
                                       <span className="text-blue-200/80"> · </span>
                                       {selectedStudent.class}-{selectedStudent.section}
@@ -1247,7 +1337,7 @@ export default function PaymentCollectionPage({
                                     <div>
                                         <p className="text-sm font-semibold text-gray-900 dark:text-white">Installments</p>
                                         <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                                          Select 1 installment to pay now
+                                          Pay open installments; settled ones open as read-only receipt
                                         </p>
                                     </div>
                                       <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 tabular-nums">
@@ -1257,7 +1347,7 @@ export default function PaymentCollectionPage({
 
                                     <div className="max-h-44 overflow-y-auto pr-1 space-y-2">
                                       {expandedGroup.fees.map((fee) => {
-                                        const isPaid = fee.total_due <= 0 || fee.status === 'paid';
+                                        const settled = isInstallmentSettled(fee);
                                         const selected = activeFeeId === fee.id;
 
                                       return (
@@ -1266,8 +1356,16 @@ export default function PaymentCollectionPage({
                                           role="button"
                                           tabIndex={0}
                                           onClick={() => handleInstallmentSelect(fee)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                              e.preventDefault();
+                                              handleInstallmentSelect(fee);
+                                            }
+                                          }}
                                           className={`p-3 rounded-xl border transition-colors cursor-pointer ${
-                                            activeFeeId === fee.id
+                                            selected && settled
+                                              ? 'border-emerald-400/90 bg-emerald-50/70 dark:border-emerald-700/80 dark:bg-emerald-950/25'
+                                              : selected
                                               ? 'border-blue-400/80 bg-blue-50/60 dark:border-blue-700/80 dark:bg-blue-950/20'
                                               : 'border-gray-200/80 dark:border-slate-700 bg-white/60 dark:bg-slate-900/20 hover:border-gray-300/80 dark:hover:border-slate-600'
                                           }`}
@@ -1280,8 +1378,13 @@ export default function PaymentCollectionPage({
                                               <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">
                                                 Due {fee.due_date ? formatDateShort(fee.due_date) : '—'} ·{' '}
                                                 <span className="font-medium tabular-nums">
-                                                  {isPaid ? 'Settled' : formatCurrency(fee.total_due)}
+                                                  {settled ? 'Settled' : formatCurrency(fee.total_due)}
                                                 </span>
+                                                {settled && (
+                                                  <span className="ml-1 text-emerald-700 dark:text-emerald-400 font-medium">
+                                                    · view receipt
+                                                  </span>
+                                                )}
                                               </p>
                                             </div>
 
@@ -1289,7 +1392,9 @@ export default function PaymentCollectionPage({
                                               <span
                                                 className={`inline-flex items-center justify-center w-5 h-5 rounded-full border ${
                                                   selected
-                                                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200'
+                                                    ? settled
+                                                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'
+                                                      : 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200'
                                                     : 'border-gray-300 bg-white/60 text-gray-500'
                                                 }`}
                                               >
@@ -1326,7 +1431,7 @@ export default function PaymentCollectionPage({
                                         activeFeeId ? fee.id === activeFeeId : false
                                       )
                                       .map((fee) => {
-                                  const isPaid = fee.total_due <= 0 || fee.status === 'paid';
+                                  const isPaid = isInstallmentSettled(fee);
                                   const allocated = allocations[fee.id] || 0;
                                   const lastPaidDate = lastPaymentDateByFeeId[fee.id];
                                   const isOverdue =
@@ -1351,6 +1456,13 @@ export default function PaymentCollectionPage({
                                       key={fee.id}
                                       className={`rounded-xl overflow-hidden ${shellClass}`}
                                     >
+                                      {isPaid && (
+                                        <div className="px-4 py-2.5 bg-emerald-100/90 dark:bg-emerald-900/40 border-b border-emerald-200 dark:border-emerald-800 text-sm text-emerald-900 dark:text-emerald-100">
+                                          Fully paid — read-only preview. Use{' '}
+                                          <span className="font-semibold">Previous paid receipts</span> below to
+                                          reprint the official receipt.
+                                        </div>
+                                      )}
                                       <div className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 border-b border-black/[0.06] dark:border-white/[0.06]">
                                         <div className="flex gap-3 min-w-0">
                                           <div
@@ -1549,6 +1661,27 @@ export default function PaymentCollectionPage({
                                               Add misc fee / discount (to this receipt)
                                             </p>
 
+                                            {feeLineError ? (
+                                              <div
+                                                role="alert"
+                                                className="mb-3 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/50 px-3 py-2.5 flex gap-2.5 items-start text-sm text-red-900 dark:text-red-100"
+                                              >
+                                                <AlertCircle className="shrink-0 mt-0.5" size={18} />
+                                                <p className="font-medium leading-snug">{feeLineError}</p>
+                                              </div>
+                                            ) : null}
+                                            {!canAddFeeLines ? (
+                                              <div
+                                                className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/35 px-3 py-2.5 text-sm text-amber-950 dark:text-amber-50"
+                                                aria-live="polite"
+                                              >
+                                                <p className="font-semibold">Select a fee collector first</p>
+                                                <p className="text-xs mt-1 text-amber-900/85 dark:text-amber-100/85">
+                                                  Use the payment section above to choose who is collecting. Misc and discount stay disabled until a collector is selected.
+                                                </p>
+                                              </div>
+                                            ) : null}
+
                                             <div className="space-y-3">
                                               <div>
                                                 <p className="text-xs font-semibold text-gray-700 dark:text-slate-200 mb-2">Misc fee</p>
@@ -1571,7 +1704,7 @@ export default function PaymentCollectionPage({
                                                 <div className="mt-2 flex gap-2 items-center">
                                                   <Button
                                                     type="button"
-                                                    disabled={lineSaving}
+                                                    disabled={lineSaving || !canAddFeeLines}
                                                     onClick={async () => {
                                                       if (!fee?.id) return;
                                                       // Handler implemented in component scope
@@ -1625,7 +1758,7 @@ export default function PaymentCollectionPage({
                                                 <div className="flex gap-2 items-center">
                                                   <Button
                                                     type="button"
-                                                    disabled={lineSaving}
+                                                    disabled={lineSaving || !canAddFeeLines}
                                                     onClick={async () => {
                                                       if (!fee?.id) return;
                                                       await Promise.resolve(handleAddDiscountLine(fee.id));
@@ -1755,7 +1888,7 @@ export default function PaymentCollectionPage({
                         <div>
                           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Installments</h3>
                           <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
-                            Select 1 installment to pay now
+                            Open installments for payment; settled = read-only receipt
                           </p>
                         </div>
                         <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 tabular-nums">
@@ -1771,19 +1904,20 @@ export default function PaymentCollectionPage({
                       ) : (
                         <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
                           {activeStructureGroup.fees.map((fee) => {
-                            const isPaid = fee.total_due <= 0.009 || fee.status === 'paid';
+                            const settled = isInstallmentSettled(fee);
                             const isSelected = activeFeeId === fee.id;
                             return (
                               <button
                                 key={fee.id}
                                 type="button"
                                 onClick={() => handleInstallmentSelect(fee)}
-                                disabled={isPaid}
                                 className={`w-full text-left p-4 rounded-xl border transition-colors ${
-                                  isSelected
+                                  isSelected && settled
+                                    ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/25'
+                                    : isSelected
                                     ? 'border-blue-400 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/20'
                                     : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800/30 hover:border-gray-300 dark:hover:border-slate-600'
-                                } ${isPaid ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                }`}
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
@@ -1793,15 +1927,22 @@ export default function PaymentCollectionPage({
                                     <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">
                                       Due {fee.due_date ? formatDateShort(fee.due_date) : '—'} ·{' '}
                                       <span className="font-medium tabular-nums">
-                                        {isPaid ? 'Settled' : formatCurrency(Number(fee.total_due || 0))}
+                                        {settled ? 'Settled' : formatCurrency(Number(fee.total_due || 0))}
                                       </span>
+                                      {settled && (
+                                        <span className="ml-1 text-emerald-700 dark:text-emerald-400 font-medium">
+                                          · view receipt
+                                        </span>
+                                      )}
                                     </p>
                                   </div>
                                   <div className="shrink-0 mt-0.5">
                                     <span
                                       className={`inline-flex items-center justify-center w-5 h-5 rounded-full border ${
                                         isSelected
-                                          ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200'
+                                          ? settled
+                                            ? 'border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'
+                                            : 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200'
                                           : 'border-gray-300 bg-white/60 text-gray-500'
                                       }`}
                                     >
@@ -1830,10 +1971,15 @@ export default function PaymentCollectionPage({
                         <Button
                           type="button"
                           onClick={() => {
-                            if (!activeSelectedFee) return;
+                            if (!activeSelectedFee || isInstallmentSettled(activeSelectedFee)) return;
                             setReceiptModalOpen(true);
                           }}
-                          disabled={!activeSelectedFee || !selectedCollector || collecting}
+                          disabled={
+                            !activeSelectedFee ||
+                            isInstallmentSettled(activeSelectedFee) ||
+                            !selectedCollector ||
+                            collecting
+                          }
                           className="h-10"
                         >
                           <Receipt size={18} className="mr-2" />
@@ -1854,12 +2000,18 @@ export default function PaymentCollectionPage({
                           const manual = fee.installment_manual_lines ?? [];
                           const rules = fee.adjustment_lines ?? [];
                           const allocated = allocations[fee.id] || 0;
-                          const isPaid = fee.total_due <= 0.009 || fee.status === 'paid';
+                          const isPaid = isInstallmentSettled(fee);
                           const amountDuePreview = Math.max(0, Number(fee.total_due || 0) - allocated);
                           const totalPaidAfterAllocation =
                             Math.round((Number(fee.paid_amount || 0) + allocated) * 100) / 100;
                           return (
                             <div className="space-y-5">
+                              {isPaid && (
+                                <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/90 dark:bg-emerald-950/30 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100">
+                                  Fully paid — read-only preview. Use{' '}
+                                  <span className="font-semibold">Previous paid receipts</span> below to reprint.
+                                </div>
+                              )}
                               <div className="rounded-2xl border border-gray-200 dark:border-slate-700 overflow-hidden">
                                 <div className="bg-gradient-to-r from-blue-600/95 to-indigo-600/95 text-white p-5">
                                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/90">
@@ -1962,6 +2114,27 @@ export default function PaymentCollectionPage({
                                             Add misc fee / discount (to this receipt)
                                           </p>
 
+                                          {feeLineError ? (
+                                            <div
+                                              role="alert"
+                                              className="mb-3 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/50 px-3 py-2.5 flex gap-2.5 items-start text-sm text-red-900 dark:text-red-100"
+                                            >
+                                              <AlertCircle className="shrink-0 mt-0.5" size={18} />
+                                              <p className="font-medium leading-snug">{feeLineError}</p>
+                                            </div>
+                                          ) : null}
+                                          {!canAddFeeLines ? (
+                                            <div
+                                              className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/35 px-3 py-2.5 text-sm text-amber-950 dark:text-amber-50"
+                                              aria-live="polite"
+                                            >
+                                              <p className="font-semibold">Select a fee collector first</p>
+                                              <p className="text-xs mt-1 text-amber-900/85 dark:text-amber-100/85">
+                                                Use the payment section above to choose who is collecting. Misc and discount stay disabled until a collector is selected.
+                                              </p>
+                                            </div>
+                                          ) : null}
+
                                       <div className="space-y-4">
                                         <div>
                                           <p className="text-xs font-semibold text-gray-700 dark:text-slate-200 mb-2">Misc fee</p>
@@ -1984,7 +2157,7 @@ export default function PaymentCollectionPage({
                                           <div className="mt-2">
                                             <Button
                                               type="button"
-                                              disabled={lineSaving}
+                                              disabled={lineSaving || !canAddFeeLines}
                                               onClick={async () => {
                                                 if (!fee?.id) return;
                                                 await Promise.resolve(handleAddMiscLine(fee.id));
@@ -2029,7 +2202,7 @@ export default function PaymentCollectionPage({
                                           </div>
                                           <Button
                                             type="button"
-                                            disabled={lineSaving}
+                                            disabled={lineSaving || !canAddFeeLines}
                                             onClick={async () => {
                                               if (!fee?.id) return;
                                               await Promise.resolve(handleAddDiscountLine(fee.id));
@@ -2138,7 +2311,7 @@ export default function PaymentCollectionPage({
                           Total Due (all visible rows) {formatCurrency(totalDue)}
                         </p>
                       </div>
-                      {activeSelectedFee && activeSelectedFee.total_due > 0.009 && (
+                      {activeSelectedFee && !isInstallmentSettled(activeSelectedFee) && (
                         <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-950/20 p-3 space-y-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
                             Partial Payment
@@ -2178,12 +2351,14 @@ export default function PaymentCollectionPage({
                       <Button
                         onClick={() => {
                           if (collecting) return;
+                          if (activeSelectedFee && isInstallmentSettled(activeSelectedFee)) return;
                           setReceiptModalOpen(true);
                         }}
                         disabled={
                           collecting ||
                           totalAllocated === 0 ||
-                          !selectedCollector
+                          !selectedCollector ||
+                          (!!activeSelectedFee && isInstallmentSettled(activeSelectedFee))
                         }
                         className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center justify-center gap-2"
                       >
@@ -2311,7 +2486,8 @@ export default function PaymentCollectionPage({
                       Fee receipt preview
                     </p>
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-1">
-                      {selectedStudent.student_name} · {selectedStudent.admission_no}
+                      {selectedStudent.student_name} · Roll {selectedStudent.roll_number?.trim() || '—'} ·{' '}
+                      {selectedStudent.admission_no}
                     </h3>
                     <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
                       {selectedStudent.class}-{selectedStudent.section} · Total to collect {formatCurrency(totalAllocated)}
@@ -2340,7 +2516,7 @@ export default function PaymentCollectionPage({
                       const heads = structureHeadAllocated(fee);
                       const manual = fee.installment_manual_lines ?? [];
                       const rules = fee.adjustment_lines ?? [];
-                      const isPaid = fee.total_due <= 0 || fee.status === 'paid';
+                      const isPaid = isInstallmentSettled(fee);
                       return (
                         <div key={fee.id} className="rounded-2xl border border-gray-200 dark:border-slate-800 overflow-hidden">
                           <div className="px-4 py-3 bg-gradient-to-r from-blue-600/95 to-indigo-600/95 text-white flex items-start justify-between gap-4">
@@ -2545,10 +2721,11 @@ export default function PaymentCollectionPage({
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm min-w-[820px]">
+                    <table className="w-full text-sm min-w-[900px]">
                       <thead>
                         <tr className="bg-[#003D4C] text-white">
                           <th className="px-3 py-3 text-left w-10">#</th>
+                          <th className="px-3 py-3 text-left w-20">Roll</th>
                           <th className="px-3 py-3 text-left">Student Name</th>
                           <th className="px-3 py-3 text-left">Admission Id</th>
                           <th className="px-3 py-3 text-left">Class</th>
@@ -2561,6 +2738,7 @@ export default function PaymentCollectionPage({
                         {filteredStudents.map((student, i) => (
                           <tr key={student.id} className="border-t border-gray-200 dark:border-slate-800 hover:bg-gray-50/50">
                             <td className="px-3 py-3 text-gray-600">{String(i + 1).padStart(2, '0')}</td>
+                            <td className="px-3 py-3 font-mono text-gray-800">{student.roll_number?.trim() || '—'}</td>
                             <td className="px-3 py-3 font-medium text-gray-900">{student.student_name}</td>
                             <td className="px-3 py-3 font-mono text-gray-800">{student.admission_no}</td>
                             <td className="px-3 py-3 text-gray-800">

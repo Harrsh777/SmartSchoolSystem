@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { enrichStudentFeesWithAdjustments } from '@/lib/fees/enrich-student-fees';
+import { academicYearMatchesStructure } from '@/lib/fees/fee-structure-class-match';
 
 export async function GET(
   request: NextRequest,
@@ -66,16 +68,26 @@ export async function GET(
       );
     }
 
-    // Filter by academic year using the fee structure's academic_year.
-    // This avoids issues caused by `due_month` being date-shifted due to UTC/local conversions.
-    const studentFeesFiltered = academicYear
-      ? (studentFeesRaw || []).filter((fee: any) => {
-          const ay = String(fee?.fee_structure?.academic_year ?? '').trim();
-          return ay === academicYear;
-        })
-      : (studentFeesRaw || []);
+    // Filter by academic year via shared matcher used in other fee flows.
+    const studentFeesFiltered = (studentFeesRaw || []).filter((fee: any) =>
+      academicYearMatchesStructure(
+        String(fee?.fee_structure?.academic_year ?? ''),
+        academicYear
+      )
+    );
 
-    // Calculate late fee and process fees
+    const studentCtx = {
+      id: String(student.id),
+      class: String(student.class ?? ''),
+      section: student.section != null ? String(student.section) : null,
+    };
+    const enrichedFees = await enrichStudentFeesWithAdjustments(
+      supabase,
+      normalizedSchoolCode,
+      studentCtx,
+      studentFeesFiltered as never
+    );
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -84,51 +96,24 @@ export async function GET(
     let totalPending = 0;
     let overdueAmount = 0;
 
-    const processedFees = ((studentFeesFiltered || []) as Record<string, unknown>[]).map((fee: Record<string, unknown>) => {
+    const processedFees = (enrichedFees as Record<string, unknown>[]).map((fee: Record<string, unknown>) => {
       const baseAmount = Number(fee.base_amount || 0);
       const paidAmount = Number(fee.paid_amount || 0);
       const adjustmentAmount = Number(fee.adjustment_amount || 0);
-      
-      // Calculate late fee
-      let lateFee = 0;
-      const structure = fee.fee_structure as Record<string, unknown> | null | undefined;
-      if (structure && structure.late_fee_type) {
-        const dueDateStr = String(fee.due_date || '');
-        const dueDate = new Date(dueDateStr);
-        dueDate.setHours(0, 0, 0, 0);
-        const gracePeriod = Number(structure.grace_period_days || 0);
-        const effectiveDueDate = new Date(dueDate);
-        effectiveDueDate.setDate(effectiveDueDate.getDate() + gracePeriod);
-
-        if (today > effectiveDueDate) {
-          const daysLate = Math.floor((today.getTime() - effectiveDueDate.getTime()) / (1000 * 60 * 60 * 24));
-          const lateFeeType = String(structure.late_fee_type || '');
-          const lateFeeValue = Number(structure.late_fee_value || 0);
-
-          if (lateFeeType === 'flat') {
-            lateFee = lateFeeValue;
-          } else if (lateFeeType === 'per_day') {
-            lateFee = lateFeeValue * daysLate;
-          } else if (lateFeeType === 'percentage') {
-            lateFee = (baseAmount * lateFeeValue / 100) * daysLate;
-          }
-        }
-      }
-
-      const totalDueAmount = baseAmount + adjustmentAmount + lateFee;
-      const balanceDue = totalDueAmount - paidAmount;
+      const lateFee = Number(fee.late_fee || 0);
+      const totalDueAmount = Number(fee.final_amount || baseAmount) + lateFee;
+      const balanceDue = Number(fee.total_due || 0);
       const dueDateStr = String(fee.due_date || '');
-      const isOverdue = balanceDue > 0 && today > new Date(dueDateStr);
-      const daysOverdue = isOverdue 
+      const isOverdue = balanceDue > 0.01 && today > new Date(dueDateStr);
+      const daysOverdue = isOverdue
         ? Math.floor((today.getTime() - new Date(dueDateStr).getTime()) / (1000 * 60 * 60 * 24))
         : 0;
+      const structure = fee.fee_structure as Record<string, unknown> | null | undefined;
 
       totalDue += totalDueAmount;
       totalPaid += paidAmount;
       totalPending += balanceDue;
-      if (isOverdue) {
-        overdueAmount += balanceDue;
-      }
+      if (isOverdue) overdueAmount += balanceDue;
 
       return {
         id: fee.id,
@@ -137,6 +122,7 @@ export async function GET(
         base_amount: baseAmount,
         paid_amount: paidAmount,
         adjustment_amount: adjustmentAmount,
+        line_adjustments_sum: Number(fee.line_adjustments_sum || 0),
         late_fee: lateFee,
         total_due: totalDueAmount,
         balance_due: balanceDue,

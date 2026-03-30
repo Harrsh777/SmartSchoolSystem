@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { classMatches, sectionMatches } from '@/lib/marks-filters';
 
 /**
  * GET /api/marks/view
@@ -151,8 +152,8 @@ export async function GET(request: NextRequest) {
           const student = summary.student as Record<string, unknown> | undefined;
           if (!student) return false;
           
-          if (classId && student.class !== classId) return false;
-          if (section && student.section !== section) return false;
+          if (!classMatches(student.class as string | undefined, classId)) return false;
+          if (!sectionMatches(student.section as string | undefined, section)) return false;
           
           if (searchQuery) {
             const query = searchQuery.toLowerCase();
@@ -263,17 +264,8 @@ export async function GET(request: NextRequest) {
       const student = summary.student;
       if (!student) return false;
 
-      if (classId) {
-        // Check student.class if available (class_id doesn't exist in new exam structure)
-        // The new structure uses exam_class_mappings instead
-        if (student.class && student.class !== classId) {
-          // If classId is a UUID, we need to check differently
-          // For now, just check the student's class name
-          return false;
-        }
-      }
-
-      if (section && student.section !== section) return false;
+      if (!classMatches(student.class, classId)) return false;
+      if (!sectionMatches(student.section, section)) return false;
 
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
