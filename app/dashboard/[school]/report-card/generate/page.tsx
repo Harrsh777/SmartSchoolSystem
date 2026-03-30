@@ -6,8 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import {
-  ArrowLeft,
-  FileText,
+    FileText,
   BookOpen,
   Calendar,
   Loader2,
@@ -43,7 +42,18 @@ export default function ReportCardGeneratePage({
   const [exams, setExams] = useState<Array<{ id: string; exam_name: string; term_id?: string | null; academic_year?: string; class_mappings?: Array<{ class: { id: string; class: string; section: string } }> }>>([]);
   const [structures, setStructures] = useState<Array<{ id: string; name: string }>>([]);
   const [structureTerms, setStructureTerms] = useState<Array<{ id: string; name: string; serial?: number }>>([]);
-  const [students, setStudents] = useState<Array<{ id: string; student_name: string; admission_no: string; class: string; section: string }>>([]);
+  const [students, setStudents] = useState<
+    Array<{
+      id: string;
+      student_name: string;
+      admission_no: string;
+      class: string;
+      section: string;
+      roll_number?: string | null;
+      date_of_birth?: string | null;
+      student_contact?: string | null;
+    }>
+  >([]);
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; description?: string }>>([]);
 
   const classOptions = [...new Set(classes.map((c) => c.class))].sort();
@@ -136,6 +146,9 @@ export default function ReportCardGeneratePage({
       if (selectedClass) params.set('class', selectedClass);
       if (selectedSection) params.set('section', selectedSection);
       params.set('status', 'active');
+      // Sort students by roll number for the selection list.
+      params.set('sort_by', 'roll_number');
+      params.set('sort_order', 'asc');
       fetch(`/api/students?${params}`)
         .then((r) => r.json())
         .then((res) => {
@@ -463,8 +476,28 @@ export default function ReportCardGeneratePage({
                 students.map((s) => (
                   <label key={s.id} className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
                     {selectedStudents.has(s.id) ? <CheckSquare size={22} className="text-[#1e3a8a]" /> : <Square size={22} className="text-gray-400" />}
-                    <span className="font-medium">{s.student_name}</span>
-                    <span className="text-sm text-gray-500">({s.admission_no})</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-medium truncate">{s.student_name}</span>
+                      </div>
+                      <div className="text-sm text-gray-500 flex items-center gap-3 flex-wrap">
+                        <span className="font-mono">{s.admission_no}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-gray-400">Roll:</span>
+                          <span className="font-mono">{s.roll_number || '—'}</span>
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-gray-400">DOB:</span>
+                          <span className="font-mono">{s.date_of_birth || '—'}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-gray-400">Contact:</span>
+                          <span className="font-mono">{s.student_contact || '—'}</span>
+                        </span>
+                      </div>
+                    </div>
                     <input type="checkbox" checked={selectedStudents.has(s.id)} onChange={() => toggleStudent(s.id)} className="sr-only" />
                   </label>
                 ))

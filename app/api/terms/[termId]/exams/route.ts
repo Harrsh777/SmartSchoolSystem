@@ -73,13 +73,7 @@ export async function POST(
       );
     }
 
-    const totalWeight = exams.reduce((s: number, e: { weightage?: number }) => s + (e.weightage ?? 0), 0);
-    if (Math.abs(totalWeight - 100) > 0.01) {
-      return NextResponse.json(
-        { error: 'Sum of weightages must be 100' },
-        { status: 400 }
-      );
-    }
+    // Weightage is optional: allow sums other than 100.
 
     const rows = exams.map((e: { exam_id: string; weightage: number }) => ({
       exam_id: e.exam_id,

@@ -162,8 +162,6 @@ export default function CreateExaminationPage({
   const [subjectsBySectionId, setSubjectsBySectionId] = useState<Record<string, Subject[]>>({});
   const [step3SubjectsLoading, setStep3SubjectsLoading] = useState(false);
   const [classSubjects, setClassSubjects] = useState<ClassSubject[]>([]);
-  /** Bulk "apply pass % to all" input per class-section (sectionId key). */
-  const [bulkPassPercentDraft, setBulkPassPercentDraft] = useState<Record<string, string>>({});
 
   // Step 4: Schedule
   const [examSchedules, setExamSchedules] = useState<ExamSchedule[]>([]);
@@ -534,18 +532,24 @@ export default function CreateExaminationPage({
     );
   };
 
-  const handleApplyPassPercentToAllInSection = (classSubjectIndex: number, sectionId: string) => {
-    const raw = (bulkPassPercentDraft[sectionId] ?? '').trim();
-    const pct = parseFloat(raw.replace(/,/g, '.'));
-    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-      setErrors({ marks: 'Enter a valid pass percentage between 1 and 100 to apply to all subjects.' });
+  const handleApplyPassPercentToAllInSection = (
+    classSubjectIndex: number,
+    pct: number | null | undefined
+  ) => {
+    const safePct = typeof pct === 'number' ? pct : NaN;
+    if (!Number.isFinite(safePct) || safePct <= 0 || safePct > 100) {
+      setErrors({
+        marks: 'Enter a valid pass percentage in the first row (between 1 and 100) to apply to all subjects.',
+      });
       return;
     }
+
     setErrors((e) => {
       const next = { ...e };
       delete next.marks;
       return next;
     });
+
     setClassSubjects((prev) =>
       prev.map((cs, idx) => {
         if (idx !== classSubjectIndex) return cs;
@@ -553,8 +557,8 @@ export default function CreateExaminationPage({
           ...cs,
           subjects: cs.subjects.map((s) => ({
             ...s,
-            pass_percent: pct,
-            pass_marks: passMarksFromPercent(s.max_marks, pct),
+            pass_percent: safePct,
+            pass_marks: passMarksFromPercent(s.max_marks, safePct),
           })),
         };
       })
@@ -1209,43 +1213,6 @@ export default function CreateExaminationPage({
                       </div>
 
                       {cs.subjects.length > 0 && (
-                        <div className="mb-4 p-3 rounded-lg border border-dashed border-gray-300 bg-white">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Pass % — apply to all subjects in this class-section
-                          </label>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Input
-                              type="number"
-                              placeholder="e.g. 33"
-                              min={1}
-                              max={100}
-                              step={0.5}
-                              value={bulkPassPercentDraft[cs.sectionId] ?? ''}
-                              onChange={(e) =>
-                                setBulkPassPercentDraft((d) => ({
-                                  ...d,
-                                  [cs.sectionId]: e.target.value,
-                                }))
-                              }
-                              className="max-w-[120px]"
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="text-xs"
-                              onClick={() => handleApplyPassPercentToAllInSection(csIndex, cs.sectionId)}
-                            >
-                              Apply to all
-                            </Button>
-                          </div>
-                          <p className="text-[11px] text-gray-500 mt-1.5">
-                            Each subject keeps its own max marks; pass marks = rounded % of that max.
-                          </p>
-                        </div>
-                      )}
-
-                      {cs.subjects.length > 0 && (
                         <div className="space-y-3">
                           {cs.subjects.map((subject, sIndex) => (
                             <div
@@ -1282,17 +1249,35 @@ export default function CreateExaminationPage({
                                   <label className="block text-xs text-gray-600 mb-1">
                                     Pass % <span className="text-gray-400 font-normal">(optional)</span>
                                   </label>
-                                  <Input
-                                    type="number"
-                                    placeholder="— use pass marks"
-                                    min={0}
-                                    max={100}
-                                    step={0.5}
-                                    value={subject.pass_percent ?? ''}
-                                    onChange={(e) =>
-                                      handleSubjectPassPercentChange(csIndex, sIndex, e.target.value)
-                                    }
-                                  />
+                                  <div className="flex flex-wrap items-end gap-2">
+                                    <Input
+                                      type="number"
+                                      placeholder="— use pass marks"
+                                      min={0}
+                                      max={100}
+                                      step={0.5}
+                                      value={subject.pass_percent ?? ''}
+                                      onChange={(e) =>
+                                        handleSubjectPassPercentChange(csIndex, sIndex, e.target.value)
+                                      }
+                                      className="max-w-[120px]"
+                                    />
+                                    {cs.subjects.length >= 2 && sIndex === 0 && (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs"
+                                        disabled={!subject.pass_percent || subject.pass_percent <= 0}
+                                        onClick={() =>
+                                          handleApplyPassPercentToAllInSection(csIndex, subject.pass_percent)
+                                        }
+                                        title="Copy pass % from this first subject to all other subjects in this class-section"
+                                      >
+                                        Apply to all
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
                                 <div>
                                   <label className="block text-xs text-gray-600 mb-1">

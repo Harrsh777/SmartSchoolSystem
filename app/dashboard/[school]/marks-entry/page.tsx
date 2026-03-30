@@ -178,7 +178,8 @@ export default function MarksEntryPage({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [marksTableSort, setMarksTableSort] = useState<MarksTableSort>('name_asc');
+  // Default sort by roll number so rows don't appear "scattered".
+  const [marksTableSort, setMarksTableSort] = useState<MarksTableSort>('roll_asc');
   const [showTotals, setShowTotals] = useState(true);
 
   // Fetch classes and sections

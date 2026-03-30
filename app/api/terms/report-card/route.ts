@@ -68,11 +68,12 @@ export async function GET(request: NextRequest) {
       .in('status', ['submitted', 'approved']);
 
     const bySubject: Record<string, { weightSum: number; pctSum: number }> = {};
+    const totalWeight = weightages.reduce((s, w) => s + (Number.isFinite(w) ? w : 0), 0);
     for (const m of marks ?? []) {
       const subId = m.subject_id;
       const examIdx = examIds.indexOf(m.exam_id);
       if (examIdx === -1) continue;
-      const w = weightages[examIdx] / 100;
+      const w = totalWeight <= 0 ? 1 : weightages[examIdx] / totalWeight;
       const pct = m.max_marks && m.max_marks > 0
         ? (Number(m.marks_obtained) / Number(m.max_marks)) * 100
         : (m.percentage ?? 0);

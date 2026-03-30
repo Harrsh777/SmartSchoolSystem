@@ -114,12 +114,7 @@ export async function PUT(
         ),
       0
     );
-    if (terms.length > 0 && Math.abs(totalWeightage - 100) > 0.0001) {
-      return NextResponse.json(
-        { error: `Total exam weightage across this structure must be exactly 100. Current: ${totalWeightage}` },
-        { status: 400 }
-      );
-    }
+    // Weightage is optional: allow sums other than 100.
 
     // Replace mappings
     const { error: deleteMappingsErr } = await supabase

@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState, useEffect, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -96,6 +96,9 @@ export default function FeeStatementsPage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryStudentId = searchParams.get('student_id');
+  const queryAcademicYear = searchParams.get('academic_year');
   
   const [searchQuery, setSearchQuery] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
@@ -116,6 +119,43 @@ export default function FeeStatementsPage({
     fetchClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
+
+  // If navigated from Collect Payment with a student preselected,
+  // auto-load the statement.
+  useEffect(() => {
+    if (!queryStudentId) return;
+
+    const loadFromQuery = async () => {
+      try {
+        if (queryAcademicYear) setAcademicYear(queryAcademicYear);
+
+        const res = await fetch(`/api/students/${encodeURIComponent(queryStudentId)}?school_code=${encodeURIComponent(schoolCode)}`);
+        const result = await res.json();
+
+        if (!res.ok || !result?.data) {
+          return;
+        }
+
+        const st = result.data as any;
+        setSelectedStudent({
+          id: String(st.id),
+          student_name: String(st.student_name ?? ''),
+          admission_no: String(st.admission_no ?? ''),
+          class: String(st.class ?? ''),
+          section: String(st.section ?? ''),
+        });
+
+        if (st.class) setSelectedClass(String(st.class));
+        if (st.section) setSelectedSection(String(st.section));
+
+        await fetchFeeStatement(String(queryStudentId), queryAcademicYear ?? undefined);
+      } catch (e) {
+        console.error('Failed to load statement from query params', e);
+      }
+    };
+
+    void loadFromQuery();
+  }, [queryStudentId, queryAcademicYear, schoolCode]);
 
   const searchStudents = useCallback(async () => {
     try {
@@ -187,12 +227,13 @@ export default function FeeStatementsPage({
     }
   };
 
-  const fetchFeeStatement = async (studentId: string) => {
+  const fetchFeeStatement = async (studentId: string, academicYearOverride?: string) => {
     try {
       setLoading(true);
       setSelectedFees(new Set());
       const params = new URLSearchParams({ school_code: schoolCode });
-      if (academicYear) params.append('academic_year', academicYear);
+      const yearToUse = academicYearOverride ?? academicYear;
+      if (yearToUse) params.append('academic_year', yearToUse);
 
       const response = await fetch(`/api/fees/students/${studentId}/statement?${params.toString()}`);
       const result = await response.json();

@@ -1,6 +1,6 @@
-const bcrypt = require('bcryptjs');
-
 async function generateHashes() {
+  const bcryptMod = await import('bcryptjs');
+  const bcrypt = bcryptMod.default || bcryptMod;
   // Student passwords
   const studentPassword = 'student123';
   const studentHash1 = await bcrypt.hash(studentPassword, 10);

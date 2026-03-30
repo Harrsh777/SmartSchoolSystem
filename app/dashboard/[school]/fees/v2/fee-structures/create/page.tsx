@@ -297,12 +297,20 @@ export default function CreateFeeStructurePage({
     );
   };
 
+  const step1HasAnyClass = classSectionMap.length > 0;
+  const step1HasAnySectionSelected = classSectionMap.some((e) => e.sections.length > 0);
+
   const handleNext = () => {
     setError('');
     
     if (step === 1) {
-      if (classSectionMap.length === 0) {
+      if (!step1HasAnyClass) {
         setError('Please add at least one class');
+        return;
+      }
+
+      if (!step1HasAnySectionSelected) {
+        setError('Please select at least one section for at least one class to continue (use "All" to quickly select all sections).');
         return;
       }
     } else if (step === 3) {
@@ -558,10 +566,7 @@ export default function CreateFeeStructurePage({
         animate={{ opacity: 1, y: 0 }}
         className="flex items-center gap-4"
       >
-        <Button variant="outline" onClick={() => router.push(`/dashboard/${schoolCode}/fees/v2/fee-structures`)}>
-          <ArrowLeft size={18} className="mr-2" />
-          Back
-        </Button>
+      
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
             <FileText size={32} className="text-indigo-600" />
@@ -632,7 +637,8 @@ export default function CreateFeeStructurePage({
                   Step 1: Scope
                 </h2>
                 <p className="text-sm text-gray-600">
-                  Add classes and select which sections to include for each. Leave sections unselected to apply to all sections of that class.
+                  Add classes and select which sections to include for each. To continue, select at least one section for any class.
+                  You can leave other classes unchecked to apply this fee structure to all their sections.
                 </p>
 
                 <div className="space-y-4">
@@ -723,6 +729,13 @@ export default function CreateFeeStructurePage({
                     </div>
                   )}
 
+                  {classSectionMap.length > 0 && !step1HasAnySectionSelected && (
+                    <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-lg text-sm">
+                      Select at least one section for at least one class to enable “Next”. You can click{' '}
+                      <span className="font-semibold">All</span> on a class row to quickly select all its sections.
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">+ Add another class</label>
                     <Input
@@ -760,12 +773,7 @@ export default function CreateFeeStructurePage({
                   </div>
                 </div>
 
-                <Input
-                  label="Academic Year (Optional)"
-                  value={academicYear}
-                  onChange={(e) => setAcademicYear(e.target.value)}
-                  placeholder="e.g., 2024-25"
-                />
+               
               </div>
             )}
 
@@ -1510,18 +1518,34 @@ export default function CreateFeeStructurePage({
 
       {/* Navigation Buttons */}
       <Card>
-        <div className="flex justify-between">
-        
+        <div className="flex justify-between items-center gap-3">
+          {step > 1 ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleBack}
+              className="border-gray-300 hover:bg-gray-50"
+            >
+              <ArrowLeft size={18} className="mr-2" />
+              Back
+            </Button>
+          ) : (
+            <span />
+          )}
+
           {step < 5 ? (
             <Button
+              type="button"
               onClick={handleNext}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              disabled={step === 1 ? !step1HasAnySectionSelected : false}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 disabled:hover:bg-indigo-600"
             >
               Next
               <ArrowRight size={18} className="ml-2" />
             </Button>
           ) : (
             <Button
+              type="button"
               onClick={handleSave}
               disabled={loading || !structureName.trim()}
               className="bg-indigo-600 hover:bg-indigo-700 text-white"

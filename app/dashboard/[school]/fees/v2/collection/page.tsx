@@ -111,19 +111,6 @@ interface PendingStudent {
   due_date: string;
 }
 
-interface SessionPaidUpStudent {
-  id: string;
-  admission_no: string;
-  student_name: string;
-  class: string;
-  section: string;
-  installment_count: number;
-  total_paid_session: number;
-  period_label?: string | null;
-}
-
-type PaidPeriodListMode = 'month' | 'quarter';
-
 interface PaymentRecord {
   id: string;
   amount: number;
@@ -155,20 +142,12 @@ export default function PaymentCollectionPage({
   const [classFilter, setClassFilter] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
   const [pendingStudents, setPendingStudents] = useState<PendingStudent[]>([]);
-  const [paidUpStudents, setPaidUpStudents] = useState<SessionPaidUpStudent[]>([]);
-  const [paidPeriodListMode, setPaidPeriodListMode] = useState<PaidPeriodListMode>('month');
-  const [paidUpPeriodMeta, setPaidUpPeriodMeta] = useState<{
-    mode: string;
-    label: string;
-    as_of: string;
-  } | null>(null);
   const [classRows, setClassRows] = useState<Array<{ class?: string; section?: string }>>([]);
   const [selectedStudent, setSelectedStudent] = useState<PendingStudent | null>(null);
   const [studentFees, setStudentFees] = useState<StudentFee[]>([]);
   const [recentPayments, setRecentPayments] = useState<PaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [feesLoading, setFeesLoading] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('cash');
   const [referenceNo, setReferenceNo] = useState('');
   const [allocations, setAllocations] = useState<Record<string, number>>({});
@@ -182,6 +161,21 @@ export default function PaymentCollectionPage({
   const [academicYearsList, setAcademicYearsList] = useState<Array<{ year_name: string; is_current?: boolean }>>([]);
   /** Expanded fee structure id — breakdown shown as receipt-style panel */
   const [expandedStructureId, setExpandedStructureId] = useState<string | null>(null);
+  /** Active installment inside the expanded structure (for uncluttered right-side detail view) */
+  const [activeFeeId, setActiveFeeId] = useState<string | null>(null);
+  /** Receipt modal before final collect */
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+
+  const [latestReceiptId, setLatestReceiptId] = useState<string | null>(null);
+  const [latestReceiptNo, setLatestReceiptNo] = useState<string | null>(null);
+
+  // Add-on manual lines for the active installment only (receipt-scoped in UI)
+  const [miscAddLabel, setMiscAddLabel] = useState<string>('');
+  const [miscAddAmount, setMiscAddAmount] = useState<string>('');
+  const [discountAddMode, setDiscountAddMode] = useState<'percent' | 'flat'>('percent');
+  const [discountAddPercent, setDiscountAddPercent] = useState<string>('');
+  const [discountAddFlat, setDiscountAddFlat] = useState<string>('');
+  const [lineSaving, setLineSaving] = useState<boolean>(false);
 
   const fetchAcademicYears = useCallback(async () => {
     if (!schoolCode) return;
@@ -227,6 +221,17 @@ export default function PaymentCollectionPage({
 
   const fetchPendingStudents = useCallback(async () => {
     try {
+      // Only show results once a specific class + section is selected.
+      if (!classFilter || !sectionFilter) {
+        setPendingStudents([]);
+        setSelectedStudent(null);
+        setStudentFees([]);
+        setRecentPayments([]);
+        setAllocations({});
+        setExpandedStructureId(null);
+        return;
+      }
+
       setLoading(true);
       setError('');
       const q = new URLSearchParams({ school_code: schoolCode, limit: '300' });
@@ -235,17 +240,8 @@ export default function PaymentCollectionPage({
       if (currentAcademicYear) q.set('academic_year', currentAcademicYear);
 
       const pendingUrl = `/api/v2/fees/students/pending?${q.toString()}`;
-
-      const paidQ = new URLSearchParams(q);
-      paidQ.set('paid_period', paidPeriodListMode);
-      const now = new Date();
-      const asOf = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      paidQ.set('as_of', asOf);
-      const paidUpUrl = `/api/v2/fees/students/session-paid-up?${paidQ.toString()}`;
-
-      const [pendingRes, paidUpRes] = await Promise.all([fetch(pendingUrl), fetch(paidUpUrl)]);
+      const pendingRes = await fetch(pendingUrl);
       const pendingJson = await pendingRes.json();
-      const paidUpJson = await paidUpRes.json();
 
       if (pendingRes.ok) setPendingStudents(pendingJson.data || []);
       else {
@@ -253,29 +249,14 @@ export default function PaymentCollectionPage({
         setError(pendingJson.error || 'Failed to load students with pending fees');
       }
 
-      if (paidUpRes.ok) {
-        setPaidUpStudents(paidUpJson.data || []);
-        const meta = paidUpJson.period_meta;
-        if (meta && typeof meta.label === 'string' && typeof meta.as_of === 'string') {
-          setPaidUpPeriodMeta({
-            mode: String(meta.mode || paidPeriodListMode),
-            label: meta.label,
-            as_of: meta.as_of,
-          });
-        } else setPaidUpPeriodMeta(null);
-      } else {
-        setPaidUpStudents([]);
-        setPaidUpPeriodMeta(null);
-      }
     } catch (err) {
       console.error(err);
       setError('Failed to load students');
       setPendingStudents([]);
-      setPaidUpStudents([]);
     } finally {
       setLoading(false);
     }
-  }, [schoolCode, classFilter, sectionFilter, currentAcademicYear, paidPeriodListMode]);
+  }, [schoolCode, classFilter, sectionFilter, currentAcademicYear]);
 
   useEffect(() => {
     void fetchPendingStudents();
@@ -293,6 +274,18 @@ export default function PaymentCollectionPage({
       // ignore
     }
   }, [schoolCode]);
+
+  const resolveStaffId = (): string => {
+    if (selectedCollector) return selectedCollector;
+    try {
+      const storedStaff = sessionStorage.getItem('staff');
+      if (!storedStaff) return '';
+      const staffData = JSON.parse(storedStaff);
+      return staffData?.staff_id ? String(staffData.staff_id) : '';
+    } catch {
+      return '';
+    }
+  };
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -342,7 +335,7 @@ export default function PaymentCollectionPage({
     ).sort();
   }, [classFilter, classRows, pendingStudents]);
 
-  const handleStudentSelect = async (student: PendingStudent | SessionPaidUpStudent) => {
+  const handleStudentSelect = async (student: PendingStudent) => {
     setSelectedStudent({
       id: student.id,
       student_name: student.student_name,
@@ -357,7 +350,6 @@ export default function PaymentCollectionPage({
     setStudentFees([]);
     setRecentPayments([]);
     setAllocations({});
-    setPaymentAmount('');
     setError('');
     setSuccess('');
 
@@ -408,25 +400,176 @@ export default function PaymentCollectionPage({
     return () => { cancelled = true; };
   }, [currentAcademicYear, schoolCode, selectedStudent?.id]);
 
-  const handleAllocationChange = (feeId: string, amount: number) => {
-    const newAllocations = { ...allocations };
-    if (amount > 0) newAllocations[feeId] = amount;
-    else delete newAllocations[feeId];
-    setAllocations(newAllocations);
-    const total = Object.values(newAllocations).reduce((sum, amt) => sum + amt, 0);
-    setPaymentAmount(total.toFixed(2));
+  const handleInstallmentSelect = (fee: StudentFee) => {
+    const isPaid = fee.total_due <= 0.009 || fee.status === 'paid';
+    if (isPaid) return;
+
+    // Single-installment selection:
+    // - selecting a different installment switches the receipt preview
+    // - selecting the same installment again clears selection
+    if (activeFeeId === fee.id) {
+      setActiveFeeId(null);
+      setAllocations({});
+      return;
+    }
+
+    setActiveFeeId(fee.id);
+
+    const amt = Math.round(Number(fee.total_due || 0) * 100) / 100;
+    setAllocations(amt > 0 ? { [fee.id]: amt } : {});
+
+    // Receipt-scoped inputs should start fresh per installment.
+    setMiscAddLabel('');
+    setMiscAddAmount('');
+    setDiscountAddMode('percent');
+    setDiscountAddPercent('');
+    setDiscountAddFlat('');
+  };
+
+  const reloadSelectedStudentFees = async () => {
+    if (!selectedStudent) return;
+    try {
+      setFeesLoading(true);
+      const feesUrl = currentAcademicYear
+        ? `/api/v2/fees/students/${selectedStudent.id}/fees?school_code=${schoolCode}&academic_year=${encodeURIComponent(currentAcademicYear)}`
+        : `/api/v2/fees/students/${selectedStudent.id}/fees?school_code=${schoolCode}`;
+
+      const res = await fetch(feesUrl);
+      const data = await res.json();
+      if (res.ok) setStudentFees(Array.isArray(data.data) ? data.data : []);
+      else setError(data.error || 'Failed to reload fees');
+    } catch (e) {
+      console.error(e);
+      setError('Failed to reload fees');
+    } finally {
+      setFeesLoading(false);
+    }
+  };
+
+  const handleAddMiscLine = async (feeId: string) => {
+    const staffId = resolveStaffId();
+    if (!staffId) {
+      setError('Unable to identify staff. Please select a collector.');
+      return;
+    }
+    const label = miscAddLabel.trim() || 'Misc fee';
+    const amountNum = Number(miscAddAmount);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      setError('Misc amount must be greater than 0');
+      return;
+    }
+
+    try {
+      setLineSaving(true);
+      setError('');
+      const res = await fetch(`/api/v2/fees/student-fees/${feeId}/lines`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-staff-id': staffId,
+        },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          label,
+          amount: Math.round(amountNum * 100) / 100,
+          kind: 'misc',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to add misc line');
+        return;
+      }
+
+      setMiscAddLabel('');
+      setMiscAddAmount('');
+      await reloadSelectedStudentFees();
+    } catch (e) {
+      console.error(e);
+      setError('Failed to add misc line');
+    } finally {
+      setLineSaving(false);
+    }
+  };
+
+  const handleAddDiscountLine = async (feeId: string) => {
+    const staffId = resolveStaffId();
+    if (!staffId) {
+      setError('Unable to identify staff. Please select a collector.');
+      return;
+    }
+
+    const baseAmount = Number((studentFees.find((f) => f.id === feeId)?.base_amount ?? 0) || 0);
+    let discountAmount = 0;
+
+    if (discountAddMode === 'percent') {
+      const p = Number(discountAddPercent);
+      if (!Number.isFinite(p) || p <= 0) {
+        setError('Discount % must be greater than 0');
+        return;
+      }
+      discountAmount = (baseAmount * p) / 100;
+    } else {
+      const flat = Number(discountAddFlat);
+      if (!Number.isFinite(flat) || flat <= 0) {
+        setError('Discount amount must be greater than 0');
+        return;
+      }
+      discountAmount = flat;
+    }
+
+    discountAmount = Math.round(discountAmount * 100) / 100;
+    if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+      setError('Invalid discount amount');
+      return;
+    }
+
+    const label =
+      discountAddMode === 'percent'
+        ? `Discount ${discountAddPercent}%`
+        : `Discount ${discountAddFlat}`;
+
+    try {
+      setLineSaving(true);
+      setError('');
+      const res = await fetch(`/api/v2/fees/student-fees/${feeId}/lines`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-staff-id': staffId,
+        },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          label,
+          amount: discountAmount,
+          kind: 'discount',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to add discount line');
+        return;
+      }
+
+      setDiscountAddPercent('');
+      setDiscountAddFlat('');
+      await reloadSelectedStudentFees();
+    } catch (e) {
+      console.error(e);
+      setError('Failed to add discount line');
+    } finally {
+      setLineSaving(false);
+    }
   };
 
   const handleCollectPayment = async () => {
     if (!selectedStudent) return;
     const totalAllocated = Object.values(allocations).reduce((sum, amt) => sum + amt, 0);
-    const paymentAmt = parseFloat(paymentAmount);
+    const paymentAmt = Math.round(totalAllocated * 100) / 100;
     if (paymentAmt <= 0) {
       setError('Payment amount must be greater than 0');
-      return;
-    }
-    if (Math.abs(totalAllocated - paymentAmt) > 0.01) {
-      setError('Total allocated amount must equal payment amount');
       return;
     }
     if (Object.keys(allocations).length === 0) {
@@ -467,13 +610,21 @@ export default function PaymentCollectionPage({
       const result = await response.json();
 
       if (response.ok) {
+        const receiptId = result?.data?.receipt?.id ? String(result.data.receipt.id) : null;
+        const receiptNo = result?.data?.receipt?.receipt_no
+          ? String(result.data.receipt.receipt_no)
+          : null;
+
+        setLatestReceiptId(receiptId);
+        setLatestReceiptNo(receiptNo);
         setSuccess('Payment collected successfully! Receipt generated.');
         setSelectedStudent(null);
         setStudentFees([]);
         setRecentPayments([]);
         setAllocations({});
-        setPaymentAmount('');
         setReferenceNo('');
+        setReceiptModalOpen(false);
+        setActiveFeeId(null);
         fetchPendingStudents();
         setTimeout(() => setSuccess(''), 2500);
       } else {
@@ -497,20 +648,14 @@ export default function PaymentCollectionPage({
     [pendingStudents, searchQuery]
   );
 
-  const filteredPaidUpStudents = useMemo(
-    () =>
-      paidUpStudents.filter(
-        (s) =>
-          s.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          s.admission_no.toLowerCase().includes(searchQuery.toLowerCase())
-      ),
-    [paidUpStudents, searchQuery]
-  );
-
   const totalDue = studentFees.reduce((sum, f) => sum + f.total_due, 0);
   const totalDueForDisplay = selectedStudent ? selectedStudent.pending_amount : totalDue;
   const totalAllocated = Object.values(allocations).reduce((sum, amt) => sum + amt, 0);
   const totalPaid = studentFees.reduce((sum, f) => sum + f.paid_amount, 0);
+  const receiptSelectedFees = useMemo(
+    () => studentFees.filter((f) => (allocations[f.id] ?? 0) > 0.009),
+    [studentFees, allocations]
+  );
 
   const lastPaymentDateByFeeId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -527,6 +672,13 @@ export default function PaymentCollectionPage({
 
   useEffect(() => {
     setExpandedStructureId(null);
+    setActiveFeeId(null);
+    setReceiptModalOpen(false);
+    setMiscAddLabel('');
+    setMiscAddAmount('');
+    setDiscountAddMode('percent');
+    setDiscountAddPercent('');
+    setDiscountAddFlat('');
   }, [selectedStudent?.id]);
 
   const structureGroups = useMemo((): FeeStructureGroup[] => {
@@ -561,6 +713,45 @@ export default function PaymentCollectionPage({
     return out;
   }, [studentFees]);
 
+  const activeStructureGroup = useMemo(() => {
+    if (!expandedStructureId) return null;
+    return structureGroups.find((g) => g.key === expandedStructureId) ?? null;
+  }, [expandedStructureId, structureGroups]);
+
+  const activeSelectedFee = useMemo(() => {
+    if (!activeStructureGroup || !activeFeeId) return null;
+    return activeStructureGroup.fees.find((f) => f.id === activeFeeId) ?? null;
+  }, [activeStructureGroup, activeFeeId]);
+
+  // Keep the right-side detail view focused on one installment (the activeFeeId)
+  useEffect(() => {
+    if (!selectedStudent || !expandedStructureId) {
+      setActiveFeeId(null);
+      setAllocations({});
+      return;
+    }
+
+    // Wait for explicit installment selection (single-select).
+    setActiveFeeId(null);
+    setAllocations({});
+
+    // Receipt-scoped inputs should start fresh.
+    setMiscAddLabel('');
+    setMiscAddAmount('');
+    setDiscountAddMode('percent');
+    setDiscountAddPercent('');
+    setDiscountAddFlat('');
+  }, [expandedStructureId, selectedStudent?.id]);
+
+  // Restrict allocations to the currently expanded fee-structure group
+  useEffect(() => {
+    setAllocations({});
+    setMiscAddLabel('');
+    setMiscAddAmount('');
+    setDiscountAddPercent('');
+    setDiscountAddFlat('');
+  }, [expandedStructureId, selectedStudent?.id]);
+
   const structureHeadAllocated = (fee: StudentFee) => {
     const items = fee.structure_line_items || [];
     const base = Number(fee.base_amount || 0);
@@ -591,6 +782,40 @@ export default function PaymentCollectionPage({
       .slice(0, 2)
       .join('')
       .toUpperCase();
+
+  const openReceiptView = async (receiptId: string) => {
+    try {
+      const res = await fetch(`/api/fees/receipts/${receiptId}/download`);
+      const html = await res.text();
+      if (!res.ok) throw new Error('Failed to load receipt HTML');
+      const w = window.open('', '_blank');
+      if (!w) return;
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    } catch (e) {
+      console.error(e);
+      setError('Failed to open receipt');
+    }
+  };
+
+  const printReceipt = async (receiptId: string) => {
+    try {
+      const res = await fetch(`/api/fees/receipts/${receiptId}/download`);
+      const html = await res.text();
+      if (!res.ok) throw new Error('Failed to load receipt HTML');
+      const w = window.open('', '_blank');
+      if (!w) return;
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      // Give browser a moment to render before printing.
+      setTimeout(() => w.print(), 500);
+    } catch (e) {
+      console.error(e);
+      setError('Failed to print receipt');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
@@ -625,6 +850,28 @@ export default function PaymentCollectionPage({
             >
               <CheckCircle size={20} />
               <p className="font-medium">{success}</p>
+              {latestReceiptId && (
+                <div className="ml-auto flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9 px-3"
+                    onClick={() => void openReceiptView(latestReceiptId)}
+                  >
+                    View
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9 px-3"
+                    onClick={() => void printReceipt(latestReceiptId)}
+                  >
+                    Print
+                  </Button>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -688,7 +935,7 @@ export default function PaymentCollectionPage({
                   }}
                   className="w-full h-11 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm px-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
                 >
-                  <option value="">All classes</option>
+                  <option value="">Select class</option>
                   {uniqueClasses.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -710,7 +957,7 @@ export default function PaymentCollectionPage({
                   disabled={!classFilter}
                   className="w-full h-11 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm px-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="">{classFilter ? 'All sections' : 'Select a class first'}</option>
+                  <option value="">{classFilter ? 'Select a section' : 'Select a class first'}</option>
                   {uniqueSections.map((s) => (
                     <option key={s} value={s}>
                       {s}
@@ -738,44 +985,6 @@ export default function PaymentCollectionPage({
 
         {selectedStudent && (
           <>
-            {/* 4 info cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <Card className="p-4 bg-blue-600 border-0 text-white">
-                <div className="flex items-center gap-2 text-blue-100 mb-1">
-                  <User size={18} />
-                  <span className="text-xs font-medium uppercase tracking-wide">Student Name</span>
-                </div>
-                <p className="text-lg font-bold truncate">{selectedStudent.student_name}</p>
-              </Card>
-              <Card className="p-4">
-                <div className="flex items-center gap-2 text-gray-500 dark:text-slate-400 mb-1">
-                  <Hash size={18} />
-                  <span className="text-xs font-medium uppercase tracking-wide">Roll Number</span>
-                </div>
-                <p className="text-lg font-bold text-gray-900 dark:text-white font-mono">
-                  {selectedStudent.admission_no} • {selectedStudent.class}-{selectedStudent.section}
-                </p>
-              </Card>
-              <Card className="p-4">
-                <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-1">
-                  <IndianRupee size={18} />
-                  <span className="text-xs font-medium uppercase tracking-wide">Recent Period Due</span>
-                </div>
-                <p className="text-lg font-bold text-red-600 dark:text-red-400">
-                  {feesLoading ? '—' : formatCurrency(totalDueForDisplay)}
-                </p>
-              </Card>
-              <Card className="p-4">
-                <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-1">
-                  <CheckCircle size={18} />
-                  <span className="text-xs font-medium uppercase tracking-wide">Total Paid</span>
-                </div>
-                <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                  {feesLoading ? '—' : formatCurrency(totalPaid)}
-                </p>
-              </Card>
-            </div>
-
             {feesLoading ? (
               <div className="flex justify-center py-16">
                 <Loader2 size={40} className="animate-spin text-blue-600" />
@@ -795,9 +1004,47 @@ export default function PaymentCollectionPage({
                 </Button>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="space-y-6">
+                {/* Student summary (top) */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card className="p-4 bg-blue-600 border-0 text-white">
+                    <div className="flex items-center gap-2 text-blue-100 mb-1">
+                      <User size={18} />
+                      <span className="text-xs font-medium uppercase tracking-wide">Student Name</span>
+                    </div>
+                    <p className="text-lg font-bold truncate">{selectedStudent.student_name}</p>
+                  </Card>
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 text-gray-500 dark:text-slate-400 mb-1">
+                      <Hash size={18} />
+                      <span className="text-xs font-medium uppercase tracking-wide">Roll Number</span>
+                    </div>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white font-mono">
+                      {selectedStudent.admission_no} • {selectedStudent.class}-{selectedStudent.section}
+                    </p>
+                  </Card>
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-1">
+                      <IndianRupee size={18} />
+                      <span className="text-xs font-medium uppercase tracking-wide">Recent Period Due</span>
+                    </div>
+                    <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                      {feesLoading ? '—' : formatCurrency(totalDueForDisplay)}
+                    </p>
+                  </Card>
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-1">
+                      <CheckCircle size={18} />
+                      <span className="text-xs font-medium uppercase tracking-wide">Total Paid</span>
+                    </div>
+                    <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                      {feesLoading ? '—' : formatCurrency(totalPaid)}
+                    </p>
+                  </Card>
+                </div>
+
                 {/* Fee structures → receipt-style breakdown */}
-                <div className="lg:col-span-2">
+                <div>
                   <Card className="p-5 overflow-hidden">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
                       <div>
@@ -921,7 +1168,7 @@ export default function PaymentCollectionPage({
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -8 }}
                               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                              className="rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-gradient-to-b from-white via-slate-50/80 to-slate-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 shadow-[0_1px_0_rgba(15,23,42,0.06),0_12px_40px_-12px_rgba(15,23,42,0.15)] dark:shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] overflow-hidden"
+                              className="hidden rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-gradient-to-b from-white via-slate-50/80 to-slate-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 shadow-[0_1px_0_rgba(15,23,42,0.06),0_12px_40px_-12px_rgba(15,23,42,0.15)] dark:shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] overflow-hidden"
                             >
                               <div className="relative px-5 sm:px-7 pt-6 pb-5 border-b border-slate-200/80 dark:border-slate-700/80 bg-gradient-to-r from-blue-600/95 to-indigo-600/95 text-white">
                                 <div className="absolute top-3 right-5 opacity-[0.12] pointer-events-none">
@@ -956,7 +1203,93 @@ export default function PaymentCollectionPage({
                               </div>
 
                               <div className="px-4 sm:px-6 py-5 space-y-5 max-h-[min(55vh,520px)] overflow-y-auto">
-                                {expandedGroup.fees.map((fee) => {
+                                <div className="flex flex-col gap-4 items-start">
+                                  <div className="min-w-0 order-1">
+                                    {/* Installments */}
+                                    <div className="rounded-2xl border border-gray-200/80 dark:border-slate-700 bg-white/70 dark:bg-slate-900/20 p-3">
+                                      <div className="flex items-center justify-between gap-3 mb-2">
+                                    <div>
+                                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Installments</p>
+                                        <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                                          Select 1 installment to pay now
+                                        </p>
+                                    </div>
+                                      <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 tabular-nums">
+                                        Selected: {activeFeeId ? '1' : '0'}
+                                      </div>
+                                    </div>
+
+                                    <div className="max-h-44 overflow-y-auto pr-1 space-y-2">
+                                      {expandedGroup.fees.map((fee) => {
+                                        const isPaid = fee.total_due <= 0 || fee.status === 'paid';
+                                        const selected = activeFeeId === fee.id;
+
+                                      return (
+                                        <div
+                                          key={fee.id}
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={() => handleInstallmentSelect(fee)}
+                                          className={`p-3 rounded-xl border transition-colors cursor-pointer ${
+                                            activeFeeId === fee.id
+                                              ? 'border-blue-400/80 bg-blue-50/60 dark:border-blue-700/80 dark:bg-blue-950/20'
+                                              : 'border-gray-200/80 dark:border-slate-700 bg-white/60 dark:bg-slate-900/20 hover:border-gray-300/80 dark:hover:border-slate-600'
+                                          }`}
+                                        >
+                                          <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                              <p className="font-semibold text-gray-900 dark:text-white truncate">
+                                                {fee.installment_display_label || fee.fee_structure?.name || 'Installment'}
+                                              </p>
+                                              <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">
+                                                Due {fee.due_date ? formatDateShort(fee.due_date) : '—'} ·{' '}
+                                                <span className="font-medium tabular-nums">
+                                                  {isPaid ? 'Settled' : formatCurrency(fee.total_due)}
+                                                </span>
+                                              </p>
+                                            </div>
+
+                                            <div className="shrink-0 mt-0.5">
+                                              <span
+                                                className={`inline-flex items-center justify-center w-5 h-5 rounded-full border ${
+                                                  selected
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200'
+                                                    : 'border-gray-300 bg-white/60 text-gray-500'
+                                                }`}
+                                              >
+                                                {selected ? '✓' : ''}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  </div>
+                                  </div>
+
+                                  <div className="min-w-0 order-2">
+                                    {/* Receipt detail (only for active installment) */}
+                                    {!activeFeeId && (
+                                      <motion.div
+                                        initial={{ opacity: 0, y: 6 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="rounded-2xl border-2 border-dashed border-gray-300 dark:border-slate-600 bg-gray-50/50 dark:bg-slate-900/30 py-10 px-6 text-center"
+                                      >
+                                        <Receipt size={44} className="mx-auto mb-3 text-gray-300 dark:text-slate-600" />
+                                        <p className="font-medium text-gray-700 dark:text-slate-300">
+                                          Select an installment to preview receipt
+                                        </p>
+                                        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
+                                          Then you can add misc fees and discounts.
+                                        </p>
+                                      </motion.div>
+                                    )}
+                                    {expandedGroup.fees
+                                      .filter((fee) =>
+                                        activeFeeId ? fee.id === activeFeeId : false
+                                      )
+                                      .map((fee) => {
                                   const isPaid = fee.total_due <= 0 || fee.status === 'paid';
                                   const allocated = allocations[fee.id] || 0;
                                   const lastPaidDate = lastPaymentDateByFeeId[fee.id];
@@ -1035,15 +1368,7 @@ export default function PaymentCollectionPage({
                                               </p>
                                             </div>
                                           )}
-                                          {!isPaid && (
-                                            <Button
-                                              size="sm"
-                                              className="bg-blue-600 hover:bg-blue-700 text-white h-9 text-xs font-semibold"
-                                              onClick={() => handleAllocationChange(fee.id, fee.total_due)}
-                                            >
-                                              Pay full for this installment
-                                            </Button>
-                                          )}
+                                          {/* Amount allocation happens from the left Installments panel */}
                                         </div>
                                       </div>
 
@@ -1182,6 +1507,107 @@ export default function PaymentCollectionPage({
                                           </div>
                                         )}
 
+                                        {/* Receipt-scoped manual lines (added only for the active installment) */}
+                                        {!isPaid && (
+                                          <div className="rounded-xl border border-dashed border-gray-300/80 dark:border-slate-600 bg-gray-50/60 dark:bg-slate-900/20 px-3 py-3 mt-3">
+                                            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-3">
+                                              Add misc fee / discount (to this receipt)
+                                            </p>
+
+                                            <div className="space-y-3">
+                                              <div>
+                                                <p className="text-xs font-semibold text-gray-700 dark:text-slate-200 mb-2">Misc fee</p>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                  <Input
+                                                    value={miscAddLabel}
+                                                    onChange={(e) => setMiscAddLabel(e.target.value)}
+                                                    placeholder="Label (e.g., Library)"
+                                                    className="h-10"
+                                                  />
+                                                  <Input
+                                                    type="number"
+                                                    step={0.01}
+                                                    value={miscAddAmount}
+                                                    onChange={(e) => setMiscAddAmount(e.target.value)}
+                                                    placeholder="Amount"
+                                                    className="h-10"
+                                                  />
+                                                </div>
+                                                <div className="mt-2 flex gap-2 items-center">
+                                                  <Button
+                                                    type="button"
+                                                    disabled={lineSaving}
+                                                    onClick={async () => {
+                                                      if (!fee?.id) return;
+                                                      // Handler implemented in component scope
+                                                      await Promise.resolve(handleAddMiscLine(fee.id));
+                                                    }}
+                                                    className="h-9 text-sm font-semibold"
+                                                  >
+                                                    Add misc
+                                                  </Button>
+                                                </div>
+                                              </div>
+
+                                              <div className="pt-3 border-t border-gray-200/60 dark:border-slate-700/60">
+                                                <p className="text-xs font-semibold text-gray-700 dark:text-slate-200 mb-2">Discount</p>
+
+                                                <div className="flex gap-2 items-center mb-2">
+                                                  <select
+                                                    value={discountAddMode}
+                                                    onChange={(e) => setDiscountAddMode(e.target.value as 'percent' | 'flat')}
+                                                    className="h-10 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
+                                                  >
+                                                    <option value="percent">%</option>
+                                                    <option value="flat">Flat</option>
+                                                  </select>
+
+                                                  {discountAddMode === 'percent' ? (
+                                                    <Input
+                                                      type="number"
+                                                      step={0.1}
+                                                      value={discountAddPercent}
+                                                      onChange={(e) => setDiscountAddPercent(e.target.value)}
+                                                      placeholder="Discount %"
+                                                      className="h-10"
+                                                    />
+                                                  ) : (
+                                                    <Input
+                                                      type="number"
+                                                      step={0.01}
+                                                      value={discountAddFlat}
+                                                      onChange={(e) => setDiscountAddFlat(e.target.value)}
+                                                      placeholder="Discount amount"
+                                                      className="h-10"
+                                                    />
+                                                  )}
+                                                </div>
+
+                                                <p className="text-xs text-gray-500 dark:text-slate-400 mb-2">
+                                                  Will be applied on Base amount.
+                                                </p>
+
+                                                <div className="flex gap-2 items-center">
+                                                  <Button
+                                                    type="button"
+                                                    disabled={lineSaving}
+                                                    onClick={async () => {
+                                                      if (!fee?.id) return;
+                                                      await Promise.resolve(handleAddDiscountLine(fee.id));
+                                                    }}
+                                                    className="h-9 text-sm font-semibold"
+                                                  >
+                                                    Add discount
+                                                  </Button>
+                                                  <div className="text-xs text-gray-600 dark:text-slate-300 tabular-nums">
+                                                    Base: {formatCurrency(Number(fee.base_amount || 0))}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
                                         {lines.length > 0 && (
                                           <div>
                                             <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
@@ -1272,8 +1698,10 @@ export default function PaymentCollectionPage({
                                         )}
                                       </div>
                                     </div>
-                                  );
-                                })}
+                                      );
+                                      })}
+                                  </div>
+                                </div>
                               </div>
                             </motion.div>
                           );
@@ -1283,26 +1711,345 @@ export default function PaymentCollectionPage({
                   </Card>
                 </div>
 
+                {/* Installments + Receipt preview (separate full-width layout) */}
+                <div className="space-y-6">
+                  {/* Installments box */}
+                  <div>
+                    <Card className="p-5">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Installments</h3>
+                          <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
+                            Select 1 installment to pay now
+                          </p>
+                        </div>
+                        <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 tabular-nums">
+                          {activeSelectedFee ? 'Selected: 1' : 'Selected: 0'}
+                        </div>
+                      </div>
+
+                      {!activeStructureGroup || activeStructureGroup.fees.length === 0 ? (
+                        <div className="py-10 text-center text-gray-500 dark:text-slate-400">
+                          <Receipt className="mx-auto mb-3 text-gray-300 dark:text-slate-600" size={42} />
+                          <p className="font-medium">Select a fee structure above</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                          {activeStructureGroup.fees.map((fee) => {
+                            const isPaid = fee.total_due <= 0.009 || fee.status === 'paid';
+                            const isSelected = activeFeeId === fee.id;
+                            return (
+                              <button
+                                key={fee.id}
+                                type="button"
+                                onClick={() => handleInstallmentSelect(fee)}
+                                disabled={isPaid}
+                                className={`w-full text-left p-4 rounded-xl border transition-colors ${
+                                  isSelected
+                                    ? 'border-blue-400 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/20'
+                                    : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800/30 hover:border-gray-300 dark:hover:border-slate-600'
+                                } ${isPaid ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-gray-900 dark:text-white truncate">
+                                      {fee.installment_display_label || fee.fee_structure?.name || 'Installment'}
+                                    </p>
+                                    <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">
+                                      Due {fee.due_date ? formatDateShort(fee.due_date) : '—'} ·{' '}
+                                      <span className="font-medium tabular-nums">
+                                        {isPaid ? 'Settled' : formatCurrency(Number(fee.total_due || 0))}
+                                      </span>
+                                    </p>
+                                  </div>
+                                  <div className="shrink-0 mt-0.5">
+                                    <span
+                                      className={`inline-flex items-center justify-center w-5 h-5 rounded-full border ${
+                                        isSelected
+                                          ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200'
+                                          : 'border-gray-300 bg-white/60 text-gray-500'
+                                      }`}
+                                    >
+                                      {isSelected ? '✓' : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </Card>
+                  </div>
+
+                  {/* Receipt preview full width */}
+                  <div>
+                    <Card className="p-5">
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Receipt Preview</h3>
+                          <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
+                            Fee heads, transport, misc/discount and summary
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            if (!activeSelectedFee) return;
+                            setReceiptModalOpen(true);
+                          }}
+                          disabled={!activeSelectedFee || !selectedCollector || collecting}
+                          className="h-10"
+                        >
+                          <Receipt size={18} className="mr-2" />
+                          Pay Now
+                        </Button>
+                      </div>
+
+                      {!activeSelectedFee ? (
+                        <div className="py-10 text-center text-gray-500 dark:text-slate-400">
+                          <Receipt className="mx-auto mb-3 text-gray-300 dark:text-slate-600" size={44} />
+                          <p className="font-medium">Select an installment to preview receipt</p>
+                          <p className="text-sm mt-1">Then add misc fee / discount below.</p>
+                        </div>
+                      ) : (
+                        (() => {
+                          const fee = activeSelectedFee;
+                          const heads = structureHeadAllocated(fee);
+                          const manual = fee.installment_manual_lines ?? [];
+                          const rules = fee.adjustment_lines ?? [];
+                          const allocated = allocations[fee.id] || 0;
+                          const isPaid = fee.total_due <= 0.009 || fee.status === 'paid';
+                          const amountDuePreview = Math.max(0, Number(fee.total_due || 0) - allocated);
+                          return (
+                            <div className="space-y-5">
+                              <div className="rounded-2xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+                                <div className="bg-gradient-to-r from-blue-600/95 to-indigo-600/95 text-white p-5">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/90">
+                                    {activeStructureGroup?.name ?? 'Fee structure'}
+                                  </p>
+                                  <h4 className="text-2xl font-bold tracking-tight mt-1">
+                                    {fee.installment_display_label || fee.fee_structure?.name || 'Installment'}
+                                  </h4>
+                                  <p className="text-sm text-white/90 mt-2">
+                                    Due {fee.due_date ? formatDateShort(fee.due_date) : '—'}
+                                  </p>
+                                  <div className="text-right mt-3">
+                                    <p className="text-lg font-bold tabular-nums">{formatCurrency(Number(fee.total_due || 0))}</p>
+                                    <p className="text-xs text-white/80 mt-0.5">{isPaid ? 'Settled' : `Due ${formatCurrency(amountDuePreview)}`}</p>
+                                  </div>
+                                </div>
+
+                                <div className="p-4 bg-white dark:bg-slate-900/20">
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                                    <div className="space-y-5">
+                                      {/* Fee heads */}
+                                      <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
+                                      Fee heads (share of base)
+                                    </p>
+                                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
+                                      <div className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 bg-gray-100 dark:bg-slate-800 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                                        <span>Head</span>
+                                        <span className="text-right tabular-nums">Amount</span>
+                                      </div>
+                                      {heads.length === 0 ? (
+                                        <div className="px-3 py-3 text-sm text-gray-500 dark:text-slate-400">No heads</div>
+                                      ) : (
+                                        heads.map((h, idx) => (
+                                          <div
+                                            key={`${h.name}-${idx}`}
+                                            className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 text-sm border-t border-gray-100 dark:border-slate-800/60 text-gray-800 dark:text-slate-200"
+                                          >
+                                            <span className="min-w-0 pr-2">{h.name}</span>
+                                            <span className="tabular-nums font-medium text-right">{formatCurrency(h.allocated)}</span>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Transport snapshot + rules (if any) */}
+                                  {rules.length > 0 && (
+                                    <div>
+                                      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
+                                        Rule adjustments
+                                      </p>
+                                      <ul className="rounded-lg border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-800">
+                                        {rules.map((ln) => (
+                                          <li key={ln.rule_id} className="flex justify-between gap-3 px-3 py-2 text-sm text-gray-800 dark:text-slate-200">
+                                            <span className="min-w-0">{ln.label}</span>
+                                            <span className={`tabular-nums font-medium ${ln.delta < 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                              {ln.delta < 0 ? '−' : '+'}
+                                              {formatCurrency(Math.abs(ln.delta))}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+
+                                    </div>
+
+                                    <div className="space-y-5">
+                                      {/* Misc/discount */}
+                                      {manual.length > 0 && (
+                                        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50/40 dark:bg-slate-900/20 p-4">
+                                          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-3">
+                                            Misc & discounts
+                                          </p>
+                                          <ul className="rounded-lg border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-800">
+                                            {manual.map((ln) => (
+                                              <li key={ln.id} className="flex justify-between gap-3 px-3 py-2 text-sm">
+                                                <span className="min-w-0">
+                                                  {ln.label}{' '}
+                                                  <span className="text-gray-500 text-xs">({ln.kind})</span>
+                                                </span>
+                                                <span
+                                                  className={`tabular-nums font-medium ${
+                                                    ln.amount < 0
+                                                      ? 'text-green-600 dark:text-green-400'
+                                                      : 'text-red-600 dark:text-red-400'
+                                                  }`}
+                                                >
+                                                  {ln.amount < 0 ? '−' : '+'}
+                                                  {formatCurrency(Math.abs(ln.amount))}
+                                                </span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {!isPaid && (
+                                        <div className="rounded-xl border border-dashed border-gray-300 dark:border-slate-600 bg-gray-50/60 dark:bg-slate-900/20 p-4">
+                                          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-3">
+                                            Add misc fee / discount (to this receipt)
+                                          </p>
+
+                                      <div className="space-y-4">
+                                        <div>
+                                          <p className="text-xs font-semibold text-gray-700 dark:text-slate-200 mb-2">Misc fee</p>
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <Input
+                                              value={miscAddLabel}
+                                              onChange={(e) => setMiscAddLabel(e.target.value)}
+                                              placeholder="Label (e.g., Library)"
+                                              className="h-10"
+                                            />
+                                            <Input
+                                              type="number"
+                                              step={0.01}
+                                              value={miscAddAmount}
+                                              onChange={(e) => setMiscAddAmount(e.target.value)}
+                                              placeholder="Amount"
+                                              className="h-10"
+                                            />
+                                          </div>
+                                          <div className="mt-2">
+                                            <Button
+                                              type="button"
+                                              disabled={lineSaving}
+                                              onClick={async () => {
+                                                if (!fee?.id) return;
+                                                await Promise.resolve(handleAddMiscLine(fee.id));
+                                              }}
+                                              className="h-9 text-sm font-semibold"
+                                            >
+                                              Add misc
+                                            </Button>
+                                          </div>
+                                        </div>
+
+                                        <div className="pt-3 border-t border-gray-200/60 dark:border-slate-700/60">
+                                          <p className="text-xs font-semibold text-gray-700 dark:text-slate-200 mb-2">Discount</p>
+                                          <div className="flex gap-2 items-center mb-2">
+                                            <select
+                                              value={discountAddMode}
+                                              onChange={(e) => setDiscountAddMode(e.target.value as 'percent' | 'flat')}
+                                              className="h-10 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
+                                            >
+                                              <option value="percent">%</option>
+                                              <option value="flat">Flat</option>
+                                            </select>
+                                            {discountAddMode === 'percent' ? (
+                                              <Input
+                                                type="number"
+                                                step={0.1}
+                                                value={discountAddPercent}
+                                                onChange={(e) => setDiscountAddPercent(e.target.value)}
+                                                placeholder="Discount %"
+                                                className="h-10"
+                                              />
+                                            ) : (
+                                              <Input
+                                                type="number"
+                                                step={0.01}
+                                                value={discountAddFlat}
+                                                onChange={(e) => setDiscountAddFlat(e.target.value)}
+                                                placeholder="Discount amount"
+                                                className="h-10"
+                                              />
+                                            )}
+                                          </div>
+                                          <Button
+                                            type="button"
+                                            disabled={lineSaving}
+                                            onClick={async () => {
+                                              if (!fee?.id) return;
+                                              await Promise.resolve(handleAddDiscountLine(fee.id));
+                                            }}
+                                            className="h-9 text-sm font-semibold"
+                                          >
+                                            Add discount
+                                          </Button>
+                                          <p className="text-xs text-gray-500 dark:text-slate-400 mt-2">
+                                            Will be applied on Base amount.
+                                          </p>
+                                        </div>
+                                      </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Summary */}
+                                  <div className="rounded-xl bg-slate-100/90 dark:bg-slate-800/60 px-3 py-3 space-y-1.5 text-sm">
+                                    <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
+                                      <span>Base</span>
+                                      <span className="tabular-nums font-medium">{formatCurrency(Number(fee.base_amount || 0))}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
+                                      <span>After rules / lines</span>
+                                      <span className="tabular-nums font-medium">
+                                        {typeof fee.final_amount === 'number' ? formatCurrency(fee.final_amount) : formatCurrency(Number(fee.base_amount || 0))}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-base font-bold text-gray-900 dark:text-white">
+                                      <span>Amount due</span>
+                                      <span className="tabular-nums">{formatCurrency(Number(fee.total_due || 0))}</span>
+                                    </div>
+                                    {allocated > 0 && !isPaid && (
+                                      <p className="text-xs font-medium text-blue-700 dark:text-blue-300 flex items-center gap-1.5 pt-1">
+                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                        {formatCurrency(allocated)} allocated from payment for this installment
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()
+                      )}
+                    </Card>
+                  </div>
+                </div>
+
                 {/* Payment Details */}
                 <div>
                   <Card className="p-5">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-5">Payment Details</h3>
                     <div className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-2">
-                          Payment Amount
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₹</span>
-                          <Input
-                            type="number"
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.value)}
-                            placeholder="0.00"
-                            className="pl-8 h-12 text-lg font-semibold"
-                          />
-                        </div>
-                      </div>
                       <div>
                         <label className="block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-2">
                           Collector *
@@ -1360,11 +2107,12 @@ export default function PaymentCollectionPage({
                       </div>
 
                       <Button
-                        onClick={handleCollectPayment}
+                        onClick={() => {
+                          if (collecting) return;
+                          setReceiptModalOpen(true);
+                        }}
                         disabled={
                           collecting ||
-                          !paymentAmount ||
-                          parseFloat(paymentAmount) <= 0 ||
                           totalAllocated === 0 ||
                           !selectedCollector
                         }
@@ -1378,190 +2126,398 @@ export default function PaymentCollectionPage({
                         ) : (
                           <>
                             <Receipt size={20} />
-                            Collect & Generate Receipt
+                            Preview receipt & collect
                           </>
                         )}
                       </Button>
                     </div>
                   </Card>
                 </div>
+                
+                {/* Previous paid receipts */}
+                <div className="mt-6">
+                  <Card className="p-5">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          Previous paid receipts
+                        </h3>
+                        <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
+                          Click a receipt to open the student fee statements.
+                        </p>
+                      </div>
+                      <div className="text-xs font-semibold text-gray-500 dark:text-slate-400 tabular-nums">
+                        {recentPayments.length} total
+                      </div>
+                    </div>
+
+                    {recentPayments.length === 0 ? (
+                      <div className="py-8 text-center text-gray-500 dark:text-slate-400">
+                        <Receipt className="mx-auto mb-3" size={42} />
+                        <p className="font-medium">No receipts yet</p>
+                        <p className="text-sm mt-1">Collect a payment to generate receipts.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto max-h-72 overflow-y-auto pr-1">
+                        <table className="w-full text-sm min-w-[720px]">
+                          <thead>
+                            <tr className="bg-gray-50 dark:bg-slate-900 text-gray-700 dark:text-slate-200">
+                              <th className="px-3 py-3 text-left">Receipt</th>
+                              <th className="px-3 py-3 text-left">Payment Date</th>
+                              <th className="px-3 py-3 text-left">Mode</th>
+                              <th className="px-3 py-3 text-right">Amount</th>
+                              <th className="px-3 py-3 text-center w-28">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {recentPayments.map((p) => {
+                              const receiptNo = p.receipt?.receipt_no || p.receipt_number || p.id;
+                              const dateLabel = p.payment_date
+                                ? new Date(p.payment_date).toLocaleDateString('en-IN', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric',
+                                  })
+                                : '—';
+
+                              return (
+                                <tr
+                                  key={p.id}
+                                  className="border-t border-gray-200 dark:border-slate-800 hover:bg-gray-50/60 dark:hover:bg-slate-900/40 cursor-pointer"
+                                  onClick={() => {
+                                    const query = new URLSearchParams();
+                                    query.set('student_id', selectedStudent.id);
+                                    if (currentAcademicYear) query.set('academic_year', currentAcademicYear);
+                                    router.push(`/dashboard/${schoolCode}/fees/statements?${query.toString()}`);
+                                  }}
+                                >
+                                  <td className="px-3 py-3 font-semibold text-gray-900 dark:text-white">
+                                    {receiptNo}
+                                  </td>
+                                  <td className="px-3 py-3 text-gray-700 dark:text-slate-200">{dateLabel}</td>
+                                  <td className="px-3 py-3 text-gray-700 dark:text-slate-200">{p.payment_mode}</td>
+                                  <td className="px-3 py-3 text-right font-semibold text-gray-900 dark:text-white tabular-nums">
+                                    {formatCurrency(Number(p.amount || 0))}
+                                  </td>
+                                  <td className="px-3 py-3 text-center">
+                                    <Button type="button" size="sm" variant="outline" className="h-9 w-28">
+                                      View
+                                    </Button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </Card>
+                </div>
+
               </div>
             )}
           </>
         )}
 
-        {/* Student list - when no student selected or for quick select */}
+        {/* Receipt preview modal (before final collect) */}
+        <AnimatePresence>
+          {receiptModalOpen && selectedStudent && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+              role="dialog"
+              aria-modal="true"
+            >
+              <motion.div
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 10, opacity: 0 }}
+                className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-xl overflow-hidden"
+              >
+                <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700 dark:text-blue-300">
+                      Fee receipt preview
+                    </p>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-1">
+                      {selectedStudent.student_name} · {selectedStudent.admission_no}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
+                      {selectedStudent.class}-{selectedStudent.section} · Total to collect {formatCurrency(totalAllocated)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => setReceiptModalOpen(false)}
+                    className="h-10 w-10 p-0 rounded-xl shrink-0"
+                  >
+                    X
+                  </Button>
+                </div>
+
+                <div className="px-5 py-4 max-h-[70vh] overflow-y-auto space-y-4">
+                  {receiptSelectedFees.length === 0 ? (
+                    <div className="text-center py-10">
+                      <Receipt className="mx-auto mb-3 text-gray-300" />
+                      <p className="font-medium text-gray-900 dark:text-white">No installments selected</p>
+                      <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
+                        Select an installment above to preview the receipt first.
+                      </p>
+                    </div>
+                  ) : (
+                    receiptSelectedFees.map((fee) => {
+                      const heads = structureHeadAllocated(fee);
+                      const manual = fee.installment_manual_lines ?? [];
+                      const rules = fee.adjustment_lines ?? [];
+                      const isPaid = fee.total_due <= 0 || fee.status === 'paid';
+                      return (
+                        <div key={fee.id} className="rounded-2xl border border-gray-200 dark:border-slate-800 overflow-hidden">
+                          <div className="px-4 py-3 bg-gradient-to-r from-blue-600/95 to-indigo-600/95 text-white flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-white/90">
+                                {fee.installment_display_label || fee.fee_structure?.name || 'Installment'}
+                              </p>
+                              <p className="text-sm text-white/90 mt-1">
+                                Due {fee.due_date ? formatDateShort(fee.due_date) : '—'}
+                                {isPaid ? ' · Settled' : ''}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-bold tabular-nums">{formatCurrency(allocations[fee.id] ?? 0)}</p>
+                              <p className="text-xs text-white/80 mt-0.5">Allocated now</p>
+                            </div>
+                          </div>
+
+                          <div className="p-4 bg-white dark:bg-slate-900/30">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                              <div className="space-y-3">
+                                {(heads.length > 0 || fee.fee_source === 'transport') && (
+                                  <div>
+                                    {heads.length > 0 && (
+                                      <>
+                                        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
+                                          Fee heads (share of base)
+                                        </p>
+                                        <div className="rounded-lg border border-gray-200 dark:border-slate-800 overflow-hidden">
+                                          <div className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 bg-gray-100/90 dark:bg-slate-800/90 text-xs font-semibold text-gray-600 dark:text-slate-300">
+                                            <span>Head</span>
+                                            <span className="text-right tabular-nums">Amount</span>
+                                          </div>
+                                          {heads.map((h, idx) => (
+                                            <div
+                                              key={`${h.name}-${idx}`}
+                                              className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 text-sm border-t border-gray-100 dark:border-slate-800/80 text-gray-800 dark:text-slate-200"
+                                            >
+                                              <span className="min-w-0 pr-2">{h.name}</span>
+                                              <span className="tabular-nums font-medium text-right">{formatCurrency(h.allocated)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+
+                                    {fee.fee_source === 'transport' && fee.transport_snapshot && (
+                                      <div className="mt-4 text-sm text-gray-700 dark:text-slate-200">
+                                        Transport snapshot shown in installment breakdown.
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {rules.length > 0 && (
+                                  <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
+                                      Rule adjustments
+                                    </p>
+                                    <ul className="rounded-lg border border-gray-200 dark:border-slate-800 divide-y divide-gray-100 dark:divide-slate-700">
+                                      {rules.map((ln) => (
+                                        <li key={ln.rule_id} className="flex justify-between gap-3 px-3 py-2 text-sm">
+                                          <span className="min-w-0">{ln.label}</span>
+                                          <span
+                                            className={`tabular-nums font-medium shrink-0 ${
+                                              ln.delta < 0
+                                                ? 'text-green-600 dark:text-green-400'
+                                                : 'text-red-600 dark:text-red-400'
+                                            }`}
+                                          >
+                                            {ln.delta < 0 ? '−' : '+'}
+                                            {formatCurrency(Math.abs(ln.delta))}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="space-y-3">
+                                {manual.length > 0 && (
+                                  <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
+                                      Misc & discounts (receipt lines)
+                                    </p>
+                                    <ul className="rounded-lg border border-gray-200 dark:border-slate-800 divide-y divide-gray-100 dark:divide-slate-700">
+                                      {manual.map((ln) => (
+                                        <li key={ln.id} className="flex justify-between gap-3 px-3 py-2 text-sm">
+                                          <span className="min-w-0">
+                                            {ln.label} <span className="text-gray-500 text-xs">({ln.kind})</span>
+                                          </span>
+                                          <span
+                                            className={`tabular-nums font-medium shrink-0 ${
+                                              ln.amount < 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                                            }`}
+                                          >
+                                            {ln.amount < 0 ? '−' : '+'}
+                                            {formatCurrency(Math.abs(ln.amount))}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg bg-slate-100/90 dark:bg-slate-800/60 px-3 py-3 space-y-1.5 text-sm">
+                              <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
+                                <span>Base</span>
+                                <span className="tabular-nums font-medium">{formatCurrency(fee.base_amount)}</span>
+                              </div>
+                              {typeof fee.final_amount === 'number' && (
+                                <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
+                                  <span>After rules / lines</span>
+                                  <span className="tabular-nums font-medium">{formatCurrency(fee.final_amount)}</span>
+                                </div>
+                              )}
+                              {fee.late_fee > 0 && (
+                                <div className="flex justify-between gap-2 text-amber-800 dark:text-amber-200">
+                                  <span>Late fee</span>
+                                  <span className="tabular-nums font-semibold">+{formatCurrency(fee.late_fee)}</span>
+                                </div>
+                              )}
+                              {!isPaid && (
+                                <div className="flex justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-base font-bold text-gray-900 dark:text-white">
+                                  <span>Amount due (after all allocations)</span>
+                                  <span className="tabular-nums">
+                                    {formatCurrency(Math.max(0, fee.total_due - (allocations[fee.id] ?? 0)))}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="px-5 py-4 border-t border-gray-200 dark:border-slate-800 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-slate-400">
+                      Collector: <span className="font-medium text-gray-900 dark:text-white">{selectedCollector || '—'}</span>
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">
+                      Payment mode: <span className="font-medium">{paymentMode}</span>
+                      {referenceNo.trim() ? ` · Ref: ${referenceNo.trim()}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setReceiptModalOpen(false)} className="h-10">
+                      Back
+                    </Button>
+                    <Button
+                      onClick={handleCollectPayment}
+                      disabled={collecting || totalAllocated === 0 || !selectedCollector}
+                      className="h-10 bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {collecting ? 'Processing...' : 'Proceed & Collect'}
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Student list (only after class + section selected) */}
         {!selectedStudent && (
           <Card className="p-5">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Students with pending dues
-            </h2>
-            {loading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 size={32} className="animate-spin text-blue-600" />
-              </div>
-            ) : filteredStudents.length === 0 ? (
-              <div className="text-center py-12 text-gray-500 dark:text-slate-400 px-2">
+            {!classFilter || !sectionFilter ? (
+              <div className="py-10 text-center">
                 <Users size={48} className="mx-auto mb-3 text-gray-300 dark:text-slate-600" />
-                <p className="font-medium text-gray-800 dark:text-slate-200">No students with pending dues</p>
-                <p className="text-sm mt-2 max-w-md mx-auto leading-relaxed">
-                  {searchQuery.trim() || classFilter || sectionFilter ? (
-                    <>
-                      Nothing matches your search or class/section filters for session{' '}
-                      <span className="font-medium text-gray-700 dark:text-slate-300">
-                        {currentAcademicYear || '—'}
-                      </span>
-                      . Try <span className="font-medium">Clear filters</span> or another class/section.
-                    </>
-                  ) : pendingStudents.length === 0 ? (
-                    <>
-                      No unpaid installments in this session (
-                      <span className="font-medium">{currentAcademicYear || 'current'}</span>
-                      ) for active fee structures, or dues are not in pending/partial/overdue status.
-                    </>
-                  ) : (
-                    'No names match your search.'
-                  )}
+                <p className="text-gray-700 dark:text-slate-200 font-semibold">Select Class and Section to view students</p>
+                <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">
+                  Pending dues will appear only for the selected class/section.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[400px] overflow-y-auto">
-                {filteredStudents.map((student) => (
-                  <button
-                    key={student.id}
-                    type="button"
-                    onClick={() => handleStudentSelect(student)}
-                    className="text-left p-4 rounded-xl border border-gray-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors"
-                  >
-                    <p className="font-semibold text-gray-900 dark:text-white truncate">
-                      {student.student_name}
+              <>
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Students with pending dues</h2>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">{filteredStudents.length} student(s)</span>
+                </div>
+                {loading ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2 size={32} className="animate-spin text-blue-600" />
+                  </div>
+                ) : filteredStudents.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500 dark:text-slate-400 px-2">
+                    <Users size={48} className="mx-auto mb-3 text-gray-300 dark:text-slate-600" />
+                    <p className="font-medium text-gray-800 dark:text-slate-200">No pending students found</p>
+                    <p className="text-sm mt-2 max-w-md mx-auto leading-relaxed">
+                      Nothing matches your search for session{' '}
+                      <span className="font-medium text-gray-700 dark:text-slate-300">{currentAcademicYear || '—'}</span>.
                     </p>
-                    <p className="text-sm font-mono text-gray-500 dark:text-slate-400">
-                      {student.admission_no} • {student.class}-{student.section}
-                    </p>
-                    <p className="text-sm font-bold text-red-600 dark:text-red-400 mt-1">
-                      {formatCurrency(student.pending_amount)} due
-                    </p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </Card>
-        )}
-
-        {!selectedStudent && (
-          <Card className="p-5 mt-6 border border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-emerald-950/20">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-                  <CheckCircle size={20} className="text-emerald-600 dark:text-emerald-400" />
-                  Paid for current period
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-slate-400">
-                  Students who have{' '}
-                  <span className="font-medium text-gray-800 dark:text-slate-200">no balance</span> on every fee
-                  installment that falls in the selected period (they may still owe other months or quarters). Session{' '}
-                  <span className="font-medium">{currentAcademicYear || '—'}</span>
-                  {classFilter ? (
-                    <>
-                      {' '}
-                      · class <span className="font-medium">{classFilter}</span>
-                      {sectionFilter ? (
-                        <>
-                          {' '}
-                          · section <span className="font-medium">{sectionFilter}</span>
-                        </>
-                      ) : null}
-                    </>
-                  ) : null}
-                  .
-                </p>
-                {paidUpPeriodMeta?.label && (
-                  <p className="text-xs text-emerald-800 dark:text-emerald-300/90 mt-2 font-medium">
-                    Period: {paidUpPeriodMeta.label}
-                    {paidUpPeriodMeta.as_of ? (
-                      <span className="font-normal text-gray-500 dark:text-slate-500">
-                        {' '}
-                        (as of {paidUpPeriodMeta.as_of})
-                      </span>
-                    ) : null}
-                  </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[820px]">
+                      <thead>
+                        <tr className="bg-[#003D4C] text-white">
+                          <th className="px-3 py-3 text-left w-10">#</th>
+                          <th className="px-3 py-3 text-left">Student Name</th>
+                          <th className="px-3 py-3 text-left">Admission Id</th>
+                          <th className="px-3 py-3 text-left">Class</th>
+                          <th className="px-3 py-3 text-right">Fee Due</th>
+                          <th className="px-3 py-3 text-left">Due Date</th>
+                          <th className="px-3 py-3 text-center w-28">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredStudents.map((student, i) => (
+                          <tr key={student.id} className="border-t border-gray-200 dark:border-slate-800 hover:bg-gray-50/50">
+                            <td className="px-3 py-3 text-gray-600">{String(i + 1).padStart(2, '0')}</td>
+                            <td className="px-3 py-3 font-medium text-gray-900">{student.student_name}</td>
+                            <td className="px-3 py-3 font-mono text-gray-800">{student.admission_no}</td>
+                            <td className="px-3 py-3 text-gray-800">
+                              {student.class}-{student.section}
+                            </td>
+                            <td className="px-3 py-3 text-right font-semibold text-red-600">
+                              {formatCurrency(student.pending_amount)}
+                            </td>
+                            <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
+                              {student.due_date ? new Date(student.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-24"
+                                onClick={() => handleStudentSelect(student)}
+                              >
+                                Select
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
-              </div>
-              <div className="flex rounded-lg border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-900/40 p-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setPaidPeriodListMode('month')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    paidPeriodListMode === 'month'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  This month
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaidPeriodListMode('quarter')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    paidPeriodListMode === 'quarter'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  This quarter
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-slate-500 mb-4 -mt-2">
-              <span className="font-medium text-gray-600 dark:text-slate-400">Month:</span> calendar month of
-              due-month on each fee row. <span className="font-medium text-gray-600 dark:text-slate-400">Quarter:</span>{' '}
-              academic quarters Apr–Jun, Jul–Sep, Oct–Dec, Jan–Mar (Apr–Mar year).
-            </p>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 size={28} className="animate-spin text-emerald-600" />
-              </div>
-            ) : filteredPaidUpStudents.length === 0 ? (
-              <div className="text-center py-10 text-gray-500 dark:text-slate-400">
-                <UserCheck size={40} className="mx-auto mb-2 text-emerald-200 dark:text-emerald-900" />
-                <p className="font-medium">
-                  No students cleared for{' '}
-                  {paidPeriodListMode === 'month' ? 'this calendar month' : 'this academic quarter'}
-                </p>
-                <p className="text-sm mt-1 max-w-md mx-auto">
-                  Either no installments fall in this period, or some are still due. Try the other period toggle,
-                  adjust class/section, or collect outstanding dues from the list above.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[360px] overflow-y-auto">
-                {filteredPaidUpStudents.map((student) => (
-                  <button
-                    key={student.id}
-                    type="button"
-                    onClick={() => handleStudentSelect(student)}
-                    className="text-left p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 hover:border-emerald-400 dark:hover:border-emerald-600 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40 transition-colors"
-                  >
-                    <p className="font-semibold text-gray-900 dark:text-white truncate">
-                      {student.student_name}
-                    </p>
-                    <p className="text-sm font-mono text-gray-500 dark:text-slate-400">
-                      {student.admission_no} • {student.class}-{student.section}
-                    </p>
-                    <p className="text-xs text-emerald-800 dark:text-emerald-300 mt-1">
-                      {student.installment_count} installment{student.installment_count !== 1 ? 's' : ''} in period
-                      {' · '}
-                      {formatCurrency(student.total_paid_session)} received
-                      {student.period_label ? (
-                        <span className="block text-[11px] text-gray-500 dark:text-slate-500 mt-0.5">
-                          {student.period_label}
-                        </span>
-                      ) : null}
-                    </p>
-                  </button>
-                ))}
-              </div>
+              </>
             )}
           </Card>
         )}

@@ -77,30 +77,40 @@ export default function ReportCardDashboardPage({
     setSectionFilter('');
   }, [classFilter]);
 
+  const canShowResults = Boolean(classFilter && sectionFilter);
+
   const q = searchQuery.trim().toLowerCase();
-  const filteredCards = reportCards.filter((c) => {
-    if (classFilter && (c.class_name || '') !== classFilter) return false;
-    if (sectionFilter && (c.section || '') !== sectionFilter) return false;
-    if (!q) return true;
-    return (
-      (c.student_name || '').toLowerCase().includes(q) ||
-      (c.admission_no || '').toLowerCase().includes(q)
-    );
-  });
+  const filteredCards = canShowResults
+    ? reportCards.filter((c) => {
+        if (classFilter && (c.class_name || '') !== classFilter) return false;
+        if (sectionFilter && (c.section || '') !== sectionFilter) return false;
+        if (!q) return true;
+        return (
+          (c.student_name || '').toLowerCase().includes(q) ||
+          (c.admission_no || '').toLowerCase().includes(q)
+        );
+      })
+    : [];
 
   const classes = [...new Set(reportCards.map((c) => c.class_name).filter(Boolean))].sort();
-  const sections = [
-    ...new Set(
-      reportCards
-        .filter((c) => !classFilter || (c.class_name || '') === classFilter)
-        .map((c) => c.section)
-        .filter(Boolean)
-    ),
-  ].sort();
+  const sections = classFilter
+    ? [
+        ...new Set(
+          reportCards
+            .filter((c) => (c.class_name || '') === classFilter)
+            .map((c) => c.section)
+            .filter(Boolean)
+        ),
+      ].sort()
+    : [];
 
   const handleView = (id: string) => {
     window.open(`/api/marks/report-card/${id}?_t=${Date.now()}`, '_blank', 'noopener,noreferrer');
   };
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [classFilter, sectionFilter]);
 
   const handleDownload = (id: string, name: string, year: string) => {
     const url = `/api/marks/report-card/${id}?_t=${Date.now()}`;
@@ -223,23 +233,45 @@ export default function ReportCardDashboardPage({
               onChange={(e) => setClassFilter(e.target.value)}
               className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
             >
-              <option value="">All Classes</option>
-              {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+              <option value="">Select Class</option>
+              {classes.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
           </div>
           <div>
             <select
               value={sectionFilter}
               onChange={(e) => setSectionFilter(e.target.value)}
-              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
+              disabled={!classFilter}
+              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <option value="">All Sections</option>
-              {sections.map((s) => <option key={s} value={s}>{s}</option>)}
+              <option value="">{classFilter ? 'Select Section' : 'Select Class First'}</option>
+              {sections.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
-        {loading ? (
+        {!canShowResults && !loading ? (
+          <div className="py-12 text-center">
+            <FileText size={48} className="mx-auto text-gray-300" />
+            <p className="mt-4 text-gray-500 font-medium">Select Class and Section to view report cards</p>
+            <p className="text-sm text-gray-400 mt-1">Then you can search and manage the generated report cards.</p>
+            <Button
+              onClick={() => router.push(`/dashboard/${schoolCode}/report-card/generate`)}
+              className="mt-4 bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white"
+            >
+              <Plus size={18} className="mr-2" />
+              Generate Report Card
+            </Button>
+          </div>
+        ) : loading ? (
           <div className="py-12 text-center">
             <Loader2 size={48} className="animate-spin mx-auto text-[#1e3a8a]" />
             <p className="mt-4 text-gray-500">Loading report cards...</p>
@@ -248,27 +280,17 @@ export default function ReportCardDashboardPage({
           <div className="py-12 text-center">
             <FileText size={48} className="mx-auto text-gray-300" />
             <p className="mt-4 text-gray-500 font-medium">
-              {reportCards.length > 0 ? 'No report cards match your filters' : 'No report cards found'}
+              No report cards found for selected Class and Section
             </p>
             <p className="text-sm text-gray-400 mt-1">
               {reportCards.length > 0
-                ? 'Try clearing class, section, or search — or generate new cards.'
+                ? 'Try generating report cards again or adjust your selection.'
                 : 'Generate report cards to see them here'}
             </p>
-            {reportCards.length > 0 && (classFilter || sectionFilter || searchQuery.trim()) ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setClassFilter('');
-                  setSectionFilter('');
-                  setSearchQuery('');
-                }}
-                className="mt-4 mr-2 border-[#1e3a8a] text-[#1e3a8a]"
-              >
-                Clear filters
-              </Button>
-            ) : null}
-            <Button onClick={() => router.push(`/dashboard/${schoolCode}/report-card/generate`)} className="mt-4 bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
+            <Button
+              onClick={() => router.push(`/dashboard/${schoolCode}/report-card/generate`)}
+              className="mt-4 bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white"
+            >
               <Plus size={18} className="mr-2" />
               Generate Report Card
             </Button>
