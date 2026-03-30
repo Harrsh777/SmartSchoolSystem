@@ -466,20 +466,6 @@ export default function FeeStatementsPage({
             <p className="text-xs text-gray-500 mt-1">
               Select <span className="font-medium">class + section</span>, then search by name or admission no.
             </p>
-            {students.length > 0 && (
-              <div className="mt-2 border border-gray-200 rounded-lg bg-white shadow-lg max-h-60 overflow-y-auto z-10">
-                {students.map(student => (
-                  <button
-                    key={student.id}
-                    onClick={() => handleStudentSelect(student)}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
-                  >
-                    <div className="font-medium text-gray-900">{student.student_name}</div>
-                    <div className="text-sm text-gray-600">{student.admission_no} • {student.class}-{student.section}</div>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           <div>
@@ -539,6 +525,31 @@ export default function FeeStatementsPage({
             </select>
           </div>
         </div>
+
+        {students.length > 0 && (
+          <div className="mt-6">
+            <p className="text-sm font-medium text-gray-800 mb-2">
+              Students ({students.length}) — tap to open statement
+            </p>
+            <div className="rounded-xl border border-gray-200 bg-gray-50/80 divide-y divide-gray-200 overflow-hidden">
+              {students.map((student) => (
+                <button
+                  key={student.id}
+                  type="button"
+                  onClick={() => handleStudentSelect(student)}
+                  className="w-full px-4 py-3.5 sm:px-5 sm:py-4 text-left hover:bg-white transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1"
+                >
+                  <div>
+                    <div className="font-semibold text-gray-900 text-base">{student.student_name}</div>
+                    <div className="text-sm text-gray-600 mt-0.5">
+                      {student.admission_no} • {student.class}-{student.section}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Loading State */}
@@ -952,10 +963,11 @@ export default function FeeStatementsPage({
                 </div>
               </div>
 
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              <div className="rounded-xl border border-gray-200 bg-gray-50/80 divide-y divide-gray-200 overflow-hidden">
                 {recentPending.map((s) => (
                   <button
                     key={s.id}
+                    type="button"
                     onClick={() =>
                       handleStudentSelect({
                         id: s.id,
@@ -965,21 +977,25 @@ export default function FeeStatementsPage({
                         section: s.section,
                       })
                     }
-                    className="w-full p-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-left transition-colors"
+                    className="w-full px-4 py-3.5 sm:px-5 sm:py-4 text-left hover:bg-white transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div>
-                        <div className="font-medium text-gray-900">{s.student_name}</div>
-                        <div className="text-sm text-gray-600">
+                        <div className="font-semibold text-gray-900 text-base">{s.student_name}</div>
+                        <div className="text-sm text-gray-600 mt-0.5">
                           {s.admission_no} • {s.class}-{s.section}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           Due: {s.due_date ? new Date(s.due_date).toLocaleDateString('en-IN') : '—'}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-sm font-semibold text-gray-900">Pending: ₹{s.pending_amount.toLocaleString('en-IN')}</div>
-                        <div className="text-xs text-gray-500">{s.late_fee_amount > 0 ? `Late fees included` : ''}</div>
+                      <div className="text-left sm:text-right shrink-0">
+                        <div className="text-sm font-semibold text-gray-900">
+                          Pending: ₹{s.pending_amount.toLocaleString('en-IN')}
+                        </div>
+                        {s.late_fee_amount > 0 ? (
+                          <div className="text-xs text-gray-500 mt-0.5">Late fees included</div>
+                        ) : null}
                       </div>
                     </div>
                   </button>

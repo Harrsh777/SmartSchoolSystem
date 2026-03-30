@@ -95,7 +95,9 @@ export default function MarksDashboardPage({
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [classes, setClasses] = useState<Array<{ id: string; class: string; section?: string }>>([]);
   const [examinations, setExaminations] = useState<Array<{ id: string; exam_name: string; name?: string }>>([]);
+  /** Subjects assigned to the selected class–section (from class_subjects), not the whole school catalog */
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
 
   // Filters (class_id holds class *name* for /api/marks/view — same as students.class)
   const [filters, setFilters] = useState({
@@ -113,13 +115,17 @@ export default function MarksDashboardPage({
   useEffect(() => {
     fetchClasses();
     fetchExaminations();
-    fetchSubjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
-  // Fetch marks when filters change (exam required)
+  const canLoadMarks =
+    Boolean(filters.exam_id?.trim()) &&
+    Boolean(filters.class_id?.trim()) &&
+    Boolean(filters.section?.trim());
+
+  // Fetch marks when exam + class + section are all set (no "all classes/sections")
   useEffect(() => {
-    if (!filters.exam_id) {
+    if (!canLoadMarks) {
       setMarks([]);
       setAnalytics(null);
       setLoading(false);
@@ -127,7 +133,7 @@ export default function MarksDashboardPage({
     }
     fetchMarks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, schoolCode]);
+  }, [filters, schoolCode, canLoadMarks]);
 
   const fetchClasses = async () => {
     try {
@@ -159,26 +165,14 @@ export default function MarksDashboardPage({
     }
   };
 
-  const fetchSubjects = async () => {
-    try {
-      const response = await fetch(`/api/subjects?school_code=${schoolCode}`);
-      const result = await response.json();
-      if (response.ok && result.data) {
-        setSubjects(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching subjects:', err);
-    }
-  };
-
   const fetchMarks = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         school_code: schoolCode,
-        ...(filters.exam_id && { exam_id: filters.exam_id }),
-        ...(filters.class_id && { class_id: filters.class_id }),
-        ...(filters.section && { section: filters.section }),
+        exam_id: filters.exam_id,
+        class_id: filters.class_id,
+        section: filters.section,
         ...(filters.subject_id && { subject_id: filters.subject_id }),
         ...(filters.search && { search: filters.search }),
       });
@@ -226,6 +220,65 @@ export default function MarksDashboardPage({
     return [...new Set(secs)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [classes, filters.class_id]);
 
+  const matchingClassRow = useMemo(() => {
+    if (!filters.class_id?.trim() || !filters.section?.trim()) return null;
+    const cn = filters.class_id.trim().toLowerCase();
+    const sn = filters.section.trim().toLowerCase();
+    return (
+      classes.find(
+        (c) =>
+          String(c.class ?? '').trim().toLowerCase() === cn &&
+          String(c.section ?? '').trim().toLowerCase() === sn
+      ) ?? null
+    );
+  }, [classes, filters.class_id, filters.section]);
+
+  useEffect(() => {
+    if (!matchingClassRow?.id || !schoolCode) {
+      setSubjects([]);
+      setSubjectsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSubjectsLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/classes/${matchingClassRow.id}/subjects?school_code=${encodeURIComponent(schoolCode)}`
+        );
+        const result = await res.json();
+        if (cancelled) return;
+        if (res.ok && Array.isArray(result.data)) {
+          const list = (result.data as Array<{ id?: string; name?: string }>)
+            .map((s) => ({
+              id: String(s.id ?? ''),
+              name: String(s.name ?? '').trim() || 'Unnamed',
+            }))
+            .filter((s) => s.id);
+          setSubjects(list);
+          setFilters((prev) => {
+            if (!prev.subject_id) return prev;
+            return list.some((x) => x.id === prev.subject_id) ? prev : { ...prev, subject_id: '' };
+          });
+        } else {
+          setSubjects([]);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Error fetching class subjects:', err);
+          setSubjects([]);
+        }
+      } finally {
+        if (!cancelled) setSubjectsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchingClassRow?.id, schoolCode]);
+
   // Download handlers
   const handleDownloadReportCard = async (studentId: string, examId: string) => {
     try {
@@ -252,13 +305,17 @@ export default function MarksDashboardPage({
       alert('Please select an examination first');
       return;
     }
+    if (!filters.class_id?.trim() || !filters.section?.trim()) {
+      alert('Please select class and section first');
+      return;
+    }
 
     try {
       const params = new URLSearchParams({
         school_code: schoolCode,
         exam_id: filters.exam_id,
-        ...(filters.class_id && { class_id: filters.class_id }),
-        ...(filters.section && { section: filters.section }),
+        class_id: filters.class_id,
+        section: filters.section,
       });
 
       const response = await fetch(`/api/marks/bulk-download?${params}`);
@@ -280,12 +337,22 @@ export default function MarksDashboardPage({
   };
 
   const handleExportExcel = async () => {
+    if (!filters.exam_id?.trim()) {
+      alert('Please select an examination first');
+      return;
+    }
+    if (!filters.class_id?.trim() || !filters.section?.trim()) {
+      alert('Please select class and section first');
+      return;
+    }
     try {
       const params = new URLSearchParams({
         school_code: schoolCode,
-        ...(filters.exam_id && { exam_id: filters.exam_id }),
-        ...(filters.class_id && { class_id: filters.class_id }),
-        ...(filters.section && { section: filters.section }),
+        exam_id: filters.exam_id,
+        class_id: filters.class_id,
+        section: filters.section,
+        ...(filters.subject_id && { subject_id: filters.subject_id }),
+        ...(filters.search && { search: filters.search }),
       });
 
       const response = await fetch(`/api/marks/export?${params}&format=excel`);
@@ -359,13 +426,17 @@ export default function MarksDashboardPage({
         </motion.div>
 
 
-        {/* Filters - Sticky */}
-        <Card className="sticky top-0 z-10 soft-shadow-md">
+        {/* Filters (scrolls with page — not sticky) */}
+        <Card className="soft-shadow-md">
           <div className="p-6">
             <div className="flex items-center gap-2 mb-4">
               <Filter className="text-[#2C3E50] dark:text-[#5A879A]" size={20} />
               <h2 className="text-lg font-semibold text-foreground">Filters</h2>
             </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Select examination, class, and section to load marks. Subject list shows only subjects assigned to that class–section;
+              search is optional.
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               {/* Examination */}
               <div>
@@ -374,7 +445,10 @@ export default function MarksDashboardPage({
                 </label>
                 <select
                   value={filters.exam_id}
-                  onChange={(e) => setFilters({ ...filters, exam_id: e.target.value })}
+                  onChange={(e) => {
+                    setFilters({ ...filters, exam_id: e.target.value });
+                    setCurrentPage(1);
+                  }}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
                   required
                 >
@@ -389,15 +463,18 @@ export default function MarksDashboardPage({
 
               {/* Class */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Class</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Class <span className="text-red-500">*</span>
+                </label>
                 <select
                   value={filters.class_id}
                   onChange={(e) => {
-                    setFilters({ ...filters, class_id: e.target.value, section: '' });
+                    setFilters({ ...filters, class_id: e.target.value, section: '', subject_id: '' });
+                    setCurrentPage(1);
                   }}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
                 >
-                  <option value="">All Classes</option>
+                  <option value="">Select class</option>
                   {uniqueClassNames.map((name) => (
                     <option key={name} value={name}>
                       {name}
@@ -408,14 +485,19 @@ export default function MarksDashboardPage({
 
               {/* Section */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Section</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Section <span className="text-red-500">*</span>
+                </label>
                 <select
                   value={filters.section}
-                  onChange={(e) => setFilters({ ...filters, section: e.target.value })}
+                  onChange={(e) => {
+                    setFilters({ ...filters, section: e.target.value, subject_id: '' });
+                    setCurrentPage(1);
+                  }}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900"
                   disabled={!filters.class_id}
                 >
-                  <option value="">All Sections</option>
+                  <option value="">{filters.class_id ? 'Select section' : 'Select class first'}</option>
                   {sectionsForSelectedClass.map((sec) => (
                     <option key={sec} value={sec}>
                       {sec}
@@ -424,21 +506,38 @@ export default function MarksDashboardPage({
                 </select>
               </div>
 
-              {/* Subject */}
+              {/* Subject — only those assigned to selected class–section */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Subject</label>
                 <select
                   value={filters.subject_id}
-                  onChange={(e) => setFilters({ ...filters, subject_id: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                  onChange={(e) => {
+                    setFilters({ ...filters, subject_id: e.target.value });
+                    setCurrentPage(1);
+                  }}
+                  disabled={!canLoadMarks || subjectsLoading || !matchingClassRow}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
                 >
-                  <option value="">All Subjects</option>
+                  <option value="">
+                    {subjectsLoading
+                      ? 'Loading subjects…'
+                      : !canLoadMarks
+                        ? 'Select class & section first'
+                        : !matchingClassRow
+                          ? 'Class record not found'
+                          : 'Full report (every assigned subject)'}
+                  </option>
                   {subjects.map((subject) => (
                     <option key={subject.id} value={subject.id}>
                       {subject.name}
                     </option>
                   ))}
                 </select>
+                {canLoadMarks && matchingClassRow && !subjectsLoading && subjects.length === 0 ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                    No subjects assigned to this class–section. Assign subjects under Classes, then refresh.
+                  </p>
+                ) : null}
               </div>
 
               {/* Search */}
@@ -457,40 +556,47 @@ export default function MarksDashboardPage({
               </div>
             </div>
 
-            <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center justify-between mt-4 flex-wrap gap-3">
               <Button
-                onClick={fetchMarks}
-                className="bg-[#5A7A95] hover:bg-[#4a6a85] text-white"
-            >
-              <RefreshCw size={18} className="mr-2" />
-              Apply Filters
-            </Button>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleExportExcel}
-                disabled={!filters.exam_id || marks.length === 0}
-                className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
+                onClick={() => {
+                  if (!canLoadMarks) {
+                    alert('Select examination, class, and section to load marks.');
+                    return;
+                  }
+                  fetchMarks();
+                }}
+                disabled={!canLoadMarks}
+                className="bg-[#5A7A95] hover:bg-[#4a6a85] text-white disabled:opacity-50"
               >
-                <FileSpreadsheet size={18} className="mr-2" />
-                Export Excel
+                <RefreshCw size={18} className="mr-2" />
+                Apply filters
               </Button>
-              <Button
-                variant="outline"
-                onClick={handleBulkDownload}
-                disabled={!filters.exam_id || marks.length === 0}
-                className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
-              >
-                <Download size={18} className="mr-2" />
-                Download All Report Cards
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  onClick={handleExportExcel}
+                  disabled={!canLoadMarks || marks.length === 0}
+                  className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
+                >
+                  <FileSpreadsheet size={18} className="mr-2" />
+                  Export Excel
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleBulkDownload}
+                  disabled={!canLoadMarks || marks.length === 0}
+                  className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
+                >
+                  <Download size={18} className="mr-2" />
+                  Download All Report Cards
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
 
       {/* Analytics Cards */}
-      {analytics && (
+      {canLoadMarks && analytics && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="p-6 bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] text-white shadow-lg">
             <div className="flex items-center justify-between">
@@ -535,7 +641,7 @@ export default function MarksDashboardPage({
       )}
 
       {/* Charts */}
-      {marks.length > 0 && (
+      {canLoadMarks && marks.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Grade Distribution */}
           <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
@@ -576,7 +682,7 @@ export default function MarksDashboardPage({
       )}
 
       {/* Toppers */}
-      {analytics && analytics.toppers.length > 0 && (
+      {canLoadMarks && analytics && analytics.toppers.length > 0 && (
         <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
             <Award className="text-[#5A7A95]" size={20} />
@@ -615,8 +721,8 @@ export default function MarksDashboardPage({
           <div className="text-center py-12">
             <AlertCircle className="text-gray-400 dark:text-gray-600 mx-auto mb-4" size={48} />
             <p className="text-gray-600 dark:text-gray-400">
-              {!filters.exam_id
-                ? 'Select an examination to load marks. Optionally narrow by class and section.'
+              {!canLoadMarks
+                ? 'Choose examination, class, and section to load marks.'
                 : 'No marks match the current filters.'}
             </p>
           </div>
