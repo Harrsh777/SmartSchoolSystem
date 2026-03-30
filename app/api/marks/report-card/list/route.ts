@@ -48,8 +48,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 500 });
     }
 
-    console.log(`Found ${data?.length || 0} report cards for school ${schoolCode}`);
-    return NextResponse.json({ data: data || [] });
+    const rows = Array.isArray(data) ? data : [];
+    const studentIds = Array.from(new Set(rows.map((r) => String(r.student_id || '')).filter(Boolean)));
+    let rollByStudentId = new Map<string, string>();
+    if (studentIds.length > 0) {
+      const { data: students } = await supabase
+        .from('students')
+        .select('id, roll_number')
+        .eq('school_code', schoolCode)
+        .in('id', studentIds);
+      rollByStudentId = new Map(
+        (students || []).map((s) => [String(s.id), s.roll_number ? String(s.roll_number) : ''])
+      );
+    }
+
+    const withRoll = rows.map((r) => ({
+      ...r,
+      roll_number: rollByStudentId.get(String(r.student_id || '')) || '',
+    }));
+
+    console.log(`Found ${withRoll.length || 0} report cards for school ${schoolCode}`);
+    return NextResponse.json({ data: withRoll });
   } catch (error) {
     console.error('Error listing report cards:', error);
     return NextResponse.json(

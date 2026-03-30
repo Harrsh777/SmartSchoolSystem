@@ -51,6 +51,7 @@ type StudentPlanRow = {
   student_name: string;
   admission_no: string;
   roll_number: string;
+  is_rte?: boolean;
   fee_plan_id: string | null;
 };
 
@@ -97,6 +98,8 @@ export default function ClassWiseFeesPage({
   const [studentPlans, setStudentPlans] = useState<StudentPlanRow[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [savingPlans, setSavingPlans] = useState(false);
+  const [savingRte, setSavingRte] = useState(false);
+  const [showRteSelection, setShowRteSelection] = useState(false);
   const [generating, setGenerating] = useState(false);
 
   const fetchYears = useCallback(async () => {
@@ -383,6 +386,12 @@ export default function ClassWiseFeesPage({
     );
   };
 
+  const toggleStudentRte = (studentId: string, isChecked: boolean) => {
+    setStudentPlans((prev) =>
+      prev.map((s) => (s.id === studentId ? { ...s, is_rte: isChecked } : s))
+    );
+  };
+
   const canSaveAssignments =
     !!structureId &&
     (frequencyMode === 'single' || (studentPlans.length > 0 && studentPlans.every((s) => !!s.fee_plan_id)));
@@ -419,6 +428,33 @@ export default function ClassWiseFeesPage({
       return true;
     } finally {
       setSavingPlans(false);
+    }
+  };
+
+  const saveRteGroup = async () => {
+    if (!className || !section) return;
+    setSavingRte(true);
+    try {
+      const rteStudentIds = studentPlans.filter((s) => Boolean(s.is_rte)).map((s) => s.id);
+      const res = await fetch('/api/v2/fees/class-section/rte', {
+        method: 'POST',
+        headers: staffHeaders(),
+        body: JSON.stringify({
+          school_code: schoolCode,
+          class_name: className,
+          section,
+          rte_student_ids: rteStudentIds,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data?.error || 'Failed to save RTE group');
+        return;
+      }
+      alert(`RTE group saved. ${Number(data?.data?.rte_count || rteStudentIds.length)} students marked as RTE.`);
+      await loadStudentPlans();
+    } finally {
+      setSavingRte(false);
     }
   };
 
@@ -636,6 +672,7 @@ export default function ClassWiseFeesPage({
                         <th className="text-left px-2 py-2">Admission</th>
                         <th className="text-left px-2 py-2">Roll</th>
                         <th className="text-left px-2 py-2">Frequency</th>
+                        {showRteSelection && <th className="text-left px-2 py-2">RTE</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -662,6 +699,18 @@ export default function ClassWiseFeesPage({
                               </select>
                             )}
                           </td>
+                          {showRteSelection && (
+                            <td className="px-2 py-2">
+                              <label className="inline-flex items-center gap-2 text-xs text-gray-700">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(s.is_rte)}
+                                  onChange={(e) => toggleStudentRte(s.id, e.target.checked)}
+                                />
+                                <span>RTE</span>
+                              </label>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -683,6 +732,18 @@ export default function ClassWiseFeesPage({
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowRteSelection((v) => !v)}
+                  >
+                    {showRteSelection ? 'Hide RTE Selection' : 'Show RTE Selection'}
+                  </Button>
+                  {showRteSelection && (
+                    <Button type="button" onClick={saveRteGroup} disabled={savingRte}>
+                      {savingRte ? 'Saving RTE…' : 'Save RTE Group'}
+                    </Button>
+                  )}
                   {structureId && (frequencyMode === 'single' || allFrequenciesSelected) ? (
                     <Button onClick={generateFees} disabled={generating}>
                       {generating ? 'Generating…' : 'Generate Fees for Students'}

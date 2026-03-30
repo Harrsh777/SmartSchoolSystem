@@ -66,6 +66,7 @@ export default function StudentDirectoryPage({
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
+  const [showClassRoster, setShowClassRoster] = useState(false);
   const [classRows, setClassRows] = useState<ClassRow[]>([]);
   /** Server-side ordering for the paginated list */
   const [directorySort, setDirectorySort] = useState<
@@ -258,7 +259,12 @@ export default function StudentDirectoryPage({
   useEffect(() => {
     setSelectedClass('');
     setSelectedSection('');
+    setShowClassRoster(false);
   }, [academicYear]);
+
+  useEffect(() => {
+    setShowClassRoster(false);
+  }, [selectedClass, selectedSection]);
 
   useEffect(() => {
     const closeStatusMenu = (e: MouseEvent) => {
@@ -663,6 +669,42 @@ export default function StudentDirectoryPage({
             </p>
           )}
         </div>
+
+        {selectionReady && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setShowClassRoster((v) => !v)}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900 hover:bg-blue-100"
+            >
+              <Users size={15} />
+              {selectedClass} - {selectedSection} students ({studentsTotal})
+              <ChevronDown className={`h-4 w-4 transition-transform ${showClassRoster ? 'rotate-180' : ''}`} />
+            </button>
+            {showClassRoster && (
+              <div className="mt-2 rounded-lg border border-blue-100 bg-white max-h-56 overflow-auto">
+                {students.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-gray-500">No students loaded.</p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {students.map((s) => (
+                      <li
+                        key={s.id}
+                        className="px-3 py-2 text-sm flex items-center justify-between gap-3 hover:bg-blue-50/40 cursor-pointer"
+                        onClick={() => handleStudentClick(s.id!)}
+                      >
+                        <span className="text-gray-900 font-medium truncate">{getString(s.student_name) || 'N/A'}</span>
+                        <span className="text-xs text-gray-600 shrink-0">
+                          Adm: {getString(s.admission_no) || '-'} · Roll: {getString(s.roll_number) || '-'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* Export to Excel Modal */}
@@ -966,6 +1008,7 @@ export default function StudentDirectoryPage({
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Student</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Admission ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Roll No</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Class</th>
                   {houses.length > 0 && (
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">House</th>
@@ -1027,6 +1070,7 @@ export default function StudentDirectoryPage({
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700 font-medium">{getString(student.admission_no) || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{getString(student.roll_number) || '-'}</td>
                       <td className="px-4 py-3">
                         <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-sm font-medium">
                           {(() => {
@@ -1136,7 +1180,7 @@ export default function StudentDirectoryPage({
                   })
                 ) : (
                   <tr>
-                    <td colSpan={houses.length > 0 ? 7 : 6} className="px-6 py-8 text-center">
+                    <td colSpan={houses.length > 0 ? 8 : 7} className="px-6 py-8 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <User className="text-gray-400" size={48} />
                         <p className="text-gray-600 font-medium">No students found</p>

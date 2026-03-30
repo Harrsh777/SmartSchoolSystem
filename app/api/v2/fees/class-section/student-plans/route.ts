@@ -9,6 +9,15 @@ type PlanRow = {
   frequency: 'monthly' | 'quarterly' | 'yearly';
 };
 
+function isMissingStudentsIsRteColumn(error: unknown): boolean {
+  const msg = (error as { message?: string } | null)?.message || '';
+  const code = (error as { code?: string } | null)?.code || '';
+  return (
+    code === '42703' ||
+    /column.*is_rte.*does not exist|Could not find the 'is_rte' column/i.test(String(msg))
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const permissionCheck = await requirePermission(request, 'view_fees');
@@ -117,13 +126,28 @@ export async function GET(request: NextRequest) {
           : 'single';
     }
 
-    const { data: students, error: studentErr } = await supabase
-      .from('students')
-      .select('id, student_name, admission_no, roll_number')
-      .ilike('school_code', schoolCode)
-      .ilike('class', className)
-      .ilike('section', section)
-      .order('roll_number', { ascending: true, nullsFirst: false });
+    const selectStudentsWithRte = () =>
+      supabase
+        .from('students')
+        .select('id, student_name, admission_no, roll_number, is_rte')
+        .ilike('school_code', schoolCode)
+        .ilike('class', className)
+        .ilike('section', section)
+        .order('roll_number', { ascending: true, nullsFirst: false });
+
+    const selectStudentsLegacy = () =>
+      supabase
+        .from('students')
+        .select('id, student_name, admission_no, roll_number')
+        .ilike('school_code', schoolCode)
+        .ilike('class', className)
+        .ilike('section', section)
+        .order('roll_number', { ascending: true, nullsFirst: false });
+
+    let { data: students, error: studentErr } = await selectStudentsWithRte();
+    if (studentErr && isMissingStudentsIsRteColumn(studentErr)) {
+      ({ data: students, error: studentErr } = await selectStudentsLegacy());
+    }
 
     if (studentErr) {
       return NextResponse.json({ error: studentErr.message }, { status: 500 });
@@ -156,6 +180,7 @@ export async function GET(request: NextRequest) {
           student_name: String(s.student_name || ''),
           admission_no: s.admission_no ? String(s.admission_no) : '',
           roll_number: s.roll_number ? String(s.roll_number) : '',
+          is_rte: Boolean((s as { is_rte?: boolean }).is_rte),
           fee_plan_id: assignmentsByStudent.get(String(s.id)) || null,
         })),
       },

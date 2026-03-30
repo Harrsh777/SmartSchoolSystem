@@ -8,6 +8,15 @@ type PlanPeriod = {
   due_date: string;
 };
 
+function isMissingStudentsIsRteColumn(error: unknown): boolean {
+  const msg = (error as { message?: string } | null)?.message || '';
+  const code = (error as { code?: string } | null)?.code || '';
+  return (
+    code === '42703' ||
+    /column.*is_rte.*does not exist|Could not find the 'is_rte' column/i.test(String(msg))
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const permissionCheck = await requirePermission(request, 'manage_fees');
@@ -38,14 +47,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Fee structure not found for selected class-section' }, { status: 404 });
     }
 
-    const { data: students, error: studentsErr } = await supabase
-      .from('students')
-      .select('id')
-      .ilike('school_code', schoolCode)
-      .ilike('class', className)
-      .ilike('section', section);
+    const selectStudentsWithRte = () =>
+      supabase
+        .from('students')
+        .select('id, is_rte')
+        .ilike('school_code', schoolCode)
+        .ilike('class', className)
+        .ilike('section', section);
+    const selectStudentsLegacy = () =>
+      supabase
+        .from('students')
+        .select('id')
+        .ilike('school_code', schoolCode)
+        .ilike('class', className)
+        .ilike('section', section);
+    let { data: students, error: studentsErr } = await selectStudentsWithRte();
+    if (studentsErr && isMissingStudentsIsRteColumn(studentsErr)) {
+      ({ data: students, error: studentsErr } = await selectStudentsLegacy());
+    }
     if (studentsErr) return NextResponse.json({ error: studentsErr.message }, { status: 500 });
     const studentIds = (students || []).map((s) => String(s.id));
+    const isRteByStudentId = new Map<string, boolean>(
+      (students || []).map((s) => [String(s.id), Boolean((s as { is_rte?: boolean }).is_rte)])
+    );
     if (studentIds.length === 0) {
       return NextResponse.json({ error: 'No students found for selected class-section' }, { status: 400 });
     }
@@ -180,36 +204,80 @@ export async function POST(request: NextRequest) {
       const { data: inserted, error: insErr } = await supabase
         .from('student_fees')
         .upsert(insertFees, { onConflict: 'student_id,fee_structure_id,due_month' })
-        .select('id, fee_plan_period_id, due_month');
+        .select('id, student_id, fee_plan_period_id, due_month, base_amount');
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
       generated = (inserted || []).length;
 
       if (inserted && inserted.length > 0) {
         const lineRows: Array<Record<string, unknown>> = [];
+        const runningTotalByStudentFee = new Map<string, number>();
         for (const sf of inserted) {
+          const sfId = String(sf.id);
+          const baseAmount = Number((sf as { base_amount?: number }).base_amount || 0);
+          runningTotalByStudentFee.set(sfId, baseAmount);
           const periodId = String(sf.fee_plan_period_id || '');
           const lines = classLinesByPeriod.get(periodId) || [];
           for (const l of lines) {
+            const signedAmount =
+              l.line_type === 'discount' ? -Math.abs(Number(l.amount || 0)) : Math.abs(Number(l.amount || 0));
             lineRows.push({
               school_code: schoolCode,
-              student_fee_id: String(sf.id),
+              student_fee_id: sfId,
               label: l.label,
               kind: l.line_type === 'discount' ? 'discount' : 'misc',
-              amount: l.line_type === 'discount' ? -Math.abs(Number(l.amount || 0)) : Math.abs(Number(l.amount || 0)),
+              amount: signedAmount,
               source_class_adjustment_id: l.id,
             });
+            runningTotalByStudentFee.set(sfId, (runningTotalByStudentFee.get(sfId) || 0) + signedAmount);
           }
           const legacy = legacyByDueMonth.get(String(sf.due_month || '')) || [];
           for (const l of legacy) {
+            const signedAmount =
+              l.kind === 'discount' ? -Math.abs(Number(l.amount || 0)) : Math.abs(Number(l.amount || 0));
             lineRows.push({
               school_code: schoolCode,
-              student_fee_id: String(sf.id),
+              student_fee_id: sfId,
               label: l.label,
               kind: l.kind === 'discount' ? 'discount' : 'misc',
-              amount: l.kind === 'discount' ? -Math.abs(Number(l.amount || 0)) : Math.abs(Number(l.amount || 0)),
+              amount: signedAmount,
             });
+            runningTotalByStudentFee.set(sfId, (runningTotalByStudentFee.get(sfId) || 0) + signedAmount);
           }
         }
+
+        const insertedStudentFeeIds = inserted.map((r) => String(r.id));
+        const insertedByStudentFeeId = new Map<string, { id: string; student_id: string }>(
+          inserted.map((r) => [String(r.id), { id: String(r.id), student_id: String((r as { student_id?: string }).student_id || '') }])
+        );
+
+        if (insertedStudentFeeIds.length > 0) {
+          await supabase
+            .from('student_fee_line_adjustments')
+            .delete()
+            .eq('kind', 'discount')
+            .eq('label', 'RTE Scholarship')
+            .in('student_fee_id', insertedStudentFeeIds);
+        }
+
+        const rteRows: Array<Record<string, unknown>> = [];
+        for (const sfId of insertedStudentFeeIds) {
+          const row = insertedByStudentFeeId.get(sfId);
+          if (!row) continue;
+          if (!isRteByStudentId.get(row.student_id)) continue;
+          const grossAmount = Math.round((runningTotalByStudentFee.get(sfId) || 0) * 100) / 100;
+          if (!Number.isFinite(grossAmount) || grossAmount <= 0) continue;
+          rteRows.push({
+            school_code: schoolCode,
+            student_fee_id: sfId,
+            label: 'RTE Scholarship',
+            kind: 'discount',
+            amount: -grossAmount,
+          });
+        }
+        if (rteRows.length > 0) {
+          lineRows.push(...rteRows);
+        }
+
         if (lineRows.length > 0) {
           await supabase.from('student_fee_line_adjustments').insert(lineRows);
         }

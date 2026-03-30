@@ -155,17 +155,44 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify student exists
-    const { data: student, error: studentError } = await supabase
-      .from('students')
-      .select('id, admission_no, student_name, school_code, class, section')
-      .eq('id', student_id)
-      .eq('school_code', normalizedSchoolCode)
-      .single();
+    const selectStudentWithRte = () =>
+      supabase
+        .from('students')
+        .select('id, admission_no, student_name, school_code, class, section, is_rte')
+        .eq('id', student_id)
+        .eq('school_code', normalizedSchoolCode)
+        .single();
+    const selectStudentLegacy = () =>
+      supabase
+        .from('students')
+        .select('id, admission_no, student_name, school_code, class, section')
+        .eq('id', student_id)
+        .eq('school_code', normalizedSchoolCode)
+        .single();
+
+    let { data: student, error: studentError }: { data: Record<string, unknown> | null; error: { code?: string; message?: string } | null } =
+      await selectStudentWithRte();
+    const missingIsRte =
+      studentError &&
+      (
+        studentError.code === '42703' ||
+        /column.*is_rte.*does not exist|Could not find the 'is_rte' column/i.test(studentError.message || '')
+      );
+    if (missingIsRte) {
+      ({ data: student, error: studentError } = await selectStudentLegacy() as unknown as { data: Record<string, unknown> | null; error: { code?: string; message?: string } | null });
+    }
 
     if (studentError || !student) {
       return NextResponse.json(
         { error: 'Student not found' },
         { status: 404 }
+      );
+    }
+
+    if (Boolean((student as { is_rte?: boolean }).is_rte)) {
+      return NextResponse.json(
+        { error: 'Payment collection is not allowed for RTE students. Their payable amount is always ₹0.' },
+        { status: 400 }
       );
     }
 
@@ -231,7 +258,7 @@ export async function POST(request: NextRequest) {
     const studentCtx = {
       id: String(student.id),
       class: String(student.class ?? ''),
-      section: student.section ?? null,
+      section: student.section != null ? String(student.section) : null,
     };
 
     const studentFeesEnriched = await enrichStudentFeesWithAdjustments(

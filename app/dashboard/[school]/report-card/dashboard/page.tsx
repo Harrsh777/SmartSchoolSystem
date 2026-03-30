@@ -14,6 +14,7 @@ interface ReportCardItem {
   exam_id?: string;
   student_name: string;
   admission_no: string;
+  roll_number?: string;
   class_name: string;
   section: string;
   academic_year: string;
@@ -87,7 +88,8 @@ export default function ReportCardDashboardPage({
         if (!q) return true;
         return (
           (c.student_name || '').toLowerCase().includes(q) ||
-          (c.admission_no || '').toLowerCase().includes(q)
+          (c.admission_no || '').toLowerCase().includes(q) ||
+          (c.roll_number || '').toLowerCase().includes(q)
         );
       })
     : [];
@@ -223,7 +225,7 @@ export default function ReportCardDashboardPage({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name or admission no..."
+              placeholder="Search by name, admission no, or roll no..."
               className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
             />
           </div>
@@ -315,6 +317,7 @@ export default function ReportCardDashboardPage({
                     </button>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Admission No</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Roll No</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Student Name</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Class-Section</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Academic Year</th>
@@ -346,6 +349,7 @@ export default function ReportCardDashboardPage({
                       </button>
                     </td>
                     <td className="px-4 py-3 text-sm font-mono text-gray-900">{card.admission_no || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{card.roll_number || '-'}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-gray-900">{card.student_name || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{card.class_name || '-'}-{card.section || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{card.academic_year || '-'}</td>

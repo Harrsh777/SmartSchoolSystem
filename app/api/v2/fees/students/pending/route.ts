@@ -7,6 +7,15 @@ import {
   studentMatchesCollectPaymentFilters,
 } from '@/lib/fees/fee-structure-class-match';
 
+function isMissingStudentsIsRteColumn(error: unknown): boolean {
+  const msg = (error as { message?: string } | null)?.message || '';
+  const code = (error as { code?: string } | null)?.code || '';
+  return (
+    code === '42703' ||
+    /column.*is_rte.*does not exist|Could not find the 'is_rte' column/i.test(String(msg))
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -23,9 +32,47 @@ export async function GET(request: NextRequest) {
     const supabase = getServiceRoleClient();
     const normalizedSchoolCode = schoolCode.toUpperCase();
 
-    const { data: pendingFeesRaw, error: feesError } = await supabase
-      .from('student_fees')
-      .select(`
+    const selectPendingWithRte = () =>
+      supabase
+        .from('student_fees')
+        .select(`
+        id,
+        student_id,
+        base_amount,
+        paid_amount,
+        adjustment_amount,
+        due_date,
+        due_month,
+        status,
+        fee_structure_id,
+        fee_source,
+        transport_snapshot,
+        fee_structure:fee_structure_id (
+          is_active,
+          late_fee_type,
+          late_fee_value,
+          grace_period_days,
+          academic_year
+        ),
+        student:students!inner(
+          id,
+          student_name,
+          admission_no,
+          class,
+          section,
+          school_code,
+          is_rte
+        )
+      `)
+        .eq('school_code', normalizedSchoolCode)
+        .in('status', ['pending', 'partial', 'overdue'])
+        .order('due_date', { ascending: true })
+        .limit(1000);
+
+    const selectPendingLegacy = () =>
+      supabase
+        .from('student_fees')
+        .select(`
         id,
         student_id,
         base_amount,
@@ -53,10 +100,15 @@ export async function GET(request: NextRequest) {
           school_code
         )
       `)
-      .eq('school_code', normalizedSchoolCode)
-      .in('status', ['pending', 'partial', 'overdue'])
-      .order('due_date', { ascending: true })
-      .limit(1000);
+        .eq('school_code', normalizedSchoolCode)
+        .in('status', ['pending', 'partial', 'overdue'])
+        .order('due_date', { ascending: true })
+        .limit(1000);
+
+    let { data: pendingFeesRaw, error: feesError } = await selectPendingWithRte();
+    if (feesError && isMissingStudentsIsRteColumn(feesError)) {
+      ({ data: pendingFeesRaw, error: feesError } = await selectPendingLegacy());
+    }
 
     if (feesError) {
       console.error('Error fetching pending fees:', feesError);
@@ -107,9 +159,11 @@ export async function GET(request: NextRequest) {
         admission_no?: string;
         class?: string;
         section?: string;
+        is_rte?: boolean;
       };
 
       if (!student?.id) return;
+      if (student.is_rte === true) return;
 
       const totalDue = fee.total_due;
       if (totalDue <= 0) return;

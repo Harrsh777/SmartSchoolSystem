@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo } from 'react';
+import { use, useState, useEffect, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -10,6 +10,8 @@ import {
   Filter,
   Download,
   Eye,
+  ChevronDown,
+  ChevronUp,
   ChevronLeft,
   ChevronRight,
   Search,
@@ -46,6 +48,14 @@ interface Totals {
   total_students: number;
 }
 
+interface ClassStudentRow {
+  id: string;
+  student_name: string;
+  admission_no: string;
+  roll_number: string;
+  status: string;
+}
+
 export default function ClassOverviewPage({
   params,
 }: {
@@ -75,6 +85,9 @@ export default function ClassOverviewPage({
   const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [expandedClassIds, setExpandedClassIds] = useState<Set<string>>(new Set());
+  const [studentsByClassId, setStudentsByClassId] = useState<Record<string, ClassStudentRow[]>>({});
+  const [loadingStudentsByClassId, setLoadingStudentsByClassId] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const fetchAcademicYears = async () => {
@@ -208,6 +221,57 @@ export default function ClassOverviewPage({
     } finally {
       setSyncing(false);
     }
+  };
+
+  const loadClassStudents = async (classItem: ClassOverviewData) => {
+    const classId = String(classItem.id);
+    if (studentsByClassId[classId] || loadingStudentsByClassId[classId]) return;
+
+    setLoadingStudentsByClassId((prev) => ({ ...prev, [classId]: true }));
+    try {
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        class: classItem.class,
+        section: classItem.section,
+        status: 'all',
+        limit: '500',
+        sort_by: 'roll_number',
+        sort_order: 'asc',
+      });
+      if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
+
+      const res = await fetch(`/api/students?${params.toString()}`);
+      const json = await res.json();
+      const rows = Array.isArray(json?.data) ? json.data : [];
+      const normalized: ClassStudentRow[] = rows.map((s: Record<string, unknown>) => ({
+        id: String(s.id || ''),
+        student_name: String(s.student_name || ''),
+        admission_no: String(s.admission_no || ''),
+        roll_number: String(s.roll_number || ''),
+        status: String(s.status || ''),
+      }));
+      setStudentsByClassId((prev) => ({ ...prev, [classId]: normalized }));
+    } catch (err) {
+      console.error('Error loading class students:', err);
+      setStudentsByClassId((prev) => ({ ...prev, [classId]: [] }));
+    } finally {
+      setLoadingStudentsByClassId((prev) => ({ ...prev, [classId]: false }));
+    }
+  };
+
+  const toggleClassStudents = async (classItem: ClassOverviewData) => {
+    const classId = String(classItem.id);
+    const isOpen = expandedClassIds.has(classId);
+    if (isOpen) {
+      setExpandedClassIds((prev) => {
+        const next = new Set(prev);
+        next.delete(classId);
+        return next;
+      });
+      return;
+    }
+    setExpandedClassIds((prev) => new Set(prev).add(classId));
+    await loadClassStudents(classItem);
   };
 
   // Calculate statistics
@@ -528,16 +592,23 @@ export default function ClassOverviewPage({
               ) : (
                 <>
                   {paginatedClasses.map((classItem, index) => (
-                    <tr key={classItem.id} className="hover:bg-[#F8FAFC] transition-colors">
+                    <Fragment key={classItem.id}>
+                    <tr className="hover:bg-[#F8FAFC] transition-colors">
                       <td className="px-2 py-2.5 whitespace-nowrap">
                         <span className="text-xs font-medium text-[#64748B]">
                           {(startIndex + index + 1).toString().padStart(2, '0')}
                         </span>
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap">
-                        <span className="text-xs font-semibold text-[#1e3a8a]">
-                          {classItem.class}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void toggleClassStudents(classItem)}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1e3a8a] hover:text-[#2F6FED]"
+                          title="Click to view students"
+                        >
+                          {expandedClassIds.has(classItem.id) ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          <span>{classItem.class}</span>
+                        </button>
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap">
                         <span className="text-xs font-semibold text-[#2F6FED]">
@@ -600,6 +671,49 @@ export default function ClassOverviewPage({
                         </span>
                       </td>
                     </tr>
+                    {expandedClassIds.has(classItem.id) && (
+                      <tr key={`${classItem.id}-students`} className="bg-[#F8FAFC]/70">
+                        <td colSpan={11} className="px-3 py-3">
+                          <div className="rounded-lg border border-[#E1E1DB] bg-white p-3">
+                            <p className="text-xs font-semibold text-[#1e3a8a] mb-2">
+                              Students in {classItem.class} ({classItem.section})
+                            </p>
+                            {loadingStudentsByClassId[classItem.id] ? (
+                              <div className="flex items-center gap-2 text-xs text-[#64748B]">
+                                <RefreshCw size={14} className="animate-spin" />
+                                Loading students...
+                              </div>
+                            ) : (studentsByClassId[classItem.id] || []).length === 0 ? (
+                              <p className="text-xs text-[#64748B]">No students found in this class-section.</p>
+                            ) : (
+                              <div className="max-h-52 overflow-auto rounded border border-[#E1E1DB]">
+                                <table className="w-full text-xs">
+                                  <thead className="bg-[#EAF1FF] text-[#1e3a8a]">
+                                    <tr>
+                                      <th className="px-2 py-1.5 text-left">Roll</th>
+                                      <th className="px-2 py-1.5 text-left">Admission</th>
+                                      <th className="px-2 py-1.5 text-left">Student</th>
+                                      <th className="px-2 py-1.5 text-left">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(studentsByClassId[classItem.id] || []).map((s) => (
+                                      <tr key={s.id} className="border-t border-[#EEF2F7]">
+                                        <td className="px-2 py-1.5">{s.roll_number || '-'}</td>
+                                        <td className="px-2 py-1.5">{s.admission_no || '-'}</td>
+                                        <td className="px-2 py-1.5 font-medium text-[#0F172A]">{s.student_name || '-'}</td>
+                                        <td className="px-2 py-1.5 capitalize">{s.status || '-'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                   {/* Total Row */}
                   <tr className="bg-[#F8FAFC] font-semibold border-t-2 border-[#E1E1DB]">
