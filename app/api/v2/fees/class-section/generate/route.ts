@@ -61,9 +61,16 @@ export async function POST(request: NextRequest) {
         .ilike('school_code', schoolCode)
         .ilike('class', className)
         .ilike('section', section);
-    let { data: students, error: studentsErr } = await selectStudentsWithRte();
+    let { data: students, error: studentsErr }: {
+      data: Array<{ id: string; is_rte?: boolean }> | null;
+      error: { message?: string; code?: string } | null;
+    } = await selectStudentsWithRte();
     if (studentsErr && isMissingStudentsIsRteColumn(studentsErr)) {
-      ({ data: students, error: studentsErr } = await selectStudentsLegacy());
+      ({ data: students, error: studentsErr } =
+        (await selectStudentsLegacy()) as unknown as {
+          data: Array<{ id: string; is_rte?: boolean }> | null;
+          error: { message?: string; code?: string } | null;
+        });
     }
     if (studentsErr) return NextResponse.json({ error: studentsErr.message }, { status: 500 });
     const studentIds = (students || []).map((s) => String(s.id));
