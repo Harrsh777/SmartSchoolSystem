@@ -58,6 +58,23 @@ export default function ReportCardGeneratePage({
   >([]);
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; description?: string }>>([]);
 
+  const sortStudentsByRoll = <
+    T extends { roll_number?: string | null; student_name: string }
+  >(list: T[]): T[] => {
+    return [...list].sort((a, b) => {
+      const ra = String(a.roll_number || '').trim();
+      const rb = String(b.roll_number || '').trim();
+      if (!ra && !rb) {
+        return a.student_name.localeCompare(b.student_name, undefined, { sensitivity: 'base' });
+      }
+      if (!ra) return 1;
+      if (!rb) return -1;
+      const cmp = ra.localeCompare(rb, undefined, { numeric: true, sensitivity: 'base' });
+      if (cmp !== 0) return cmp;
+      return a.student_name.localeCompare(b.student_name, undefined, { sensitivity: 'base' });
+    });
+  };
+
   const classOptions = [...new Set(classes.map((c) => c.class))].sort();
   const filteredClasses = selectedClass ? classes.filter((c) => c.class === selectedClass) : classes;
   const sectionOptions = [...new Set(filteredClasses.map((c) => c.section).filter(Boolean))].sort();
@@ -171,38 +188,74 @@ export default function ReportCardGeneratePage({
       params.set('sort_order', 'asc');
       fetch(`/api/students?${params}`)
         .then((r) => r.json())
-        .then((res) => {
-          if (res.data) {
-            setStudents(
-              (res.data as Array<Record<string, unknown>>).map((s) => ({
-                ...(s as object),
-                id: String(s.id || ''),
-                student_name: String(s.student_name || ''),
-                admission_no: String(s.admission_no || ''),
-                class: String(s.class || ''),
-                section: String(s.section || ''),
-                roll_number: (s.roll_number as string | null | undefined) ?? null,
-                date_of_birth:
-                  (s.date_of_birth as string | null | undefined) ??
-                  (s.dob as string | null | undefined) ??
-                  (s.birth_date as string | null | undefined) ??
-                  (s.student_dob as string | null | undefined) ??
-                  null,
-                dob:
-                  (s.dob as string | null | undefined) ??
-                  (s.date_of_birth as string | null | undefined) ??
-                  (s.birth_date as string | null | undefined) ??
-                  (s.student_dob as string | null | undefined) ??
-                  null,
-                student_contact: (s.student_contact as string | null | undefined) ?? null,
-                father_contact:
-                  (s.father_contact as string | null | undefined) ??
-                  (s.father_mobile as string | null | undefined) ??
-                  null,
-              }))
-            );
+        .then(async (res) => {
+          if (!res.data) {
+            setStudents([]);
+            return;
           }
-          else setStudents([]);
+          const baseStudents = (res.data as Array<Record<string, unknown>>).map((s) => ({
+            ...(s as object),
+            id: String(s.id || ''),
+            student_name: String(s.student_name || ''),
+            admission_no: String(s.admission_no || ''),
+            class: String(s.class || ''),
+            section: String(s.section || ''),
+            roll_number: (s.roll_number as string | null | undefined) ?? null,
+            date_of_birth:
+              (s.date_of_birth as string | null | undefined) ??
+              (s.dob as string | null | undefined) ??
+              (s.birth_date as string | null | undefined) ??
+              (s.student_dob as string | null | undefined) ??
+              null,
+            dob:
+              (s.dob as string | null | undefined) ??
+              (s.date_of_birth as string | null | undefined) ??
+              (s.birth_date as string | null | undefined) ??
+              (s.student_dob as string | null | undefined) ??
+              null,
+            student_contact: (s.student_contact as string | null | undefined) ?? null,
+            father_contact:
+              (s.father_contact as string | null | undefined) ??
+              (s.father_mobile as string | null | undefined) ??
+              null,
+          }));
+
+          const needsDob = baseStudents.filter((s) => !String(s.date_of_birth || s.dob || '').trim());
+          if (needsDob.length === 0) {
+            setStudents(sortStudentsByRoll(baseStudents));
+            return;
+          }
+
+          const detailRows = await Promise.all(
+            needsDob.map(async (s) => {
+              try {
+                const detailRes = await fetch(
+                  `/api/students/${encodeURIComponent(s.id)}?school_code=${encodeURIComponent(schoolCode)}`
+                );
+                const detailJson = await detailRes.json();
+                const detail = detailJson?.data as Record<string, unknown> | undefined;
+                const detailDob =
+                  (detail?.date_of_birth as string | null | undefined) ??
+                  (detail?.dob as string | null | undefined) ??
+                  (detail?.birth_date as string | null | undefined) ??
+                  (detail?.student_dob as string | null | undefined) ??
+                  null;
+                return [s.id, detailDob] as const;
+              } catch {
+                return [s.id, null] as const;
+              }
+            })
+          );
+          const dobById = new Map(detailRows);
+          const enriched = baseStudents.map((s) => {
+            const extraDob = dobById.get(s.id) ?? null;
+            return {
+              ...s,
+              date_of_birth: s.date_of_birth || extraDob,
+              dob: s.dob || extraDob,
+            };
+          });
+          setStudents(sortStudentsByRoll(enriched));
         })
         .catch(() => setStudents([]))
         .finally(() => setLoading(false));
@@ -306,7 +359,7 @@ export default function ReportCardGeneratePage({
   };
 
   return (
-    <div className="space-y-6 max-w-full overflow-x-hidden pb-0">
+    <div className="space-y-6 max-w-full overflow-x-hidden pb-0 mb-0">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
@@ -475,7 +528,7 @@ export default function ReportCardGeneratePage({
         )}
 
         {step === 3 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4 pb-0">
             <h2 className="text-xl font-bold text-gray-900">Step 3: Select Template</h2>
             <p className="text-sm text-gray-600">Choose a report card template. Customize in Report Card → Customize Template.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -513,7 +566,7 @@ export default function ReportCardGeneratePage({
               </button>
               <span className="text-sm text-gray-500">{selectedStudents.size} of {students.length} selected</span>
             </div>
-            <div className="max-h-[46vh] overflow-y-auto border rounded-lg divide-y">
+            <div className="max-h-[44vh] overflow-y-auto border rounded-lg divide-y">
               {loading ? (
                 <div className="p-8 text-center">
                   <Loader2 size={32} className="animate-spin mx-auto text-[#1e3a8a]" />

@@ -26,6 +26,7 @@ interface Student {
   admission_no: string;
   class: string;
   section: string;
+  roll_number?: string | null;
 }
 
 interface FeeRecord {
@@ -71,6 +72,7 @@ interface PendingFeeStudent {
   id: string;
   student_name: string;
   admission_no: string;
+  roll_number?: string | null;
   class: string;
   section: string;
   pending_amount: number;
@@ -144,6 +146,7 @@ export default function FeeStatementsPage({
           admission_no: String(st.admission_no ?? ''),
           class: String(st.class ?? ''),
           section: String(st.section ?? ''),
+          roll_number: st.roll_number != null ? String(st.roll_number) : null,
         });
 
         if (st.class) setSelectedClass(String(st.class));
@@ -542,7 +545,10 @@ export default function FeeStatementsPage({
                   <div>
                     <div className="font-semibold text-gray-900 text-base">{student.student_name}</div>
                     <div className="text-sm text-gray-600 mt-0.5">
-                      {student.admission_no} • {student.class}-{student.section}
+                      {student.admission_no}
+                      {student.roll_number ? ` • Roll: ${student.roll_number}` : ''}
+                      {' • '}
+                      {student.class}-{student.section}
                     </div>
                   </div>
                 </button>
@@ -572,7 +578,12 @@ export default function FeeStatementsPage({
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">{feeStatement.student.student_name}</h3>
-                  <p className="text-sm text-gray-600">{feeStatement.student.admission_no} • {feeStatement.student.class}-{feeStatement.student.section}</p>
+                  <p className="text-sm text-gray-600">
+                    {feeStatement.student.admission_no}
+                    {feeStatement.student.roll_number ? ` • Roll: ${feeStatement.student.roll_number}` : ''}
+                    {' • '}
+                    {feeStatement.student.class}-{feeStatement.student.section}
+                  </p>
                 </div>
               </div>
               {selectedFees.size > 0 && (
@@ -973,6 +984,7 @@ export default function FeeStatementsPage({
                         id: s.id,
                         student_name: s.student_name,
                         admission_no: s.admission_no,
+                        roll_number: s.roll_number ?? null,
                         class: s.class,
                         section: s.section,
                       })
@@ -983,7 +995,10 @@ export default function FeeStatementsPage({
                       <div>
                         <div className="font-semibold text-gray-900 text-base">{s.student_name}</div>
                         <div className="text-sm text-gray-600 mt-0.5">
-                          {s.admission_no} • {s.class}-{s.section}
+                          {s.admission_no}
+                          {s.roll_number ? ` • Roll: ${s.roll_number}` : ''}
+                          {' • '}
+                          {s.class}-{s.section}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           Due: {s.due_date ? new Date(s.due_date).toLocaleDateString('en-IN') : '—'}

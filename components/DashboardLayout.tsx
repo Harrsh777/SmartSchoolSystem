@@ -2000,29 +2000,6 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                 }}
               >
                 <nav className={`py-3 ${sidebarCollapsed ? 'px-2' : 'px-1.5'} space-y-1.5 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`}>
-                  {/* School logo + name above search */}
-                  {!sidebarCollapsed && (schoolName || sidebarSchoolLogo) && (
-                    <div className="px-2 pb-3 flex items-center gap-2 border-b border-slate-600/40 mb-2">
-                      <div className="w-14 h-14 rounded-lg bg-white shrink-0 flex items-center justify-center overflow-hidden p-0.5 border border-slate-500/30 relative">
-                        {sidebarSchoolLogo ? (
-                          <NextImage
-                            src={sidebarSchoolLogo}
-                            alt=""
-                            fill
-                            className="rounded-md object-cover"
-                            sizes="56px"
-                          />
-                        ) : (
-                          <span className="text-slate-700 text-lg font-bold">
-                            {(schoolName || 'S').charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-white font-medium text-sm truncate" title={schoolName || ''}>
-                        {schoolName || 'School'}
-                      </span>
-                    </div>
-                  )}
                   {/* Sidebar search – filter modules */}
                   {!sidebarCollapsed && (
                     <div className="px-2 pb-2">

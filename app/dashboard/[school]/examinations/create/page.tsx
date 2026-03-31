@@ -128,6 +128,42 @@ interface StructureMapping {
   section: string;
 }
 
+function dedupeTerms(input: TermOption[]): TermOption[] {
+  const byKey = new Map<string, TermOption>();
+  for (const term of input || []) {
+    const name = String(term.name || '').trim();
+    const serial = Number(term.serial || 0);
+    const year = String(term.academic_year || '').trim();
+    const key = `${serial}::${name.toLowerCase()}::${year.toLowerCase()}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, {
+        ...term,
+        name,
+        exams: [...(term.exams || [])],
+      });
+      continue;
+    }
+    const mergedExams = [...(existing.exams || []), ...(term.exams || [])];
+    const seen = new Set<string>();
+    const uniqueExams = mergedExams.filter((ex) => {
+      const exName = String(ex.exam_name || '').trim();
+      const exSerial = Number(ex.serial || 0);
+      const exKey = `${exSerial}::${exName.toLowerCase()}`;
+      if (seen.has(exKey)) return false;
+      seen.add(exKey);
+      return true;
+    });
+    byKey.set(key, { ...existing, exams: uniqueExams });
+  }
+  return Array.from(byKey.values()).sort((a, b) => {
+    const sa = Number(a.serial || 0);
+    const sb = Number(b.serial || 0);
+    if (sa !== sb) return sa - sb;
+    return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+  });
+}
+
 function addDaysISO(base: string, offset: number): string {
   if (!base) return '';
   const d = new Date(base);
@@ -176,6 +212,7 @@ export default function CreateExaminationPage({
   const [scheduleTimeStep, setScheduleTimeStep] = useState<ScheduleTimeStep>(15);
   const [bulkScheduleStart, setBulkScheduleStart] = useState('');
   const [bulkScheduleEnd, setBulkScheduleEnd] = useState('');
+  const uniqueTerms = useMemo(() => dedupeTerms(terms), [terms]);
 
   const scheduleTimeOptions = useMemo(
     () => buildTimeSlotOptions(scheduleTimeStep),
@@ -230,7 +267,8 @@ export default function CreateExaminationPage({
       const mappings = (json.data?.mappings || []) as Array<{ class_id: string; section: string }>;
       setStructureMappings(mappings.map((m) => ({ class_id: String(m.class_id), section: String(m.section || '') })));
       setTerms(t);
-      if (selectedTermId && !t.some((x) => x.id === selectedTermId)) setSelectedTermId('');
+      const deduped = dedupeTerms(t);
+      if (selectedTermId && !deduped.some((x) => x.id === selectedTermId)) setSelectedTermId('');
 
       // Auto-prepare mapped class/sections from structure mappings.
       const mappedRows = mappings
@@ -258,7 +296,7 @@ export default function CreateExaminationPage({
       setExamMetadata((prev) => ({ ...prev, academic_year: '', exam_name: '' }));
       return;
     }
-    const term = terms.find((t) => t.id === selectedTermId);
+    const term = uniqueTerms.find((t) => t.id === selectedTermId);
     if (!term) {
       setSelectedTemplateExam('');
       setExamMetadata((prev) => ({ ...prev, academic_year: '', exam_name: '' }));
@@ -271,7 +309,7 @@ export default function CreateExaminationPage({
       academic_year: String(term.academic_year || '').trim(),
       exam_name: String(firstExam || '').trim(),
     }));
-  }, [selectedTermId, terms]);
+  }, [selectedTermId, uniqueTerms]);
 
   const sectionIdsForStep3 = useMemo(
     () => [...new Set(classSubjects.map((c) => c.sectionId))].sort(),
@@ -933,7 +971,7 @@ export default function CreateExaminationPage({
                         <option value="">
                           {selectedStructureId ? 'Choose term' : 'Select structure first'}
                         </option>
-                        {terms.map((term) => (
+                        {uniqueTerms.map((term) => (
                           <option key={term.id} value={term.id}>
                             {term.serial ? `${term.serial}. ` : ''}
                             {term.name}
@@ -957,7 +995,7 @@ export default function CreateExaminationPage({
                         <option value="">
                           {selectedTermId ? 'Choose examination template' : 'Select term first'}
                         </option>
-                        {(terms.find((t) => t.id === selectedTermId)?.exams || []).map((ex, idx) => (
+                        {(uniqueTerms.find((t) => t.id === selectedTermId)?.exams || []).map((ex, idx) => (
                           <option key={`${ex.exam_name}-${idx}`} value={ex.exam_name}>
                             {ex.serial ? `${ex.serial}. ` : ''}
                             {ex.exam_name}
