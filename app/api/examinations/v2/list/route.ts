@@ -65,11 +65,11 @@ export async function GET(request: NextRequest) {
       )
     );
 
-    let termMap = new Map<string, { id: string; name?: string; serial?: number; class_id?: string; section?: string }>();
+    let termMap = new Map<string, { id: string; name?: string; serial?: number; class_id?: string; section?: string; structure_id?: string | null }>();
     if (termIds.length > 0) {
       const { data: terms } = await supabase
         .from('exam_terms')
-        .select('id,name,serial,class_id,section')
+        .select('id,name,serial,class_id,section,structure_id')
         .in('id', termIds);
       termMap = new Map((terms || []).map((t) => [String(t.id), t]));
     }

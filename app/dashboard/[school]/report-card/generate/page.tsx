@@ -51,7 +51,9 @@ export default function ReportCardGeneratePage({
       section: string;
       roll_number?: string | null;
       date_of_birth?: string | null;
+      dob?: string | null;
       student_contact?: string | null;
+      father_contact?: string | null;
     }>
   >([]);
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; description?: string }>>([]);
@@ -74,6 +76,24 @@ export default function ReportCardGeneratePage({
     .map((e) => e.id)
     .sort()
     .join('|');
+
+  const formatDob = (raw: string | null | undefined): string => {
+    const value = String(raw || '').trim();
+    if (!value) return '—';
+    const parsed = new Date(value.includes('T') ? value : `${value}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString('en-GB');
+  };
+
+  const resolveContact = (student: {
+    student_contact?: string | null;
+    father_contact?: string | null;
+  }): string => {
+    const primary = String(student.student_contact || '').trim();
+    if (primary) return primary;
+    const father = String(student.father_contact || '').trim();
+    return father || '—';
+  };
 
   useEffect(() => {
     const run = async () => {
@@ -152,7 +172,36 @@ export default function ReportCardGeneratePage({
       fetch(`/api/students?${params}`)
         .then((r) => r.json())
         .then((res) => {
-          if (res.data) setStudents(res.data);
+          if (res.data) {
+            setStudents(
+              (res.data as Array<Record<string, unknown>>).map((s) => ({
+                ...(s as object),
+                id: String(s.id || ''),
+                student_name: String(s.student_name || ''),
+                admission_no: String(s.admission_no || ''),
+                class: String(s.class || ''),
+                section: String(s.section || ''),
+                roll_number: (s.roll_number as string | null | undefined) ?? null,
+                date_of_birth:
+                  (s.date_of_birth as string | null | undefined) ??
+                  (s.dob as string | null | undefined) ??
+                  (s.birth_date as string | null | undefined) ??
+                  (s.student_dob as string | null | undefined) ??
+                  null,
+                dob:
+                  (s.dob as string | null | undefined) ??
+                  (s.date_of_birth as string | null | undefined) ??
+                  (s.birth_date as string | null | undefined) ??
+                  (s.student_dob as string | null | undefined) ??
+                  null,
+                student_contact: (s.student_contact as string | null | undefined) ?? null,
+                father_contact:
+                  (s.father_contact as string | null | undefined) ??
+                  (s.father_mobile as string | null | undefined) ??
+                  null,
+              }))
+            );
+          }
           else setStudents([]);
         })
         .catch(() => setStudents([]))
@@ -257,7 +306,7 @@ export default function ReportCardGeneratePage({
   };
 
   return (
-    <div className="space-y-6 max-w-full overflow-x-hidden">
+    <div className="space-y-6 max-w-full overflow-x-hidden pb-0">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
@@ -290,7 +339,7 @@ export default function ReportCardGeneratePage({
         ))}
       </div>
 
-      <Card className="overflow-x-hidden">
+      <Card className="overflow-x-hidden mb-0">
         {submitMessage ? (
           <div className={`mx-6 mt-6 rounded-lg border px-4 py-3 text-sm ${
             submitMessage.type === 'success'
@@ -301,7 +350,7 @@ export default function ReportCardGeneratePage({
           </div>
         ) : null}
         {step === 1 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4 pb-0">
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <BookOpen size={24} className="text-[#1e3a8a]" />
               Step 1: Select Class & Section
@@ -339,7 +388,7 @@ export default function ReportCardGeneratePage({
         )}
 
         {step === 2 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4 pb-0">
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <Calendar size={24} className="text-[#1e3a8a]" />
               Step 2: Select Structure & Term(s)
@@ -464,7 +513,7 @@ export default function ReportCardGeneratePage({
               </button>
               <span className="text-sm text-gray-500">{selectedStudents.size} of {students.length} selected</span>
             </div>
-            <div className="max-h-64 overflow-y-auto border rounded-lg divide-y">
+            <div className="max-h-[46vh] overflow-y-auto border rounded-lg divide-y">
               {loading ? (
                 <div className="p-8 text-center">
                   <Loader2 size={32} className="animate-spin mx-auto text-[#1e3a8a]" />
@@ -490,11 +539,11 @@ export default function ReportCardGeneratePage({
                       <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
                         <span className="inline-flex items-center gap-1">
                           <span className="text-gray-400">DOB:</span>
-                          <span className="font-mono">{s.date_of_birth || '—'}</span>
+                          <span className="font-mono">{formatDob(s.date_of_birth || s.dob)}</span>
                         </span>
                         <span className="inline-flex items-center gap-1">
                           <span className="text-gray-400">Contact:</span>
-                          <span className="font-mono">{s.student_contact || '—'}</span>
+                          <span className="font-mono">{resolveContact(s)}</span>
                         </span>
                       </div>
                     </div>

@@ -531,13 +531,13 @@ export default function FeeStatementsPage({
             <p className="text-sm font-medium text-gray-800 mb-2">
               Students ({students.length}) — tap to open statement
             </p>
-            <div className="rounded-xl border border-gray-200 bg-gray-50/80 divide-y divide-gray-200 overflow-hidden">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {students.map((student) => (
                 <button
                   key={student.id}
                   type="button"
                   onClick={() => handleStudentSelect(student)}
-                  className="w-full px-4 py-3.5 sm:px-5 sm:py-4 text-left hover:bg-white transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1"
+                  className="w-full px-4 py-3.5 text-left rounded-xl border border-gray-200 bg-gray-50/80 hover:bg-white hover:border-gray-300 transition-colors"
                 >
                   <div>
                     <div className="font-semibold text-gray-900 text-base">{student.student_name}</div>
@@ -963,7 +963,7 @@ export default function FeeStatementsPage({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-gray-200 bg-gray-50/80 divide-y divide-gray-200 overflow-hidden">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {recentPending.map((s) => (
                   <button
                     key={s.id}
@@ -977,9 +977,9 @@ export default function FeeStatementsPage({
                         section: s.section,
                       })
                     }
-                    className="w-full px-4 py-3.5 sm:px-5 sm:py-4 text-left hover:bg-white transition-colors"
+                    className="w-full px-4 py-3.5 text-left rounded-xl border border-gray-200 bg-gray-50/80 hover:bg-white hover:border-gray-300 transition-colors"
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex flex-col gap-2">
                       <div>
                         <div className="font-semibold text-gray-900 text-base">{s.student_name}</div>
                         <div className="text-sm text-gray-600 mt-0.5">
@@ -989,7 +989,7 @@ export default function FeeStatementsPage({
                           Due: {s.due_date ? new Date(s.due_date).toLocaleDateString('en-IN') : '—'}
                         </div>
                       </div>
-                      <div className="text-left sm:text-right shrink-0">
+                      <div className="text-left shrink-0">
                         <div className="text-sm font-semibold text-gray-900">
                           Pending: ₹{s.pending_amount.toLocaleString('en-IN')}
                         </div>

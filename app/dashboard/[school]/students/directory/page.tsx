@@ -66,11 +66,10 @@ export default function StudentDirectoryPage({
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
-  const [showClassRoster, setShowClassRoster] = useState(false);
   const [classRows, setClassRows] = useState<ClassRow[]>([]);
   /** Server-side ordering for the paginated list */
   const [directorySort, setDirectorySort] = useState<
-    'created_desc' | 'name_asc' | 'name_desc'
+    'created_desc' | 'name_asc' | 'name_desc' | 'roll_asc' | 'roll_desc'
   >('created_desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [houses, setHouses] = useState<InstituteHouse[]>([]);
@@ -259,12 +258,7 @@ export default function StudentDirectoryPage({
   useEffect(() => {
     setSelectedClass('');
     setSelectedSection('');
-    setShowClassRoster(false);
   }, [academicYear]);
-
-  useEffect(() => {
-    setShowClassRoster(false);
-  }, [selectedClass, selectedSection]);
 
   useEffect(() => {
     const closeStatusMenu = (e: MouseEvent) => {
@@ -301,6 +295,12 @@ export default function StudentDirectoryPage({
         params.set('sort_order', 'asc');
       } else if (directorySort === 'name_desc') {
         params.set('sort_by', 'student_name');
+        params.set('sort_order', 'desc');
+      } else if (directorySort === 'roll_asc') {
+        params.set('sort_by', 'roll_number');
+        params.set('sort_order', 'asc');
+      } else if (directorySort === 'roll_desc') {
+        params.set('sort_by', 'roll_number');
         params.set('sort_order', 'desc');
       } else {
         params.set('sort_by', 'created_at');
@@ -623,7 +623,7 @@ export default function StudentDirectoryPage({
             <select
               value={directorySort}
               onChange={(e) =>
-                setDirectorySort(e.target.value as 'created_desc' | 'name_asc' | 'name_desc')
+                setDirectorySort(e.target.value as 'created_desc' | 'name_asc' | 'name_desc' | 'roll_asc' | 'roll_desc')
               }
               disabled={!selectionReady}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white disabled:bg-gray-100 disabled:text-gray-500"
@@ -632,6 +632,8 @@ export default function StudentDirectoryPage({
               <option value="created_desc">Recently added first</option>
               <option value="name_asc">Student name (A–Z)</option>
               <option value="name_desc">Student name (Z–A)</option>
+              <option value="roll_asc">Roll number (low → high)</option>
+              <option value="roll_desc">Roll number (high → low)</option>
             </select>
           </div>
         </div>
@@ -669,42 +671,6 @@ export default function StudentDirectoryPage({
             </p>
           )}
         </div>
-
-        {selectionReady && (
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => setShowClassRoster((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900 hover:bg-blue-100"
-            >
-              <Users size={15} />
-              {selectedClass} - {selectedSection} students ({studentsTotal})
-              <ChevronDown className={`h-4 w-4 transition-transform ${showClassRoster ? 'rotate-180' : ''}`} />
-            </button>
-            {showClassRoster && (
-              <div className="mt-2 rounded-lg border border-blue-100 bg-white max-h-56 overflow-auto">
-                {students.length === 0 ? (
-                  <p className="px-3 py-2 text-sm text-gray-500">No students loaded.</p>
-                ) : (
-                  <ul className="divide-y divide-gray-100">
-                    {students.map((s) => (
-                      <li
-                        key={s.id}
-                        className="px-3 py-2 text-sm flex items-center justify-between gap-3 hover:bg-blue-50/40 cursor-pointer"
-                        onClick={() => handleStudentClick(s.id!)}
-                      >
-                        <span className="text-gray-900 font-medium truncate">{getString(s.student_name) || 'N/A'}</span>
-                        <span className="text-xs text-gray-600 shrink-0">
-                          Adm: {getString(s.admission_no) || '-'} · Roll: {getString(s.roll_number) || '-'}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
-        )}
       </Card>
 
       {/* Export to Excel Modal */}

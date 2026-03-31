@@ -183,27 +183,42 @@ export async function PUT(
       );
     }
 
-    if (terms.length > 0) {
-      const termRows = terms.map((t) => ({
-        school_id: structure.school_id,
-        school_code: schoolCode,
-        class_id: mappings[0]?.class_id || null,
-        section: mappings[0]?.section || '',
-        structure_id: id,
-        // Legacy compatibility: some DBs still enforce not-null on old columns.
-        term_name: String(t.name || '').trim(),
-        term_order: Number(t.serial || 1),
-        name: String(t.name || '').trim(),
-        normalized_name: String(t.name || '').trim().toLowerCase(),
-        slug: String(t.name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
-        serial: Number(t.serial || 1),
-        academic_year: String(t.academic_year || fallbackAcademicYear || '').trim() || null,
-        is_active: true,
-        is_deleted: false,
-      }));
+    if (terms.length > 0 && mappings.length > 0) {
+      const termRowMetas: Array<{ sourceIndex: number; row: Record<string, unknown> }> = [];
+
+      mappings.forEach((m) => {
+        terms.forEach((t, idx) => {
+          termRowMetas.push({
+            sourceIndex: idx,
+            row: {
+              school_id: structure.school_id,
+              school_code: schoolCode,
+              class_id: m.class_id,
+              section: String(m.section || '').trim(),
+              structure_id: id,
+              // Legacy compatibility: some DBs still enforce not-null on old columns.
+              term_name: String(t.name || '').trim(),
+              term_order: Number(t.serial || 1),
+              name: String(t.name || '').trim(),
+              normalized_name: String(t.name || '').trim().toLowerCase(),
+              slug: String(t.name || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, ''),
+              serial: Number(t.serial || 1),
+              academic_year: String(t.academic_year || fallbackAcademicYear || '')
+                .trim() || null,
+              is_active: true,
+              is_deleted: false,
+            },
+          });
+        });
+      });
+
       const { data: insertedTerms, error: insertTermsErr } = await supabase
         .from('exam_terms')
-        .insert(termRows)
+        .insert(termRowMetas.map((t) => t.row))
         .select();
       if (insertTermsErr || !insertedTerms) {
         return NextResponse.json(
@@ -213,7 +228,8 @@ export async function PUT(
       }
       const examRows: Array<{ term_id: string; exam_name: string; serial: number; weightage: number; is_active: boolean }> = [];
       (insertedTerms || []).forEach((term, idx) => {
-        const original = terms[idx];
+        const sourceIndex = termRowMetas[idx]?.sourceIndex ?? 0;
+        const original = terms[sourceIndex];
         (original.exams || []).forEach((ex) => {
           if (String(ex.exam_name || '').trim()) {
             examRows.push({

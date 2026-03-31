@@ -128,6 +128,14 @@ interface StructureMapping {
   section: string;
 }
 
+function addDaysISO(base: string, offset: number): string {
+  if (!base) return '';
+  const d = new Date(base);
+  if (Number.isNaN(d.getTime())) return base;
+  d.setDate(d.getDate() + offset);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function CreateExaminationPage({
   params,
 }: {
@@ -662,14 +670,11 @@ export default function CreateExaminationPage({
     setExamSchedules((prev) => prev.map((s) => ({ ...s, start_time: start, end_time: end })));
   };
 
-  const handleApplyFirstRowTimesToAll = () => {
+  const handleAutoFillSequentialDatesFromFirst = () => {
+    if (!examSchedules.length) return;
     const first = examSchedules[0];
-    if (!first?.start_time || !first?.end_time) {
-      setErrors({ schedule: 'Set start and end time on the first exam row first, or use the quick apply bar above.' });
-      return;
-    }
-    if (first.start_time >= first.end_time) {
-      setErrors({ schedule: 'End time must be after start time on the first row.' });
+    if (!first.exam_date) {
+      setErrors({ schedule: 'Pick a date on the first exam row before auto-filling the rest.' });
       return;
     }
     setErrors((e) => {
@@ -677,13 +682,10 @@ export default function CreateExaminationPage({
       delete next.schedule;
       return next;
     });
-    setBulkScheduleStart(first.start_time);
-    setBulkScheduleEnd(first.end_time);
     setExamSchedules((prev) =>
-      prev.map((s) => ({
+      prev.map((s, idx) => ({
         ...s,
-        start_time: first.start_time,
-        end_time: first.end_time,
+        exam_date: addDaysISO(first.exam_date, idx),
       }))
     );
   };
@@ -1396,19 +1398,26 @@ export default function CreateExaminationPage({
                               placeholder="End"
                             />
                           </div>
-                          <div className="flex flex-wrap gap-2 lg:col-span-6">
-                            <Button type="button" onClick={handleApplyTimesToAllSchedules} className="shrink-0">
+                          <div className="flex flex-wrap items-center gap-2 lg:col-span-6">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={handleApplyTimesToAllSchedules}
+                              className="shrink-0 px-3 py-1 text-xs"
+                            >
                               Apply to all rows
                             </Button>
+                          
                             {examSchedules.length > 1 && (
                               <Button
                                 type="button"
                                 variant="outline"
-                                onClick={handleApplyFirstRowTimesToAll}
-                                className="shrink-0"
-                                title="Copy start and end from the first exam in the list to all others"
+                                size="sm"
+                                onClick={handleAutoFillSequentialDatesFromFirst}
+                                className="shrink-0 px-3 py-1 text-xs"
+                                title="Starting from the first exam date, fill each subsequent exam with the next calendar date"
                               >
-                                Match first row
+                                Fill sequential dates
                               </Button>
                             )}
                           </div>
@@ -1424,7 +1433,7 @@ export default function CreateExaminationPage({
                   </div>
                 )}
 
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {examSchedules.map((schedule, index) => {
                     const classSubject = classSubjects.find(
                       cs => cs.classId === schedule.classId && cs.sectionId === schedule.sectionId
@@ -1435,7 +1444,7 @@ export default function CreateExaminationPage({
                       index > 0 && (prev.sectionId !== schedule.sectionId || prev.classId !== schedule.classId);
 
                     return (
-                      <div key={index} className="space-y-3">
+                      <div key={index} className="space-y-2">
                         {showSectionDivider && (
                           <div className="flex items-center gap-3 pt-2">
                             <div className="h-px flex-1 bg-slate-200" />
@@ -1445,43 +1454,67 @@ export default function CreateExaminationPage({
                             <div className="h-px flex-1 bg-slate-200" />
                           </div>
                         )}
-                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300/80 transition-colors">
-                          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <div className="rounded-2xl bg-white shadow-sm border border-slate-100 px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                          {/* Left: subject + class */}
+                          <div className="flex items-start gap-3 min-w-0">
+                            <div className="h-10 w-10 rounded-xl bg-[#5A7A95]/10 text-[#5A7A95] flex items-center justify-center flex-shrink-0">
+                              <BookOpen className="h-5 w-5" aria-hidden />
+                            </div>
+                            <div className="space-y-0.5">
+                              <p className="text-sm font-semibold text-slate-900 truncate">
+                                {subject?.subject_name || 'Subject'}
+                              </p>
+                              <p className="text-xs text-slate-500">
                                 Class {classSubject?.className} · Section {classSubject?.sectionName}
                               </p>
-                              <p className="text-base font-semibold text-gray-900 mt-0.5">{subject?.subject_name}</p>
                             </div>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1.5">Exam date</label>
-                              <Input
-                                type="date"
-                                value={schedule.exam_date}
-                                onChange={(e) => handleScheduleChange(index, 'exam_date', e.target.value)}
-                                min={examMetadata.start_date}
-                                max={examMetadata.end_date}
-                              />
+
+                          {/* Right: date + time */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full md:max-w-xl">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[11px] font-medium text-slate-500 tracking-wide">
+                                EXAM DATE
+                              </span>
+                              <div className="relative">
+                                <Input
+                                  type="date"
+                                  value={schedule.exam_date}
+                                  onChange={(e) => handleScheduleChange(index, 'exam_date', e.target.value)}
+                                  className="pl-3 pr-9 text-sm rounded-lg border-slate-200 focus:border-[#5A7A95] focus:ring-[#5A7A95]/20"
+                                />
+                                <Calendar className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              </div>
                             </div>
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1.5">Start time</label>
-                              <ScheduleTimeSelect
-                                value={schedule.start_time}
-                                onChange={(v) => handleScheduleChange(index, 'start_time', v)}
-                                options={scheduleTimeOptions}
-                                placeholder="Select start"
-                              />
+
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[11px] font-medium text-slate-500 tracking-wide">
+                                START TIME
+                              </span>
+                              <div className="relative">
+                                <ScheduleTimeSelect
+                                  value={schedule.start_time}
+                                  onChange={(v) => handleScheduleChange(index, 'start_time', v)}
+                                  options={scheduleTimeOptions}
+                                  placeholder="Start"
+                                />
+                                <Clock className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              </div>
                             </div>
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1.5">End time</label>
-                              <ScheduleTimeSelect
-                                value={schedule.end_time}
-                                onChange={(v) => handleScheduleChange(index, 'end_time', v)}
-                                options={scheduleTimeOptions}
-                                placeholder="Select end"
-                              />
+
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[11px] font-medium text-slate-500 tracking-wide">
+                                END TIME
+                              </span>
+                              <div className="relative">
+                                <ScheduleTimeSelect
+                                  value={schedule.end_time}
+                                  onChange={(v) => handleScheduleChange(index, 'end_time', v)}
+                                  options={scheduleTimeOptions}
+                                  placeholder="End"
+                                />
+                                <Clock className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              </div>
                             </div>
                           </div>
                         </div>

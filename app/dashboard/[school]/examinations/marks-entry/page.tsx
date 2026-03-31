@@ -49,6 +49,7 @@ interface Exam {
   name: string;
   class_id: string;
   term_id?: string | null;
+  term_structure_id?: string | null;
   exam_subjects: Array<{
     id: string;
     subject_id: string;
@@ -177,6 +178,7 @@ export default function MarksEntryPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [marksTableSort, setMarksTableSort] = useState<MarksTableSort>('name_asc');
   const [showTotals, setShowTotals] = useState(true);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
 
   // Fetch classes and sections
   useEffect(() => {
@@ -245,6 +247,7 @@ export default function MarksEntryPage({
     } else {
       setStudents([]);
       setSubjects([]);
+      setSelectedSubjectId('');
       setMarks({});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -336,6 +339,10 @@ export default function MarksEntryPage({
           name: (exam.exam_name as string) || (exam.name as string),
           class_id: resolvedClassId,
           term_id: exam.term_id ? String(exam.term_id) : null,
+          term_structure_id:
+            typeof exam.term === 'object' && exam.term && 'structure_id' in exam.term
+              ? String((exam.term as Record<string, unknown>).structure_id || '')
+              : null,
           exam_subjects: classSubjectMappings.map((sm: Record<string, unknown>): Exam['exam_subjects'][0] => {
             const subjectId = String(sm.subject_id || '');
             const subject = sm.subject as Record<string, unknown> | null | undefined;
@@ -414,6 +421,9 @@ export default function MarksEntryPage({
         };
       });
       setSubjects(examSubjects);
+      setSelectedSubjectId((prev) =>
+        prev && examSubjects.some((s) => s.id === prev) ? prev : (examSubjects[0]?.id || '')
+      );
 
       // Fetch students
       const studentsRes = await fetch(
@@ -730,6 +740,14 @@ export default function MarksEntryPage({
     });
     return sorted;
   }, [students, searchQuery, marksTableSort]);
+  const displayedSubjects = useMemo(() => {
+    if (subjects.length === 0) return [];
+    if (selectedSubjectId) {
+      const one = subjects.find((s) => s.id === selectedSubjectId);
+      return one ? [one] : [subjects[0]];
+    }
+    return [subjects[0]];
+  }, [subjects, selectedSubjectId]);
 
   // Get sections for selected class
   const availableSections = selectedClass
@@ -741,7 +759,9 @@ export default function MarksEntryPage({
       const allowedTermIds = new Set(
         terms.filter((t) => String(t.structure_id || '') === selectedStructure).map((t) => t.id)
       );
-      if (exam.term_id && !allowedTermIds.has(String(exam.term_id))) return false;
+      const examTermId = String(exam.term_id || '');
+      const examStructureId = String(exam.term_structure_id || '');
+      if (exam.term_id && !allowedTermIds.has(examTermId) && examStructureId !== selectedStructure) return false;
     }
     if (selectedTerm === 'unassigned') return !exam.term_id;
     if (selectedTerm) return String(exam.term_id || '') === selectedTerm;
@@ -926,7 +946,8 @@ export default function MarksEntryPage({
                 onClick={handleSave}
                 disabled={saving || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
                 variant="outline"
-                className="flex-1 border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
+                size="sm"
+                className="px-3 border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
               >
                 {saving ? (
                   <>
@@ -936,14 +957,15 @@ export default function MarksEntryPage({
                 ) : (
                   <>
                     <Save size={18} className="mr-2" />
-                    Save as Draft
+                    Draft
                   </>
                 )}
               </Button>
               <Button
                 onClick={handleSubmitForReview}
                 disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
-                className="flex-1 bg-[#5A7A95] hover:bg-[#4a6a85] disabled:opacity-50"
+                size="sm"
+                className="px-3 bg-[#5A7A95] hover:bg-[#4a6a85] disabled:opacity-50"
               >
                 {submitting ? (
                   <>
@@ -1004,6 +1026,23 @@ export default function MarksEntryPage({
                     <option value="roll_desc">Roll number (high → low)</option>
                   </select>
                 </div>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="subject-filter-exam" className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                    Subject
+                  </label>
+                  <select
+                    id="subject-filter-exam"
+                    value={selectedSubjectId}
+                    onChange={(e) => setSelectedSubjectId(e.target.value)}
+                    className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] min-w-[180px]"
+                  >
+                    {subjects.map((subject) => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer sm:pl-2 sm:border-l sm:border-gray-200 dark:sm:border-gray-600">
                   <input
                     type="checkbox"
@@ -1028,7 +1067,7 @@ export default function MarksEntryPage({
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase sticky left-0 bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] z-10">Roll</th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase sticky left-[60px] bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] z-10">Adm No</th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase sticky left-[140px] bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] z-10 min-w-[150px]">Student Name</th>
-                    {subjects.map(subject => (
+                    {displayedSubjects.map(subject => (
                       <th key={subject.id} className="px-3 py-3 text-center text-xs font-bold uppercase min-w-[120px]">
                         <div className="font-bold">{subject.name}</div>
                         <div className="text-xs font-normal opacity-90 mt-1">Max: {subject.max_marks}</div>
@@ -1063,7 +1102,7 @@ export default function MarksEntryPage({
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900 dark:text-white sticky left-[140px] bg-white dark:bg-[#1e293b] z-10 min-w-[150px]">
                           {student.student_name}
                         </td>
-                        {subjects.map(subject => {
+                        {displayedSubjects.map(subject => {
                           const marksObtained = marks[student.id]?.[subject.id] || 0;
                           const percentage = calculatePercentage(marksObtained, subject.max_marks);
                           const grade = getGradeFromPercentage(percentage);

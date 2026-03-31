@@ -83,7 +83,7 @@ export default function StudentReportPage({
       }
 
       // Fetch exam details
-      const examRes = await fetch(`/api/examinations/${examId}`);
+      const examRes = await fetch(`/api/examinations/${examId}?school_code=${encodeURIComponent(schoolCode)}`);
       const examData = await examRes.json();
       if (examRes.ok && examData.data) {
         setExam(examData.data);
@@ -97,7 +97,11 @@ export default function StudentReportPage({
       }
 
       // Fetch summary
-      const summaryRes = await fetch(`/api/examinations/summary?exam_id=${examId}&student_id=${studentId}`);
+      const summaryRes = await fetch(
+        `/api/examinations/summary?exam_id=${examId}&student_id=${studentId}&school_code=${encodeURIComponent(
+          schoolCode
+        )}`
+      );
       const summaryData = await summaryRes.json();
       if (summaryRes.ok && summaryData.data) {
         setSummary(summaryData.data);
@@ -110,23 +114,10 @@ export default function StudentReportPage({
   };
 
   const handleDownloadPDF = async () => {
-    try {
-      const response = await fetch(`/api/marks/report-card?school_code=${schoolCode}&student_id=${studentId}&exam_id=${examId}`);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `report_card_${student?.student_name || studentId}_${exam?.exam_name || examId}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
-    } catch (err) {
-      console.error('Error downloading PDF:', err);
-      alert('Failed to download report card');
-    }
+    const url = `/api/marks/report-card/html?school_code=${encodeURIComponent(
+      schoolCode
+    )}&student_id=${encodeURIComponent(studentId)}&exam_id=${encodeURIComponent(examId || '')}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handlePrint = () => {

@@ -25,7 +25,7 @@ import {
   Award,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { getGradeColor } from '@/lib/grade-calculator';
+import { getGradeColor, getGradeFromPercentage } from '@/lib/grade-calculator';
 
 interface StudentMark {
   id: string;
@@ -280,24 +280,11 @@ export default function MarksDashboardPage({
   }, [matchingClassRow?.id, schoolCode]);
 
   // Download handlers
-  const handleDownloadReportCard = async (studentId: string, examId: string) => {
-    try {
-      const response = await fetch(`/api/marks/report-card?school_code=${schoolCode}&student_id=${studentId}&exam_id=${examId}`);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `report_card_${studentId}_${examId}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
-    } catch (err) {
-      console.error('Error downloading report card:', err);
-      alert('Failed to download report card');
-    }
+  const handleDownloadReportCard = (studentId: string, examId: string) => {
+    const url = `/api/marks/report-card/html?school_code=${encodeURIComponent(
+      schoolCode
+    )}&student_id=${encodeURIComponent(studentId)}&exam_id=${encodeURIComponent(examId)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleBulkDownload = async () => {
@@ -377,7 +364,8 @@ export default function MarksDashboardPage({
   const gradeDistribution = useMemo(() => {
     const gradeCounts: Record<string, number> = {};
     marks.forEach((mark) => {
-      const grade = mark.grade || 'N/A';
+      const pct = mark.percentage || 0;
+      const grade = (mark.grade && mark.grade.trim()) || getGradeFromPercentage(pct) || 'N/A';
       gradeCounts[grade] = (gradeCounts[grade] || 0) + 1;
     });
     return Object.entries(gradeCounts).map(([name, value]) => ({ name, value }));
@@ -745,7 +733,10 @@ export default function MarksDashboardPage({
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {paginatedMarks.map((mark) => {
-                    const isPass = (mark.percentage || 0) >= 40;
+                    const pct = mark.percentage || 0;
+                    const isPass = pct >= 40;
+                    const effectiveGrade =
+                      (mark.grade && mark.grade.trim()) || getGradeFromPercentage(pct) || 'N/A';
                     return (
                       <motion.tr
                         key={mark.id}
@@ -789,8 +780,8 @@ export default function MarksDashboardPage({
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <span className={getGradeColor(mark.grade || 'N/A')}>
-                            {mark.grade || 'N/A'}
+                          <span className={getGradeColor(effectiveGrade)}>
+                            {effectiveGrade}
                           </span>
                         </td>
                         <td className="px-4 py-3">

@@ -439,11 +439,11 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
         <div className="space-y-4">
       {step === 1 && (
         <Card className="p-4 md:p-6 space-y-4 rounded-2xl border border-violet-100">
-          <h2 className="font-semibold text-slate-900 text-xl">Create / Select Structure</h2>
-          <p className="text-sm text-slate-600">Create a new structure or continue editing an existing one.</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <h2 className="font-semibold text-slate-900 text-lg">Create / Select Structure</h2>
+          <p className="text-xs text-slate-600">Create a new structure, pick an existing one, and set the academic year.</p>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
             <input
-              className="border border-slate-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-violet-300 focus:outline-none"
+              className="border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-violet-300 focus:outline-none text-sm"
               placeholder="e.g., Senior Student Structure"
               value={newStructureName}
               onChange={(e) => setNewStructureName(e.target.value)}
@@ -463,24 +463,23 @@ export default function TermsPage({ params }: { params: Promise<{ school: string
                 </option>
               ))}
             </select>
-          </div>
-          <div className="max-w-md">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Academic Year <span className="text-red-500">*</span>
-            </label>
-            <select
-              className="w-full border border-slate-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-violet-300 focus:outline-none"
-              value={selectedAcademicYear}
-              onChange={(e) => setSelectedAcademicYear(e.target.value)}
-            >
-              <option value="">Select academic year</option>
-              {academicYears.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-slate-500">This year will be applied to all terms in this structure.</p>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Academic Year <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-violet-300 focus:outline-none text-sm"
+                value={selectedAcademicYear}
+                onChange={(e) => setSelectedAcademicYear(e.target.value)}
+              >
+                <option value="">Select academic year</option>
+                {academicYears.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </Card>
       )}

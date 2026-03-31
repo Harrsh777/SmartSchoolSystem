@@ -285,24 +285,6 @@ export default function ExaminationDashboardPage({
     }
   };
 
-  const assignTermToExam = async (examId: string, termId: string) => {
-    try {
-      const response = await fetch(`/api/examinations/${examId}/term`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ term_id: termId || null }),
-      });
-      if (!response.ok) {
-        const err = await response.json();
-        alert(err.error || 'Failed to assign term');
-        return;
-      }
-      fetchExams();
-    } catch (error) {
-      console.error('Error assigning term:', error);
-    }
-  };
-
   const upcomingExams = exams.filter(e => getExamStatus(e) === 'upcoming');
   const ongoingExams = exams.filter(e => getExamStatus(e) === 'ongoing');
   const completedExams = exams.filter(e => getExamStatus(e) === 'completed');
@@ -455,6 +437,14 @@ export default function ExaminationDashboardPage({
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredExams.map((exam) => {
             const examStatus = getExamStatus(exam);
+            const examTerm =
+              exam.term_id != null
+                ? terms.find((t) => String(t.id) === String(exam.term_id))
+                : undefined;
+            const examStructureName =
+              examTerm && examTerm.structure_id
+                ? structures.find((s) => String(s.id) === String(examTerm.structure_id))?.name
+                : undefined;
             return (
               <motion.div
                 key={exam.id}
@@ -483,6 +473,12 @@ export default function ExaminationDashboardPage({
                             : 'No Term Assigned'}
                         </span>
                       </div>
+                      {examStructureName && (
+                        <div className="flex items-center gap-2 text-gray-700">
+                          <span className="font-medium">Structure:</span>
+                          <span>{examStructureName}</span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 text-gray-700">
                         <Calendar size={16} className="text-gray-500" />
                         <span>
@@ -518,21 +514,6 @@ export default function ExaminationDashboardPage({
                     </div>
 
                     <div className="pt-4 border-t border-gray-200">
-                      <div className="mb-2">
-                        <select
-                          className="w-full px-2 py-1 border border-gray-300 rounded"
-                          value={exam.term_id || ''}
-                          onChange={(e) => assignTermToExam(exam.id, e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <option value="">No Term Assigned</option>
-                          {mergedTerms.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.serial ? `${t.serial}. ` : ''}{t.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
                       <div className="flex gap-2">
                         <Button
                           variant="outline"

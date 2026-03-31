@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     // Build query - select only fields needed for list view (include transport for route mapping UI)
     const studentFields =
-      'id,admission_no,student_name,first_name,last_name,class,section,academic_year,status,student_contact,father_name,mother_name,father_contact,mother_contact,parent_name,parent_phone,parent_email,roll_number,email,house,photo_url,created_at,updated_at,transport_route_id,transport_pickup_stop_id,transport_dropoff_stop_id,transport_custom_fare,transport_fee,transport_type';
+      'id,admission_no,student_name,first_name,last_name,date_of_birth,class,section,academic_year,status,student_contact,father_name,mother_name,father_contact,mother_contact,parent_name,parent_phone,parent_email,roll_number,email,house,photo_url,created_at,updated_at,transport_route_id,transport_pickup_stop_id,transport_dropoff_stop_id,transport_custom_fare,transport_fee,transport_type';
     let query = paginate
       ? supabase
           .from('students')
