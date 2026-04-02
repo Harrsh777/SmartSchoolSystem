@@ -83,6 +83,7 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
   });
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [academicYearsError, setAcademicYearsError] = useState('');
   
   // Filters
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
@@ -103,48 +104,87 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode, allowedClassIds]);
 
-  // Load all academic years for the school (from classes + students tables) so dropdown shows every year
+  // Academic years from Academic Year Management (`academic_years`); default = current year from same module
   useEffect(() => {
     if (!schoolCode) return;
     let cancelled = false;
+    setAcademicYearsError('');
     (async () => {
       try {
-        const res = await fetch(`/api/classes/academic-years?school_code=${encodeURIComponent(schoolCode)}`);
-        const json = await res.json();
+        const yearsRes = await fetch(
+          `/api/academic-year-management/years?school_code=${encodeURIComponent(schoolCode)}`
+        );
+        const yearsJson = await yearsRes.json();
         if (cancelled) return;
-        if (res.ok && Array.isArray(json.data) && json.data.length > 0) {
-          const list: AcademicYear[] = json.data.map((year: string) => ({
-            id: year,
-            year_name: year,
-            start_date: '',
-            end_date: '',
-            is_current: false,
-          }));
-          setAcademicYears(list);
-          if (!selectedAcademicYear) setSelectedAcademicYear(list[0].id);
+
+        if (!yearsRes.ok) {
+          setAcademicYears([]);
+          setSelectedAcademicYear('');
+          setAcademicYearsError(
+            typeof yearsJson?.error === 'string'
+              ? yearsJson.error
+              : 'Could not load academic years.'
+          );
+          return;
         }
+
+        const raw = Array.isArray(yearsJson.data) ? yearsJson.data : [];
+        const list: AcademicYear[] = raw.map((row: Record<string, unknown>) => ({
+          id: String(row.id ?? row.year_name ?? ''),
+          year_name: String(row.year_name ?? '').trim(),
+          start_date: row.start_date != null ? String(row.start_date) : '',
+          end_date: row.end_date != null ? String(row.end_date) : '',
+          is_current: Boolean(row.is_current),
+        })).filter((y: { year_name: string | any[]; }) => y.year_name.length > 0);
+
+        setAcademicYears(list);
+
+        if (list.length === 0) {
+          setSelectedAcademicYear('');
+          setAcademicYearsError(
+            'No academic years defined. Add them in Academic Year Management first.'
+          );
+          return;
+        }
+
+        let defaultYearName = '';
+        try {
+          const curRes = await fetch(
+            `/api/schools/current-academic-year?school_code=${encodeURIComponent(schoolCode)}`
+          );
+          const curJson = await curRes.json();
+          if (curRes.ok) {
+            defaultYearName = String(
+              curJson.current_academic_year ?? curJson.data ?? ''
+            ).trim();
+          }
+        } catch {
+          /* non-fatal */
+        }
+
+        const names = new Set(list.map((y) => y.year_name));
+        const fromCurrentFlag = list.find((y) => y.is_current)?.year_name ?? '';
+
+        const chosen =
+          defaultYearName && names.has(defaultYearName)
+            ? defaultYearName
+            : fromCurrentFlag && names.has(fromCurrentFlag)
+              ? fromCurrentFlag
+              : list[0].year_name;
+
+        if (cancelled) return;
+        setSelectedAcademicYear(chosen);
       } catch {
         if (cancelled) return;
+        setAcademicYears([]);
+        setSelectedAcademicYear('');
+        setAcademicYearsError('Could not load academic years.');
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [schoolCode]);
-
-  // Fallback: when academic-years API didn't populate years, derive from classes once they load
-  useEffect(() => {
-    if (classes.length === 0 || academicYears.length > 0) return;
-    const uniqueYears: string[] = Array.from(new Set(classes.map(c => c.academic_year).filter((year): year is string => Boolean(year)))).sort().reverse();
-    if (uniqueYears.length === 0) return;
-    const academicYearsData: AcademicYear[] = uniqueYears.map(year => ({
-      id: year,
-      year_name: year,
-      start_date: '',
-      end_date: '',
-      is_current: false,
-    }));
-    setAcademicYears(academicYearsData);
-    if (!selectedAcademicYear) setSelectedAcademicYear(uniqueYears[0]);
-  }, [classes, academicYears.length, selectedAcademicYear]);
 
   const updateSections = useCallback(() => {
     if (selectedClassName) {
@@ -599,9 +639,13 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
               {academicYears.map((year) => (
                 <option key={year.id} value={year.year_name}>
                   {year.year_name}
+                  {year.is_current ? ' (current)' : ''}
                 </option>
               ))}
             </select>
+            {academicYearsError ? (
+              <p className="mt-1.5 text-xs text-amber-800">{academicYearsError}</p>
+            ) : null}
           </div>
 
           {/* Class */}

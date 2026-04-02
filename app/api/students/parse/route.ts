@@ -228,7 +228,7 @@ export async function POST(request: NextRequest) {
             )
           : null;
 
-      let classSectionErrors: string[] = [];
+      const classSectionErrors: string[] = [];
       if (!parsedClassSection.ok) {
         classSectionErrors.push(parsedClassSection.error);
       } else if (!canonicalClass) {
