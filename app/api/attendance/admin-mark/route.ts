@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { resolveAcademicYear } from '@/lib/academic-year-id';
+import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
 /**
  * POST /api/attendance/admin-mark
@@ -8,7 +10,7 @@ import { supabase } from '@/lib/supabase';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, class_id, attendance_date, attendance_records, marked_by } = body;
+    const { school_code, class_id, attendance_date, attendance_records, marked_by, academic_year, academic_year_id } = body;
 
     if (!school_code || !class_id || !attendance_date || !marked_by) {
       return NextResponse.json(
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
     // Verify class exists (no class teacher restriction for admin)
     const { data: classData, error: classError } = await supabase
       .from('classes')
-      .select('id, class, section')
+      .select('id, class, section, academic_year_id')
       .eq('id', class_id)
       .eq('school_code', school_code)
       .single();
@@ -52,6 +54,23 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    const resolvedAcademicYearId =
+      academic_year_id || academic_year
+        ? (await resolveAcademicYear({
+            schoolCode: school_code,
+            academic_year,
+            academic_year_id,
+          })).yearId
+        : (classData as { academic_year_id?: string | null })?.academic_year_id ?? null;
+
+    const adminOverride = request.headers.get('x-admin-override') === 'true';
+    const lockCheck = await assertAcademicYearNotLocked({
+      schoolCode: school_code,
+      academic_year_id: resolvedAcademicYearId,
+      adminOverride,
+    });
+    if (lockCheck) return lockCheck;
 
     // Verify marked_by staff exists
     const { data: staffData, error: staffError } = await supabase
@@ -90,6 +109,7 @@ export async function POST(request: NextRequest) {
         attendance_date: attendance_date,
         status,
         marked_by: marked_by,
+        academic_year_id: resolvedAcademicYearId,
       };
     });
 

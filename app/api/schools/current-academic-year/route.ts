@@ -6,7 +6,7 @@ import { getServiceRoleClient } from '@/lib/supabase-admin';
  * Returns the current/running academic year for the school.
  * 1. accepted_schools.current_academic_year if set
  * 2. Else academic_years where is_current = true (year_name)
- * 3. Else derive from current date (e.g. 2024-25 for Apr 2024 - Mar 2025)
+ * 3. Else return setup-required error.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -41,11 +41,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: year, current_academic_year: year }, { status: 200 });
     }
 
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth() + 1;
-    const fallback = m >= 4 ? `${y}-${String(y + 1).slice(-2)}` : `${y - 1}-${String(y).slice(-2)}`;
-    return NextResponse.json({ data: fallback, current_academic_year: fallback }, { status: 200 });
+    return NextResponse.json(
+      { error: 'Setup academic year first from Academic Year Management module.' },
+      { status: 404 }
+    );
   } catch (error) {
     console.error('Current academic year error:', error);
     return NextResponse.json(

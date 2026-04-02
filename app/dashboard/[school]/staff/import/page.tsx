@@ -356,8 +356,7 @@ export default function ImportStaffPage({
                   onClick={() => setCurrentStep(2)} 
                   className="w-full sm:w-auto"
                 >
-                  Continue to Upload
-                  <ArrowRight size={18} className="ml-2" />
+                  Continue to Upload  
                 </Button>
               </div>
             </div>

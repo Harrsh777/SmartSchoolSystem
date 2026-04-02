@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
 export async function GET(
   request: NextRequest,
@@ -52,7 +53,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { school_code, class_teacher_id, ...updateData } = body;
+    const { school_code, class_teacher_id, academic_year, academic_year_id, ...updateData } = body;
 
     if (!school_code) {
       return NextResponse.json(
@@ -64,7 +65,7 @@ export async function PATCH(
     // Verify class belongs to this school
     const { data: existingClass, error: fetchError } = await supabase
       .from('classes')
-      .select('id, school_code')
+      .select('id, school_code, academic_year_id')
       .eq('id', id)
       .eq('school_code', school_code)
       .single();
@@ -83,6 +84,23 @@ export async function PATCH(
     const updateObject: UpdateObject = {
       ...updateData,
     };
+
+    // Academic year can only be changed via Academic Year Management.
+    if (academic_year || academic_year_id) {
+      return NextResponse.json(
+        { error: 'Academic year can only be changed from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
+
+    const adminOverride = request.headers.get('x-admin-override') === 'true';
+    const yearIdToCheck = (updateObject.academic_year_id as string | undefined) ?? (existingClass as { academic_year_id?: string | null })?.academic_year_id ?? null;
+    const lockCheck = await assertAcademicYearNotLocked({
+      schoolCode: school_code,
+      academic_year_id: yearIdToCheck,
+      adminOverride,
+    });
+    if (lockCheck) return lockCheck;
 
     // If class_teacher_id is provided, update it (can be null to remove teacher)
     if (class_teacher_id !== undefined) {
@@ -133,6 +151,12 @@ export async function PATCH(
 
     return NextResponse.json({ data: updatedClass }, { status: 200 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
     console.error('Error updating class:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -160,7 +184,7 @@ export async function DELETE(
     // Get class details to match students by class, section, academic_year
     const { data: classRow, error: classError } = await supabase
       .from('classes')
-      .select('class, section, academic_year')
+      .select('class, section, academic_year, academic_year_id')
       .eq('id', id)
       .eq('school_code', schoolCode)
       .single();
@@ -171,6 +195,14 @@ export async function DELETE(
         { status: 404 }
       );
     }
+
+    const adminOverride = request.headers.get('x-admin-override') === 'true';
+    const lockCheck = await assertAcademicYearNotLocked({
+      schoolCode: schoolCode,
+      academic_year_id: (classRow as { academic_year_id?: string | null })?.academic_year_id ?? null,
+      adminOverride,
+    });
+    if (lockCheck) return lockCheck;
 
     const { count: studentCount } = await supabase
       .from('students')

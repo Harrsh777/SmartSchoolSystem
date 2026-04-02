@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, academic_year, classes } = body;
+    const { school_code, classes } = body;
 
-    if (!school_code || !academic_year || !Array.isArray(classes) || classes.length === 0) {
+    if (!school_code || !Array.isArray(classes) || classes.length === 0) {
       return NextResponse.json(
-        { error: 'School code, academic year, and classes array are required' },
+        { error: 'School code and classes array are required' },
         { status: 400 }
       );
     }
+
+    const currentYear = await getRequiredCurrentAcademicYear(String(school_code));
+    const academic_year = currentYear.year_name;
 
     // Get school ID
     const { data: schoolData, error: schoolError } = await supabase
@@ -118,6 +122,12 @@ export async function POST(request: NextRequest) {
       duplicates: duplicateClasses.length > 0 ? duplicateClasses : undefined,
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
     console.error('Error bulk creating classes:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },

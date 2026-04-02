@@ -4,9 +4,7 @@ import { parseAcademicYearName } from '@/lib/academic-year-name';
 
 /**
  * GET /api/academic-year-management/years?school_code=XXX
- * List academic years from BOTH academic_years table and classes table (merged, deduplicated).
- * - academic_years: full rows (start_date, end_date, status, is_current).
- * - classes: unique academic_year values that don't exist in academic_years appear as rows with source: 'classes'.
+ * List academic years from academic_years table only.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -25,48 +23,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'School not found' }, { status: 404 });
     }
 
-    const [ayResult, classesResult] = await Promise.all([
-      supabase
-        .from('academic_years')
-        .select('*')
-        .eq('school_code', schoolCode)
-        .order('start_date', { ascending: false }),
-      supabase
-        .from('classes')
-        .select('academic_year')
-        .eq('school_code', schoolCode),
-    ]);
+    const { data: ayData } = await supabase
+      .from('academic_years')
+      .select('*')
+      .eq('school_code', schoolCode)
+      .order('start_date', { ascending: false });
 
-    const ayData = ayResult.data || [];
-    const classes = classesResult.data || [];
-
-    const yearsFromAy = new Map(
-      ayData.map((row) => [
-        String((row as { year_name?: string }).year_name || '').trim(),
-        { ...row, source: 'academic_years' as const },
-      ])
-    );
-
-    const uniqueFromClasses = Array.from(
-      new Set(classes.map((c) => String(c.academic_year || '').trim()).filter(Boolean))
-    );
-
-    for (const yearName of uniqueFromClasses) {
-      if (!yearsFromAy.has(yearName)) {
-        yearsFromAy.set(yearName, {
-          id: yearName,
-          year_name: yearName,
-          school_code: schoolCode,
-          start_date: null,
-          end_date: null,
-          status: 'active',
-          is_current: false,
-          source: 'classes' as const,
-        });
-      }
-    }
-
-    const merged = Array.from(yearsFromAy.values()).sort((a, b) => {
+    const merged = Array.from((ayData || []).map((row) => ({ ...row, source: 'academic_years' as const }))).sort((a, b) => {
       const yearA = parseInt(String((a as { year_name?: string }).year_name).split('-')[0] || '0', 10);
       const yearB = parseInt(String((b as { year_name?: string }).year_name).split('-')[0] || '0', 10);
       return yearB - yearA;
@@ -102,6 +65,17 @@ export async function POST(request: NextRequest) {
     if (!parsed.ok) {
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
+    const startYear = parseInt(parsed.year_name.split('-')[0] || '', 10);
+    const defaultStart = Number.isFinite(startYear) ? `${startYear}-04-01` : new Date().toISOString().slice(0, 10);
+    const defaultEnd = Number.isFinite(startYear) ? `${startYear + 1}-03-31` : new Date().toISOString().slice(0, 10);
+    const resolvedStartDate = String(start_date || defaultStart);
+    const resolvedEndDate = String(end_date || defaultEnd);
+    if (new Date(resolvedStartDate).getTime() >= new Date(resolvedEndDate).getTime()) {
+      return NextResponse.json(
+        { error: 'Start date must be before end date' },
+        { status: 400 }
+      );
+    }
 
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
@@ -117,11 +91,25 @@ export async function POST(request: NextRequest) {
       school_id: schoolData.id,
       school_code,
       year_name: parsed.year_name,
-      start_date: start_date || new Date().toISOString().slice(0, 10),
-      end_date: end_date || new Date().toISOString().slice(0, 10),
+      start_date: resolvedStartDate,
+      end_date: resolvedEndDate,
+      // Mark the first created year as current (onboarding / middleware enforcement).
+      // If a current year already exists, the new year stays non-current by default.
       is_current: false,
     };
     if (status) insertPayload.status = status;
+
+    // If this is the first "current" year for the school, auto-activate it.
+    const { data: currentRow } = await supabase
+      .from('academic_years')
+      .select('id')
+      .eq('school_code', school_code)
+      .eq('is_current', true)
+      .maybeSingle();
+
+    if (!currentRow) {
+      insertPayload.is_current = true;
+    }
 
     const { data: created, error: insertError } = await supabase
       .from('academic_years')

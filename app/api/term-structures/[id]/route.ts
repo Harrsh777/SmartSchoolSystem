@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 
 export async function GET(
   request: NextRequest,
@@ -82,7 +83,7 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
     const schoolCode = String(body.school_code || '').trim();
-    const fallbackAcademicYear = String(body.academic_year || '').trim();
+    const currentAcademicYear = (await getRequiredCurrentAcademicYear(schoolCode)).year_name;
     const mappings = (body.mappings || []) as Array<{ class_id: string; section: string }>;
     const terms = (body.terms || []) as Array<{
       name: string;
@@ -204,8 +205,7 @@ export async function PUT(
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/^-+|-+$/g, ''),
           serial: Number(t.serial || 1),
-          academic_year: String(t.academic_year || fallbackAcademicYear || '')
-            .trim() || null,
+          academic_year: currentAcademicYear,
           is_active: true,
           is_deleted: false,
         },
@@ -252,6 +252,12 @@ export async function PUT(
 
     return NextResponse.json({ data: { success: true } }, { status: 200 });
   } catch (e) {
+    if (e instanceof Error && e.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
     console.error('term-structures DELETE error:', e);
     return NextResponse.json(
       { error: 'Internal server error', details: e instanceof Error ? e.message : 'Unknown' },

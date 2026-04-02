@@ -60,6 +60,11 @@ export async function PATCH(
     const body = await request.json();
     const schoolCode = searchParams.get('school_code') ?? body?.school_code;
 
+    // Keep RTE flag consistent between legacy `rte` and `fees/v2`'s `is_rte`.
+    if (body && body.rte !== undefined && body.is_rte === undefined) {
+      body.is_rte = Boolean(body.rte);
+    }
+
     if (!schoolCode) {
       return NextResponse.json(
         { error: 'School code is required' },
@@ -135,15 +140,23 @@ export async function PATCH(
       }
     }
 
+    if (body.academic_year !== undefined) {
+      return NextResponse.json(
+        { error: 'Academic year can only be changed from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
+
     // Whitelist of columns that can be updated (matches public.students table)
     const allowedKeys = new Set([
       'admission_no', 'student_name', 'first_name', 'last_name', 'middle_name', 'class', 'section',
-      'date_of_birth', 'gender', 'status', 'academic_year', 'roll_number', 'email', 'student_contact',
+      'date_of_birth', 'gender', 'status', 'roll_number', 'email', 'student_contact',
       'parent_name', 'parent_phone', 'parent_email', 'father_name', 'father_occupation', 'father_contact',
       'mother_name', 'mother_occupation', 'mother_contact', 'address', 'city', 'state', 'pincode', 'landmark',
       'blood_group', 'aadhaar_number', 'religion', 'category', 'nationality', 'house', 'transport_type',
       'date_of_admission', 'last_class', 'last_school_name', 'last_school_percentage', 'last_school_result',
       'medium', 'schooling_type', 'rte', 'new_admission', 'photo_url',
+      'is_rte',
     ]);
     const dateColumns = new Set(['date_of_birth', 'date_of_admission']);
     const numericColumns = new Set(['last_school_percentage']);

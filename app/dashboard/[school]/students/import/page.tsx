@@ -192,13 +192,14 @@ export default function ImportStudentsPage({
       'parent_name',
       'parent_phone',
       'parent_email',
-      'address'
+      'address',
+      'rte'
     ];
 
     const csvContent = [
       headers.join(','),
-      'STU001,John Doe,10,A,15-05-2010,Male,John Parent,1234567890,parent@example.com,123 Main St',
-      'STU002,Jane Smith,10,B,20-08-2010,Female,Jane Parent,0987654321,parent2@example.com,456 Oak Ave'
+      'STU001,John Doe,10,A,15-05-2010,Male,John Parent,1234567890,parent@example.com,123 Main St,false',
+      'STU002,Jane Smith,10,B,20-08-2010,Female,Jane Parent,0987654321,parent2@example.com,456 Oak Ave,true'
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -358,7 +359,7 @@ export default function ImportStudentsPage({
                   className="w-full sm:w-auto"
                 >
                   Continue to Upload
-                  <ArrowRight size={18} className="ml-2" />
+                 
                 </Button>
               </div>
             </div>

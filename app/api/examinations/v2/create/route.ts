@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { resolveAcademicYear } from '@/lib/academic-year-id';
+import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
+import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,26 +19,18 @@ export async function POST(request: NextRequest) {
       schedules,
       created_by,
     } = body;
-    let academic_year = body.academic_year;
+    let resolvedAcademicYearName = '';
+    let resolvedAcademicYearId = '';
 
     console.log('Received examination creation request:', {
       school_code,
       exam_name,
-      academic_year,
+      academic_year: body.academic_year,
+      academic_year_id: body.academic_year_id,
       class_mappings_count: class_mappings?.length || 0,
       class_subjects_count: class_subjects?.length || 0,
       schedules_count: schedules?.length || 0,
     });
-
-    // Resolve academic year from term when UI does not send it directly.
-    if ((!academic_year || !String(academic_year).trim()) && term_id) {
-      const { data: termYear } = await supabase
-        .from('exam_terms')
-        .select('academic_year')
-        .eq('id', term_id)
-        .maybeSingle();
-      academic_year = String(termYear?.academic_year || '').trim();
-    }
 
     // Validation
     if (!school_code || !exam_name || !start_date || !end_date) {
@@ -44,12 +39,30 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (!academic_year || !String(academic_year).trim()) {
+
+    const currentYear = await getRequiredCurrentAcademicYear(String(school_code));
+    const { yearId, yearName } = await resolveAcademicYear({
+      schoolCode: school_code,
+      academic_year_id: currentYear.id,
+      academic_year: currentYear.year_name,
+    });
+    resolvedAcademicYearId = yearId;
+    resolvedAcademicYearName = yearName;
+
+    if (!resolvedAcademicYearId || !String(resolvedAcademicYearId).trim() || !resolvedAcademicYearName || !String(resolvedAcademicYearName).trim()) {
       return NextResponse.json(
-        { error: 'Academic year is required. Select a term with configured academic year.' },
+        { error: 'Setup academic year first from Academic Year Management module.' },
         { status: 400 }
       );
     }
+
+    const adminOverride = request.headers.get('x-admin-override') === 'true';
+    const lockCheck = await assertAcademicYearNotLocked({
+      schoolCode: school_code,
+      academic_year_id: resolvedAcademicYearId,
+      adminOverride,
+    });
+    if (lockCheck) return lockCheck;
 
     if (!class_mappings || !Array.isArray(class_mappings) || class_mappings.length === 0) {
       return NextResponse.json(
@@ -91,7 +104,8 @@ export async function POST(request: NextRequest) {
       school_id: schoolData.id,
       school_code: school_code,
       exam_name: exam_name.trim(),
-      academic_year: String(academic_year).trim(),
+      academic_year: String(resolvedAcademicYearName).trim(),
+      academic_year_id: resolvedAcademicYearId,
       start_date: start_date,
       end_date: end_date,
       description: description || null,
@@ -319,6 +333,12 @@ export async function POST(request: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
     console.error('Error creating examination:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },

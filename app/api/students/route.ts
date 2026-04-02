@@ -41,6 +41,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const { data: currentYearRow } = await supabase
+      .from('academic_years')
+      .select('id, year_name')
+      .eq('school_code', schoolCode)
+      .eq('is_current', true)
+      .maybeSingle();
+    if (!currentYearRow?.year_name) {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
+
     // Get optional filters
     const classFilter = searchParams.get('class');
     const sectionFilter = searchParams.get('section');
@@ -206,6 +219,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { data: currentYearForInsert } = await supabase
+      .from('academic_years')
+      .select('id, year_name')
+      .eq('school_code', school_code)
+      .eq('is_current', true)
+      .maybeSingle();
+    if (!currentYearForInsert?.year_name) {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
+
     // Check for duplicate admission number
     const { data: existing } = await supabase
       .from('students')
@@ -274,63 +300,86 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert student with all fields
-    const { data: newStudent, error: insertError } = await supabase
+    const rteValue = Boolean(studentData.rte);
+    const baseRow: Record<string, unknown> = {
+      school_id: schoolData.id,
+      school_code: school_code,
+      admission_no: studentData.admission_no,
+      student_name: studentData.student_name,
+      class: studentData.class,
+      section: studentData.section,
+      first_name: studentData.first_name || null,
+      middle_name: studentData.middle_name || null,
+      last_name: studentData.last_name || null,
+      date_of_birth: studentData.date_of_birth || null,
+      gender: studentData.gender || null,
+      blood_group: studentData.blood_group || null,
+      email: studentData.email || null,
+      student_contact: studentData.student_contact || null,
+      address: studentData.address || null,
+      city: studentData.city || null,
+      state: studentData.state || null,
+      pincode: studentData.pincode || null,
+      landmark: studentData.landmark || null,
+      roll_number: studentData.roll_number || null,
+      date_of_admission: studentData.date_of_admission || null,
+      last_class: studentData.last_class || null,
+      last_school_name: studentData.last_school_name || null,
+      last_school_percentage: studentData.last_school_percentage || null,
+      last_school_result: studentData.last_school_result || null,
+      medium: studentData.medium || null,
+      schooling_type: studentData.schooling_type || null,
+      aadhaar_number: studentData.aadhaar_number || null,
+      rfid: studentData.rfid || null,
+      pen_no: studentData.pen_no || null,
+      apaar_no: studentData.apaar_no || null,
+      sr_no: studentData.sr_no || null,
+      parent_name: studentData.parent_name || null,
+      parent_phone: studentData.parent_phone || null,
+      parent_email: studentData.parent_email || null,
+      father_name: studentData.father_name || null,
+      father_occupation: studentData.father_occupation || null,
+      father_contact: studentData.father_contact || null,
+      mother_name: studentData.mother_name || null,
+      mother_occupation: studentData.mother_occupation || null,
+      mother_contact: studentData.mother_contact || null,
+      staff_relation: studentData.staff_relation || null,
+      religion: studentData.religion || null,
+      category: studentData.category || null,
+      nationality: studentData.nationality || 'Indian',
+      house: studentData.house || null,
+      transport_type: studentData.transport_type || null,
+      rte: rteValue,
+      // `fees/v2` uses `is_rte` for RTE checks.
+      is_rte: rteValue,
+      new_admission: studentData.new_admission !== undefined ? studentData.new_admission : true,
+      academic_year: String(currentYearForInsert.year_name),
+      status: 'active',
+    };
+
+    let newStudent: unknown;
+    let insertError: { message?: string } | null = null;
+
+    ({ data: newStudent, error: insertError } = await supabase
       .from('students')
-      .insert([{
-        school_id: schoolData.id,
-        school_code: school_code,
-        admission_no: studentData.admission_no,
-        student_name: studentData.student_name,
-        class: studentData.class,
-        section: studentData.section,
-        first_name: studentData.first_name || null,
-        middle_name: studentData.middle_name || null,
-        last_name: studentData.last_name || null,
-        date_of_birth: studentData.date_of_birth || null,
-        gender: studentData.gender || null,
-        blood_group: studentData.blood_group || null,
-        email: studentData.email || null,
-        student_contact: studentData.student_contact || null,
-        address: studentData.address || null,
-        city: studentData.city || null,
-        state: studentData.state || null,
-        pincode: studentData.pincode || null,
-        landmark: studentData.landmark || null,
-        roll_number: studentData.roll_number || null,
-        date_of_admission: studentData.date_of_admission || null,
-        last_class: studentData.last_class || null,
-        last_school_name: studentData.last_school_name || null,
-        last_school_percentage: studentData.last_school_percentage || null,
-        last_school_result: studentData.last_school_result || null,
-        medium: studentData.medium || null,
-        schooling_type: studentData.schooling_type || null,
-        aadhaar_number: studentData.aadhaar_number || null,
-        rfid: studentData.rfid || null,
-        pen_no: studentData.pen_no || null,
-        apaar_no: studentData.apaar_no || null,
-        sr_no: studentData.sr_no || null,
-        parent_name: studentData.parent_name || null,
-        parent_phone: studentData.parent_phone || null,
-        parent_email: studentData.parent_email || null,
-        father_name: studentData.father_name || null,
-        father_occupation: studentData.father_occupation || null,
-        father_contact: studentData.father_contact || null,
-        mother_name: studentData.mother_name || null,
-        mother_occupation: studentData.mother_occupation || null,
-        mother_contact: studentData.mother_contact || null,
-        staff_relation: studentData.staff_relation || null,
-        religion: studentData.religion || null,
-        category: studentData.category || null,
-        nationality: studentData.nationality || 'Indian',
-        house: studentData.house || null,
-        transport_type: studentData.transport_type || null,
-        rte: studentData.rte || false,
-        new_admission: studentData.new_admission !== undefined ? studentData.new_admission : true,
-        academic_year: studentData.academic_year || new Date().getFullYear().toString(),
-        status: 'active',
-      }])
+      .insert([baseRow])
       .select()
-      .single();
+      .single());
+
+    if (insertError) {
+      const missingIsRte =
+        /is_rte/i.test(insertError.message || '') &&
+        (/column/i.test(insertError.message || '') || /does not exist/i.test(insertError.message || ''));
+
+      if (missingIsRte) {
+        const { is_rte, ...retryRow } = baseRow;
+        ({ data: newStudent, error: insertError } = await supabase
+          .from('students')
+          .insert([retryRow])
+          .select()
+          .single());
+      }
+    }
 
     if (insertError) {
       return NextResponse.json(

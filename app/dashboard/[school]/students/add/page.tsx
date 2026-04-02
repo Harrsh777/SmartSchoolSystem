@@ -39,7 +39,6 @@ export default function AddStudentPage({
     student_name: '',
     class: '',
     section: '',
-    academic_year: '',
     // Personal Details
     first_name: '',
     middle_name: '',
@@ -248,7 +247,6 @@ export default function AddStudentPage({
           student_name: formData.student_name.trim() || formData.admission_no,
           class: formData.class.trim(),
           section: formData.section.trim(),
-          academic_year: formData.academic_year || new Date().getFullYear().toString(),
           first_name: null,
           middle_name: null,
           last_name: null,
@@ -350,15 +348,13 @@ export default function AddStudentPage({
 
   const handleClassChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    setFormData(prev => ({ ...prev, class: value, section: '', academic_year: '' }));
+    setFormData(prev => ({ ...prev, class: value, section: '' }));
   };
   const handleSectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const section = e.target.value;
-    const match = classes.find((c) => c.class === formData.class && c.section === section);
     setFormData(prev => ({
       ...prev,
       section,
-      academic_year: match?.academic_year || prev.academic_year,
     }));
   };
 

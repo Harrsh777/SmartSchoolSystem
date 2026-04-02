@@ -60,6 +60,27 @@ export async function PATCH(
 
     // If approved, save to accepted_schools table with generated school code and password
     if (status === 'approved') {
+      // If this email is already approved (exists in accepted_schools), return existing credentials
+      // instead of failing with a duplicate key error.
+      const { data: existingAccepted, error: existingAcceptedErr } = await supabase
+        .from('accepted_schools')
+        .select('*')
+        .eq('school_email', schoolData.school_email)
+        .single();
+
+      if (existingAccepted && !existingAcceptedErr) {
+        return NextResponse.json(
+          {
+            success: true,
+            message: 'School is already approved for this email. Returning existing credentials.',
+            school_code: existingAccepted.school_code,
+            password: existingAccepted.password,
+            data: existingAccepted,
+          },
+          { status: 200 }
+        );
+      }
+
       // Generate password based on school name
       const generatedPassword = generatePassword();
       

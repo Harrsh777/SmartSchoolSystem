@@ -71,6 +71,7 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
               <th className="text-left py-3 px-4 font-semibold text-gray-700">Name*</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-700">Class*</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-700">Section*</th>
+              <th className="text-left py-3 px-4 font-semibold text-gray-700">RTE</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-700">DOB</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-700">Gender</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-700">Parent Name</th>
@@ -189,6 +190,18 @@ export default function PreviewTable({ rows, onRowUpdate }: PreviewTableProps) {
                       {getString(row.data.section) || '-'}
                     </span>
                   )}
+                </td>
+                <td className="py-3 px-4 text-sm text-gray-600">
+                  {(() => {
+                    const raw = (row.data as Record<string, unknown>).rte ?? (row.data as Record<string, unknown>).is_rte;
+                    const rteBool =
+                      typeof raw === 'boolean'
+                        ? raw
+                        : String(raw ?? '').toLowerCase() === 'true' ||
+                          String(raw ?? '').toLowerCase() === 'yes' ||
+                          String(raw ?? '') === '1';
+                    return rteBool ? 'Yes' : '—';
+                  })()}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
                   {(() => {

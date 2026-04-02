@@ -17,6 +17,7 @@ export default function RoleSessionSwitcher({ className = '' }: { className?: st
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -44,24 +45,33 @@ export default function RoleSessionSwitcher({ className = '' }: { className?: st
     return null;
   }
 
-  const switchTo = async (slotKey: string, redirectTo: string) => {
+  const switchTo = async (slotKey: string) => {
+    const password = window.prompt('Enter your password to switch account');
+    if (password === null) {
+      return;
+    }
+    if (!password.trim()) {
+      setError('Password is required to switch role.');
+      return;
+    }
+
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/auth/switch', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotKey }),
+        body: JSON.stringify({ slotKey, password }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.redirectTo) {
         window.location.assign(data.redirectTo as string);
         return;
       }
-      window.location.assign(redirectTo);
+      setError(typeof data.error === 'string' ? data.error : 'Password verification failed');
     } finally {
       setLoading(false);
-      setOpen(false);
     }
   };
 
@@ -69,7 +79,10 @@ export default function RoleSessionSwitcher({ className = '' }: { className?: st
     <div className={`relative ${className}`}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setError(null);
+          setOpen((v) => !v);
+        }}
         disabled={loading}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium text-[#1e3a8a] bg-[#EFF6FF] border border-[#BFDBFE] hover:bg-[#DBEAFE] transition-colors disabled:opacity-60"
         aria-expanded={open}
@@ -85,7 +98,10 @@ export default function RoleSessionSwitcher({ className = '' }: { className?: st
             type="button"
             className="fixed inset-0 z-40 cursor-default bg-transparent"
             aria-label="Close menu"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setError(null);
+              setOpen(false);
+            }}
           />
           <ul
             className="absolute right-0 mt-1 z-50 min-w-[220px] max-w-[min(320px,calc(100vw-2rem))] py-1 rounded-lg border border-[#E1E1DB] bg-white shadow-lg"
@@ -98,7 +114,7 @@ export default function RoleSessionSwitcher({ className = '' }: { className?: st
                   role="option"
                   aria-selected={s.active}
                   disabled={loading || s.active || !s.redirectTo}
-                  onClick={() => s.redirectTo && switchTo(s.slotKey, s.redirectTo)}
+                  onClick={() => s.redirectTo && switchTo(s.slotKey)}
                   className={`w-full text-left px-3 py-2 text-sm hover:bg-[#EFF6FF] disabled:opacity-50 ${
                     s.active ? 'font-semibold text-[#1e3a8a] bg-[#F0F9FF]' : 'text-[#334155]'
                   }`}
@@ -108,6 +124,7 @@ export default function RoleSessionSwitcher({ className = '' }: { className?: st
                 </button>
               </li>
             ))}
+            {error && <li className="px-3 py-2 text-xs text-red-600 border-t border-[#E1E1DB]">{error}</li>}
           </ul>
         </>
       )}

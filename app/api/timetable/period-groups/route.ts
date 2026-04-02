@@ -138,6 +138,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const { data: mappingRows, error: mappingError } = await supabase
+      .from('timetable_group_classes')
+      .select('group_id')
+      .eq('school_code', schoolCode);
+
+    const mappedClassCountByGroupId = new Map<string, number>();
+    if (!mappingError) {
+      for (const row of mappingRows || []) {
+        const gid = String((row as { group_id?: string }).group_id ?? '');
+        if (!gid) continue;
+        mappedClassCountByGroupId.set(gid, (mappedClassCountByGroupId.get(gid) || 0) + 1);
+      }
+    }
+
     // Fetch periods for each group
     const groupsWithPeriods = await Promise.all(
       (groups || []).map(async (group) => {
@@ -150,6 +164,7 @@ export async function GET(request: NextRequest) {
         return {
           ...group,
           periods: periods || [],
+          mapped_class_count: mappedClassCountByGroupId.get(String(group.id)) || 0,
         };
       })
     );

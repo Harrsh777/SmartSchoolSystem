@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { resolveAcademicYear } from '@/lib/academic-year-id';
+import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, class_id, attendance_date, attendance_records, marked_by } = body;
+    const { school_code, class_id, attendance_date, attendance_records, marked_by, academic_year, academic_year_id } = body;
 
     if (!school_code || !class_id || !attendance_date || !marked_by) {
       return NextResponse.json(
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Verify the teacher is the class teacher for this class
     const { data: classData, error: classError } = await supabase
       .from('classes')
-      .select('class_teacher_id, class_teacher_staff_id')
+      .select('class_teacher_id, class_teacher_staff_id, academic_year_id')
       .eq('id', class_id)
       .eq('school_code', school_code)
       .single();
@@ -48,6 +50,23 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    const resolvedAcademicYearId =
+      academic_year_id || academic_year
+        ? (await resolveAcademicYear({
+            schoolCode: school_code,
+            academic_year,
+            academic_year_id,
+          })).yearId
+        : (classData as { academic_year_id?: string | null })?.academic_year_id ?? null;
+
+    const adminOverride = request.headers.get('x-admin-override') === 'true';
+    const lockCheck = await assertAcademicYearNotLocked({
+      schoolCode: school_code,
+      academic_year_id: resolvedAcademicYearId,
+      adminOverride,
+    });
+    if (lockCheck) return lockCheck;
 
     // Get teacher's staff_id to verify
     const { data: teacherData, error: teacherError } = await supabase
@@ -122,6 +141,7 @@ export async function POST(request: NextRequest) {
         student_id?: string;
         status?: string;
         remarks?: string;
+        academic_year_id?: string | null;
         [key: string]: unknown;
       } = {
         school_id: schoolData.id,
@@ -131,6 +151,7 @@ export async function POST(request: NextRequest) {
         attendance_date: attendance_date,
         status,
         marked_by: marked_by,
+        academic_year_id: resolvedAcademicYearId,
       };
       if (!isHoliday && record.notes !== undefined && record.notes !== null) baseRecord.notes = record.notes;
       return baseRecord;

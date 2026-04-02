@@ -201,6 +201,8 @@ function generateReceiptHTML(
     return sum + (grossBillable(fee) - Number(fee.paid_amount || 0));
   }, 0);
 
+  const logoUrl = String((school as { logo_url?: unknown } | null)?.logo_url ?? '').trim();
+
   // Find payments related to these fees
   const feeIds = new Set(fees.map((f: Record<string, unknown>) => f.id as string));
   const relevantPayments = payments.filter((payment: Record<string, unknown>) => {
@@ -226,8 +228,8 @@ function generateReceiptHTML(
       box-sizing: border-box;
     }
     @page {
-      size: A4 landscape;
-      margin: 8mm;
+      size: A5 landscape;
+      margin: 6mm;
     }
     body {
       font-family: 'Arial', sans-serif;
@@ -239,7 +241,7 @@ function generateReceiptHTML(
       width: 100%;
       min-height: calc(100vh - 16mm);
       background: white;
-      padding: 6mm;
+      padding: 4mm;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
     .copies-grid {
@@ -253,7 +255,30 @@ function generateReceiptHTML(
       background: white;
       border: 1px solid #d1d5db;
       border-radius: 6px;
-      padding: 5mm;
+      padding: 4mm;
+      position: relative;
+      overflow: hidden;
+    }
+    .receipt-watermark {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .receipt-watermark img {
+      max-width: 75%;
+      max-height: 60%;
+      object-fit: contain;
+      opacity: 0.06;
+      filter: grayscale(1);
+      transform: rotate(-10deg);
+    }
+    .receipt-inner {
+      position: relative;
+      z-index: 1;
     }
     .copy-label {
       text-align: center;
@@ -366,6 +391,26 @@ function generateReceiptHTML(
       color: #666;
       font-size: 10px;
     }
+    .signature-block {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .signature-line {
+      width: 62%;
+      height: 1px;
+      background: #111;
+      opacity: 0.9;
+    }
+    .signature-label {
+      font-size: 10px;
+      color: #333;
+      font-weight: 600;
+    }
     .payment-info {
       margin-top: 12px;
       padding: 10px;
@@ -407,6 +452,15 @@ function generateReceiptHTML(
         padding: 0;
         min-height: auto;
       }
+      .copies-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+      .receipt-container {
+        page-break-after: always;
+        break-after: page;
+        border-radius: 0;
+      }
     }
   </style>
 </head>
@@ -415,12 +469,18 @@ function generateReceiptHTML(
     <div class="copies-grid">
       <div class="receipt-container">
         <div class="copy-label">SCHOOL COPY</div>
-        ${receiptContent}
+        ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
+        <div class="receipt-inner">
+          ${receiptContent}
+        </div>
       </div>
 
       <div class="receipt-container">
         <div class="copy-label">STUDENT COPY</div>
-        ${receiptContent}
+        ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
+        <div class="receipt-inner">
+          ${receiptContent}
+        </div>
       </div>
     </div>
   </div>
@@ -533,8 +593,9 @@ function generateReceiptContent(
               // Calculate proportional amount for this fee head
               const headAmount = Number((item.amount as number) || 0);
               const totalStructureAmount = structureItems.reduce((sum: number, i: Record<string, unknown>) => sum + Number((i.amount as number) || 0), 0);
+              const paidPortion = Number(fee.paid_amount || 0);
               const proportionalAmount = totalStructureAmount > 0 
-                ? (headAmount / totalStructureAmount) * Number(fee.base_amount || 0)
+                ? (headAmount / totalStructureAmount) * paidPortion
                 : 0;
               
               const feeHead = item.fee_head as Record<string, unknown> | undefined;
@@ -677,10 +738,14 @@ function generateReceiptContent(
 
     <div class="footer">
       <div style="margin-bottom: 10px;">
-        <strong>This is a computer-generated receipt. No signature required.</strong>
+        <strong>This is a computer-generated receipt.</strong>
       </div>
       <div>Generated on ${new Date().toLocaleString('en-IN')}</div>
       ${school.school_name ? `<div style="margin-top: 10px;">${school.school_name}</div>` : ''}
+      <div class="signature-block">
+        <div class="signature-line"></div>
+        <div class="signature-label">Cashier Signature</div>
+      </div>
     </div>
   `;
 }

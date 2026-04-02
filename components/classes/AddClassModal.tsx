@@ -34,7 +34,6 @@ export default function AddClassModal({
   const [formData, setFormData] = useState({
     class: existingClass?.class || '',
     section: existingClass?.section || '',
-    academic_year: existingClass?.academic_year || new Date().getFullYear().toString(),
   });
 
   // Fetch all subjects on mount
@@ -104,7 +103,7 @@ export default function AddClassModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.class.trim() || !formData.section.trim() || !formData.academic_year.trim()) {
+    if (!formData.class.trim() || !formData.section.trim()) {
       alert('Please fill in all required fields');
       return;
     }
@@ -211,19 +210,6 @@ export default function AddClassModal({
                 required
                 placeholder="e.g., A"
                 className="uppercase"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Academic Year <span className="text-red-500">*</span>
-              </label>
-              <Input
-                type="text"
-                value={formData.academic_year}
-                onChange={(e) => handleChange('academic_year', e.target.value)}
-                required
-                placeholder="e.g., 2025"
               />
             </div>
 

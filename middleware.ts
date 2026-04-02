@@ -9,6 +9,7 @@ import {
   SESSION_MAX_AGE,
   slotKeyToCookieName,
 } from '@/lib/auth-cookie';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 const LOGIN_PATH = '/login';
 const PUBLIC_PATHS = [
@@ -51,7 +52,7 @@ function activateSlotOnResponse(request: NextRequest, slotKey: string): NextResp
   return res;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (pathname.startsWith('/api')) {
@@ -87,11 +88,37 @@ export function middleware(request: NextRequest) {
     const schoolCodeInPath = pathParts.length > 1 ? String(pathParts[1] || '').toUpperCase() : '';
     const desiredSlotKey = schoolCodeInPath ? buildAuthCookieValue('school', schoolCodeInPath) : '';
 
+    const isAcademicYearSetupRoute = pathname.includes('/academic-year-management/year-setup');
+
     if (
       auth?.role === 'school' &&
       schoolCodeInPath &&
       auth.schoolCode?.toUpperCase() === schoolCodeInPath
     ) {
+      // Force academic year setup if school has no current academic year.
+      // We use `academic_years.is_current=true` as the source of truth.
+      if (!isAcademicYearSetupRoute) {
+        try {
+          const supabase = getServiceRoleClient();
+          const { data: currentYearRow } = await supabase
+            .from('academic_years')
+            .select('id')
+            .eq('school_code', schoolCodeInPath)
+            .eq('is_current', true)
+            .maybeSingle();
+
+          if (!currentYearRow) {
+            const setupUrl = new URL(
+              `/dashboard/${schoolCodeInPath}/academic-year-management/year-setup`,
+              request.url
+            );
+            setupUrl.searchParams.set('required', '1');
+            return NextResponse.redirect(setupUrl);
+          }
+        } catch {
+          // Fail open (don't block if the check fails).
+        }
+      }
       return NextResponse.next();
     }
 

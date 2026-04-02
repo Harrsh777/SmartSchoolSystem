@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { resolveAcademicYear } from '@/lib/academic-year-id';
 
 interface PromotionRuleRow {
   from_class: string;
@@ -17,14 +18,25 @@ interface PromotionRuleRow {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, from_year, to_year } = body;
+    const { school_code, from_year, from_academic_year_id, to_year, to_academic_year_id } = body;
 
-    if (!school_code || !from_year || !to_year) {
+    if (!school_code || (!from_year && !from_academic_year_id) || (!to_year && !to_academic_year_id)) {
       return NextResponse.json(
-        { error: 'school_code, from_year, and to_year are required' },
+        { error: 'school_code, from_year or from_academic_year_id, and to_year or to_academic_year_id are required' },
         { status: 400 }
       );
     }
+
+    const fromResolved = await resolveAcademicYear({
+      schoolCode: school_code,
+      academic_year: from_year,
+      academic_year_id: from_academic_year_id,
+    });
+    const toResolved = await resolveAcademicYear({
+      schoolCode: school_code,
+      academic_year: to_year,
+      academic_year_id: to_academic_year_id,
+    });
 
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
@@ -40,7 +52,7 @@ export async function POST(request: NextRequest) {
       .from('students')
       .select('id, admission_no, student_name, class, section, academic_year')
       .eq('school_code', school_code)
-      .eq('academic_year', from_year)
+      .eq('academic_year', fromResolved.yearName)
       .eq('status', 'active');
 
     if (studentsError) {
@@ -109,8 +121,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       data: {
-        from_year,
-        to_year,
+        from_year: fromResolved.yearName,
+        to_year: toResolved.yearName,
         total: proposed.length,
         proposed,
       },

@@ -1230,7 +1230,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     // Classes
     { label: 'Classes', path: '/classes', category: 'Classes', icon: BookOpen },
     { label: 'Classes Overview', path: '/classes/overview', category: 'Classes', icon: BookOpen, parent: 'Classes' },
-    { label: 'Modify Classes', path: '/classes/modify', category: 'Classes', icon: BookOpen, parent: 'Classes' },
+    { label: 'Add/Modify Classes', path: '/classes/modify', category: 'Classes', icon: BookOpen, parent: 'Classes' },
     { label: 'Subject Teachers', path: '/classes/subject-teachers', category: 'Classes', icon: BookOpen, parent: 'Classes' },
     { label: 'Add/Modify Subjects', path: '/classes/subjects', category: 'Classes', icon: BookOpen, parent: 'Classes' },
     

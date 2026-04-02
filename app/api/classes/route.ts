@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { resolveAcademicYear } from '@/lib/academic-year-id';
+import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
 /** Escape % and _ for use in ilike so class/section match is case-insensitive and exact. */
 function escapeIlike(value: string): string {
@@ -105,14 +107,41 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, class: className, section, academic_year } = body;
+    const { school_code, class: className, section } = body;
 
-    if (!school_code || !className || !section || !academic_year) {
+    if (!school_code || !className || !section) {
       return NextResponse.json(
-        { error: 'School code, class, section, and academic year are required' },
+        { error: 'School code, class, and section are required' },
         { status: 400 }
       );
     }
+
+    const { data: currentYearRow } = await supabase
+      .from('academic_years')
+      .select('id, year_name')
+      .eq('school_code', school_code)
+      .eq('is_current', true)
+      .maybeSingle();
+    if (!currentYearRow?.id || !currentYearRow?.year_name) {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
+    const { yearId: academicYearResolvedId, yearName: academicYearResolvedName } = await resolveAcademicYear({
+      schoolCode: school_code,
+      academic_year: String(currentYearRow.year_name),
+      academic_year_id: String(currentYearRow.id),
+    });
+
+    // Prevent writing into locked academic years.
+    const adminOverride = request.headers.get('x-admin-override') === 'true';
+    const lockCheck = await assertAcademicYearNotLocked({
+      schoolCode: school_code,
+      academic_year_id: academicYearResolvedId,
+      adminOverride,
+    });
+    if (lockCheck) return lockCheck;
 
     // Get school ID
     const { data: schoolData, error: schoolError } = await supabase
@@ -135,7 +164,7 @@ export async function POST(request: NextRequest) {
       .eq('school_code', school_code)
       .eq('class', className)
       .eq('section', section)
-      .eq('academic_year', academic_year)
+      .eq('academic_year', academicYearResolvedName)
       .single();
 
     if (existing) {
@@ -153,7 +182,8 @@ export async function POST(request: NextRequest) {
         school_code: school_code,
         class: className.toUpperCase(),
         section: section.toUpperCase(),
-        academic_year: academic_year,
+        academic_year: academicYearResolvedName,
+        academic_year_id: academicYearResolvedId,
       }])
       .select()
       .single();

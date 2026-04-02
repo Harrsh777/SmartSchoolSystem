@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -21,12 +21,32 @@ export default function CreateExamModal({
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    academic_year: new Date().getFullYear().toString(),
+    academic_year: '',
     start_date: '',
     end_date: '',
     description: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const loadCurrentAcademicYear = async () => {
+      try {
+        const res = await fetch(`/api/schools/current-academic-year?school_code=${encodeURIComponent(schoolCode)}`);
+        const data = await res.json();
+        if (res.ok) {
+          setFormData((prev) => ({
+            ...prev,
+            academic_year: String(data.current_academic_year || data.data || '').trim(),
+          }));
+        } else {
+          setErrors((prev) => ({ ...prev, academic_year: data.error || 'Setup academic year first from Academic Year Management module.' }));
+        }
+      } catch {
+        setErrors((prev) => ({ ...prev, academic_year: 'Failed to load current academic year' }));
+      }
+    };
+    loadCurrentAcademicYear();
+  }, [schoolCode]);
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -147,9 +167,10 @@ export default function CreateExamModal({
               <Input
                 type="text"
                 value={formData.academic_year}
-                onChange={(e) => handleChange('academic_year', e.target.value)}
+                readOnly
                 required
-                placeholder="e.g., 2025"
+                placeholder="Auto-fetched from Academic Year Management"
+                className="bg-gray-50 cursor-not-allowed"
               />
               {errors.academic_year && (
                 <p className="text-red-600 text-sm mt-1">{errors.academic_year}</p>

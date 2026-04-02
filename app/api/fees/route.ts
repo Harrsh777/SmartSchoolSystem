@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requirePermission } from '@/lib/api-permissions';
+import { resolveAcademicYear } from '@/lib/academic-year-id';
+import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
 // Helper function to fetch fee with related data
 async function fetchFeeWithRelations(feeId: string, schoolCode: string) {
@@ -231,7 +233,7 @@ export async function POST(request: NextRequest) {
     // Verify student exists
     const { data: studentData, error: studentError } = await supabase
       .from('students')
-      .select('id, admission_no, school_code')
+      .select('id, admission_no, school_code, academic_year')
       .eq('id', student_id)
       .eq('school_code', school_code)
       .single();
@@ -242,6 +244,20 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Resolve academic year from student and enforce lock.
+    const resolvedAcademicYear = await resolveAcademicYear({
+      schoolCode: school_code,
+      academic_year: studentData.academic_year,
+    });
+
+    const adminOverride = request.headers.get('x-admin-override') === 'true';
+    const lockCheck = await assertAcademicYearNotLocked({
+      schoolCode: school_code,
+      academic_year_id: resolvedAcademicYear.yearId,
+      adminOverride,
+    });
+    if (lockCheck) return lockCheck;
 
     // Verify accountant exists and has correct role
     const { data: accountantData, error: accountantError } = await supabase
@@ -299,6 +315,8 @@ export async function POST(request: NextRequest) {
       student_id: student_id,
       admission_no: admission_no,
       amount: Number(amount),
+      academic_year_id: resolvedAcademicYear.yearId,
+      academic_year: resolvedAcademicYear.yearName,
       payment_mode: payment_mode,
       receipt_no: receipt_no,
       payment_date: payment_date || new Date().toISOString().split('T')[0],

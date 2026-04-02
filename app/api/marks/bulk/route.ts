@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { logAudit } from '@/lib/audit-logger';
+import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
 /**
  * Bulk insert/update marks for multiple students
@@ -32,9 +33,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve academic year from the exam (marks table is academic-year scoped).
+    const { data: examData, error: examError } = await supabase
+      .from('examinations')
+      .select('academic_year_id, academic_year')
+      .eq('id', exam_id)
+      .eq('school_code', school_code)
+      .maybeSingle();
+
+    if (examError || !examData) {
+      return NextResponse.json({ error: 'Examination not found' }, { status: 404 });
+    }
+
+    const adminOverride = request.headers.get('x-admin-override') === 'true';
+    const lockCheck = await assertAcademicYearNotLocked({
+      schoolCode: school_code,
+      academic_year_id: examData.academic_year_id,
+      adminOverride,
+    });
+    if (lockCheck) return lockCheck;
+
     // Validate all marks
     const errors: Array<{ student_id: string; error: string }> = [];
-    const validMarks = [];
+    const validMarks: any[] = [];
 
     for (const mark of marksArray) {
       const { student_id, admission_no, max_marks, marks_obtained, remarks } = mark;
@@ -78,6 +99,8 @@ export async function POST(request: NextRequest) {
         school_id: schoolData.id,
         school_code,
         admission_no,
+        academic_year_id: examData.academic_year_id,
+        academic_year: examData.academic_year,
         max_marks,
         marks_obtained,
         remarks: remarks || null,
@@ -93,14 +116,42 @@ export async function POST(request: NextRequest) {
     }
 
     // Bulk upsert marks
-    const { data: savedMarks, error: insertError } = await supabase
-      .from('marks')
-      .upsert(validMarks, {
-        onConflict: 'exam_id,student_id',
-      })
-      .select();
+    const upsertWithLegacy = async (rows: typeof validMarks) =>
+      supabase
+        .from('marks')
+        .upsert(rows, {
+          onConflict: 'exam_id,student_id',
+        })
+        .select();
+
+    const { data: savedMarks, error: insertError } = await upsertWithLegacy(validMarks);
 
     if (insertError) {
+      const missingAcademicYearCol =
+        insertError?.message?.includes('academic_year') &&
+        (insertError?.message?.includes('does not exist') || insertError?.message?.includes('column'));
+
+      if (missingAcademicYearCol) {
+        // Retry without legacy `academic_year` column.
+        const stripped = validMarks.map(({ academic_year, ...rest }) => rest);
+        const { data: savedMarks2, error: insertError2 } = await upsertWithLegacy(stripped as any);
+        if (insertError2) {
+          return NextResponse.json(
+            { error: 'Failed to save marks', details: insertError2.message },
+            { status: 500 }
+          );
+        }
+        return NextResponse.json({
+          data: savedMarks2,
+          summary: {
+            total: marksArray.length,
+            saved: savedMarks2?.length || 0,
+            errors: errors.length,
+          },
+          errors: errors.length > 0 ? errors : undefined,
+        }, { status: 201 });
+      }
+
       return NextResponse.json(
         { error: 'Failed to save marks', details: insertError.message },
         { status: 500 }

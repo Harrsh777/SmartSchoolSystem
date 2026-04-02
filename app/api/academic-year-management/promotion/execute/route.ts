@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { resolveAcademicYear } from '@/lib/academic-year-id';
 
 /**
  * POST /api/academic-year-management/promotion/execute
@@ -12,14 +13,28 @@ import { supabase } from '@/lib/supabase';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, from_year, to_year: bodyToYear, actions, performed_by } = body;
+    const {
+      school_code,
+      from_year,
+      from_academic_year_id,
+      to_year: bodyToYear,
+      to_academic_year_id: bodyToYearId,
+      actions,
+      performed_by,
+    } = body;
 
-    if (!school_code || !from_year || !Array.isArray(actions) || actions.length === 0) {
+    if (!school_code || (!from_year && !from_academic_year_id) || !Array.isArray(actions) || actions.length === 0) {
       return NextResponse.json(
-        { error: 'school_code, from_year, and non-empty actions array are required' },
+        { error: 'school_code, from_year or from_academic_year_id, and non-empty actions array are required' },
         { status: 400 }
       );
     }
+
+    const fromResolved = await resolveAcademicYear({
+      schoolCode: school_code,
+      academic_year: from_year,
+      academic_year_id: from_academic_year_id,
+    });
 
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
@@ -35,6 +50,7 @@ export async function POST(request: NextRequest) {
       school_code: string;
       student_id: string;
       academic_year: string;
+      academic_year_id: string;
       class: string;
       section: string;
       roll_no: string | null;
@@ -49,8 +65,21 @@ export async function POST(request: NextRequest) {
       const studentId = a.student_id;
       if (!studentId) continue;
 
-      const toYear = (a.to_year || bodyToYear || from_year).toString().trim();
-      if (!toYear) continue;
+      const candidateToYearName = (a.to_year || bodyToYear || fromResolved.yearName).toString().trim();
+      const candidateToYearId = a.to_academic_year_id || bodyToYearId || null;
+
+      // Resolve target academic year id + name (used for both partition key + legacy column).
+      let toResolved: { yearId: string; yearName: string };
+      try {
+        toResolved = await resolveAcademicYear({
+          schoolCode: school_code,
+          academic_year_id: candidateToYearId,
+          academic_year: candidateToYearName,
+        });
+      } catch {
+        // Safe handling: if mapping fails, skip that row.
+        continue;
+      }
 
       const currentClass = (a.current_class ?? '').toString().trim();
       const currentSection = (a.current_section ?? '').toString().trim();
@@ -61,7 +90,8 @@ export async function POST(request: NextRequest) {
         enrollmentsToInsert.push({
           school_code,
           student_id: studentId,
-          academic_year: toYear,
+          academic_year: toResolved.yearName,
+          academic_year_id: toResolved.yearId,
           class: currentClass,
           section: currentSection,
           roll_no: null,
@@ -72,7 +102,7 @@ export async function POST(request: NextRequest) {
           id: studentId,
           class: currentClass,
           section: currentSection,
-          academic_year: from_year,
+          academic_year: fromResolved.yearName,
           status: 'transferred',
         });
         continue;
@@ -82,7 +112,8 @@ export async function POST(request: NextRequest) {
         enrollmentsToInsert.push({
           school_code,
           student_id: studentId,
-          academic_year: toYear,
+          academic_year: toResolved.yearName,
+          academic_year_id: toResolved.yearId,
           class: currentClass,
           section: currentSection,
           roll_no: a.roll_no ?? null,
@@ -93,7 +124,7 @@ export async function POST(request: NextRequest) {
           id: studentId,
           class: currentClass,
           section: currentSection,
-          academic_year: toYear,
+          academic_year: toResolved.yearName,
         });
         continue;
       }
@@ -102,7 +133,8 @@ export async function POST(request: NextRequest) {
         enrollmentsToInsert.push({
           school_code,
           student_id: studentId,
-          academic_year: toYear,
+          academic_year: toResolved.yearName,
+          academic_year_id: toResolved.yearId,
           class: targetClass,
           section: targetSection,
           roll_no: a.roll_no ?? null,
@@ -113,7 +145,7 @@ export async function POST(request: NextRequest) {
           id: studentId,
           class: targetClass,
           section: targetSection,
-          academic_year: toYear,
+          academic_year: toResolved.yearName,
         });
       }
     }
@@ -149,13 +181,13 @@ export async function POST(request: NextRequest) {
       await supabase.from('students').update(updatePayload).eq('id', u.id);
     }
 
-    const firstToYear = enrollmentsToInsert[0]?.academic_year || bodyToYear || from_year;
+    const firstToYear = enrollmentsToInsert[0]?.academic_year || bodyToYear || fromResolved.yearName;
     try {
       await supabase.from('academic_year_audit_log').insert([
         {
           school_code,
           action: 'promotion_execute',
-          academic_year_from: from_year,
+          academic_year_from: fromResolved.yearName,
           academic_year_to: firstToYear,
           performed_by: performed_by || null,
           details: { count: enrollmentsToInsert.length, student_updates: studentUpdates.length },
@@ -167,7 +199,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       data: {
-        from_year,
+        from_year: fromResolved.yearName,
         to_year: firstToYear,
         enrollments_created: enrollmentsToInsert.length,
         students_updated: studentUpdates.length,

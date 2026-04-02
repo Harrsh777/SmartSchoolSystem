@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -25,7 +25,8 @@ export default function BulkAddClassesModal({
   onSuccess,
 }: BulkAddClassesModalProps) {
   const [saving, setSaving] = useState(false);
-  const [academicYear, setAcademicYear] = useState<string>(new Date().getFullYear().toString());
+  const [academicYear, setAcademicYear] = useState<string>('');
+  const [loadingAcademicYear, setLoadingAcademicYear] = useState(true);
   const [classes, setClasses] = useState<ClassEntry[]>([
     { id: '1', class: '', section: '' },
   ]);
@@ -48,6 +49,30 @@ export default function BulkAddClassesModal({
     ));
   };
 
+  useEffect(() => {
+    const fetchCurrentAcademicYear = async () => {
+      try {
+        setLoadingAcademicYear(true);
+        const response = await fetch(
+          `/api/schools/current-academic-year?school_code=${encodeURIComponent(schoolCode)}`
+        );
+        const result = await response.json();
+        if (response.ok) {
+          setAcademicYear(String(result.current_academic_year || result.data || '').trim());
+        } else {
+          setAcademicYear('');
+          alert(result.error || 'Setup academic year first from Academic Year Management module.');
+        }
+      } catch {
+        setAcademicYear('');
+        alert('Failed to load current academic year');
+      } finally {
+        setLoadingAcademicYear(false);
+      }
+    };
+    fetchCurrentAcademicYear();
+  }, [schoolCode]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -59,7 +84,7 @@ export default function BulkAddClassesModal({
     }
 
     if (!academicYear.trim()) {
-      alert('Please enter an academic year');
+      alert('Setup academic year first from Academic Year Management module.');
       return;
     }
 
@@ -111,7 +136,7 @@ export default function BulkAddClassesModal({
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
       >
-        <Card className="relative flex flex-col h-full">
+        <Card className="relative flex flex-col max-h-[90vh]">
           <div className="flex items-center justify-between mb-6 flex-shrink-0">
             <h2 className="text-2xl font-bold text-black">Bulk Add Classes</h2>
             <button
@@ -122,8 +147,8 @@ export default function BulkAddClassesModal({
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-            <div className="flex-1 overflow-y-auto pr-2 space-y-6 mb-6">
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-4">
               {/* Academic Year */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -132,18 +157,18 @@ export default function BulkAddClassesModal({
                 <Input
                   type="text"
                   value={academicYear}
-                  onChange={(e) => setAcademicYear(e.target.value)}
+                  readOnly
                   required
-                  placeholder="e.g., 2025"
-                  className="max-w-xs"
+                  placeholder={loadingAcademicYear ? 'Loading academic year...' : 'Not configured'}
+                  className="max-w-xs bg-gray-50 cursor-not-allowed"
                 />
                 <p className="text-sm text-gray-500 mt-1">
-                  This academic year will be applied to all classes below
+                  This academic year is auto-fetched from Academic Year Management and will be applied to all classes below
                 </p>
               </div>
 
               {/* Classes Table */}
-              <div>
+              <div className="min-h-0">
                 <div className="flex items-center justify-between mb-4">
                   <label className="block text-sm font-semibold text-gray-700">
                     Classes <span className="text-red-500">*</span>
@@ -159,7 +184,7 @@ export default function BulkAddClassesModal({
                   </Button>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto overflow-y-auto max-h-[45vh] border border-gray-100 rounded-lg">
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
@@ -214,11 +239,11 @@ export default function BulkAddClassesModal({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 flex-shrink-0">
+            <div className="sticky bottom-0 bg-white flex justify-end gap-3 pt-4 border-t border-gray-200 flex-shrink-0">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving || loadingAcademicYear || !academicYear.trim()}>
                 {saving ? 'Creating...' : `Create ${classes.length} Class${classes.length !== 1 ? 'es' : ''}`}
               </Button>
             </div>

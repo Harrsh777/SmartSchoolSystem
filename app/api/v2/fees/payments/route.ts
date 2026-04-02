@@ -370,6 +370,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3b. Sync installment status (paid / partial / pending / overdue) from enriched balances
+    let enrichedAfterPayment: Awaited<ReturnType<typeof enrichStudentFeesWithAdjustments>> = [];
     try {
       const { data: refreshedFees } = await supabase
         .from('student_fees')
@@ -397,7 +398,7 @@ export async function POST(request: NextRequest) {
         .in('id', studentFeeIds);
 
       if (refreshedFees && refreshedFees.length > 0) {
-        const enrichedRefreshed = await enrichStudentFeesWithAdjustments(
+        enrichedAfterPayment = await enrichStudentFeesWithAdjustments(
           supabase,
           normalizedSchoolCode,
           studentCtx,
@@ -405,7 +406,7 @@ export async function POST(request: NextRequest) {
         );
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        for (const ef of enrichedRefreshed) {
+        for (const ef of enrichedAfterPayment) {
           const due = Number(ef.total_due || 0);
           const paidNum = Number(ef.paid_amount || 0);
           let nextStatus: string;
@@ -444,6 +445,22 @@ export async function POST(request: NextRequest) {
 
     const receiptNo = receiptNoData || `${normalizedSchoolCode}/REC/${currentYear}/${Date.now()}`;
 
+    const installments_after_payment = enrichedAfterPayment.map((ef) => {
+      const feeLabel =
+        String(ef.fee_source || '') === 'transport'
+          ? formatTransportFeeLabel((ef.transport_snapshot as TransportSnapshot) ?? null)
+          : String((ef.fee_structure as { name?: string } | null)?.name || 'Fee');
+      const billableGross =
+        Math.round((Number(ef.final_amount ?? 0) + Number(ef.late_fee ?? 0)) * 100) / 100;
+      return {
+        student_fee_id: ef.id,
+        fee_name: feeLabel,
+        billable_gross: billableGross,
+        paid_amount: Math.round(Number(ef.paid_amount ?? 0) * 100) / 100,
+        balance_due: Math.round(Number(ef.total_due ?? 0) * 100) / 100,
+      };
+    });
+
     // Get receipt data snapshot
     const receiptData = {
       student: {
@@ -475,6 +492,7 @@ export async function POST(request: NextRequest) {
           fee_name: feeLabel,
         };
       }),
+      installments_after_payment,
       collector: {
         id: collectedBy,
         staff_id: collectedByStaffId,

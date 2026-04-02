@@ -31,9 +31,15 @@ export async function GET(request: NextRequest) {
     // Get today's date string (used for exams and attendance queries)
     const today = new Date().toISOString().split('T')[0];
 
-    // Build student count query
-    let studentQuery = supabase.from('students').select('id', { count: 'exact', head: true }).eq('school_code', schoolCode).eq('status', 'active');
-    if (academicYear) studentQuery = studentQuery.eq('academic_year', academicYear);
+    // Build student count query (match /api/students: include null academic_year with selected year)
+    let studentQuery = supabase
+      .from('students')
+      .select('id', { count: 'exact', head: true })
+      .eq('school_code', schoolCode)
+      .eq('status', 'active');
+    if (academicYear) {
+      studentQuery = studentQuery.or(`academic_year.eq.${academicYear},academic_year.is.null`);
+    }
 
     // Run independent queries in parallel to reduce latency
     const [

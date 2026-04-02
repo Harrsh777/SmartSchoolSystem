@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -166,14 +166,25 @@ export default function DashboardPage({
     end_date?: string;
     status?: string;
     academic_year?: string;
+    term_id?: string | null;
     class?: {
       class: string;
       section: string;
       academic_year?: string;
     };
   }
-  const [upcomingExams, setUpcomingExams] = useState<Exam[]>([]);
-  const [previousExams, setPreviousExams] = useState<Exam[]>([]);
+
+  interface Term {
+    id: string;
+    name: string;
+    serial?: number;
+    start_date?: string | null;
+    end_date?: string | null;
+  }
+
+  const [terms, setTerms] = useState<Term[]>([]);
+  const [examsByTermId, setExamsByTermId] = useState<Record<string, Exam[]>>({});
+  const [expandedTermIds, setExpandedTermIds] = useState<Set<string>>(new Set());
   const [loadingExams, setLoadingExams] = useState(false);
   
   interface AdministrativeData {
@@ -242,15 +253,21 @@ export default function DashboardPage({
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);
+  const [isCurrentAcademicYearExpired, setIsCurrentAcademicYearExpired] = useState(false);
+
+  /** Ignore stale JSON when multiple dashboard requests overlap (refresh / academic year). */
+  const dashboardStatsSeq = useRef(0);
+  const dashboardDetailedSeq = useRef(0);
+  const dashboardFinancialSeq = useRef(0);
 
   useEffect(() => {
     if (!schoolCode) return;
     fetchSchoolData();
     fetchDashboardStats();
     fetchDetailedStats();
-    fetchFinancialData();
+    // fetchFinancialData: loaded by feePeriod effect to avoid duplicate concurrent calls on mount
     fetchTimetables();
-    fetchUpcomingExaminations();
+    fetchTermsAndExams();
     fetchAdministrativeData();
     fetchClassesAndSections();
     fetchAcademicYears();
@@ -392,58 +409,71 @@ export default function DashboardPage({
   };
 
   const fetchDashboardStats = async () => {
+    const seq = ++dashboardStatsSeq.current;
     try {
-      setLoading(true);
       const params = new URLSearchParams({ school_code: schoolCode });
       if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
-      const response = await fetch(`/api/dashboard/stats?${params}`, { next: { revalidate: 60 } });
+      const response = await fetch(`/api/dashboard/stats?${params}`);
       const result = await response.json();
-      
+
+      if (seq !== dashboardStatsSeq.current) return;
       if (response.ok && result.data) {
         setStats(result.data);
       }
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
     } finally {
-      setLoading(false);
+      if (seq === dashboardStatsSeq.current) {
+        setLoading(false);
+      }
     }
   };
 
   const fetchDetailedStats = async () => {
+    const seq = ++dashboardDetailedSeq.current;
     try {
       setLoadingDetailed(true);
       const params = new URLSearchParams({ school_code: schoolCode });
       if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
       const response = await fetch(`/api/dashboard/stats-detailed?${params}`);
       const result = await response.json();
+      if (seq !== dashboardDetailedSeq.current) return;
       if (response.ok && result.data) {
         setDetailedStats(result.data);
       }
     } catch (err) {
       console.error('Error fetching detailed stats:', err);
     } finally {
-      setLoadingDetailed(false);
+      if (seq === dashboardDetailedSeq.current) {
+        setLoadingDetailed(false);
+      }
     }
   };
 
   const fetchFinancialData = async () => {
     if (!schoolCode) return;
+    const seq = ++dashboardFinancialSeq.current;
     try {
       setLoadingFinancial(true);
       const params = new URLSearchParams({ school_code: schoolCode, period: feePeriod });
       if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
       const response = await fetch(`/api/dashboard/financial-overview?${params}`);
       const result = response.ok ? await response.json().catch(() => ({})) : {};
+      if (seq !== dashboardFinancialSeq.current) return;
       if (response.ok && result.data) {
         setFinancialData(result.data);
-      } else {
+      } else if (seq === dashboardFinancialSeq.current) {
         setFinancialData(null);
       }
     } catch (err) {
       console.error('Error fetching financial data:', err);
-      setFinancialData(null);
+      if (seq === dashboardFinancialSeq.current) {
+        setFinancialData(null);
+      }
     } finally {
-      setLoadingFinancial(false);
+      if (seq === dashboardFinancialSeq.current) {
+        setLoadingFinancial(false);
+      }
     }
   };
 
@@ -478,56 +508,71 @@ export default function DashboardPage({
     }
   };
 
-  const fetchUpcomingExaminations = async () => {
+  const toggleTermExpansion = (termId: string) => {
+    setExpandedTermIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(termId)) next.delete(termId);
+      else next.add(termId);
+      return next;
+    });
+  };
+
+  const getExamStatusMeta = (exam: Exam) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const examDate = exam.start_date ? new Date(exam.start_date) : null;
+    const isPast = examDate ? examDate < today : false;
+
+    if (exam.status === 'ongoing') {
+      return { label: 'Ongoing', className: 'bg-[#DCFCE7] text-[#22C55E]' };
+    }
+
+    if (exam.status === 'completed' || isPast) {
+      return { label: 'Previous', className: 'bg-[#FEF3C7] text-[#D97706]' };
+    }
+
+    return { label: 'Upcoming', className: 'bg-[#F1F5F9] dark:bg-[#2D3748] text-[#2C3E50] dark:text-[#5A879A]' };
+  };
+
+  const fetchTermsAndExams = async () => {
     try {
       setLoadingExams(true);
-      // Fetch all examinations
-      const response = await fetch(`/api/examinations?school_code=${schoolCode}`);
-      const result = await response.json();
-      if (response.ok && result.data) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        // Separate upcoming and previous exams
-        const upcoming: Exam[] = [];
-        const previous: Exam[] = [];
-        
-        result.data.forEach((exam: Exam) => {
-          if (!exam.start_date) return;
-          const examDate = new Date(exam.start_date);
-          examDate.setHours(0, 0, 0, 0);
-          
-          // Check if exam is upcoming or ongoing
-          if ((exam.status === 'upcoming' || exam.status === 'ongoing' || !exam.status) && examDate >= today) {
-            upcoming.push(exam);
-          } else if (examDate < today || exam.status === 'completed') {
-            // Previous exams are those with start_date < today or status = completed
-            previous.push(exam);
-          }
-        });
-        
-        // Sort upcoming by start_date ascending
-        upcoming.sort((a, b) => {
+      const [termsRes, examsRes] = await Promise.all([
+        fetch(`/api/terms?school_code=${schoolCode}`),
+        fetch(`/api/examinations?school_code=${schoolCode}`),
+      ]);
+
+      const termsJson = termsRes.ok ? await termsRes.json().catch(() => ({})) : {};
+      const examsJson = examsRes.ok ? await examsRes.json().catch(() => ({})) : {};
+
+      const fetchedTerms = (termsJson?.data ?? []) as Term[];
+      const exams = (examsJson?.data ?? []) as Exam[];
+
+      const map: Record<string, Exam[]> = {};
+      exams.forEach((exam) => {
+        const termId = exam.term_id ? String(exam.term_id) : '';
+        if (!termId) return;
+        if (!map[termId]) map[termId] = [];
+        map[termId].push(exam);
+      });
+
+      // Sort exams inside each term by start_date ascending
+      Object.keys(map).forEach((termId) => {
+        map[termId].sort((a, b) => {
           if (!a.start_date || !b.start_date) return 0;
           return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
         });
-        
-        // Sort previous by start_date descending (most recent first)
-        previous.sort((a, b) => {
-          if (!a.start_date || !b.start_date) return 0;
-          return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
-        });
-        
-        setUpcomingExams(upcoming.slice(0, 10)); // Limit to 10 upcoming exams
-        setPreviousExams(previous.slice(0, 10)); // Limit to 10 previous exams
-      } else {
-        setUpcomingExams([]);
-        setPreviousExams([]);
-      }
+      });
+
+      setTerms(fetchedTerms);
+      setExamsByTermId(map);
+      setExpandedTermIds(new Set());
     } catch (err) {
       console.error('Error fetching examinations:', err);
-      setUpcomingExams([]);
-      setPreviousExams([]);
+      setTerms([]);
+      setExamsByTermId({});
+      setExpandedTermIds(new Set());
     } finally {
       setLoadingExams(false);
     }
@@ -536,21 +581,37 @@ export default function DashboardPage({
   const fetchAcademicYears = async () => {
     try {
       setLoadingAcademicYears(true);
-      const response = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
+      const response = await fetch(`/api/academic-year-management/years?school_code=${encodeURIComponent(schoolCode)}`);
       const result = await response.json();
-      if (response.ok && result.data && result.data.length > 0) {
-        setAcademicYears(result.data);
-        setSelectedAcademicYear(prev => prev || result.data[0]);
+      if (response.ok && Array.isArray(result.data) && result.data.length > 0) {
+        const rows = result.data as Array<{ year_name?: string; is_current?: boolean; end_date?: string | null }>;
+        const years = rows
+          .map((r) => String(r.year_name || '').trim())
+          .filter(Boolean);
+        setAcademicYears(years);
+
+        const currentRow = rows.find((r) => r.is_current && r.year_name);
+        const fallbackYear = years[0] || '';
+        const selectedYear = currentRow?.year_name ? String(currentRow.year_name) : fallbackYear;
+        setSelectedAcademicYear(prev => prev || selectedYear);
+
+        const endDate = String(currentRow?.end_date || '').trim();
+        if (endDate) {
+          const expiry = new Date(`${endDate}T23:59:59`);
+          setIsCurrentAcademicYearExpired(Number.isFinite(expiry.getTime()) && Date.now() > expiry.getTime());
+        } else {
+          setIsCurrentAcademicYearExpired(false);
+        }
       } else {
-        const currentYear = new Date().getFullYear().toString();
-        setAcademicYears([currentYear]);
-        setSelectedAcademicYear(prev => prev || currentYear);
+        setAcademicYears([]);
+        setSelectedAcademicYear('');
+        setIsCurrentAcademicYearExpired(false);
       }
     } catch (err) {
       console.error('Error fetching academic years:', err);
-      const currentYear = new Date().getFullYear().toString();
-      setAcademicYears([currentYear]);
-      setSelectedAcademicYear(prev => prev || currentYear);
+      setAcademicYears([]);
+      setSelectedAcademicYear('');
+      setIsCurrentAcademicYearExpired(false);
     } finally {
       setLoadingAcademicYears(false);
     }
@@ -799,6 +860,20 @@ export default function DashboardPage({
         animate={{ opacity: 1, y: 0 }}
         className="mb-6"
       >
+        {isCurrentAcademicYearExpired && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <AlertCircleIcon size={18} className="shrink-0" />
+              Your current academic year is expired. Please create a new academic year.
+            </div>
+            <Button
+              onClick={() => router.push(`/dashboard/${schoolCode}/academic-year-management/year-setup`)}
+              className="shrink-0"
+            >
+              Setup Academic Year
+            </Button>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
               {school && typeof (school as unknown as { logo_url?: string }).logo_url === 'string' && (school as unknown as { logo_url?: string }).logo_url ? (
@@ -1517,7 +1592,7 @@ export default function DashboardPage({
           <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <FileText className="text-[#64748B]" size={18} strokeWidth={2} />
-            Examination Management
+            Term Management
           </h3>
           <button
             onClick={() => router.push(`/dashboard/${schoolCode}/examinations/create`)}
@@ -1534,100 +1609,103 @@ export default function DashboardPage({
             </div>
           ) : (
           <div className="space-y-3">
-            {upcomingExams.length > 0 ? (
-              // Show upcoming examinations
-              upcomingExams.map((exam) => (
-                <div
-                  key={exam.id}
-                  className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB] hover:bg-[#F1F5F9] transition-colors cursor-pointer"
-                  onClick={() => router.push(`/dashboard/${schoolCode}/examinations`)}
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-sm font-semibold text-[#0F172A]">{exam.exam_name}</h4>
-                      {exam.status && (
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          exam.status === 'ongoing' 
-                            ? 'bg-[#DCFCE7] text-[#22C55E]' 
-                            : 'bg-[#F1F5F9] dark:bg-[#2D3748] text-[#2C3E50] dark:text-[#5A879A]'
-                        }`}>
-                          {exam.status === 'ongoing' ? 'Ongoing' : 'Upcoming'}
-                    </span>
-                  )}
-                </div>
-                    <div className="flex items-center gap-4 text-xs text-[#64748B]">
-                      {exam.exam_type && (
-                        <span className="flex items-center gap-1">
-                          <FileText size={12} />
-                          {exam.exam_type}
-                    </span>
-                      )}
-                      {exam.start_date && (
-                        <span className="flex items-center gap-1">
-                          <Calendar size={12} />
-                          {new Date(exam.start_date).toLocaleDateString()}
-                    </span>
-                      )}
-                      {exam.class && (
-                        <span>
-                          {exam.class.class}-{exam.class.section}
-                          {exam.class.academic_year && ` (${exam.class.academic_year})`}
-                    </span>
-                      )}
-              </div>
-                </div>
-                  <ChevronDown size={16} className="text-[#64748B] rotate-[-90deg]" />
-                </div>
-              ))
-            ) : previousExams.length > 0 ? (
-              // If no upcoming exams, show previous examinations
-              previousExams.map((exam) => (
-                <div
-                  key={exam.id}
-                  className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB] hover:bg-[#F1F5F9] transition-colors cursor-pointer"
-                  onClick={() => router.push(`/dashboard/${schoolCode}/examinations`)}
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-sm font-semibold text-[#0F172A]">{exam.exam_name}</h4>
-                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-[#FEF3C7] text-[#D97706]">
-                        Previous
-                      </span>
+            {terms.length > 0 ? (
+              terms.map((term) => {
+                const termExams = examsByTermId[term.id] ?? [];
+                const isExpanded = expandedTermIds.has(term.id);
+
+                return (
+                  <div key={term.id} className="rounded-lg border border-[#E5E7EB] overflow-hidden">
+                    <div
+                      className="flex items-center justify-between p-3 bg-[#F8FAFC] hover:bg-[#F1F5F9] transition-colors cursor-pointer"
+                      onClick={() => toggleTermExpansion(term.id)}
+                    >
+                      <div className="flex-1 pr-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="text-sm font-semibold text-[#0F172A]">{term.name}</h4>
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-[#F1F5F9] dark:bg-[#2D3748] text-[#2C3E50] dark:text-[#5A879A]">
+                            {termExams.length} Exams
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-xs text-[#64748B]">
+                          {term.start_date && (
+                            <span className="flex items-center gap-1">
+                              <Calendar size={12} />
+                              {new Date(term.start_date).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <ChevronDown
+                        size={16}
+                        className={`text-[#64748B] transition-transform ${isExpanded ? 'rotate-0' : 'rotate-[-90deg]'}`}
+                      />
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-[#64748B]">
-                      {exam.exam_type && (
-                        <span className="flex items-center gap-1">
-                          <FileText size={12} />
-                          {exam.exam_type}
-                    </span>
-                      )}
-                      {exam.start_date && (
-                        <span className="flex items-center gap-1">
-                          <Calendar size={12} />
-                          {new Date(exam.start_date).toLocaleDateString()}
-                    </span>
-                      )}
-                      {exam.class && (
-                        <span>
-                          {exam.class.class}-{exam.class.section}
-                          {exam.class.academic_year && ` (${exam.class.academic_year})`}
-                    </span>
-                      )}
-              </div>
-                </div>
-                  <ChevronDown size={16} className="text-[#64748B] rotate-[-90deg]" />
-                </div>
-              ))
+
+                    {isExpanded && (
+                      <div className="space-y-2 p-3 bg-white border-t border-[#E5E7EB]">
+                        {termExams.length > 0 ? (
+                          termExams.map((exam) => {
+                            const statusMeta = getExamStatusMeta(exam);
+                            return (
+                              <div
+                                key={exam.id}
+                                className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-lg border border-[#E5E7EB] hover:bg-[#F1F5F9] transition-colors cursor-pointer"
+                                onClick={() => router.push(`/dashboard/${schoolCode}/examinations`)}
+                              >
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="text-sm font-semibold text-[#0F172A]">{exam.exam_name}</h4>
+                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusMeta.className}`}>
+                                      {statusMeta.label}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-4 text-xs text-[#64748B]">
+                                    {exam.exam_type && (
+                                      <span className="flex items-center gap-1">
+                                        <FileText size={12} />
+                                        {exam.exam_type}
+                                      </span>
+                                    )}
+                                    {exam.start_date && (
+                                      <span className="flex items-center gap-1">
+                                        <Calendar size={12} />
+                                        {new Date(exam.start_date).toLocaleDateString()}
+                                      </span>
+                                    )}
+                                    {exam.class && (
+                                      <span>
+                                        {exam.class.class}-{exam.class.section}
+                                        {exam.class.academic_year && ` (${exam.class.academic_year})`}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-center text-sm text-[#64748B] py-6">
+                            No examinations mapped for this term
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             ) : (
-              // No examinations at all
+              // No terms at all
               <div className="text-center py-12">
                 <FileText className="mx-auto text-[#64748B] mb-3" size={48} />
-                <p className="text-[#0F172A] font-medium mb-1">No upcoming examinations</p>
-                <p className="text-sm text-[#64748B]">Create a new examination to get started</p>
-                </div>
+                <p className="text-[#0F172A] font-medium mb-1">No terms found</p>
+                <p className="text-sm text-[#64748B]">Create terms to manage examinations</p>
+              </div>
             )}
-            </div>
-          )}
+          </div>
+        )}
         </motion.div>
       </div>
 

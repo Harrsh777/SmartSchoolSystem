@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -18,8 +19,25 @@ interface AcademicYearRow {
   source?: 'academic_years' | 'classes';
 }
 
+function defaultDatesForAcademicYearLabel(yearLabel: string): { startDate: string; endDate: string } {
+  const startYear = parseInt(String(yearLabel || '').split('-')[0] || '', 10);
+  if (Number.isFinite(startYear)) {
+    return {
+      startDate: `${startYear}-04-01`,
+      endDate: `${startYear + 1}-03-31`,
+    };
+  }
+  const nowYear = new Date().getFullYear();
+  return {
+    startDate: `${nowYear}-04-01`,
+    endDate: `${nowYear + 1}-03-31`,
+  };
+}
+
 export default function YearSetupPage({ params }: { params: Promise<{ school: string }> }) {
   const { school: schoolCode } = use(params);
+  const searchParams = useSearchParams();
+  const setupRequired = searchParams.get('required') === '1';
   const [years, setYears] = useState<AcademicYearRow[]>([]);
   const [loadingYears, setLoadingYears] = useState(false);
   const [newYearName, setNewYearName] = useState('');
@@ -52,6 +70,12 @@ export default function YearSetupPage({ params }: { params: Promise<{ school: st
     fetchYears();
   }, [fetchYears]);
 
+  useEffect(() => {
+    const defaults = defaultDatesForAcademicYearLabel(newYearName);
+    setNewStartDate(defaults.startDate);
+    setNewEndDate(defaults.endDate);
+  }, [newYearName]);
+
   const handleCreateYear = async () => {
     if (!schoolCode || !newYearName.trim()) {
       setError('Year name is required');
@@ -60,6 +84,10 @@ export default function YearSetupPage({ params }: { params: Promise<{ school: st
     const parsed = parseAcademicYearName(newYearName);
     if (!parsed.ok) {
       setError(parsed.error);
+      return;
+    }
+    if (newStartDate && newEndDate && new Date(newStartDate).getTime() >= new Date(newEndDate).getTime()) {
+      setError('Start date must be before end date');
       return;
     }
     setCreating(true);
@@ -81,8 +109,9 @@ export default function YearSetupPage({ params }: { params: Promise<{ school: st
       if (res.ok) {
         setSuccess('Academic year created.');
         setNewYearName('');
-        setNewStartDate('');
-        setNewEndDate('');
+        const defaults = defaultDatesForAcademicYearLabel('');
+        setNewStartDate(defaults.startDate);
+        setNewEndDate(defaults.endDate);
         fetchYears();
         setTimeout(() => setSuccess(''), 3000);
       } else {
@@ -105,6 +134,13 @@ export default function YearSetupPage({ params }: { params: Promise<{ school: st
         </Link>
         <h1 className="text-lg font-semibold text-[#0F172A]">Year Setup</h1>
       </div>
+
+      {setupRequired && (
+        <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center gap-2 text-sm text-amber-900">
+          <AlertTriangle size={18} />
+          Setup academic year first from this module to continue.
+        </div>
+      )}
 
       {error && (
         <div className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-center gap-2 text-sm text-red-800">
@@ -129,7 +165,7 @@ export default function YearSetupPage({ params }: { params: Promise<{ school: st
           </Button>
         </div>
         <p className="text-xs text-[#64748B] mb-4">
-          List includes years from <strong>Year setup</strong> (academic_years table) and years that appear in the <strong>Classes</strong> table. The dashboard and other modules use the same combined list.
+          This list comes from <strong>Academic Year Management</strong> only. Other modules automatically use the current year configured here.
         </p>
         {loadingYears ? (
           <div className="flex items-center justify-center py-8">
@@ -162,7 +198,7 @@ export default function YearSetupPage({ params }: { params: Promise<{ school: st
                         <td className="py-2 text-[#64748B]">{y.end_date ?? '-'}</td>
                         <td className="py-2 text-[#64748B]">{y.status ?? 'active'}</td>
                         <td className="py-2">{y.is_current ? 'Yes' : '-'}</td>
-                        <td className="py-2 text-[#64748B]">{y.source === 'classes' ? 'From classes' : 'Year setup'}</td>
+                        <td className="py-2 text-[#64748B]">Year setup</td>
                       </tr>
                     ))
                   )}

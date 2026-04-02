@@ -46,6 +46,7 @@ export default function StaffDirectoryPage({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
   
   // Helper to safely get string value
   const getString = (value: unknown): string => {
@@ -184,6 +185,73 @@ export default function StaffDirectoryPage({
       setTimeout(() => setCopiedId(null), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
+    }
+  };
+
+  const csvEscape = (val: unknown) => {
+    const s = String(val ?? '');
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      // Export currently filtered+sorted staff (not just the current page).
+      const rowsToExport = sortedStaff;
+      const headers = [
+        'Staff ID',
+        'Employee Code',
+        'Full Name',
+        'Role',
+        'Designation',
+        'Qualification',
+        'Department',
+        'Phone',
+        'Email',
+        'Status',
+      ];
+
+      const csvRows = rowsToExport.map((m) => {
+        const status = m.is_active === false ? 'Inactive' : 'Active';
+        return [
+          getString(m.staff_id),
+          getString(m.employee_code),
+          getString(m.full_name),
+          getString(m.role),
+          getString(m.designation),
+          getString(m.qualification),
+          getString(m.department),
+          getString(m.phone),
+          getString(m.email),
+          status,
+        ].map(csvEscape);
+      });
+
+      const schoolPart = String(schoolCode || '').toUpperCase().replace(/[^a-z0-9_-]/gi, '');
+      const datePart = new Date().toISOString().slice(0, 10);
+      const fileName = `StaffDirectory_${schoolPart}_${selectedTab}_${statusFilter}_${datePart}.csv`
+        .replace(/\s+/g, '-')
+        .replace(/\/+/g, '-');
+
+      const csvContent = [headers.map(csvEscape).join(','), ...csvRows.map((r) => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export failed:', e);
+      alert('Failed to export staff. Please try again.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -403,9 +471,11 @@ export default function StaffDirectoryPage({
             <Button 
               variant="outline" 
               className="bg-[#1e3a8a] text-white hover:bg-[#3B82F6] border-[#1e3a8a]"
+              onClick={handleExport}
+              disabled={exporting || sortedStaff.length === 0}
             >
               <Download size={18} className="mr-2" />
-              Export
+              {exporting ? 'Exporting...' : 'Export'}
             </Button>
           </div>
         </div>

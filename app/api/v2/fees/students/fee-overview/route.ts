@@ -43,9 +43,13 @@ export async function GET(request: NextRequest) {
     const supabase = getServiceRoleClient();
     const code = schoolCode.toUpperCase();
 
+    const studentSelectWithRte =
+      'id, student_name, admission_no, class, section, father_name, school_code, is_rte';
+    const studentSelectLegacy = 'id, student_name, admission_no, class, section, father_name, school_code';
+
     let stQuery = supabase
       .from('students')
-      .select('id, student_name, admission_no, class, section, father_name, school_code')
+      .select(studentSelectWithRte)
       .eq('school_code', code)
       .order('student_name', { ascending: true })
       .limit(limit);
@@ -61,9 +65,39 @@ export async function GET(request: NextRequest) {
       stQuery = stQuery.or(`student_name.ilike.%${safe}%,admission_no.ilike.%${safe}%`);
     }
 
-    const { data: students, error: stErr } = await stQuery;
+    let students: Array<Record<string, unknown>> = [];
+    const { data: fetchedStudents, error: stErr } = await stQuery;
+
     if (stErr) {
-      return NextResponse.json({ error: stErr.message }, { status: 500 });
+      const missingIsRte =
+        /is_rte/i.test(stErr.message || '') &&
+        (/column/i.test(stErr.message || '') || /does not exist/i.test(stErr.message || ''));
+
+      if (!missingIsRte) {
+        return NextResponse.json({ error: stErr.message }, { status: 500 });
+      }
+
+      let legacyQuery = supabase
+        .from('students')
+        .select(studentSelectLegacy)
+        .eq('school_code', code)
+        .order('student_name', { ascending: true })
+        .limit(limit);
+
+      if (classFilter) legacyQuery = legacyQuery.ilike('class', escapeIlike(classFilter));
+      if (sectionFilter) legacyQuery = legacyQuery.ilike('section', escapeIlike(sectionFilter));
+      if (search.length >= 3) {
+        const safe = escapeIlike(search);
+        legacyQuery = legacyQuery.or(`student_name.ilike.%${safe}%,admission_no.ilike.%${safe}%`);
+      }
+
+      const { data: legacyStudents, error: legacyErr } = await legacyQuery;
+      if (legacyErr) {
+        return NextResponse.json({ error: legacyErr.message }, { status: 500 });
+      }
+      students = (legacyStudents || []) as Array<Record<string, unknown>>;
+    } else {
+      students = (fetchedStudents || []) as Array<Record<string, unknown>>;
     }
 
     const studentList = students || [];
@@ -71,7 +105,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: [] }, { status: 200 });
     }
 
-    const studentIds = studentList.map((s) => s.id);
+    const studentIds = studentList.map((s) => String(s.id));
 
     const { data: rawFees, error: feeErr } = await supabase
       .from('student_fees')
@@ -146,7 +180,7 @@ export async function GET(request: NextRequest) {
     }> = [];
 
     for (const st of studentList) {
-      let fees = feesByStudent.get(st.id) || [];
+      let fees = feesByStudent.get(String(st.id)) || [];
 
       fees = fees.filter((fee) => {
         const structure = fee.fee_structure as { is_active?: boolean } | null;
@@ -176,7 +210,7 @@ export async function GET(request: NextRequest) {
       const studentCtx = {
         id: String(st.id),
         class: String(st.class ?? ''),
-        section: st.section ?? null,
+        section: st.section != null && st.section !== '' ? String(st.section) : null,
       };
 
       const enriched = await enrichStudentFeesWithAdjustments(supabase, code, studentCtx, fees as never, {

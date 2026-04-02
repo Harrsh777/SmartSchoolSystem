@@ -810,6 +810,7 @@ export default function AdminDashboard() {
   const [creatingEmployee, setCreatingEmployee] = useState(false);
   const [newEmployeePassword, setNewEmployeePassword] = useState<string | null>(null);
   const [signupsViewMode, setSignupsViewMode] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all');
+  const [expandedSchoolCardId, setExpandedSchoolCardId] = useState<string | null>(null);
   const [demoRequests, setDemoRequests] = useState<DemoRequestRow[]>([]);
   const [demoRequestsLoading, setDemoRequestsLoading] = useState(false);
 
@@ -1622,6 +1623,22 @@ export default function AdminDashboard() {
         // Show generated credentials
         const schoolCode = result.school_code || 'N/A';
         const password = result.password || 'Password generated';
+        const schoolEmail =
+          (result?.data && typeof result.data.school_email === 'string' ? result.data.school_email : '') ||
+          (result?.data && typeof result.data.principal_email === 'string' ? result.data.principal_email : '');
+
+        // Best-effort: email credentials to the school's registered email.
+        if (schoolEmail && schoolCode && password && schoolCode !== 'N/A') {
+          try {
+            await fetch('/api/send-school-credentials-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ to: schoolEmail, schoolId: schoolCode, password }),
+            });
+          } catch (e) {
+            console.error('Failed to send credentials email:', e);
+          }
+        }
         alert(`School approved successfully!\n\nSchool Code: ${schoolCode}\nPassword: ${password}\n\nPlease share these credentials with the school. They will need both to log in.`);
       } else {
         const errorMsg = result.error || 'Failed to approve school';
@@ -1974,63 +1991,74 @@ export default function AdminDashboard() {
     const recordSource: 'pending' | 'accepted' | 'rejected' | null =
       schoolWithStatus._source ??
       (isPending ? 'pending' : isAccepted ? 'accepted' : isRejectedStatus ? 'rejected' : null);
+    const isExpanded = expandedSchoolCardId === schoolId;
 
     return (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        whileHover={{ y: -2 }}
+        whileHover={{ y: -1 }}
         transition={{ duration: 0.2 }}
       >
-        <Card className="hover:shadow-xl transition-all duration-300 border-l-4 border-l-[#5A7A95]">
-          <div className="p-6 lg:p-8">
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-3">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] flex items-center justify-center shadow-lg">
-                    <Building2 className="text-white" size={24} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-2xl font-bold text-gray-900 mb-1">{schoolName}</h3>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        isAccepted
-                          ? 'bg-green-100 text-green-700 border border-green-200'
-                          : isRejectedStatus
-                          ? 'bg-red-100 text-red-700 border border-red-200'
-                          : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                      }`}>
-                        {isAccepted ? 'Approved' : isRejectedStatus ? 'Rejected' : 'Pending'}
+        <Card className="hover:shadow-lg transition-all duration-300 border-l-4 border-l-[#5A7A95]">
+          <button
+            type="button"
+            onClick={() => setExpandedSchoolCardId((prev) => (prev === schoolId ? null : schoolId))}
+            className="w-full text-left"
+          >
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-gray-900 truncate">{schoolName}</h3>
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                      isAccepted
+                        ? 'bg-green-100 text-green-700 border border-green-200'
+                        : isRejectedStatus
+                        ? 'bg-red-100 text-red-700 border border-red-200'
+                        : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                    }`}>
+                      {isAccepted ? 'Approved' : isRejectedStatus ? 'Rejected' : 'Pending'}
+                    </span>
+                    {isAccepted && (school as AcceptedSchool).is_hold && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700 border border-red-200">
+                        On Hold
                       </span>
-                      {isAccepted && (school as AcceptedSchool).is_hold && (
-                        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
-                          On Hold
-                        </span>
-                      )}
-                      {schoolCode && (
-                        <span className="px-3 py-1 rounded-full text-xs font-mono font-semibold bg-[#5A7A95]/10 text-[#5A7A95] border border-[#5A7A95]/20">
-                          {schoolCode}
-                        </span>
-                      )}
-                    </div>
+                    )}
+                    {schoolCode && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-[#5A7A95]/10 text-[#5A7A95] border border-[#5A7A95]/20">
+                        {schoolCode}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-1">
+                    <span>
+                      <span className="text-gray-500">Established:</span>{' '}
+                      <span className="font-semibold">{'established_year' in school ? String(school.established_year || 'N/A') : 'N/A'}</span>
+                    </span>
+                    <span>
+                      <span className="text-gray-500">Type:</span>{' '}
+                      <span className="font-semibold">{'school_type' in school ? String(school.school_type || 'N/A') : 'N/A'}</span>
+                    </span>
+                    <span>
+                      <span className="text-gray-500">Affiliation:</span>{' '}
+                      <span className="font-semibold">{'affiliation' in school ? String(school.affiliation || 'N/A') : 'N/A'}</span>
+                    </span>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                  <div className="flex items-center space-x-2 text-sm">
-                    <span className="text-gray-500">Established:</span>
-                    <span className="font-semibold text-gray-700">{'established_year' in school ? String(school.established_year || 'N/A') : 'N/A'}</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-sm">
-                    <span className="text-gray-500">Type:</span>
-                    <span className="font-semibold text-gray-700">{'school_type' in school ? String(school.school_type || 'N/A') : 'N/A'}</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-sm">
-                    <span className="text-gray-500">Affiliation:</span>
-                    <span className="font-semibold text-gray-700">{'affiliation' in school ? String(school.affiliation || 'N/A') : 'N/A'}</span>
-                  </div>
-                </div>
+
+                <ChevronDown
+                  size={18}
+                  className={`text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                />
+              </div>
+            </div>
+          </button>
+
+          {isExpanded && (
+            <div className="px-4 pb-4">
               {rejectionReason && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                   <div className="flex items-start space-x-2">
                     <AlertCircle className="text-red-600 mt-0.5" size={16} />
                     <div>
@@ -2040,78 +2068,71 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2 ml-4">
-              {(isPending || status === 'pending') && (
-                <>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => openAcceptModal(schoolId, schoolName)}
-                    disabled={updatingId === schoolId}
-                  >
-                    <CheckCircle size={18} className="mr-2" />
-                    {updatingId === schoolId ? 'Updating...' : 'Approve'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openRejectModal(schoolId)}
-                    disabled={updatingId === schoolId}
-                    className="border-red-300 text-red-600 hover:bg-red-50"
-                  >
-                    <XCircle size={18} className="mr-2" />
-                    Reject
-                  </Button>
-                </>
-              )}
-              {isAccepted && schoolId && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const acceptedSchool = school as AcceptedSchool;
-                      openEditCredentialsModal(acceptedSchool);
-                    }}
-                    className="border-[#5A7A95] text-[#5A7A95] hover:bg-[#5A7A95]/10"
-                  >
-                    <Edit size={18} className="mr-2" />
-                    Edit Credentials
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const acceptedSchool = school as AcceptedSchool;
-                      openHoldModal(acceptedSchool);
-                    }}
-                    disabled={updatingId === schoolId}
-                    className={`border-red-300 text-red-600 hover:bg-red-50 ${(school as AcceptedSchool).is_hold ? 'bg-red-100' : ''}`}
-                  >
-                    <AlertCircle size={18} className="mr-2" />
-                    {(school as AcceptedSchool).is_hold ? 'On Hold' : 'Hold School'}
-                  </Button>
-                </>
-              )}
-              {recordSource && schoolId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openDeleteSchoolModal(schoolId, schoolName, recordSource)}
-                  disabled={updatingId === schoolId || deletingSchool}
-                  className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40"
-                >
-                  <Trash2 size={18} className="mr-2" />
-                  Delete
-                </Button>
-              )}
-            </div>
-          </div>
 
-            <div className="mt-6 grid md:grid-cols-2 gap-6">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                {(isPending || status === 'pending') && (
+                  <>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); openAcceptModal(schoolId, schoolName); }}
+                      disabled={updatingId === schoolId}
+                    >
+                      <CheckCircle size={18} className="mr-2" />
+                      {updatingId === schoolId ? 'Updating...' : 'Approve'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); openRejectModal(schoolId); }}
+                      disabled={updatingId === schoolId}
+                      className="border-red-300 text-red-600 hover:bg-red-50"
+                    >
+                      <XCircle size={18} className="mr-2" />
+                      Reject
+                    </Button>
+                  </>
+                )}
+                {isAccepted && schoolId && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); openEditCredentialsModal(school as AcceptedSchool); }}
+                      className="border-[#5A7A95] text-[#5A7A95] hover:bg-[#5A7A95]/10"
+                    >
+                      <Edit size={18} className="mr-2" />
+                      Edit Credentials
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); openHoldModal(school as AcceptedSchool); }}
+                      disabled={updatingId === schoolId}
+                      className={`border-red-300 text-red-600 hover:bg-red-50 ${(school as AcceptedSchool).is_hold ? 'bg-red-100' : ''}`}
+                    >
+                      <AlertCircle size={18} className="mr-2" />
+                      {(school as AcceptedSchool).is_hold ? 'On Hold' : 'Hold School'}
+                    </Button>
+                  </>
+                )}
+                {recordSource && schoolId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); openDeleteSchoolModal(schoolId, schoolName, recordSource); }}
+                    disabled={updatingId === schoolId || deletingSchool}
+                    className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40"
+                  >
+                    <Trash2 size={18} className="mr-2" />
+                    Delete
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-3">
               {/* Address Information */}
-              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 border border-gray-200 dark:border-gray-700">
                 <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
                   <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/10 flex items-center justify-center mr-2">
                     <MapPin size={16} className="text-[#5A7A95]" />
@@ -2126,7 +2147,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Contact Information */}
-              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 border border-gray-200 dark:border-gray-700">
                 <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
                   <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/10 flex items-center justify-center mr-2">
                     <Mail size={16} className="text-[#5A7A95]" />
@@ -2146,7 +2167,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Principal Information */}
-              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 border border-gray-200 dark:border-gray-700">
                 <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
                   <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/10 flex items-center justify-center mr-2">
                     <User size={16} className="text-[#5A7A95]" />
@@ -2167,7 +2188,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Date Information */}
-              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 border border-gray-200 dark:border-gray-700">
                 <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
                   <div className="w-8 h-8 rounded-lg bg-[#5A7A95]/10 flex items-center justify-center mr-2">
                     <Clock size={16} className="text-[#5A7A95]" />
@@ -2205,7 +2226,7 @@ export default function AdminDashboard() {
 
               {/* Admin Credentials - Only show for accepted schools */}
               {isAccepted && schoolId && (
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 border border-blue-200 dark:border-blue-800 md:col-span-2">
                   <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center">
                     <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center mr-2">
                       <Key size={16} className="text-blue-600 dark:text-blue-400" />
@@ -2245,8 +2266,9 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
+              </div>
             </div>
-          </div>
+          )}
         </Card>
       </motion.div>
     );

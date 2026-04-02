@@ -4,7 +4,7 @@ import React, { useState, FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
-import { GraduationCap, AlertCircle, Loader2 } from 'lucide-react';
+import { GraduationCap, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
 
 /* ---------------- VALIDATION ---------------- */
 
@@ -45,6 +45,10 @@ export default function SignupPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string,string>>({});
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStage, setSubmitStage] = useState<'form' | 'loading' | 'success'>('form');
+  const [lastSubmittedEmail, setLastSubmittedEmail] = useState<string>('');
+  const [lastSubmittedSchoolName, setLastSubmittedSchoolName] = useState<string>('');
+  const [emailSendOk, setEmailSendOk] = useState<boolean>(true);
 
 /* ---------------- FIELD VALIDATOR ---------------- */
 
@@ -142,6 +146,7 @@ const handleSubmit = async (e: FormEvent) => {
   if (!validateForm()) return;
 
   setIsSubmitting(true);
+  setSubmitStage('loading');
 
   try {
     const payload = Object.fromEntries(
@@ -158,16 +163,70 @@ const handleSubmit = async (e: FormEvent) => {
 
     if (!res.ok) throw new Error(result.error || 'Server error');
 
-    window.location.href = '/login';
+    // Store latest values for "Resend email".
+    const schoolName = String(payload.schoolName ?? '');
+    const email = String(payload.schoolEmail ?? '');
+    setLastSubmittedSchoolName(schoolName);
+    setLastSubmittedEmail(email);
+
+    // Best effort: send confirmation email (do not fail signup flow if email fails).
+    try {
+      const emailRes = await fetch('/api/send-signup-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schoolName, email }),
+      });
+      const emailResult = await emailRes.json().catch(() => ({}));
+      setEmailSendOk(Boolean(emailRes.ok && emailResult?.success));
+    } catch (emailErr) {
+      setEmailSendOk(false);
+      console.error('Signup email send failed:', emailErr);
+    }
+
+    // UX requirement: show loader for 5 seconds.
+    await new Promise((r) => setTimeout(r, 5000));
+    setSubmitStage('success');
 
   } catch (err: unknown) {
     setError(err instanceof Error ? err.message : 'Submission failed');
+    setSubmitStage('form');
   } finally {
     setIsSubmitting(false);
   }
 };
 
 /* ---------------- UI ---------------- */
+  if (submitStage === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#667EEA]/10 via-[#764BA2]/10 to-[#F093FB]/10 flex items-center justify-center px-4 py-12">
+        <motion.div className="w-full max-w-3xl bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/60 p-10">
+          <div className="text-center">
+            <Loader2 className="animate-spin mx-auto mb-4 text-[#764BA2]" size={40} />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Analyzing your school requirements…</h2>
+            <p className="text-gray-600">Please wait a moment.</p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (submitStage === 'success') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#667EEA]/10 via-[#764BA2]/10 to-[#F093FB]/10 flex items-center justify-center px-4 py-12">
+        <motion.div className="w-full max-w-3xl bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/60 p-10">
+          <div className="text-center">
+            <CheckCircle2 className="mx-auto mb-4 text-green-600" size={56} />
+            <h2 className="text-3xl font-bold text-gray-900 mb-3">Information sent to our experts</h2>
+            <p className="text-gray-600 mb-6">
+              {emailSendOk
+                ? 'Email has been sent to your registered email address. We will get back to you soon.'
+                : 'We received your registration. Our experts will get back to you soon. Please check spam or try again later if you don’t see an email.'}
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
 return (
 <div className="min-h-screen bg-gradient-to-br from-[#667EEA]/10 via-[#764BA2]/10 to-[#F093FB]/10 flex items-center justify-center px-4 py-12">

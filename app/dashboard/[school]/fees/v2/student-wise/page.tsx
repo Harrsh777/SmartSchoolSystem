@@ -25,6 +25,7 @@ type OverviewRow = {
     class: string;
     section: string;
     father_name: string | null;
+    is_rte?: boolean | null;
   };
   has_generated_fees: boolean;
   fee_structure_names: string[];
@@ -1115,6 +1116,7 @@ export default function StudentWiseFeesPage({
                   <th className="px-3 py-3 font-bold">Admission Id</th>
                   <th className="px-3 py-3 font-bold">Father Name</th>
                   <th className="px-3 py-3 font-bold">Class</th>
+                  <th className="px-3 py-3 font-bold">RTE</th>
                   <th className="px-3 py-3 font-bold">Receivable after discount</th>
                   <th className="px-3 py-3 font-bold">Paid till date</th>
                   <th className="px-3 py-3 font-bold">Fee due</th>
@@ -1124,13 +1126,13 @@ export default function StudentWiseFeesPage({
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="py-16 text-center">
+                    <td colSpan={10} className="py-16 text-center">
                       <Loader2 className="w-8 h-8 animate-spin text-teal-700 mx-auto" />
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-gray-500">
+                    <td colSpan={10} className="py-12 text-center text-gray-500">
                       No students match filters. Adjust class, section, or search.
                     </td>
                   </tr>
@@ -1150,6 +1152,17 @@ export default function StudentWiseFeesPage({
                       <td className="px-3 py-3 text-gray-700">{r.student.father_name || '—'}</td>
                       <td className="px-3 py-3">
                         {r.student.class} {r.student.section}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
+                            r.student.is_rte
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {r.student.is_rte ? 'RTE' : '—'}
+                        </span>
                       </td>
                       <td className="px-3 py-3">
                         <span className="inline-flex items-center gap-1 font-semibold text-gray-900">

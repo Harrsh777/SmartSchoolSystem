@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { resolveAcademicYear } from '@/lib/academic-year-id';
+import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
 export async function GET(request: NextRequest) {
   try {
@@ -85,6 +87,8 @@ export async function POST(request: NextRequest) {
       marks_obtained,
       remarks,
       entered_by,
+      academic_year,
+      academic_year_id,
     } = body;
 
     // Validation
@@ -135,7 +139,7 @@ export async function POST(request: NextRequest) {
     // Check if exam exists and is ongoing
     const { data: examData, error: examError } = await supabase
       .from('examinations')
-      .select('status')
+      .select('status, academic_year, academic_year_id')
       .eq('id', exam_id)
       .single();
 
@@ -146,27 +150,85 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve academic year id/name for marks row.
+    const { yearId: resolvedAcademicYearId, yearName: resolvedAcademicYearName } = await resolveAcademicYear({
+      schoolCode: school_code,
+      academic_year,
+      academic_year_id,
+    }).catch(async () => {
+      // Fallback to the exam's academic year if caller didn't provide it.
+      if (examData?.academic_year_id) {
+        const { yearId, yearName } = await resolveAcademicYear({
+          schoolCode: school_code,
+          academic_year_id: examData.academic_year_id,
+        });
+        return { yearId, yearName };
+      }
+      if (examData?.academic_year) {
+        const { yearId, yearName } = await resolveAcademicYear({
+          schoolCode: school_code,
+          academic_year: examData.academic_year,
+        });
+        return { yearId, yearName };
+      }
+      throw new Error('Unable to resolve academic year for marks insert');
+    });
+
+    const adminOverride = request.headers.get('x-admin-override') === 'true';
+    const lockCheck = await assertAcademicYearNotLocked({
+      schoolCode: school_code,
+      academic_year_id: resolvedAcademicYearId,
+      adminOverride,
+    });
+    if (lockCheck) return lockCheck;
+
     // Insert or update mark (upsert)
-    const { data: mark, error: insertError } = await supabase
-      .from('marks')
-      .upsert({
-        exam_id,
-        student_id,
-        class_id,
-        school_id: schoolData.id,
-        school_code,
-        admission_no,
-        max_marks,
-        marks_obtained,
-        remarks: remarks || null,
-        entered_by,
-      }, {
-        onConflict: 'exam_id,student_id',
-      })
-      .select()
-      .single();
+    // NOTE: During migration we also try to store legacy `academic_year` if the column exists.
+    const payloadWithLegacy: Record<string, unknown> = {
+      exam_id,
+      student_id,
+      class_id,
+      school_id: schoolData.id,
+      school_code,
+      admission_no,
+      academic_year_id: resolvedAcademicYearId,
+      academic_year: resolvedAcademicYearName,
+      max_marks,
+      marks_obtained,
+      remarks: remarks || null,
+      entered_by,
+    };
+
+    const upsertMarks = async (payload: Record<string, unknown>) => {
+      return supabase
+        .from('marks')
+        .upsert(payload, { onConflict: 'exam_id,student_id' })
+        .select()
+        .single();
+    };
+
+    const { data: mark, error: insertError } = await upsertMarks(payloadWithLegacy).catch(() => ({ data: null, error: { message: 'Upsert failed' } }));
 
     if (insertError) {
+      // Safe fallback: if legacy academic_year column doesn't exist yet, retry without it.
+      const missingAcademicYearCol =
+        insertError?.message?.includes('academic_year') &&
+        (insertError?.message?.includes('does not exist') || insertError?.message?.includes('column'));
+
+      if (missingAcademicYearCol) {
+        const { data: mark2, error: insertError2 } = await upsertMarks({
+          ...payloadWithLegacy,
+          academic_year: undefined,
+        });
+        if (insertError2) {
+          return NextResponse.json(
+            { error: 'Failed to save marks', details: insertError2.message },
+            { status: 500 }
+          );
+        }
+        return NextResponse.json({ data: mark2 }, { status: 201 });
+      }
+
       return NextResponse.json(
         { error: 'Failed to save marks', details: insertError.message },
         { status: 500 }

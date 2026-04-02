@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/api-permissions';
 import { isMissingFeeStructuresDeletedAtColumn } from '@/lib/fees/fee-structure-deleted-at-compat';
+import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 import {
   anchorYearFromAcademicYearLabel,
   computeInstallmentMonthsFromStructure,
@@ -146,7 +147,6 @@ export async function POST(request: NextRequest) {
       class_id,
       class_name,
       section,
-      academic_year,
       start_month,
       end_month,
       frequency,
@@ -183,7 +183,8 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceRoleClient();
     const normalizedSchoolCode = school_code.toUpperCase();
-    const normalizedAcademicYear = academic_year?.trim() || null;
+    const currentYear = await getRequiredCurrentAcademicYear(normalizedSchoolCode);
+    const normalizedAcademicYear = currentYear.year_name;
     const normalizedSection = section?.trim() || null;
     const normalizedClassName = class_name?.trim();
     const normalizedClassId = class_id ? String(class_id).trim() : null;
@@ -437,6 +438,12 @@ export async function POST(request: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
     console.error('Error in POST /api/v2/fees/fee-structures:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },

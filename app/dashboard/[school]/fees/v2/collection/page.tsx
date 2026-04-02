@@ -174,7 +174,7 @@ export default function PaymentCollectionPage({
   /** Receipt modal before final collect */
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
 
-  const [latestReceiptId, setLatestReceiptId] = useState<string | null>(null);
+  const [latestPaymentId, setLatestPaymentId] = useState<string | null>(null);
   const [latestReceiptNo, setLatestReceiptNo] = useState<string | null>(null);
 
   // Add-on manual lines for the active installment only (receipt-scoped in UI)
@@ -705,14 +705,18 @@ export default function PaymentCollectionPage({
       const result = await response.json();
 
       if (response.ok) {
-        const receiptId = result?.data?.receipt?.id ? String(result.data.receipt.id) : null;
+        const paymentId = result?.data?.payment?.id ? String(result.data.payment.id) : null;
         const receiptNo = result?.data?.receipt?.receipt_no
           ? String(result.data.receipt.receipt_no)
           : null;
 
-        setLatestReceiptId(receiptId);
+        setLatestPaymentId(paymentId);
         setLatestReceiptNo(receiptNo);
-        setSuccess('Payment collected successfully! Receipt generated.');
+        setSuccess(
+          receiptNo
+            ? `Payment collected successfully! Receipt no. ${receiptNo}`
+            : 'Payment collected successfully! Receipt generated.'
+        );
         setSelectedStudent(null);
         setStudentFees([]);
         setRecentPayments([]);
@@ -883,6 +887,22 @@ export default function PaymentCollectionPage({
     });
   };
 
+  /** Split a receipt amount across structure heads (for partial payments / this-receipt preview). */
+  const structureHeadAllocatedForReceipt = (fee: StudentFee, receiptAmount: number) => {
+    const items = fee.structure_line_items || [];
+    const totalTpl = items.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const amt = Math.max(0, Number(receiptAmount) || 0);
+    if (items.length === 0 || totalTpl <= 0) return [];
+    return items.map((i) => {
+      const a = Number(i.amount || 0);
+      return {
+        name: i.fee_head?.name || 'Fee head',
+        template: a,
+        allocated: Math.round(((a / totalTpl) * amt) * 100) / 100,
+      };
+    });
+  };
+
   const formatCurrency = (n: number) =>
     `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatDate = (d: string) =>
@@ -899,9 +919,10 @@ export default function PaymentCollectionPage({
       .join('')
       .toUpperCase();
 
-  const openReceiptView = async (receiptId: string) => {
+  const openReceiptView = async (paymentId: string) => {
     try {
-      const res = await fetch(`/api/fees/receipts/${receiptId}/download`);
+      const q = new URLSearchParams({ school_code: schoolCode });
+      const res = await fetch(`/api/fees/receipts/${paymentId}/download?${q.toString()}`);
       const html = await res.text();
       if (!res.ok) throw new Error('Failed to load receipt HTML');
       const w = window.open('', '_blank');
@@ -915,9 +936,10 @@ export default function PaymentCollectionPage({
     }
   };
 
-  const printReceipt = async (receiptId: string) => {
+  const printReceipt = async (paymentId: string) => {
     try {
-      const res = await fetch(`/api/fees/receipts/${receiptId}/download`);
+      const q = new URLSearchParams({ school_code: schoolCode });
+      const res = await fetch(`/api/fees/receipts/${paymentId}/download?${q.toString()}`);
       const html = await res.text();
       if (!res.ok) throw new Error('Failed to load receipt HTML');
       const w = window.open('', '_blank');
@@ -966,14 +988,14 @@ export default function PaymentCollectionPage({
             >
               <CheckCircle size={20} />
               <p className="font-medium">{success}</p>
-              {latestReceiptId && (
+              {latestPaymentId && (
                 <div className="ml-auto flex gap-2">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
                     className="h-9 px-3"
-                    onClick={() => void openReceiptView(latestReceiptId)}
+                    onClick={() => void openReceiptView(latestPaymentId)}
                   >
                     View
                   </Button>
@@ -982,7 +1004,7 @@ export default function PaymentCollectionPage({
                     size="sm"
                     variant="outline"
                     className="h-9 px-3"
-                    onClick={() => void printReceipt(latestReceiptId)}
+                    onClick={() => void printReceipt(latestPaymentId)}
                   >
                     Print
                   </Button>
@@ -1439,7 +1461,9 @@ export default function PaymentCollectionPage({
                                     (fee.status === 'overdue' || new Date(fee.due_date) < new Date());
                                   const lines = fee.adjustment_lines ?? [];
                                   const manual = fee.installment_manual_lines ?? [];
-                                  const heads = structureHeadAllocated(fee);
+                                  const heads = isPaid
+                                    ? structureHeadAllocated(fee)
+                                    : structureHeadAllocatedForReceipt(fee, allocated);
                                   const snap = fee.transport_snapshot;
                                   const isTransport = fee.fee_source === 'transport';
 
@@ -1996,10 +2020,12 @@ export default function PaymentCollectionPage({
                       ) : (
                         (() => {
                           const fee = activeSelectedFee;
-                          const heads = structureHeadAllocated(fee);
+                          const allocated = allocations[fee.id] || 0;
+                          const heads = isInstallmentSettled(fee)
+                            ? structureHeadAllocated(fee)
+                            : structureHeadAllocatedForReceipt(fee, allocated);
                           const manual = fee.installment_manual_lines ?? [];
                           const rules = fee.adjustment_lines ?? [];
-                          const allocated = allocations[fee.id] || 0;
                           const isPaid = isInstallmentSettled(fee);
                           const amountDuePreview = Math.max(0, Number(fee.total_due || 0) - allocated);
                           const totalPaidAfterAllocation =
@@ -2024,8 +2050,24 @@ export default function PaymentCollectionPage({
                                     Due {fee.due_date ? formatDateShort(fee.due_date) : '—'}
                                   </p>
                                   <div className="text-right mt-3">
-                                    <p className="text-lg font-bold tabular-nums">{formatCurrency(Number(fee.total_due || 0))}</p>
-                                    <p className="text-xs text-white/80 mt-0.5">{isPaid ? 'Settled' : `Due ${formatCurrency(amountDuePreview)}`}</p>
+                                    {!isPaid && allocated > 0 ? (
+                                      <>
+                                        <p className="text-lg font-bold tabular-nums">{formatCurrency(allocated)}</p>
+                                        <p className="text-xs text-white/80 mt-0.5">This receipt</p>
+                                        <p className="text-sm font-semibold tabular-nums mt-1">
+                                          Balance after: {formatCurrency(amountDuePreview)}
+                                        </p>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <p className="text-lg font-bold tabular-nums">
+                                          {formatCurrency(Number(fee.total_due || 0))}
+                                        </p>
+                                        <p className="text-xs text-white/80 mt-0.5">
+                                          {isPaid ? 'Settled' : `Due now ${formatCurrency(amountDuePreview)}`}
+                                        </p>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
 
@@ -2035,7 +2077,7 @@ export default function PaymentCollectionPage({
                                       {/* Fee heads */}
                                       <div>
                                     <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
-                                      Fee heads (share of base)
+                                      {isPaid ? 'Fee heads (share of base)' : 'Fee heads (this receipt)'}
                                     </p>
                                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
                                       <div className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 bg-gray-100 dark:bg-slate-800 text-xs font-semibold text-gray-600 dark:text-slate-300">
@@ -2233,12 +2275,22 @@ export default function PaymentCollectionPage({
                                         {typeof fee.final_amount === 'number' ? formatCurrency(fee.final_amount) : formatCurrency(Number(fee.base_amount || 0))}
                                       </span>
                                     </div>
+                                    <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
+                                      <span>Previously paid</span>
+                                      <span className="tabular-nums font-medium">
+                                        {formatCurrency(Number(fee.paid_amount || 0))}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
+                                      <span>This receipt</span>
+                                      <span className="tabular-nums font-medium">{formatCurrency(allocated)}</span>
+                                    </div>
                                     <div className="flex justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-base font-bold text-gray-900 dark:text-white">
-                                      <span>Total fees paid</span>
+                                      <span>Total paid after this receipt</span>
                                       <span className="tabular-nums">{formatCurrency(totalPaidAfterAllocation)}</span>
                                     </div>
                                     <p className="text-xs text-gray-600 dark:text-slate-300">
-                                      Amount due {formatCurrency(amountDuePreview)}
+                                      Balance remaining {formatCurrency(amountDuePreview)}
                                     </p>
                                   </div>
                                 </div>
@@ -2513,10 +2565,15 @@ export default function PaymentCollectionPage({
                     </div>
                   ) : (
                     receiptSelectedFees.map((fee) => {
-                      const heads = structureHeadAllocated(fee);
+                      const allocNow = allocations[fee.id] ?? 0;
+                      const heads = isInstallmentSettled(fee)
+                        ? structureHeadAllocated(fee)
+                        : structureHeadAllocatedForReceipt(fee, allocNow);
                       const manual = fee.installment_manual_lines ?? [];
                       const rules = fee.adjustment_lines ?? [];
                       const isPaid = isInstallmentSettled(fee);
+                      const amountDueAfter = Math.max(0, Number(fee.total_due || 0) - allocNow);
+                      const totalPaidAfter = Math.round((Number(fee.paid_amount || 0) + allocNow) * 100) / 100;
                       return (
                         <div key={fee.id} className="rounded-2xl border border-gray-200 dark:border-slate-800 overflow-hidden">
                           <div className="px-4 py-3 bg-gradient-to-r from-blue-600/95 to-indigo-600/95 text-white flex items-start justify-between gap-4">
@@ -2543,7 +2600,7 @@ export default function PaymentCollectionPage({
                                     {heads.length > 0 && (
                                       <>
                                         <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
-                                          Fee heads (share of base)
+                                          {isPaid ? 'Fee heads (share of base)' : 'Fee heads (this receipt)'}
                                         </p>
                                         <div className="rounded-lg border border-gray-200 dark:border-slate-800 overflow-hidden">
                                           <div className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 bg-gray-100/90 dark:bg-slate-800/90 text-xs font-semibold text-gray-600 dark:text-slate-300">
@@ -2642,16 +2699,22 @@ export default function PaymentCollectionPage({
                                   <span className="tabular-nums font-semibold">+{formatCurrency(fee.late_fee)}</span>
                                 </div>
                               )}
-                              <div className="flex justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-base font-bold text-gray-900 dark:text-white">
-                                <span>Total fees paid</span>
-                                <span className="tabular-nums">
-                                  {formatCurrency(
-                                    Math.round((Number(fee.paid_amount || 0) + Number(allocations[fee.id] || 0)) * 100) / 100
-                                  )}
+                              <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
+                                <span>Previously paid</span>
+                                <span className="tabular-nums font-medium">
+                                  {formatCurrency(Number(fee.paid_amount || 0))}
                                 </span>
                               </div>
+                              <div className="flex justify-between gap-2 text-gray-700 dark:text-slate-300">
+                                <span>This receipt</span>
+                                <span className="tabular-nums font-medium">{formatCurrency(allocNow)}</span>
+                              </div>
+                              <div className="flex justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-base font-bold text-gray-900 dark:text-white">
+                                <span>Total paid after this receipt</span>
+                                <span className="tabular-nums">{formatCurrency(totalPaidAfter)}</span>
+                              </div>
                               <p className="text-xs text-gray-600 dark:text-slate-300">
-                                Amount due {formatCurrency(Math.max(0, fee.total_due - (allocations[fee.id] ?? 0)))}
+                                Balance remaining {formatCurrency(amountDueAfter)}
                               </p>
                             </div>
                           </div>

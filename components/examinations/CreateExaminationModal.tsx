@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -33,6 +33,26 @@ export default function CreateExaminationModal({
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const loadCurrentAcademicYear = async () => {
+      try {
+        const res = await fetch(`/api/schools/current-academic-year?school_code=${encodeURIComponent(schoolCode)}`);
+        const data = await res.json();
+        if (res.ok) {
+          setFormData((prev) => ({
+            ...prev,
+            academic_year: String(data.current_academic_year || data.data || '').trim(),
+          }));
+        } else {
+          setErrors((prev) => ({ ...prev, academic_year: data.error || 'Setup academic year first from Academic Year Management module.' }));
+        }
+      } catch {
+        setErrors((prev) => ({ ...prev, academic_year: 'Failed to load current academic year' }));
+      }
+    };
+    loadCurrentAcademicYear();
+  }, [schoolCode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,9 +196,9 @@ export default function CreateExaminationModal({
               <Input
                 type="text"
                 value={formData.academic_year}
-                onChange={(e) => handleChange('academic_year', e.target.value)}
+                readOnly
                 placeholder="e.g., 2024-2025"
-                className={errors.academic_year ? 'border-red-500' : ''}
+                className={`${errors.academic_year ? 'border-red-500' : ''} bg-gray-50 cursor-not-allowed`}
               />
               {errors.academic_year && (
                 <p className="mt-1 text-sm text-red-600">{errors.academic_year}</p>

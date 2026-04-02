@@ -231,6 +231,7 @@ Used by: dashboard stats (today’s count, present), stats-detailed (today, stat
 | school_code    | text        |
 | student_id     | uuid (FK students) |
 | attendance_date| date        |
+| academic_year_id | uuid (nullable; partition key for academic year) |
 | status         | text ('present','absent','halfday','half_day','leave','duty_leave','duty leave') |
 | (created_at etc.) | optional |
 
@@ -246,6 +247,7 @@ Used by: dashboard stats (today’s count, present), administrative (today, stat
 | school_code    | text        |
 | staff_id       | uuid (FK staff) |
 | attendance_date| date        |
+| academic_year_id | uuid (nullable; partition key for academic year) |
 | status         | text ('present','absent','half_day','halfday','leave','late','holiday') |
 
 ---
@@ -278,6 +280,7 @@ Used when `payments` is empty or not used: dashboard stats, financial-overview.
 | amount        | numeric     |
 | total_amount  | numeric     |
 | payment_date  | date        |
+| academic_year_id | uuid (nullable; partition key for academic year) |
 
 ---
 
@@ -352,6 +355,7 @@ Used by: dashboard stats (upcoming count), page (upcoming/previous exams list).
 | school_code   | text        |
 | exam_name     | text        |
 | academic_year | text        |
+| academic_year_id | uuid (nullable; partition key for academic year) |
 | status        | text ('upcoming','ongoing','completed') |
 | start_date    | date        |
 | end_date      | date        |
@@ -448,6 +452,7 @@ Used by: dashboard page (classes list → classesCount, sectionsCount), timetabl
 | class               | text        |
 | section             | text        |
 | academic_year       | text        |
+| academic_year_id    | uuid (nullable; partition key for academic year) |
 | class_teacher_id    | uuid (nullable, FK staff) |
 | class_teacher_staff_id | text (optional) |
 | created_at          | timestamptz |

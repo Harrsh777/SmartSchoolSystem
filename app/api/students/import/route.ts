@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { generateAndHashPassword } from '@/lib/password-generator';
+import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 
 const BATCH_SIZE = 500;
 
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     const schoolId = schoolData.id;
-    const currentYear = new Date().getFullYear().toString();
+    const currentYear = (await getRequiredCurrentAcademicYear(String(school_code))).year_name;
 
     // Get allowed class/section/academic_year from the school's Classes module (only these can be imported)
     const { data: existingClasses, error: classesError } = await supabase
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
       }
       const cls = student.class != null ? String(student.class).trim() : '';
       const sec = student.section != null ? String(student.section).trim() : '';
-      const year = (student.academic_year != null ? String(student.academic_year).trim() : null) || currentYear;
+      const year = currentYear;
       if (!cls || !sec) {
         errors.push({ row, error: 'Class and section are required' });
         failedCount++;
@@ -124,7 +125,7 @@ export async function POST(request: NextRequest) {
       if (!canonical) {
         errors.push({
           row,
-          error: `Class/section "${cls}-${sec}" (year ${year}) not found. Create it in Classes first.`,
+            error: `Class/section "${cls}-${sec}" not found in current academic year (${year}). Create it in Classes first.`,
         });
         failedCount++;
         return;
@@ -166,6 +167,8 @@ export async function POST(request: NextRequest) {
         pen_no: student.pen_no || null,
         apaar_no: student.apaar_no || null,
         rte: student.rte ?? false,
+        // `fees/v2` uses `is_rte` for RTE checks/display.
+        is_rte: student.rte ?? false,
         new_admission: student.new_admission ?? true,
         father_name: student.father_name || null,
         father_occupation: student.father_occupation || null,
@@ -290,6 +293,12 @@ export async function POST(request: NextRequest) {
       passwords: generatedPasswords,
     }, { status: 200 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
     console.error('Error importing students:', error);
     return NextResponse.json(
       { error: 'Failed to import students', details: error instanceof Error ? error.message : 'Unknown error' },

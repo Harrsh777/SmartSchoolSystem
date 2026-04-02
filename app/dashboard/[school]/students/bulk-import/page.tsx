@@ -277,10 +277,9 @@ export default function BulkImportPage({
                   <Button
                     variant="outline"
                     onClick={() => setCurrentStep(2)}
-                    className="border-orange-600 text-orange-600 hover:bg-orange-50"
+                    className="border-orange-600 text-orange-600 hover:bg-orange-400"
                   >
-                    Continue to Upload
-                    <ArrowRight size={18} className="ml-2" />
+                   Continue to Upload  
                   </Button>
                 </div>
               </div>
@@ -422,9 +421,10 @@ export default function BulkImportPage({
                           const admissionNo = getString(row.data.admission_no);
                           const className = getString(row.data.class);
                           const section = getString(row.data.section);
+                          const isRte = Boolean(row.data.rte);
                           return (
                             <div key={row.rowIndex} className="text-sm text-green-800">
-                              Row {row.rowIndex}: {studentName} - {admissionNo} ({className}-{section})
+                              Row {row.rowIndex}: {studentName} - {admissionNo} ({className}-{section}){isRte ? ' · RTE' : ''}
                               {row.warnings.length > 0 && (
                                 <span className="text-yellow-700 ml-2">
                                   (⚠ {row.warnings.length} warning{row.warnings.length > 1 ? 's' : ''})

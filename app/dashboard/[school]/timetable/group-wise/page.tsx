@@ -67,6 +67,7 @@ export default function GroupWiseTimetablePage({
     number_of_periods?: number;
     selected_days?: string[];
     periods?: unknown[];
+    mapped_class_count?: number;
   }>>([]);
   const [listLoading, setListLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -646,6 +647,7 @@ export default function GroupWiseTimetablePage({
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Start time</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Periods</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Classes mapped</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Days</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Actions</th>
                   </tr>
@@ -661,6 +663,9 @@ export default function GroupWiseTimetablePage({
                       </td>
                       <td className="px-4 py-3 text-gray-600">{g.class_start_time || '-'}</td>
                       <td className="px-4 py-3 text-gray-600">{g.number_of_periods ?? (g.periods?.length ?? 0)}</td>
+                      <td className="px-4 py-3 text-gray-600 tabular-nums">
+                        {typeof g.mapped_class_count === 'number' ? g.mapped_class_count : 0}
+                      </td>
                       <td className="px-4 py-3 text-gray-600">{Array.isArray(g.selected_days) ? g.selected_days.join(', ') : '-'}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">

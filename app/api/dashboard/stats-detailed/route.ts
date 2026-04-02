@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       .eq('school_code', schoolCode)
       .eq('status', 'active');
     if (academicYear) {
-      studentsQuery = studentsQuery.eq('academic_year', academicYear);
+      studentsQuery = studentsQuery.or(`academic_year.eq.${academicYear},academic_year.is.null`);
     }
     const { data: allStudents } = await studentsQuery;
 

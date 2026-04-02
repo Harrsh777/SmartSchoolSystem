@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 
 const TABLE = 'exam_terms';
 
@@ -84,7 +85,6 @@ export async function POST(request: NextRequest) {
       section,
       name,
       serial,
-      academic_year,
       start_date,
       end_date,
       created_by,
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       normalized_name: norm(name).toLowerCase(),
       slug: slugify(name),
       serial: Number(serial),
-      academic_year: academic_year ?? null,
+      academic_year: null,
       start_date: start_date ?? null,
       end_date: end_date ?? null,
       is_active: true,
@@ -126,11 +126,17 @@ export async function POST(request: NextRequest) {
       created_by: created_by ?? null,
     };
 
+    const currentYear = await getRequiredCurrentAcademicYear(String(school_code));
+
     const targetSections = apply_to_all_sections
       ? (Array.isArray(section_ids) ? section_ids.map((s: unknown) => norm(s)).filter(Boolean) : [norm(section)])
       : [norm(section)];
 
-    const rowsToInsert = targetSections.map((sec) => ({ ...baseRow, section: sec }));
+    const rowsToInsert = targetSections.map((sec) => ({
+      ...baseRow,
+      section: sec,
+      academic_year: currentYear.year_name,
+    }));
 
     // Duplicate guard (case-insensitive by normalized_name)
     const existingQuery = supabase
@@ -176,6 +182,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data: data ?? [] }, { status: 201 });
   } catch (e) {
     console.error('Terms POST:', e);
+    if (e instanceof Error && e.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
+      return NextResponse.json(
+        { error: 'Setup academic year first from Academic Year Management module.' },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: 'Internal server error', details: e instanceof Error ? e.message : 'Unknown' },
       { status: 500 }

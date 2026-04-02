@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { resolveAcademicYear } from '@/lib/academic-year-id';
 
 /**
  * POST /api/academic-year-management/closure
@@ -11,14 +12,25 @@ import { supabase } from '@/lib/supabase';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, previous_year, new_year, performed_by } = body;
+    const { school_code, previous_year, previous_academic_year_id, new_year, new_academic_year_id, performed_by } = body;
 
-    if (!school_code || !previous_year || !new_year) {
+    if (!school_code || (!previous_year && !previous_academic_year_id) || (!new_year && !new_academic_year_id)) {
       return NextResponse.json(
-        { error: 'school_code, previous_year, and new_year are required' },
+        { error: 'school_code, previous_year or previous_academic_year_id, and new_year or new_academic_year_id are required' },
         { status: 400 }
       );
     }
+
+    const prevResolved = await resolveAcademicYear({
+      schoolCode: school_code,
+      academic_year: previous_year,
+      academic_year_id: previous_academic_year_id,
+    });
+    const newResolved = await resolveAcademicYear({
+      schoolCode: school_code,
+      academic_year: new_year,
+      academic_year_id: new_academic_year_id,
+    });
 
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
@@ -34,7 +46,7 @@ export async function POST(request: NextRequest) {
       .from('academic_years')
       .update({ status: 'closed', closed_at: new Date().toISOString(), is_current: false })
       .eq('school_code', school_code)
-      .eq('year_name', previous_year);
+      .eq('year_name', prevResolved.yearName);
 
     await supabase
       .from('academic_years')
@@ -45,7 +57,7 @@ export async function POST(request: NextRequest) {
       .from('academic_years')
       .update({ status: 'active', is_current: true })
       .eq('school_code', school_code)
-      .eq('year_name', new_year);
+      .eq('year_name', newResolved.yearName);
 
     await supabase
       .from('accepted_schools')
@@ -56,8 +68,8 @@ export async function POST(request: NextRequest) {
       {
         school_code,
         action: 'year_closure',
-        academic_year_from: previous_year,
-        academic_year_to: new_year,
+        academic_year_from: prevResolved.yearName,
+        academic_year_to: newResolved.yearName,
         performed_by: performed_by || null,
         details: {},
       },
@@ -65,9 +77,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       data: {
-        previous_year,
-        new_year,
-        current_academic_year: new_year,
+        previous_year: prevResolved.yearName,
+        new_year: newResolved.yearName,
+        current_academic_year: newResolved.yearName,
       },
     }, { status: 200 });
   } catch (error) {

@@ -1,6 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 
+function escapeHtml(text: string): string {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** PostgREST often returns `receipts` as a single-element array for reverse FK embeds. */
+function normalizePaymentReceiptJoin(payment: Record<string, unknown>): Record<string, unknown> | undefined {
+  const r = payment.receipt;
+  if (r == null) return undefined;
+  if (Array.isArray(r)) {
+    return (r[0] as Record<string, unknown> | undefined) ?? undefined;
+  }
+  return r as Record<string, unknown>;
+}
+
+type InstallmentAfterPayment = {
+  student_fee_id?: string;
+  fee_name?: string;
+  billable_gross?: number;
+  paid_amount?: number;
+  balance_due?: number;
+};
+
+const PAYMENT_SELECT = `
+        *,
+        student:student_id (
+          *
+        ),
+        receipt:receipts (
+          receipt_no,
+          issued_at,
+          receipt_data
+        ),
+        allocations:payment_allocations (
+          *,
+          student_fee:student_fee_id (
+            *,
+            fee_structure:fee_structure_id (
+              name
+            )
+          )
+        ),
+        collector:collected_by (
+          full_name,
+          staff_id
+        )
+      `;
+
 /**
  * GET /api/fees/receipts/[id]/download
  * Download a specific payment receipt as PDF
@@ -24,38 +76,59 @@ export async function GET(
     const supabase = getServiceRoleClient();
     const normalizedSchoolCode = schoolCode.toUpperCase().trim();
 
-    // Fetch payment with all related data
-    const { data: payment, error: paymentError } = await supabase
+    let payment: Record<string, unknown> | null = null;
+
+    const byPaymentId = await supabase
       .from('payments')
-      .select(`
-        *,
-        student:student_id (
-          *
-        ),
-        receipt:receipts (
-          receipt_no,
-          issued_at
-        ),
-        allocations:payment_allocations (
-          *,
-          student_fee:student_fee_id (
-            *,
-            fee_structure:fee_structure_id (
-              name
-            )
-          )
-        ),
-        collector:collected_by (
-          full_name,
-          staff_id
-        )
-      `)
+      .select(PAYMENT_SELECT)
       .eq('id', id)
       .eq('school_code', normalizedSchoolCode)
       .eq('is_reversed', false)
-      .single();
+      .maybeSingle();
 
-    if (paymentError || !payment) {
+    if (byPaymentId.error) {
+      console.error('Payment receipt lookup:', byPaymentId.error);
+      return NextResponse.json(
+        { error: 'Payment receipt not found' },
+        { status: 404 }
+      );
+    }
+
+    if (byPaymentId.data) {
+      payment = byPaymentId.data as Record<string, unknown>;
+    } else {
+      const { data: receiptRow, error: receiptLookupError } = await supabase
+        .from('receipts')
+        .select('payment_id')
+        .eq('id', id)
+        .eq('school_code', normalizedSchoolCode)
+        .maybeSingle();
+
+      if (receiptLookupError || !receiptRow?.payment_id) {
+        return NextResponse.json(
+          { error: 'Payment receipt not found' },
+          { status: 404 }
+        );
+      }
+
+      const byReceiptPaymentId = await supabase
+        .from('payments')
+        .select(PAYMENT_SELECT)
+        .eq('id', receiptRow.payment_id)
+        .eq('school_code', normalizedSchoolCode)
+        .eq('is_reversed', false)
+        .maybeSingle();
+
+      if (byReceiptPaymentId.error || !byReceiptPaymentId.data) {
+        return NextResponse.json(
+          { error: 'Payment receipt not found' },
+          { status: 404 }
+        );
+      }
+      payment = byReceiptPaymentId.data as Record<string, unknown>;
+    }
+
+    if (!payment) {
       return NextResponse.json(
         { error: 'Payment receipt not found' },
         { status: 404 }
@@ -70,7 +143,7 @@ export async function GET(
       .single();
 
     // Generate HTML receipt with two copies
-    const receiptHtml = generatePaymentReceiptHTML(school, payment);
+    const receiptHtml = generatePaymentReceiptHTML(school, payment as Record<string, unknown>);
 
     return new NextResponse(receiptHtml, {
       headers: {
@@ -93,7 +166,7 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
     day: 'numeric',
   });
 
-  const receipt = payment.receipt as Record<string, unknown> | undefined;
+  const receipt = normalizePaymentReceiptJoin(payment);
   const receiptDate = receipt?.issued_at 
     ? new Date(String(receipt.issued_at)).toLocaleDateString('en-IN', {
         year: 'numeric',
@@ -102,8 +175,10 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
       })
     : paymentDate;
 
+  const logoUrl = String((school as { logo_url?: unknown } | null)?.logo_url ?? '').trim();
+
   // Generate receipt content (will be duplicated for both copies)
-  const receiptContent = generatePaymentReceiptContent(school, payment, paymentDate, receiptDate);
+  const receiptContent = generatePaymentReceiptContent(school, payment, paymentDate, receiptDate, receipt);
 
   // Return two copies - School Copy and Student Copy
   return `
@@ -120,8 +195,8 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
       box-sizing: border-box;
     }
     @page {
-      size: A4 landscape;
-      margin: 8mm;
+      size: A5 landscape;
+      margin: 6mm;
     }
     body {
       font-family: 'Arial', sans-serif;
@@ -133,7 +208,7 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
       width: 100%;
       min-height: calc(100vh - 16mm);
       background: white;
-      padding: 6mm;
+      padding: 4mm;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
     .copies-grid {
@@ -147,7 +222,30 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
       background: white;
       border: 1px solid #d1d5db;
       border-radius: 6px;
-      padding: 5mm;
+      padding: 4mm;
+      position: relative;
+      overflow: hidden;
+    }
+    .receipt-watermark {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .receipt-watermark img {
+      max-width: 75%;
+      max-height: 60%;
+      object-fit: contain;
+      opacity: 0.06;
+      filter: grayscale(1);
+      transform: rotate(-10deg);
+    }
+    .receipt-inner {
+      position: relative;
+      z-index: 1;
     }
     .copy-label {
       text-align: center;
@@ -255,6 +353,26 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
       color: #666;
       font-size: 10px;
     }
+    .signature-block {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .signature-line {
+      width: 62%;
+      height: 1px;
+      background: #111;
+      opacity: 0.9;
+    }
+    .signature-label {
+      font-size: 10px;
+      color: #333;
+      font-weight: 600;
+    }
     .payment-details {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -287,6 +405,15 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
         padding: 0;
         min-height: auto;
       }
+      .copies-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+      .receipt-container {
+        page-break-after: always;
+        break-after: page;
+        border-radius: 0;
+      }
     }
   </style>
 </head>
@@ -295,12 +422,18 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
     <div class="copies-grid">
       <div class="receipt-container">
         <div class="copy-label">SCHOOL COPY</div>
-        ${receiptContent}
+        ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
+        <div class="receipt-inner">
+          ${receiptContent}
+        </div>
       </div>
 
       <div class="receipt-container">
         <div class="copy-label">STUDENT COPY</div>
-        ${receiptContent}
+        ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
+        <div class="receipt-inner">
+          ${receiptContent}
+        </div>
       </div>
     </div>
   </div>
@@ -313,8 +446,19 @@ function generatePaymentReceiptContent(
   school: Record<string, unknown>,
   payment: Record<string, unknown>,
   paymentDate: string,
-  receiptDate: string
+  receiptDate: string,
+  receipt: Record<string, unknown> | undefined
 ): string {
+  const receiptNo = receipt?.receipt_no != null ? String(receipt.receipt_no) : '';
+  const receiptDataRaw = receipt?.receipt_data as Record<string, unknown> | undefined;
+  const installmentsAfter =
+    (receiptDataRaw?.installments_after_payment as InstallmentAfterPayment[] | undefined) || [];
+  const balanceByFeeId = new Map<string, InstallmentAfterPayment>();
+  for (const row of installmentsAfter) {
+    if (row?.student_fee_id) balanceByFeeId.set(String(row.student_fee_id), row);
+  }
+  const hasAnyOutstanding = installmentsAfter.some((r) => Number(r.balance_due ?? 0) > 0.02);
+
   return `
     <div class="header">
       <div class="school-name">${school?.school_name || 'School Name'}</div>
@@ -329,14 +473,23 @@ function generatePaymentReceiptContent(
     <div class="receipt-title">PAYMENT RECEIPT</div>
 
     <div class="amount-box">
-      <div class="amount-label">Amount Paid</div>
+      <div class="amount-label">Amount received (this receipt)</div>
       <div class="amount-value">₹${Number(payment.amount || 0).toLocaleString('en-IN')}</div>
     </div>
+
+    ${hasAnyOutstanding ? `
+    <div class="info-section" style="border-left: 3px solid #f59e0b;">
+      <div class="info-row">
+        <span class="info-label">Payment type:</span>
+        <span class="info-value"><strong>Partial — balance remains on one or more installments</strong></span>
+      </div>
+    </div>
+    ` : ''}
 
     <div class="info-section">
       <div class="info-row">
         <span class="info-label">Receipt Number:</span>
-        <span class="info-value"><strong>${(payment.receipt as Record<string, unknown> | undefined)?.receipt_no || 'N/A'}</strong></span>
+        <span class="info-value"><strong>${receiptNo || 'N/A'}</strong></span>
       </div>
       <div class="info-row">
         <span class="info-label">Receipt Date:</span>
@@ -394,13 +547,20 @@ function generatePaymentReceiptContent(
           <th>Fee Head</th>
           <th>Due Month</th>
           <th>Due Date</th>
-          <th class="text-right">Allocated Amount</th>
+          <th class="text-right">This receipt</th>
+          <th class="text-right">Balance due</th>
         </tr>
       </thead>
       <tbody>
         ${allocations.map((alloc: Record<string, unknown>) => {
           const studentFee = alloc.student_fee as Record<string, unknown> | undefined;
           const feeStructure = studentFee?.fee_structure as Record<string, unknown> | undefined;
+          const feeId = String(alloc.student_fee_id || studentFee?.id || '');
+          const snap = feeId ? balanceByFeeId.get(feeId) : undefined;
+          const balanceDue =
+            snap != null && Number.isFinite(Number(snap.balance_due))
+              ? Number(snap.balance_due)
+              : null;
           const dueMonth = studentFee?.due_month ? new Date(String(studentFee.due_month)).toLocaleDateString('en-IN', { year: 'numeric', month: 'short' }) : 'N/A';
           const dueDate = studentFee?.due_date ? new Date(String(studentFee.due_date)).toLocaleDateString('en-IN') : 'N/A';
           return `
@@ -409,6 +569,7 @@ function generatePaymentReceiptContent(
             <td>${dueMonth}</td>
             <td>${dueDate}</td>
             <td class="text-right"><strong>₹${Number(alloc.allocated_amount || 0).toLocaleString('en-IN')}</strong></td>
+            <td class="text-right">${balanceDue != null ? `<strong>₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>` : '—'}</td>
           </tr>
         `;
         }).join('')}
@@ -441,10 +602,14 @@ function generatePaymentReceiptContent(
 
     <div class="footer">
       <div style="margin-bottom: 10px;">
-        <strong>This is a computer-generated receipt. No signature required.</strong>
+        <strong>This is a computer-generated receipt.</strong>
       </div>
       <div>Generated on ${new Date().toLocaleString('en-IN')}</div>
       ${school?.school_name ? `<div style="margin-top: 10px;">${school.school_name}</div>` : ''}
+      <div class="signature-block">
+        <div class="signature-line"></div>
+        <div class="signature-label">Cashier Signature</div>
+      </div>
     </div>
   `;
 }
