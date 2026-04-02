@@ -1,16 +1,54 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { Users, Search, Plus, Upload, HelpCircle } from 'lucide-react';
+import Input from '@/components/ui/Input';
+import { 
+  Search, 
+  Download, 
+  Edit, 
+  User,
+  Mail,
+  Phone,
+  GraduationCap,
+  Eye,
+  ChevronRight,
+  ChevronLeft,
+  ChevronDown,
+  Calendar,
+  UserX,
+  UserCheck,
+  Home,
+  Users,
+  Loader2,
+  X,
+  School,
+  ArrowUpDown,
+} from 'lucide-react';
 import type { Student } from '@/lib/supabase';
-import StudentSetupGuide from '@/components/students/StudentSetupGuide';
-import StudentsTutorial from '@/components/students/StudentsTutorial';
 
-export default function StudentsPage({
+type StudentStatus = 'active' | 'deactivated' | 'transferred' | 'alumni' | 'deleted';
+
+const DIRECTORY_PAGE_SIZE = 25;
+
+interface ClassRow {
+  id: string;
+  class: string;
+  section: string;
+  academic_year?: string | null;
+}
+
+interface InstituteHouse {
+  id: string;
+  house_name: string;
+  house_color: string | null;
+  description: string | null;
+}
+
+export default function StudentDirectoryPage({
   params,
 }: {
   params: Promise<{ school: string }>;
@@ -18,352 +56,1175 @@ export default function StudentsPage({
   const { school: schoolCode } = use(params);
   const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [studentsTotal, setStudentsTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [studentsLoading, setStudentsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [classFilter, setClassFilter] = useState('all');
-  const [showSetupGuide, setShowSetupGuide] = useState(false);
-  const [showTutorial, setShowTutorial] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<StudentStatus>('active');
+  const [academicYear, setAcademicYear] = useState('');
+  const [academicYears, setAcademicYears] = useState<string[]>([]);
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedSection, setSelectedSection] = useState('');
+  const [classRows, setClassRows] = useState<ClassRow[]>([]);
+  /** Server-side ordering for the paginated list */
+  const [directorySort, setDirectorySort] = useState<
+    'created_desc' | 'name_asc' | 'name_desc' | 'roll_asc' | 'roll_desc'
+  >('created_desc');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [houses, setHouses] = useState<InstituteHouse[]>([]);
+  const [updatingHouseId, setUpdatingHouseId] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null);
+  const [statusMenuStudentId, setStatusMenuStudentId] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportClass, setExportClass] = useState('');
+  const [exportSection, setExportSection] = useState('');
+  const [exportColumns, setExportColumns] = useState<string[]>([
+    'admission_no', 'student_name', 'class', 'section', 'house', 'roll_number', 'email', 'status',
+  ]);
+  const [exporting, setExporting] = useState(false);
+  const [statusCounts, setStatusCounts] = useState({ active: 0, deactivated: 0, transferred: 0, alumni: 0 });
+
+  /** Columns that can be included in the Excel export */
+  const EXPORT_COLUMN_OPTIONS: { key: string; label: string }[] = [
+    { key: 'admission_no', label: 'Admission No' },
+    { key: 'student_name', label: 'Student Name' },
+    { key: 'class', label: 'Class' },
+    { key: 'section', label: 'Section' },
+    { key: 'academic_year', label: 'Academic Year' },
+    { key: 'roll_number', label: 'Roll No' },
+    { key: 'house', label: 'House' },
+    { key: 'gender', label: 'Gender' },
+    { key: 'date_of_birth', label: 'Date of Birth' },
+    { key: 'email', label: 'Email' },
+    { key: 'student_contact', label: 'Student Contact' },
+    { key: 'father_name', label: 'Father Name' },
+    { key: 'father_contact', label: 'Father Contact' },
+    { key: 'mother_name', label: 'Mother Name' },
+    { key: 'mother_contact', label: 'Mother Contact' },
+    { key: 'address', label: 'Address' },
+    { key: 'city', label: 'City' },
+    { key: 'state', label: 'State' },
+    { key: 'pincode', label: 'Pincode' },
+    { key: 'blood_group', label: 'Blood Group' },
+    { key: 'status', label: 'Status' },
+    { key: 'date_of_admission', label: 'Date of Admission' },
+    { key: 'religion', label: 'Religion' },
+    { key: 'category', label: 'Category' },
+    { key: 'aadhaar_number', label: 'Aadhaar No' },
+    { key: 'rfid', label: 'RFID' },
+    { key: 'transport_type', label: 'Transport Type' },
+    { key: 'created_at', label: 'Created At' },
+  ];
 
   // Helper to safely get string value
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
   };
 
+  // Resolve student photo URL (DB may use photo_url, profile_photo_url, or image_url)
+  const getStudentPhotoUrl = (s: Student & { profile_photo_url?: string; image_url?: string }): string => {
+    const url = s.photo_url ?? s.profile_photo_url ?? s.image_url;
+    return typeof url === 'string' && url.trim() !== '' ? url.trim() : '';
+  };
+
+  // Resolve avatar/cover color from student's house (default dark blue when no house)
+  const DEFAULT_AVATAR_COLOR = '#1e3a8a';
+  const getHouseColorForStudent = (houseName: unknown): string => {
+    const name = typeof houseName === 'string' ? houseName.trim() : '';
+    if (!name) return DEFAULT_AVATAR_COLOR;
+    const house = houses.find((h) => (h.house_name || '').trim() === name);
+    const color = house?.house_color;
+    return typeof color === 'string' && color.trim() !== '' ? color.trim() : DEFAULT_AVATAR_COLOR;
+  };
+
+  const fetchAcademicYears = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
+      if (response.ok) {
+        const result = await response.json();
+        const years = result.data || result.academicYears || [];
+        setAcademicYears(Array.isArray(years) ? years : []);
+        // Set current year as default if available (only on initial load)
+        const currentYear = new Date().getFullYear();
+        const defaultYear = (Array.isArray(years) ? years : []).find((y: string) => String(y).includes(String(currentYear))) || (Array.isArray(years) ? years[0] : '');
+        if (!academicYear && defaultYear) {
+          setAcademicYear(defaultYear);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching academic years:', err);
+    }
+  }, [schoolCode, academicYear]);
+
   useEffect(() => {
-    // Check if setup guide has been completed
-    const setupCompleted = localStorage.getItem('student_setup_completed');
-    if (!setupCompleted) {
-      setShowSetupGuide(true);
+    fetchAcademicYears();
+  }, [fetchAcademicYears]);
+
+  const fetchHouses = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/institute/houses?school_code=${schoolCode}`);
+      const data = await res.json();
+      if (res.ok && data.data) setHouses(data.data);
+    } catch (err) {
+      console.error('Error fetching houses:', err);
     }
-    fetchStudents();
-    
-    // Check for query parameters from classes page
-    const params = new URLSearchParams(window.location.search);
-    const classParam = params.get('class');
-    const sectionParam = params.get('section');
-    // yearParam kept for potential future use
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const yearParam = params.get('year');
-    
-    if (classParam) {
-      setClassFilter(classParam);
-    }
-    if (sectionParam) {
-      setSearchQuery(prev => prev ? `${prev} ${sectionParam}` : sectionParam);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
-  const fetchStudents = async () => {
+  useEffect(() => {
+    fetchHouses();
+  }, [fetchHouses]);
+
+  const fetchCounts = useCallback(async () => {
     try {
-      setLoading(true);
-      const response = await fetch(`/api/students?school_code=${schoolCode}`);
+      let url = `/api/students/counts?school_code=${encodeURIComponent(schoolCode)}`;
+      if (academicYear) url += `&academic_year=${encodeURIComponent(academicYear)}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (res.ok && json.data) {
+        setStatusCounts({
+          active: json.data.active ?? 0,
+          deactivated: json.data.deactivated ?? 0,
+          transferred: json.data.transferred ?? 0,
+          alumni: json.data.alumni ?? 0,
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching student counts:', err);
+    }
+  }, [schoolCode, academicYear]);
+
+  useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
+
+  const fetchClasses = useCallback(async () => {
+    try {
+      setClassesLoading(true);
+      const res = await fetch(`/api/classes?school_code=${encodeURIComponent(schoolCode)}`);
+      const json = await res.json();
+      if (res.ok && Array.isArray(json.data)) {
+        setClassRows(
+          json.data.map((row: { id: string; class: string; section: string; academic_year?: string | null }) => ({
+            id: String(row.id),
+            class: String(row.class ?? ''),
+            section: String(row.section ?? ''),
+            academic_year: row.academic_year ?? null,
+          }))
+        );
+      } else {
+        setClassRows([]);
+      }
+    } catch (err) {
+      console.error('Error fetching classes:', err);
+      setClassRows([]);
+    } finally {
+      setClassesLoading(false);
+    }
+  }, [schoolCode]);
+
+  useEffect(() => {
+    fetchClasses();
+  }, [fetchClasses]);
+
+  const filteredClassRows = useMemo(() => {
+    if (!academicYear) return classRows;
+    return classRows.filter((r) => String(r.academic_year ?? '') === academicYear);
+  }, [classRows, academicYear]);
+
+  const uniqueClasses = useMemo(
+    () =>
+      Array.from(new Set(filteredClassRows.map((r) => getString(r.class)).filter((c) => c.length > 0))).sort(),
+    [filteredClassRows]
+  );
+
+  const uniqueSectionsForClass = useMemo(() => {
+    if (!selectedClass) return [];
+    return Array.from(
+      new Set(
+        filteredClassRows
+          .filter((r) => getString(r.class) === selectedClass)
+          .map((r) => getString(r.section))
+          .filter((s) => s.length > 0)
+      )
+    ).sort();
+  }, [filteredClassRows, selectedClass]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedClass, selectedSection, selectedStatus, academicYear, directorySort]);
+
+  useEffect(() => {
+    setSelectedClass('');
+    setSelectedSection('');
+  }, [academicYear]);
+
+  useEffect(() => {
+    const closeStatusMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (statusMenuStudentId && !target.closest('[data-status-menu]')) setStatusMenuStudentId(null);
+    };
+    document.addEventListener('click', closeStatusMenu);
+    return () => document.removeEventListener('click', closeStatusMenu);
+  }, [statusMenuStudentId]);
+
+  const fetchStudents = useCallback(async () => {
+    if (!selectedClass || !selectedSection) {
+      setStudents([]);
+      setStudentsTotal(0);
+      setStudentsLoading(false);
+      return;
+    }
+    try {
+      setStudentsLoading(true);
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        status: selectedStatus,
+        class: selectedClass,
+        section: selectedSection,
+        page: String(currentPage),
+        page_size: String(DIRECTORY_PAGE_SIZE),
+      });
+      if (academicYear) params.set('academic_year', academicYear);
+      const q = searchQuery.trim();
+      if (q.length >= 2) params.set('search', q);
+
+      if (directorySort === 'name_asc') {
+        params.set('sort_by', 'student_name');
+        params.set('sort_order', 'asc');
+      } else if (directorySort === 'name_desc') {
+        params.set('sort_by', 'student_name');
+        params.set('sort_order', 'desc');
+      } else if (directorySort === 'roll_asc') {
+        params.set('sort_by', 'roll_number');
+        params.set('sort_order', 'asc');
+      } else if (directorySort === 'roll_desc') {
+        params.set('sort_by', 'roll_number');
+        params.set('sort_order', 'desc');
+      } else {
+        params.set('sort_by', 'created_at');
+        params.set('sort_order', 'desc');
+      }
+
+      const response = await fetch(`/api/students?${params.toString()}`);
       const result = await response.json();
-      
-      if (response.ok && result.data) {
+      if (response.ok && Array.isArray(result.data)) {
         setStudents(result.data);
+        setStudentsTotal(typeof result.total === 'number' ? result.total : result.data.length);
+      } else {
+        setStudents([]);
+        setStudentsTotal(0);
       }
     } catch (err) {
       console.error('Error fetching students:', err);
+      setStudents([]);
+      setStudentsTotal(0);
     } finally {
-      setLoading(false);
+      setStudentsLoading(false);
+    }
+  }, [
+    schoolCode,
+    selectedClass,
+    selectedSection,
+    selectedStatus,
+    academicYear,
+    currentPage,
+    searchQuery,
+    directorySort,
+  ]);
+
+  useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
+
+  useEffect(() => {
+    if (!selectedClass || !selectedSection) return;
+    const tp = Math.max(1, Math.ceil(studentsTotal / DIRECTORY_PAGE_SIZE));
+    if (currentPage > tp) setCurrentPage(tp);
+  }, [selectedClass, selectedSection, currentPage, studentsTotal]);
+
+  const handleStudentClick = (studentId: string) => {
+    router.push(`/dashboard/${schoolCode}/students/${studentId}`);
+  };
+
+  const statusTabs: Array<{ id: StudentStatus; label: string; count: number }> = [
+    { id: 'active', label: 'Active', count: statusCounts.active },
+    { id: 'deactivated', label: 'Deactivated', count: statusCounts.deactivated },
+    { id: 'transferred', label: 'Transferred', count: statusCounts.transferred },
+    { id: 'alumni', label: 'Alumni', count: statusCounts.alumni },
+  ];
+
+  const selectionReady = Boolean(selectedClass && selectedSection);
+  const totalPages = Math.max(1, Math.ceil(studentsTotal / DIRECTORY_PAGE_SIZE));
+  const rangeFrom = studentsTotal === 0 ? 0 : (currentPage - 1) * DIRECTORY_PAGE_SIZE + 1;
+  const rangeTo = Math.min(currentPage * DIRECTORY_PAGE_SIZE, studentsTotal);
+
+  const normalizeStatus = (s: string): string => {
+    const v = getString(s).toLowerCase();
+    if (v === 'inactive' || v === 'deactivated') return 'deactivated';
+    if (v === 'graduated' || v === 'alumni') return 'alumni';
+    return v || 'active';
+  };
+
+  const handleChangeStatus = async (e: React.MouseEvent, studentId: string, newStatus: StudentStatus) => {
+    e.stopPropagation();
+    setStatusMenuStudentId(null);
+    const dbStatus = newStatus === 'deactivated' ? 'deactivated' : newStatus;
+    const labels: Record<StudentStatus, string> = {
+      active: 'activate',
+      deactivated: 'deactivate',
+      transferred: 'mark as Transferred',
+      alumni: 'mark as Alumni',
+      deleted: 'mark as deleted',
+    };
+    if (!confirm(`Are you sure you want to ${labels[newStatus]} this student?`)) return;
+    setStatusUpdatingId(studentId);
+    try {
+      const res = await fetch(`/api/students/${studentId}?school_code=${encodeURIComponent(schoolCode)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: dbStatus }),
+      });
+      const data = await res.json();
+      if (res.ok && data.data) {
+        await fetchStudents();
+        await fetchCounts();
+      } else {
+        alert(data.error || 'Failed to update student status');
+      }
+    } catch (err) {
+      console.error('Error updating status:', err);
+      alert('Failed to update student status');
+    } finally {
+      setStatusUpdatingId(null);
     }
   };
 
-  const filteredStudents = students.filter(student => {
-    const studentName = getString(student.student_name).toLowerCase();
-    const admissionNo = getString(student.admission_no).toLowerCase();
-    const className = getString(student.class).toLowerCase();
-    const query = searchQuery.toLowerCase();
-    
-    const matchesSearch = 
-      studentName.includes(query) ||
-      admissionNo.includes(query) ||
-      className.includes(query);
-    
-    const studentClass = getString(student.class);
-    const matchesClass = classFilter === 'all' || studentClass === classFilter;
-    
-    // Check URL params for additional filtering (from classes page)
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const classParam = params.get('class');
-      const sectionParam = params.get('section');
-      const yearParam = params.get('year');
-      
-      if (classParam && studentClass !== classParam) return false;
-      const studentSection = getString(student.section);
-      if (sectionParam && studentSection !== sectionParam) return false;
-      const studentYear = getString(student.academic_year);
-      if (yearParam && studentYear !== yearParam) return false;
+  const handleToggleStatus = (e: React.MouseEvent, studentId: string, currentStatus: string) => {
+    e.stopPropagation();
+    const norm = normalizeStatus(currentStatus);
+    const newStatus = norm === 'active' ? 'deactivated' : 'active';
+    handleChangeStatus(e, studentId, newStatus);
+  };
+
+  const updateStudentHouse = async (e: React.ChangeEvent<HTMLSelectElement>, studentId: string) => {
+    e.stopPropagation();
+    const houseName = e.target.value;
+    setUpdatingHouseId(studentId);
+    try {
+      const res = await fetch(`/api/students/${studentId}?school_code=${schoolCode}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ house: houseName || null }),
+      });
+      const data = await res.json();
+      if (res.ok && data.data) {
+        setStudents((prev) =>
+          prev.map((s) => (s.id === studentId ? { ...s, house: houseName || null } : s))
+        );
+      } else {
+        alert(data.error || 'Failed to update house');
+      }
+    } catch (err) {
+      console.error('Error updating house:', err);
+      alert('Failed to update house');
+    } finally {
+      setUpdatingHouseId(null);
     }
-    
-    return matchesSearch && matchesClass;
-  });
+  };
 
-  const uniqueClasses: string[] = Array.from(
-    new Set(students.map(s => getString(s.class)).filter(c => c.length > 0))
-  ).sort();
+  const openExportModal = () => {
+    setExportClass(selectedClass);
+    setExportSection(selectedSection);
+    setExportModalOpen(true);
+  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading students...</p>
-        </div>
-      </div>
+  const exportSectionOptions = exportClass
+    ? Array.from(
+        new Set(
+          filteredClassRows
+            .filter((r) => getString(r.class) === exportClass)
+            .map((r) => getString(r.section))
+            .filter((s) => s.length > 0)
+        )
+      ).sort()
+    : [];
+
+  const handleExportExcel = async () => {
+    if (exportColumns.length === 0) {
+      alert('Select at least one column to export.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        status: selectedStatus,
+        columns: exportColumns.join(','),
+      });
+      if (exportClass) params.set('class', exportClass);
+      if (exportSection) params.set('section', exportSection);
+      if (academicYear) params.set('academic_year', academicYear);
+
+      const res = await fetch(`/api/download/students?${params.toString()}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Export failed');
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition');
+      const match = disposition && /filename="?([^"]+)"?/.exec(disposition);
+      const filename = match ? match[1] : `students_${schoolCode}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      setExportModalOpen(false);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to download Excel.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const toggleExportColumn = (key: string) => {
+    setExportColumns((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
-  }
+  };
+
+  const selectAllExportColumns = () => setExportColumns(EXPORT_COLUMN_OPTIONS.map((c) => c.key));
+  const clearAllExportColumns = () => setExportColumns([]);
 
   return (
-    <div className="space-y-8">
-      {showSetupGuide && (
-        <StudentSetupGuide onComplete={() => setShowSetupGuide(false)} />
-      )}
-
-      {showTutorial && (
-        <StudentsTutorial
-          schoolCode={schoolCode}
-          onClose={() => setShowTutorial(false)}
-        />
-      )}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="flex items-center justify-between mb-6">
+    <div className="space-y-4">
+      {/* Header - year and Grid on left, Export on right */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold text-black dark:text-white mb-2 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
-                <Users className="text-white" size={28} />
-              </div>
-              Students
+            <h1 className="text-xl font-bold text-blue-900 mb-0.5">
+              Student Directory
             </h1>
-            <p className="text-gray-600 dark:text-gray-400">Manage all student records and information</p>
+            <p className="text-gray-600 text-sm">Choose a class and section to view students in that group</p>
           </div>
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={() => setShowTutorial(true)}
+          <div className="flex items-center gap-2">
+            <Calendar size={16} className="text-blue-800" />
+            <select
+              value={academicYear}
+              onChange={(e) => setAcademicYear(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white text-blue-800 font-medium"
             >
-              <HelpCircle size={18} className="mr-2" />
-              Tutorial
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.push(`/dashboard/${schoolCode}/students/import`)}
-            >
-              <Upload size={18} className="mr-2" />
-              Bulk Import
-            </Button>
-            <Button onClick={() => router.push(`/dashboard/${schoolCode}/students/add`)}>
-              <Plus size={18} className="mr-2" />
-              Add Student
-            </Button>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Search and Filters */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <Card>
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="Search students by name, admission number, or class..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black"
-                />
-              </div>
-            </div>
-            <select 
-              value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
-              className="px-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
-            >
-              <option value="all">All Classes</option>
-              {uniqueClasses.map(cls => (
-                <option key={cls} value={cls}>{cls}</option>
+              <option value="">All Years</option>
+              {academicYears.map(year => (
+                <option key={year} value={year}>{year}</option>
               ))}
             </select>
           </div>
-        </Card>
-      </motion.div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            className="border-blue-200 text-blue-800 hover:bg-blue-50 text-sm"
+          >
+            {viewMode === 'grid' ? 'List View' : 'Grid View'}
+          </Button>
+        </div>
+        <Button size="sm" className="bg-blue-800 hover:bg-blue-900 text-white" onClick={openExportModal}>
+          <Download size={16} className="mr-1.5" />
+          Export
+        </Button>
+      </div>
 
-      {/* Students List */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <Card>
-          {filteredStudents.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="mx-auto text-gray-400 mb-4" size={48} />
-              <p className="text-gray-600 text-lg mb-2">No students found</p>
-              <p className="text-gray-500 text-sm mb-6">
-                {students.length === 0 
-                  ? 'Get started by adding your first student'
-                  : 'Try adjusting your search or filters'}
-              </p>
-              {students.length === 0 && (
-                <div className="flex gap-3 justify-center">
-                  <Button
-                    variant="outline"
-                    onClick={() => router.push(`/dashboard/${schoolCode}/students/import`)}
-                  >
-                    <Upload size={18} className="mr-2" />
-                    Bulk Import
-                  </Button>
-                  <Button onClick={() => router.push(`/dashboard/${schoolCode}/students/add`)}>
-                    <Plus size={18} className="mr-2" />
-                    Add Student
-                  </Button>
-                </div>
+      {/* Status Tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {statusTabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setSelectedStatus(tab.id)}
+            className={`px-4 py-2 rounded-lg font-semibold text-xs whitespace-nowrap transition-all ${
+              selectedStatus === tab.id
+                ? 'bg-blue-800 text-white shadow'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+            }`}
+          >
+            {tab.label}
+            <span className={`ml-1.5 px-1.5 py-0.5 rounded text-xs ${
+              selectedStatus === tab.id ? 'bg-white/20' : 'bg-gray-100'
+            }`}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <Card className="p-4 bg-white border-blue-100">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Class</label>
+            <select
+              value={selectedClass}
+              onChange={(e) => {
+                setSelectedClass(e.target.value);
+                setSelectedSection('');
+              }}
+              disabled={classesLoading}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white disabled:bg-gray-100 disabled:text-gray-500"
+            >
+              <option value="">{classesLoading ? 'Loading classes…' : 'Select class'}</option>
+              {uniqueClasses.map((cls) => (
+                <option key={cls} value={cls}>
+                  {cls}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Section</label>
+            <select
+              value={selectedSection}
+              onChange={(e) => setSelectedSection(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white disabled:bg-gray-100 disabled:text-gray-500"
+              disabled={classesLoading || !selectedClass}
+            >
+              <option value="">{selectedClass ? 'Select section' : 'Select class first'}</option>
+              {uniqueSectionsForClass.map((sec) => (
+                <option key={sec} value={sec}>
+                  {sec}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Search</label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <Input
+                type="text"
+                placeholder="Name, admission ID, email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-3 py-2 text-sm rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-700"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
+              <ArrowUpDown size={12} className="text-blue-800" aria-hidden />
+              Sort by
+            </label>
+            <select
+              value={directorySort}
+              onChange={(e) =>
+                setDirectorySort(e.target.value as 'created_desc' | 'name_asc' | 'name_desc' | 'roll_asc' | 'roll_desc')
+              }
+              disabled={!selectionReady}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white disabled:bg-gray-100 disabled:text-gray-500"
+              title={!selectionReady ? 'Select class and section first' : undefined}
+            >
+              <option value="created_desc">Recently added first</option>
+              <option value="name_asc">Student name (A–Z)</option>
+              <option value="name_desc">Student name (Z–A)</option>
+              <option value="roll_asc">Roll number (low → high)</option>
+              <option value="roll_desc">Roll number (high → low)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="pt-3 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2">
+          {!selectionReady ? (
+            <p className="text-sm text-gray-600">
+              <span className="font-medium text-blue-900">Select a class and section</span> to load students for this directory.
+            </p>
+          ) : studentsLoading && students.length === 0 ? (
+            <p className="text-sm text-gray-600 flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-800" />
+              Loading students…
+            </p>
+          ) : (
+            <p className="text-sm text-gray-600 flex flex-wrap items-center gap-x-1 gap-y-0">
+              {studentsTotal === 0 ? (
+                <span>No students in this class-section for the current status filter.</span>
+              ) : (
+                <>
+                  Showing{' '}
+                  <span className="font-semibold text-blue-800">
+                    {rangeFrom}–{rangeTo}
+                  </span>{' '}
+                  of <span className="font-semibold text-blue-800">{studentsTotal}</span> students
+                  <span className="text-gray-500">
+                    {' '}
+                    · Page {currentPage} of {totalPages}
+                  </span>
+                </>
               )}
+              {studentsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-blue-800 shrink-0" aria-hidden />
+              ) : null}
+            </p>
+          )}
+        </div>
+      </Card>
+
+      {/* Export to Excel Modal */}
+      {exportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !exporting && setExportModalOpen(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Download size={20} className="text-blue-800" />
+                Export to Excel
+              </h3>
+              <button type="button" onClick={() => !exporting && setExportModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-4">
+              <p className="text-sm text-gray-600">Choose class, section, and columns to include in the download.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Class</label>
+                  <select
+                    value={exportClass}
+                    onChange={(e) => {
+                      setExportClass(e.target.value);
+                      setExportSection('');
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white text-sm"
+                  >
+                    <option value="">All Classes</option>
+                    {uniqueClasses.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Section</label>
+                  <select
+                    value={exportSection}
+                    onChange={(e) => setExportSection(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-700 bg-white text-sm"
+                  >
+                    <option value="">All Sections</option>
+                    {exportSectionOptions.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-gray-700">Columns to export</label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={selectAllExportColumns} className="text-xs text-blue-800 hover:underline font-medium">Select all</button>
+                    <button type="button" onClick={clearAllExportColumns} className="text-xs text-gray-500 hover:underline font-medium">Clear</button>
+                  </div>
+                </div>
+                <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {EXPORT_COLUMN_OPTIONS.map((col) => (
+                    <label key={col.key} className="flex items-center gap-2 cursor-pointer text-sm">
+                      <input
+                        type="checkbox"
+                        checked={exportColumns.includes(col.key)}
+                        onChange={() => toggleExportColumn(col.key)}
+                        className="rounded border-gray-300 text-blue-800 focus:ring-blue-700"
+                      />
+                      <span className="text-gray-700">{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {exportColumns.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">Select at least one column.</p>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => !exporting && setExportModalOpen(false)} disabled={exporting}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleExportExcel}
+                disabled={exporting || exportColumns.length === 0}
+                className="bg-blue-800 hover:bg-blue-900 text-white"
+              >
+                {exporting ? <Loader2 size={18} className="animate-spin mr-1" /> : <Download size={18} className="mr-1" />}
+                {exporting ? 'Exporting...' : 'Download Excel'}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Students Grid/List */}
+      {!selectionReady ? (
+        <Card className="p-12 border-blue-100 border-dashed bg-gradient-to-b from-blue-50/40 to-white">
+          <div className="flex flex-col items-center justify-center text-center gap-4 max-w-md mx-auto">
+            <div className="rounded-full bg-blue-100 p-4 text-blue-800">
+              <GraduationCap size={40} aria-hidden />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Select class and section</h2>
+              <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                Use the filters above to choose a <span className="font-medium text-gray-800">class</span> and{' '}
+                <span className="font-medium text-gray-800">section</span>. Student profiles appear here after both are
+                selected.
+              </p>
+            </div>
+          </div>
+        </Card>
+      ) : viewMode === 'grid' ? (
+        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 ${studentsLoading ? 'opacity-60 pointer-events-none' : ''}`}>
+          {students.length === 0 && !studentsLoading ? (
+            <div className="col-span-full rounded-xl border border-dashed border-blue-200 bg-blue-50/40 py-16 px-6 text-center">
+              <User className="mx-auto text-gray-400 mb-3" size={40} aria-hidden />
+              <p className="font-medium text-gray-800">No students in this class-section</p>
+              <p className="text-sm text-gray-500 mt-2 max-w-sm mx-auto">
+                Try another status tab or use search (type at least 2 characters).
+              </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b-2 border-[#5A7A95]/20 dark:border-[#6B9BB8]/20 bg-gradient-to-r from-[#F0F5F9] to-white dark:from-[#1e293b] dark:to-[#2F4156]">
-                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Admission No</th>
-                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Name</th>
-                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Class</th>
-                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Section</th>
-                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Status</th>
-                    <th className="text-left py-4 px-4 font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStudents.map((student, index) => (
-                    <motion.tr
-                      key={student.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.3 + index * 0.05 }}
-                      className="border-b border-gray-100 dark:border-gray-700 hover:bg-[#F0F5F9] dark:hover:bg-[#2F4156] transition-colors"
+            students.map((student, index) => {
+            const avatarColor = getHouseColorForStudent(student.house);
+            return (
+            <motion.div
+              key={student.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
+            >
+              <Card 
+                className="p-6 hover:shadow-xl transition-all duration-300 cursor-pointer border-2 border-transparent hover:border-blue-200 group bg-gradient-to-br from-white to-blue-50/20"
+                onClick={() => handleStudentClick(student.id!)}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center text-white text-xl font-bold shadow-lg relative"
+                      style={{ backgroundColor: avatarColor }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPhotoPreview({ url: `/api/students/${student.id}/photo?school_code=${encodeURIComponent(schoolCode)}`, name: getString(student.student_name) || 'Student' });
+                      }}
+                      role="button"
                     >
-                      <td className="py-4 px-4 font-medium text-gray-900 dark:text-white">{getString(student.admission_no) || 'N/A'}</td>
-                      <td className="py-4 px-4 text-gray-700 dark:text-gray-300">{getString(student.student_name) || 'N/A'}</td>
-                      <td className="py-4 px-4 text-gray-700 dark:text-gray-300">{getString(student.class) || 'N/A'}</td>
-                      <td className="py-4 px-4 text-gray-700 dark:text-gray-300">{getString(student.section) || 'N/A'}</td>
-                      <td className="py-4 px-4">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                          (() => {
-                            const status = getString(student.status);
-                            return status === 'active' 
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                              : status === 'inactive'
-                              ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
-                              : 'bg-[#5A7A95]/10 dark:bg-[#6B9BB8]/20 text-[#5A7A95] dark:text-[#6B9BB8]';
-                          })()
-                        }`}>
-                          {getString(student.status) || 'N/A'}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4">
-                        <div className="flex items-center space-x-2">
-                          <button 
-                            onClick={() => router.push(`/dashboard/${schoolCode}/students/${student.id}/view`)}
-                            className="text-[#5A7A95] dark:text-[#6B9BB8] hover:text-[#6B9BB8] dark:hover:text-[#7DB5D3] text-sm font-medium transition-colors"
-                          >
-                            View
+                      <img
+                        src={`/api/students/${student.id}/photo?school_code=${encodeURIComponent(schoolCode)}`}
+                        alt={getString(student.student_name)}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                          if (fallback) {
+                            fallback.style.display = 'flex';
+                            (fallback as HTMLElement).style.backgroundColor = avatarColor;
+                          }
+                        }}
+                      />
+                      <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center" style={{ backgroundColor: avatarColor }}>
+                        {getString(student.student_name).charAt(0).toUpperCase() || '?'}
+                      </span>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-800 transition-colors">
+                        {getString(student.student_name) || 'N/A'}
+                      </h3>
+                      <p className="text-sm text-gray-500">#{getString(student.admission_no) || 'N/A'}</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="text-gray-400 group-hover:text-blue-800 transition-colors" size={20} />
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <GraduationCap size={16} className="text-blue-700" />
+                    <span>Class {getString(student.class) || 'N/A'} - {getString(student.section) || 'N/A'}</span>
+                  </div>
+                  {houses.length > 0 && (
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Home size={16} className="text-blue-700 shrink-0" />
+                      {updatingHouseId === student.id ? (
+                        <Loader2 size={16} className="animate-spin text-blue-800" />
+                      ) : (
+                        <select
+                          value={getString(student.house) || ''}
+                          onChange={(e) => updateStudentHouse(e, student.id!)}
+                          className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white flex-1 min-w-0 focus:ring-2 focus:ring-blue-700"
+                        >
+                          <option value="">No house</option>
+                          {houses.map((h) => (
+                            <option key={h.id} value={h.house_name}>{h.house_name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                  {!!student.roll_number && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <User size={16} className="text-blue-700" />
+                      <span>Roll: {getString(student.roll_number)}</span>
+                    </div>
+                  )}
+                  {!!student.email && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Mail size={16} className="text-blue-700" />
+                      <span className="truncate">{getString(student.email)}</span>
+                    </div>
+                  )}
+                  {(!!student.father_contact || !!student.mother_contact) && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Phone size={16} className="text-blue-700" />
+                      <span>{getString(student.father_contact) || getString(student.mother_contact)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-gray-200 flex items-center justify-between gap-2 flex-wrap">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
+                    (() => {
+                      const status = normalizeStatus(getString(student.status));
+                      return status === 'active'
+                        ? 'bg-green-100 text-green-700'
+                        : status === 'deactivated'
+                        ? 'bg-red-100 text-red-700'
+                        : status === 'transferred'
+                        ? 'bg-indigo-100 text-indigo-700'
+                        : status === 'alumni'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-gray-100 text-gray-700';
+                    })()
+                  }`}>
+                    {normalizeStatus(getString(student.status)).toUpperCase()}
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleStudentClick(student.id!); }}
+                      className="px-3 py-1.5 bg-blue-800 text-white rounded-lg hover:bg-blue-900 transition-colors text-sm font-medium flex items-center gap-1"
+                    >
+                      <Eye size={14} />
+                      View
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/${schoolCode}/students/${student.id}/edit`); }}
+                      className="p-1.5 text-blue-700 hover:bg-blue-100 rounded-lg"
+                      title="Edit"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <div className="relative" data-status-menu>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatusMenuStudentId(statusMenuStudentId === student.id ? null : student.id!);
+                        }}
+                        disabled={statusUpdatingId === student.id}
+                        className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-0.5 disabled:opacity-50"
+                        title="Change status"
+                      >
+                        {statusUpdatingId === student.id ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
+                        <span className="text-xs font-medium hidden sm:inline">Status</span>
+                      </button>
+                      {statusMenuStudentId === student.id && (
+                        <div className="absolute right-0 top-full mt-1 py-1.5 bg-white rounded-lg shadow-lg border border-gray-200 z-20 min-w-[180px]">
+                          {normalizeStatus(getString(student.status)) !== 'active' && (
+                            <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'active')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-green-700 hover:bg-green-50">
+                              <UserCheck size={16} /> Activate
+                            </button>
+                          )}
+                          {normalizeStatus(getString(student.status)) !== 'deactivated' && (
+                            <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'deactivated')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-amber-700 hover:bg-amber-50">
+                              <UserX size={16} /> Deactivate
+                            </button>
+                          )}
+                          <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'transferred')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-indigo-700 hover:bg-indigo-50">
+                            <School size={16} /> Mark as Transferred
                           </button>
-                          <span className="text-gray-300 dark:text-gray-600">|</span>
-                          <button 
-                            onClick={() => router.push(`/dashboard/${schoolCode}/students/${student.id}/edit`)}
-                            className="text-gray-600 dark:text-gray-400 hover:text-[#5A7A95] dark:hover:text-[#6B9BB8] text-sm font-medium transition-colors"
-                          >
-                            Edit
+                          <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'alumni')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-amber-800 hover:bg-amber-50">
+                            <GraduationCap size={16} /> Mark as Alumni
                           </button>
                         </div>
-                      </td>
-                    </motion.tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+            );
+          })
           )}
+        </div>
+      ) : (
+        <Card className={`overflow-hidden border-blue-100 ${studentsLoading ? 'opacity-60 pointer-events-none' : ''}`}>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-blue-800 text-white">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Student</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Admission ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Roll No</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Class</th>
+                  {houses.length > 0 && (
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">House</th>
+                  )}
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Contact</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {students.length > 0 ? (
+                  students.map((student) => {
+                    const avatarColor = getHouseColorForStudent(student.house);
+                    return (
+                    <tr 
+                      key={student.id} 
+                      className="hover:bg-blue-50/50 transition-colors cursor-pointer"
+                      onClick={() => handleStudentClick(student.id!)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-bold relative"
+                            style={{ backgroundColor: avatarColor }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPhotoPreview({ url: `/api/students/${student.id}/photo?school_code=${encodeURIComponent(schoolCode)}`, name: getString(student.student_name) || 'Student' });
+                            }}
+                            role="button"
+                          >
+                            <img
+                              src={`/api/students/${student.id}/photo?school_code=${encodeURIComponent(schoolCode)}`}
+                              alt={getString(student.student_name)}
+                              className="absolute inset-0 w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                              loading="lazy"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                if (fallback) {
+                                  fallback.style.display = 'flex';
+                                  (fallback as HTMLElement).style.backgroundColor = avatarColor;
+                                }
+                              }}
+                            />
+                            <span className="absolute inset-0 hidden w-full h-full flex items-center justify-center" style={{ backgroundColor: avatarColor }}>
+                              {getString(student.student_name).charAt(0).toUpperCase() || '?'}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-gray-900">{getString(student.student_name) || 'N/A'}</div>
+                            {!!student.email && (
+                              <div className="text-xs text-gray-500 flex items-center gap-1">
+                                <Mail size={12} />
+                                {getString(student.email)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700 font-medium">{getString(student.admission_no) || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{getString(student.roll_number) || '-'}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-sm font-medium">
+                          {(() => {
+                            const className = getString(student.class) || 'N/A';
+                            const section = getString(student.section) || 'N/A';
+                            return `${className} - ${section}`;
+                          })()}
+                        </span>
+                      </td>
+                      {houses.length > 0 && (
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          {updatingHouseId === student.id ? (
+                            <Loader2 size={18} className="animate-spin text-blue-800" />
+                          ) : (
+                            <select
+                              value={getString(student.house) || ''}
+                              onChange={(e) => updateStudentHouse(e, student.id!)}
+                              className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white min-w-[100px] focus:ring-2 focus:ring-blue-700 focus:border-blue-700"
+                            >
+                              <option value="">No house</option>
+                              {houses.map((h) => (
+                                <option key={h.id} value={h.house_name}>{h.house_name}</option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {(() => {
+                          const fatherContact = getString(student.father_contact);
+                          const motherContact = getString(student.mother_contact);
+                          return fatherContact || motherContact || 'N/A';
+                        })()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          (() => {
+                            const status = normalizeStatus(getString(student.status));
+                            return status === 'active'
+                              ? 'bg-green-100 text-green-700'
+                              : status === 'deactivated'
+                              ? 'bg-red-100 text-red-700'
+                              : status === 'transferred'
+                              ? 'bg-indigo-100 text-indigo-700'
+                              : status === 'alumni'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-gray-100 text-gray-700';
+                          })()
+                        }`}>
+                          {normalizeStatus(getString(student.status)).toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleStudentClick(student.id!); }}
+                            className="p-1.5 text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="View Details"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/${schoolCode}/students/${student.id}/edit`); }}
+                            className="p-1.5 text-blue-800 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <div className="relative" data-status-menu>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setStatusMenuStudentId(statusMenuStudentId === student.id ? null : student.id!);
+                              }}
+                              disabled={statusUpdatingId === student.id}
+                              className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-0.5 disabled:opacity-50"
+                              title="Change status"
+                            >
+                              {statusUpdatingId === student.id ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
+                              <span className="text-xs font-medium">Status</span>
+                            </button>
+                            {statusMenuStudentId === student.id && (
+                              <div className="absolute right-0 top-full mt-1 py-1.5 bg-white rounded-lg shadow-lg border border-gray-200 z-20 min-w-[180px]">
+                                {normalizeStatus(getString(student.status)) !== 'active' && (
+                                  <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'active')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-green-700 hover:bg-green-50">
+                                    <UserCheck size={16} /> Activate
+                                  </button>
+                                )}
+                                {normalizeStatus(getString(student.status)) !== 'deactivated' && (
+                                  <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'deactivated')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-amber-700 hover:bg-amber-50">
+                                    <UserX size={16} /> Deactivate
+                                  </button>
+                                )}
+                                <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'transferred')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-indigo-700 hover:bg-indigo-50">
+                                  <School size={16} /> Mark as Transferred
+                                </button>
+                                <button type="button" onClick={(e) => handleChangeStatus(e, student.id!, 'alumni')} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-amber-800 hover:bg-amber-50">
+                                  <GraduationCap size={16} /> Mark as Alumni
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={houses.length > 0 ? 8 : 7} className="px-6 py-8 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <User className="text-gray-400" size={48} />
+                        <p className="text-gray-600 font-medium">No students found</p>
+                        <p className="text-gray-500 text-sm">Try adjusting your filters</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </Card>
-      </motion.div>
+      )}
 
-      {/* Stats Summary */}
-      {students.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6"
+      {selectionReady && totalPages > 1 && (
+        <Card className="p-4 border-blue-100 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-gray-600">
+            Page <span className="font-semibold text-blue-900">{currentPage}</span> of{' '}
+            <span className="font-semibold text-blue-900">{totalPages}</span>
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-blue-200 text-blue-900"
+              disabled={currentPage <= 1 || studentsLoading}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft size={18} className="mr-0.5" />
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-blue-200 text-blue-900"
+              disabled={currentPage >= totalPages || studentsLoading}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+              <ChevronRight size={18} className="ml-0.5" />
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Photo preview modal */}
+      {photoPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
+          onClick={() => setPhotoPreview(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo preview"
         >
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            whileHover={{ scale: 1.05 }}
+          <div
+            className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
           >
-            <Card className="p-6 bg-gradient-to-br from-[#5A7A95] to-[#567C8D] text-white hover:shadow-xl transition-all">
-              <div className="flex items-center space-x-4">
-                <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm">
-                  <Users className="text-white" size={24} />
-                </div>
-                <div>
-                  <p className="text-sm text-[#C8D9E6]">Total Students</p>
-                  <p className="text-3xl font-bold text-white">{students.length}</p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.7 }}
-            whileHover={{ scale: 1.05 }}
-          >
-            <Card className="p-6 bg-gradient-to-br from-[#6B9BB8] to-[#5A7A95] text-white hover:shadow-xl transition-all">
-              <div className="flex items-center space-x-4">
-                <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm">
-                  <Users className="text-white" size={24} />
-                </div>
-                <div>
-                  <p className="text-sm text-[#C8D9E6]">Active Students</p>
-                  <p className="text-3xl font-bold text-white">
-                    {students.filter(s => getString(s.status) === 'active').length}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8 }}
-            whileHover={{ scale: 1.05 }}
-          >
-            <Card className="p-6 bg-gradient-to-br from-[#567C8D] to-[#6B9BB8] text-white hover:shadow-xl transition-all">
-              <div className="flex items-center space-x-4">
-                <div className="p-3 rounded-xl bg-white/20 backdrop-blur-sm">
-                  <Users className="text-white" size={24} />
-                </div>
-                <div>
-                  <p className="text-sm text-[#C8D9E6]">Classes</p>
-                  <p className="text-3xl font-bold text-white">{uniqueClasses.length}</p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </motion.div>
+            <button
+              type="button"
+              onClick={() => setPhotoPreview(null)}
+              className="absolute -top-10 right-0 p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+              aria-label="Close"
+            >
+              <X size={24} />
+            </button>
+            <p className="text-white font-medium mb-2 truncate max-w-full">{photoPreview.name}</p>
+            <img
+              src={photoPreview.url}
+              alt={photoPreview.name}
+              className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
       )}
     </div>
   );
 }
-

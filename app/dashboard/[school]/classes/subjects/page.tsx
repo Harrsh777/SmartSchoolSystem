@@ -179,7 +179,7 @@ export default function SubjectsPage({
         </div>
         <Button
           onClick={handleAdd}
-          className="bg-[#F97316] hover:bg-[#EA580C] text-white"
+          className="bg-[#1619e9] hover:bg-[#0d0f91] text-white"
         >
           <Plus size={18} className="mr-2" />
           ADD NEW SUBJECT

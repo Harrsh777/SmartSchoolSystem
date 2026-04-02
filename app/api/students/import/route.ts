@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { generateAndHashPassword } from '@/lib/password-generator';
 import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
+import {
+  parseStudentImportClassSection,
+  matchCanonicalClassFromAllowList,
+} from '@/lib/students/import-class-section';
 
 const BATCH_SIZE = 500;
 
@@ -47,18 +51,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Map normalized key (case-insensitive) -> canonical { class, section, academic_year } from Classes table
-    const classKeyToCanonical = new Map<string, { class: string; section: string; academic_year: string }>();
-    for (const c of existingClasses ?? []) {
-      const key = `${String(c.class).toUpperCase().trim()}-${String(c.section).toUpperCase().trim()}-${String(c.academic_year ?? '').trim()}`;
-      classKeyToCanonical.set(key, {
-        class: String(c.class ?? '').trim(),
-        section: String(c.section ?? '').trim(),
-        academic_year: String(c.academic_year ?? '').trim() || currentYear,
-      });
-    }
-
-    if (classKeyToCanonical.size === 0) {
+    if (!existingClasses?.length) {
       return NextResponse.json(
         { error: 'No classes found. Create classes in the Classes module first, then import students.' },
         { status: 400 }
@@ -112,20 +105,25 @@ export async function POST(request: NextRequest) {
         failedCount++;
         return;
       }
-      const cls = student.class != null ? String(student.class).trim() : '';
-      const sec = student.section != null ? String(student.section).trim() : '';
-      const year = currentYear;
-      if (!cls || !sec) {
-        errors.push({ row, error: 'Class and section are required' });
+      const parsed = parseStudentImportClassSection({
+        class: student.class,
+        section: student.section,
+      });
+      if (!parsed.ok) {
+        errors.push({ row, error: parsed.error });
         failedCount++;
         return;
       }
-      const classKey = `${cls.toUpperCase()}-${sec.toUpperCase()}-${year}`;
-      const canonical = classKeyToCanonical.get(classKey);
+      const canonical = matchCanonicalClassFromAllowList(
+        { class: parsed.class, section: parsed.section },
+        currentYear,
+        existingClasses ?? [],
+        currentYear
+      );
       if (!canonical) {
         errors.push({
           row,
-            error: `Class/section "${cls}-${sec}" not found in current academic year (${year}). Create it in Classes first.`,
+          error: `Unknown class/section "${parsed.class}" / "${parsed.section}" for academic year ${currentYear}. Add it in Classes (e.g. class ${parsed.class}, section ${parsed.section}) or fix the cell.`,
         });
         failedCount++;
         return;

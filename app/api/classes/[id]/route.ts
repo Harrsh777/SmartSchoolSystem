@@ -2,23 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
+function normalizeSchoolCode(code: string | null | undefined): string {
+  return String(code ?? '')
+    .trim()
+    .toUpperCase();
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = String(rawId ?? '').trim();
     const searchParams = request.nextUrl.searchParams;
-    const schoolCode = searchParams.get('school_code');
+    const schoolCodeRaw = searchParams.get('school_code');
+    const schoolCodeNorm = normalizeSchoolCode(schoolCodeRaw);
 
-    if (!schoolCode) {
+    if (!schoolCodeNorm) {
       return NextResponse.json(
         { error: 'School code is required' },
         { status: 400 }
       );
     }
 
-    // Fetch class with teacher details
+    if (!id) {
+      return NextResponse.json({ error: 'Class id is required' }, { status: 400 });
+    }
+
+    // Fetch by id first (school_code in DB may differ by case/whitespace from query param)
     const { data: classData, error: classError } = await supabase
       .from('classes')
       .select(`
@@ -26,10 +38,16 @@ export async function GET(
         class_teacher:staff!classes_class_teacher_id_fkey(id, full_name, staff_id)
       `)
       .eq('id', id)
-      .eq('school_code', schoolCode)
-      .single();
+      .maybeSingle();
 
     if (classError || !classData) {
+      return NextResponse.json(
+        { error: 'Class not found' },
+        { status: 404 }
+      );
+    }
+
+    if (normalizeSchoolCode(classData.school_code as string) !== schoolCodeNorm) {
       return NextResponse.json(
         { error: 'Class not found' },
         { status: 404 }
@@ -51,26 +69,38 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = String(rawId ?? '').trim();
     const body = await request.json();
     const { school_code, class_teacher_id, academic_year, academic_year_id, ...updateData } = body;
 
-    if (!school_code) {
+    const schoolCodeNorm = normalizeSchoolCode(school_code);
+    if (!schoolCodeNorm) {
       return NextResponse.json(
         { error: 'School code is required' },
         { status: 400 }
       );
     }
 
-    // Verify class belongs to this school
+    if (!id) {
+      return NextResponse.json({ error: 'Class id is required' }, { status: 400 });
+    }
+
+    // Verify class belongs to this school (select * so missing optional columns e.g. academic_year_id don't break the query)
     const { data: existingClass, error: fetchError } = await supabase
       .from('classes')
-      .select('id, school_code, academic_year_id')
+      .select('*')
       .eq('id', id)
-      .eq('school_code', school_code)
-      .single();
+      .maybeSingle();
 
     if (fetchError || !existingClass) {
+      return NextResponse.json(
+        { error: 'Class not found or access denied' },
+        { status: 404 }
+      );
+    }
+
+    if (normalizeSchoolCode(existingClass.school_code as string) !== schoolCodeNorm) {
       return NextResponse.json(
         { error: 'Class not found or access denied' },
         { status: 404 }
@@ -94,10 +124,14 @@ export async function PATCH(
     }
 
     const adminOverride = request.headers.get('x-admin-override') === 'true';
-    const yearIdToCheck = (updateObject.academic_year_id as string | undefined) ?? (existingClass as { academic_year_id?: string | null })?.academic_year_id ?? null;
+    const ec = existingClass as Record<string, unknown>;
+    const yearIdToCheck =
+      (updateObject.academic_year_id as string | undefined) ??
+      (ec.academic_year_id != null ? String(ec.academic_year_id) : null);
     const lockCheck = await assertAcademicYearNotLocked({
-      schoolCode: school_code,
+      schoolCode: schoolCodeNorm,
       academic_year_id: yearIdToCheck,
+      academic_year: ec.academic_year != null ? String(ec.academic_year) : null,
       adminOverride,
     });
     if (lockCheck) return lockCheck;
@@ -110,7 +144,7 @@ export async function PATCH(
           .from('staff')
           .select('id, staff_id, role, school_code')
           .eq('id', class_teacher_id)
-          .eq('school_code', school_code)
+          .eq('school_code', existingClass.school_code as string)
           .eq('role', 'Teacher')
           .single();
 
@@ -135,7 +169,7 @@ export async function PATCH(
       .from('classes')
       .update(updateObject)
       .eq('id', id)
-      .eq('school_code', school_code)
+      .eq('school_code', existingClass.school_code as string)
       .select(`
         *,
         class_teacher:staff!classes_class_teacher_id_fkey(id, full_name, staff_id)
@@ -170,24 +204,28 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = String(rawId ?? '').trim();
     const searchParams = request.nextUrl.searchParams;
-    const schoolCode = searchParams.get('school_code');
+    const schoolCodeNorm = normalizeSchoolCode(searchParams.get('school_code'));
 
-    if (!schoolCode) {
+    if (!schoolCodeNorm) {
       return NextResponse.json(
         { error: 'School code is required' },
         { status: 400 }
       );
     }
 
-    // Get class details to match students by class, section, academic_year
+    if (!id) {
+      return NextResponse.json({ error: 'Class id is required' }, { status: 400 });
+    }
+
+    // Load by id; use * so we never request a column that doesn't exist on older DBs (would error → false "not found")
     const { data: classRow, error: classError } = await supabase
       .from('classes')
-      .select('class, section, academic_year, academic_year_id')
+      .select('*')
       .eq('id', id)
-      .eq('school_code', schoolCode)
-      .single();
+      .maybeSingle();
 
     if (classError || !classRow) {
       return NextResponse.json(
@@ -196,10 +234,21 @@ export async function DELETE(
       );
     }
 
+    if (normalizeSchoolCode(classRow.school_code as string) !== schoolCodeNorm) {
+      return NextResponse.json(
+        { error: 'Class not found' },
+        { status: 404 }
+      );
+    }
+
+    const rowSchoolCode = String(classRow.school_code ?? '');
+    const cr = classRow as Record<string, unknown>;
+
     const adminOverride = request.headers.get('x-admin-override') === 'true';
     const lockCheck = await assertAcademicYearNotLocked({
-      schoolCode: schoolCode,
-      academic_year_id: (classRow as { academic_year_id?: string | null })?.academic_year_id ?? null,
+      schoolCode: schoolCodeNorm,
+      academic_year_id: cr.academic_year_id != null ? String(cr.academic_year_id) : null,
+      academic_year: cr.academic_year != null ? String(cr.academic_year) : null,
       adminOverride,
     });
     if (lockCheck) return lockCheck;
@@ -207,7 +256,7 @@ export async function DELETE(
     const { count: studentCount } = await supabase
       .from('students')
       .select('*', { count: 'exact', head: true })
-      .eq('school_code', schoolCode)
+      .eq('school_code', rowSchoolCode)
       .eq('class', classRow.class)
       .eq('section', classRow.section ?? '');
 
@@ -218,12 +267,12 @@ export async function DELETE(
       );
     }
 
-    // Delete class
+    // Delete class (use row's school_code so filter matches the stored value exactly)
     const { error: deleteError } = await supabase
       .from('classes')
       .delete()
       .eq('id', id)
-      .eq('school_code', schoolCode);
+      .eq('school_code', rowSchoolCode);
 
     if (deleteError) {
       return NextResponse.json(

@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabase';
 import { parseDate } from '@/lib/date-parser';
+import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
+import {
+  parseStudentImportClassSection,
+  matchCanonicalClassFromAllowList,
+} from '@/lib/students/import-class-section';
 
 interface ValidatedRow {
   rowIndex: number;
@@ -21,6 +26,19 @@ export async function POST(request: NextRequest) {
         { error: 'File and school code are required' },
         { status: 400 }
       );
+    }
+
+    let currentYearName: string;
+    try {
+      currentYearName = (await getRequiredCurrentAcademicYear(schoolCode)).year_name;
+    } catch (e) {
+      if (e instanceof Error && e.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
+        return NextResponse.json(
+          { error: 'Setup academic year first from Academic Year Management module.' },
+          { status: 400 }
+        );
+      }
+      throw e;
     }
 
     // Read Excel file
@@ -53,10 +71,6 @@ export async function POST(request: NextRequest) {
       .from('classes')
       .select('class, section, academic_year')
       .eq('school_code', schoolCode);
-
-    const validClassSections = new Set(
-      classes?.map(c => `${c.class}-${c.section}-${c.academic_year}`) || []
-    );
 
     // Map Excel columns to database fields
     const columnMapping: Record<string, string> = {
@@ -135,22 +149,43 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const classValue = String(mappedData.class || '');
-      if (!classValue.trim()) {
-        errors.push('Class is required');
-      }
+      const altCombined = row['Class & Section'] ?? row['Class and Section'];
+      const classValueRaw =
+        String(mappedData.class || '').trim() ||
+        (altCombined != null && altCombined !== ''
+          ? String(altCombined).trim()
+          : '');
+      const sectionRaw = String(mappedData.section || '').trim();
 
-      const section = String(mappedData.section || '');
-      if (!section.trim()) {
-        errors.push('Section is required');
-      }
-
-      // Validate class-section combination
-      const academicYear = String(mappedData.academic_year || '');
-      if (classValue && section && academicYear) {
-        const classSectionKey = `${classValue}-${section}-${academicYear}`;
-        if (validClassSections.size > 0 && !validClassSections.has(classSectionKey)) {
-          warnings.push(`Class-Section combination "${classValue}-${section}" may not exist for academic year ${academicYear}`);
+      const parsed = parseStudentImportClassSection({
+        class: classValueRaw || undefined,
+        section: sectionRaw || undefined,
+      });
+      if (!parsed.ok) {
+        errors.push(parsed.error);
+      } else {
+        const yearForClass =
+          String(mappedData.academic_year || '').trim() || currentYearName;
+        const canonical = matchCanonicalClassFromAllowList(
+          { class: parsed.class, section: parsed.section },
+          yearForClass,
+          classes ?? [],
+          currentYearName
+        );
+        if (!canonical) {
+          if (!classes?.length) {
+            errors.push(
+              'No classes defined for this school. Create classes in the Classes module first.'
+            );
+          } else {
+            errors.push(
+              `Unknown class/section "${parsed.class}" / "${parsed.section}" for academic year ${yearForClass}. Use values that exist in Classes (e.g. class 1, section A).`
+            );
+          }
+        } else {
+          mappedData.class = canonical.class;
+          mappedData.section = canonical.section;
+          mappedData.academic_year = canonical.academic_year;
         }
       }
 
@@ -265,7 +300,7 @@ export async function POST(request: NextRequest) {
         mappedData.nationality = 'Indian';
       }
       if (!mappedData.academic_year) {
-        mappedData.academic_year = new Date().getFullYear().toString();
+        mappedData.academic_year = currentYearName;
       }
 
       // Backward compatibility

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { parseDate, isValidDateFormat } from '@/lib/date-parser';
+import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
+import {
+  parseStudentImportClassSection,
+  matchCanonicalClassFromAllowList,
+} from '@/lib/students/import-class-section';
 import type { StudentRow } from '@/app/dashboard/[school]/students/import/page';
 
 // Field mapping: CSV header -> database field
@@ -17,6 +22,8 @@ const FIELD_MAPPING: Record<string, string> = {
   'aadhaar': 'aadhaar_number',
   'class': 'class',
   'section': 'section',
+  'class & section': 'class_section_combined',
+  'class and section': 'class_section_combined',
   'sr no': 'sr_no',
   'sr number': 'sr_no',
   'doa': 'date_of_admission',
@@ -89,6 +96,37 @@ export async function POST(request: NextRequest) {
     }
 
     const schoolId = schoolData.id;
+
+    let currentYearName: string;
+    try {
+      currentYearName = (await getRequiredCurrentAcademicYear(schoolCode)).year_name;
+    } catch (e) {
+      if (e instanceof Error && e.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
+        return NextResponse.json(
+          { error: 'Setup academic year first from Academic Year Management module.' },
+          { status: 400 }
+        );
+      }
+      throw e;
+    }
+
+    const { data: classesRows, error: classesError } = await supabase
+      .from('classes')
+      .select('class, section, academic_year')
+      .eq('school_code', schoolCode);
+
+    if (classesError) {
+      return NextResponse.json(
+        { error: 'Failed to load classes', details: classesError.message },
+        { status: 500 }
+      );
+    }
+    if (!classesRows?.length) {
+      return NextResponse.json(
+        { error: 'No classes found. Create classes in the Classes module first, then import students.' },
+        { status: 400 }
+      );
+    }
 
     // Read file content
     const fileContent = await file.text();
@@ -168,6 +206,37 @@ export async function POST(request: NextRequest) {
       // Normalize blood group
       const bloodGroup = normalizeBloodGroup(rowData.blood_group);
 
+      const combined =
+        rowData.class_section_combined != null && String(rowData.class_section_combined).trim() !== ''
+          ? String(rowData.class_section_combined).trim()
+          : '';
+      const rawClassForParse =
+        String(rowData.class || '').trim() || combined || undefined;
+      const rawSectionForParse = String(rowData.section || '').trim() || undefined;
+
+      const parsedClassSection = parseStudentImportClassSection({
+        class: rawClassForParse,
+        section: rawSectionForParse,
+      });
+      const canonicalClass =
+        parsedClassSection.ok
+          ? matchCanonicalClassFromAllowList(
+              { class: parsedClassSection.class, section: parsedClassSection.section },
+              currentYearName,
+              classesRows,
+              currentYearName
+            )
+          : null;
+
+      let classSectionErrors: string[] = [];
+      if (!parsedClassSection.ok) {
+        classSectionErrors.push(parsedClassSection.error);
+      } else if (!canonicalClass) {
+        classSectionErrors.push(
+          `Unknown class/section "${parsedClassSection.class}" / "${parsedClassSection.section}" for academic year ${currentYearName}. Use values that exist in Classes (e.g. class 1, section A).`
+        );
+      }
+
       // Build student data structure
       const studentData: Record<string, unknown> = {
         school_id: schoolId,
@@ -176,8 +245,8 @@ export async function POST(request: NextRequest) {
         student_name: studentName || `${firstName} ${lastName}`.trim(),
         first_name: firstName || undefined,
         last_name: lastName || undefined,
-        class: rowData.class || '',
-        section: rowData.section || '',
+        class: canonicalClass?.class ?? String(rowData.class || combined || ''),
+        section: canonicalClass?.section ?? String(rowData.section || ''),
         date_of_birth: dateOfBirth,
         gender: gender,
         address: rowData.address || undefined,
@@ -219,12 +288,16 @@ export async function POST(request: NextRequest) {
         parent_name: rowData.father_name || rowData.mother_name || undefined,
         parent_phone: rowData.father_contact || rowData.mother_contact || undefined,
         parent_email: rowData.email || undefined,
-        academic_year: new Date().getFullYear().toString(),
+        academic_year: canonicalClass?.academic_year ?? currentYearName,
         status: 'active' as const,
       };
 
       // Validate row
-      const validation = validateRow(studentData);
+      const validation = validateRow(studentData, { skipClassSectionRequired: true });
+      if (classSectionErrors.length > 0) {
+        validation.errors.push(...classSectionErrors);
+        validation.status = 'error';
+      }
       
       rows.push({
         rowIndex: i,
@@ -347,7 +420,10 @@ function normalizeBloodGroup(bg: unknown): string | undefined {
   return undefined;
 }
 
-function validateRow(data: Record<string, unknown>): {
+function validateRow(
+  data: Record<string, unknown>,
+  opts?: { skipClassSectionRequired?: boolean }
+): {
   status: 'valid' | 'warning' | 'error';
   errors: string[];
   warnings: string[];
@@ -370,12 +446,13 @@ function validateRow(data: Record<string, unknown>): {
     errors.push('Student name is required');
   }
   
-  if (!classValue.trim()) {
-    errors.push('Class is required');
-  }
-  
-  if (!section.trim()) {
-    errors.push('Section is required');
+  if (!opts?.skipClassSectionRequired) {
+    if (!classValue.trim()) {
+      errors.push('Class is required');
+    }
+    if (!section.trim()) {
+      errors.push('Section is required');
+    }
   }
 
   // Date validations
