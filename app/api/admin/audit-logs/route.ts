@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { requireSuperAdminSession } from '@/lib/super-admin-api';
 
 export interface AuditLogRow {
   id: string;
@@ -17,6 +18,8 @@ export interface AuditLogRow {
 }
 
 export async function GET(request: NextRequest) {
+  const denied = await requireSuperAdminSession(request);
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));

@@ -150,6 +150,8 @@ export function buildClassAllowListMap(
 
 /**
  * Match parsed class/section to an allowed row for the given academic year.
+ * Tries exact DB strings first, then normalized tokens so spreadsheet "1"/"A"
+ * matches Classes rows stored as "CLASS 1"/"A" (same normalization as import parsing).
  */
 export function matchCanonicalClassFromAllowList(
   parsed: { class: string; section: string },
@@ -160,5 +162,25 @@ export function matchCanonicalClassFromAllowList(
   const map = buildClassAllowListMap(rows, fallbackYear);
   const year = String(academicYear ?? '').trim() || String(fallbackYear).trim();
   const key = `${parsed.class.toUpperCase()}-${parsed.section.toUpperCase()}-${year}`;
-  return map.get(key) ?? null;
+  const exact = map.get(key);
+  if (exact) return exact;
+
+  const parsedClassNorm = normalizeStandaloneClassToken(parsed.class).toUpperCase();
+  const parsedSecNorm = normalizeStandaloneSectionToken(parsed.section);
+  const fy = String(fallbackYear ?? '').trim();
+
+  for (const c of rows) {
+    const ay = String(c.academic_year ?? '').trim() || fy;
+    if (ay !== year) continue;
+
+    const cls = String(c.class ?? '').trim();
+    const sec = String(c.section ?? '').trim();
+    const dbClassNorm = normalizeStandaloneClassToken(cls).toUpperCase();
+    const dbSecNorm = normalizeStandaloneSectionToken(sec);
+    if (dbClassNorm === parsedClassNorm && dbSecNorm === parsedSecNorm) {
+      return { class: cls, section: sec, academic_year: ay };
+    }
+  }
+
+  return null;
 }

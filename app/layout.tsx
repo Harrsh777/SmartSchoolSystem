@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,6 +30,11 @@ export default function RootLayout({
         <link
           href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
           rel="stylesheet"
+        />
+        <Script
+          src="https://cloud.umami.is/script.js"
+          data-website-id="6b3a314c-a362-47db-b427-1329e70d43de"
+          strategy="afterInteractive"
         />
       </head>
       <body

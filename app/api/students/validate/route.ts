@@ -7,6 +7,7 @@ import {
   parseStudentImportClassSection,
   matchCanonicalClassFromAllowList,
 } from '@/lib/students/import-class-section';
+import { normalizeStudentGenderForDb } from '@/lib/students/gender';
 
 interface ValidatedRow {
   rowIndex: number;
@@ -261,15 +262,21 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Gender validation
-      const gender = String(mappedData.gender || '');
-      if (gender) {
-        const validGenders = ['Male', 'Female', 'Other', 'male', 'female', 'other'];
-        if (!validGenders.includes(gender)) {
-          warnings.push('Gender should be Male, Female, or Other');
+      // Gender → canonical values accepted by DB check constraint
+      const genderRaw = mappedData.gender;
+      const genderStr =
+        genderRaw !== undefined && genderRaw !== null ? String(genderRaw).trim() : '';
+      if (genderStr) {
+        const canon = normalizeStudentGenderForDb(genderRaw);
+        if (canon) {
+          mappedData.gender = canon;
         } else {
-          mappedData.gender = gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase();
+          errors.push(
+            'Invalid gender. Use Male, Female, or Other (synonyms: Boy/Girl, M/F, 1/2/3).'
+          );
         }
+      } else {
+        delete mappedData.gender;
       }
 
       // Blood group validation

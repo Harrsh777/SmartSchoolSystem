@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireSuperAdminSession } from '@/lib/super-admin-api';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
+  const denied = await requireSuperAdminSession(request);
+  if (denied) return denied;
   try {
     // Fetch all schools
     const { data: schools, error: schoolsError } = await supabase

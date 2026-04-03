@@ -6,6 +6,7 @@ import {
   parseStudentImportClassSection,
   matchCanonicalClassFromAllowList,
 } from '@/lib/students/import-class-section';
+import { normalizeStudentGenderForDb } from '@/lib/students/gender';
 
 const BATCH_SIZE = 500;
 
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
         class: canonical.class,
         section: canonical.section,
         date_of_birth: student.date_of_birth || null,
-        gender: student.gender || null,
+        gender: normalizeStudentGenderForDb(student.gender),
         address: student.address || null,
         city: student.city || null,
         state: student.state || null,

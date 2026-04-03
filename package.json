@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "hash-admin-password": "node scripts/hash-super-admin-password.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -15,10 +16,13 @@
     "@supabase/supabase-js": "^2.89.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/papaparse": "^5.5.2",
+    "@umami/api-client": "^0.80.0",
+    "@xyflow/react": "^12.10.2",
     "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dagre": "^0.8.5",
     "fabric": "^7.1.0",
     "framer-motion": "^12.23.26",
     "ioredis": "^5.9.2",
@@ -27,6 +31,7 @@
     "ogl": "^1.0.11",
     "papaparse": "^5.5.3",
     "pdf-lib": "^1.17.1",
+    "pg": "^8.20.0",
     "quill": "^2.0.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -40,7 +45,9 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/dagre": "^0.7.54",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

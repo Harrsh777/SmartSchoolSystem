@@ -29,7 +29,6 @@ import {
   Search,
   TrendingUp,
   TrendingDown,
-  Minus,
   Activity,
   Key,
   HelpCircle,
@@ -41,7 +40,6 @@ import {
   Save,
   Loader2,
   Send,
-  Database,
   ChevronRight,
   Settings,
   UserCheck,
@@ -50,12 +48,15 @@ import {
   LogIn,
   Download,
   Trash2,
+  Database,
+  LogOut,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { AnimatePresence } from 'framer-motion';
 import SchoolSupervisionView from '@/components/admin/SchoolSupervisionView';
 import AdminPasswordModal from '@/components/admin/AdminPasswordModal';
-import { useFakeAnalytics } from '@/hooks/useFakeAnalytics';
+import WebAnalyticsDashboard from '@/components/admin/WebAnalyticsDashboard';
+import DatabaseStructurePanel from '@/components/database-structure/DatabaseStructurePanel';
 import {
   calculatePercentage,
   getGradeFromPercentage,
@@ -151,6 +152,7 @@ type ViewMode =
   | 'schools'
   | 'system-settings'
   | 'analytics'
+  | 'database-structure'
   | 'users'
   | 'login-audit'
   | 'students'
@@ -778,10 +780,8 @@ function AdminMarksEntryView({ acceptedSchools }: { acceptedSchools: AcceptedSch
 }
 
 export default function AdminDashboard() {
+  const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  // Simulated real-time analytics (replace with real API when available)
-  const fakeAnalytics = useFakeAnalytics();
 
   const [pendingSchools, setPendingSchools] = useState<SchoolSignup[]>([]);
   const [acceptedSchools, setAcceptedSchools] = useState<AcceptedSchool[]>([]);
@@ -919,10 +919,6 @@ export default function AdminDashboard() {
   const [systemSettings, setSystemSettings] = useState<Record<string, unknown> | null>(null);
   const [loadingSystemSettings, setLoadingSystemSettings] = useState(false);
   const [savingSystemSettings, setSavingSystemSettings] = useState(false);
-  const [, setAnalyticsData] = useState<Record<string, unknown> | null>(null);
-  const [, setLoadingAnalytics] = useState(false);
-  const [analyticsPeriod] = useState('30d');
-  const [analyticsSchoolFilter] = useState('all');
   const [usersData, setUsersData] = useState<Record<string, unknown>[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersPage, setUsersPage] = useState(1);
@@ -988,15 +984,33 @@ export default function AdminDashboard() {
   // School supervision state - removed unused variables
 
   useEffect(() => {
-    fetchAllData();
+    let cancelled = false;
+    fetch('/api/auth/admin/session', { credentials: 'include' })
+      .then((res) => {
+        if (!cancelled && res.ok) setIsAuthenticated(true);
+      })
+      .finally(() => {
+        if (!cancelled) setAuthChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const checkDesktop = () => {
       setIsDesktop(window.innerWidth >= 1024);
     };
     checkDesktop();
     window.addEventListener('resize', checkDesktop);
     return () => window.removeEventListener('resize', checkDesktop);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchAllData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (viewMode === 'students') {
@@ -1053,8 +1067,6 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (viewMode === 'system-settings') {
       fetchSystemSettings();
-    } else if (viewMode === 'analytics') {
-      fetchAnalytics();
     } else if (viewMode === 'users') {
       fetchUsers();
     } else if (viewMode === 'login-audit' && securityAuditTab === 'login') {
@@ -1066,13 +1078,6 @@ export default function AdminDashboard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, securityAuditTab]);
-
-  useEffect(() => {
-    if (viewMode === 'analytics') {
-      fetchAnalytics();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analyticsPeriod, analyticsSchoolFilter, viewMode]);
 
   useEffect(() => {
     if (viewMode === 'users') {
@@ -1422,26 +1427,6 @@ export default function AdminDashboard() {
       alert('Failed to save system settings');
     } finally {
       setSavingSystemSettings(false);
-    }
-  };
-
-  const fetchAnalytics = async () => {
-    try {
-      setLoadingAnalytics(true);
-      const params = new URLSearchParams();
-      params.append('period', analyticsPeriod);
-      if (analyticsSchoolFilter !== 'all') {
-        params.append('school_code', analyticsSchoolFilter);
-      }
-      const response = await fetch(`/api/admin/analytics?${params.toString()}`);
-      const result = await response.json();
-      if (response.ok && result.data) {
-        setAnalyticsData(result.data);
-      }
-    } catch (error) {
-      console.error('Error fetching analytics:', error);
-    } finally {
-      setLoadingAnalytics(false);
     }
   };
 
@@ -2277,13 +2262,22 @@ export default function AdminDashboard() {
   return (
     <>
       {/* Password Modal */}
-      <AdminPasswordModal 
-        isOpen={!isAuthenticated} 
-        onSuccess={() => setIsAuthenticated(true)} 
+      <AdminPasswordModal
+        isOpen={authChecked && !isAuthenticated}
+        onSuccess={() => setIsAuthenticated(true)}
       />
 
+      {!authChecked ? (
+        <div className="min-h-screen flex items-center justify-center bg-[#F5EFEB] dark:bg-[#0f172a]">
+          <div className="flex flex-col items-center gap-3 text-slate-600 dark:text-slate-400">
+            <Loader2 className="animate-spin" size={36} />
+            <p className="text-sm font-medium">Checking admin session…</p>
+          </div>
+        </div>
+      ) : null}
+
       {/* Admin Content - Only show if authenticated */}
-      {isAuthenticated ? (
+      {authChecked && isAuthenticated ? (
         <div className="min-h-screen bg-[#F5EFEB] dark:bg-[#0f172a]">
       {/* Header */}
       <nav className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl border-b border-white/60 dark:border-gray-700/50 sticky top-0 z-40 shadow-sm">
@@ -2305,6 +2299,20 @@ export default function AdminDashboard() {
                 title="Refresh"
               >
                 <RefreshCw size={20} />
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await fetch('/api/auth/admin/logout', {
+                    method: 'POST',
+                    credentials: 'include',
+                  });
+                  setIsAuthenticated(false);
+                }}
+                className="inline-flex items-center gap-1.5 text-sm text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+              >
+                <LogOut size={18} />
+                Log out
               </button>
               <Link href="/" className="text-sm text-[#5A7A95] dark:text-[#6B9BB8] hover:text-[#6B9BB8] dark:hover:text-[#7DB5D3] transition-colors">
                 Back to Home
@@ -2380,6 +2388,7 @@ export default function AdminDashboard() {
                           { id: 'schools', label: 'Schools', icon: Building2, color: 'from-emerald-500 to-teal-500' },
                           { id: 'system-settings', label: 'System Settings', icon: Settings, color: 'from-slate-500 to-gray-500' },
                           { id: 'analytics', label: 'Analytics', icon: Activity, color: 'from-purple-500 to-pink-500' },
+                          { id: 'database-structure', label: 'Database Structure', icon: Database, color: 'from-cyan-500 to-teal-500' },
                           { id: 'users', label: 'Users', icon: UserCheck, color: 'from-indigo-500 to-blue-500' },
                           { id: 'demo-query', label: 'Demo Query', icon: ClipboardList, color: 'from-amber-500 to-orange-500' },
                           { id: 'login-audit', label: 'Security & Audit', icon: LogIn, color: 'from-rose-500 to-red-500' },
@@ -5074,156 +5083,23 @@ CREATE INDEX idx_audit_logs_severity ON audit_logs(severity);`}</code></pre>
             </motion.div>
           )}
 
-          {/* Analytics & Reports View — simulated real-time (replace with real API when available) */}
           {viewMode === 'analytics' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
+              className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto"
             >
-              <div>
-                <h2 className="text-2xl font-bold text-slate-100">Analytics</h2>
-                <p className="text-slate-400 mt-1">Platform usage and engagement</p>
-              </div>
+              <WebAnalyticsDashboard />
+            </motion.div>
+          )}
 
-              {/* KPI Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                {[
-                  { key: 'activeUsersNow', label: 'Active Users Now', value: fakeAnalytics.kpis.activeUsersNow, suffix: '' as const, trend: fakeAnalytics.kpis.trends.activeUsersNow },
-                  { key: 'sessionsToday', label: 'Sessions Today', value: fakeAnalytics.kpis.sessionsToday, suffix: '' as const, trend: fakeAnalytics.kpis.trends.sessionsToday },
-                  { key: 'pageViewsToday', label: 'Page Views Today', value: fakeAnalytics.kpis.pageViewsToday, suffix: '' as const, trend: fakeAnalytics.kpis.trends.pageViewsToday },
-                  { key: 'avgSessionDuration', label: 'Avg. Session (min)', value: fakeAnalytics.kpis.avgSessionDuration, suffix: '' as const, trend: fakeAnalytics.kpis.trends.avgSessionDuration },
-                  { key: 'bounceRate', label: 'Bounce Rate', value: fakeAnalytics.kpis.bounceRate, suffix: '%' as const, trend: fakeAnalytics.kpis.trends.bounceRate },
-                ].map(({ key, label, value, suffix, trend }) => (
-                  <Card key={key} className="bg-slate-900/80 border border-slate-700">
-                    <div className="p-4">
-                      <p className="text-sm text-slate-400 mb-1">{label}</p>
-                      <div className="flex items-center gap-2">
-                        <motion.span key={`${key}-${value}`} initial={{ opacity: 0.8 }} animate={{ opacity: 1 }} className="text-2xl font-bold text-slate-100">{value}{suffix}</motion.span>
-                        {trend === 'up' && <TrendingUp className="text-emerald-500 shrink-0" size={18} />}
-                        {trend === 'down' && <TrendingDown className="text-red-400 shrink-0" size={18} />}
-                        {trend === 'stable' && <Minus className="text-slate-500 shrink-0" size={18} />}
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-
-              {/* Users Online (Real-Time) */}
-              <Card className="bg-slate-900/80 border border-slate-700">
-                <h3 className="text-lg font-semibold text-slate-100 mb-4">Users Online (Real-Time)</h3>
-                <div className="flex flex-wrap items-center gap-6">
-                  <div>
-                    <p className="text-sm text-slate-400">Total</p>
-                    <p className="text-2xl font-bold text-slate-100">{fakeAnalytics.usersOnline.total}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-400">Students</p>
-                    <p className="text-xl font-semibold text-slate-200">{fakeAnalytics.usersOnline.students}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-400">Staff</p>
-                    <p className="text-xl font-semibold text-slate-200">{fakeAnalytics.usersOnline.staff}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-400">Admins</p>
-                    <p className="text-xl font-semibold text-slate-200">{fakeAnalytics.usersOnline.admins}</p>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Page Analytics Table */}
-              <Card className="bg-slate-900/80 border border-slate-700">
-                <h3 className="text-lg font-semibold text-slate-100 mb-4">Page Analytics</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-slate-700">
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Page</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Active Users</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Sessions Today</th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-300">Avg. Time (min)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fakeAnalytics.pageAnalytics.map((row, idx) => (
-                        <motion.tr key={row.path} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="border-b border-slate-700/50">
-                          <td className="px-4 py-3 text-sm text-slate-200">{row.pageName}</td>
-                          <td className="px-4 py-3 text-sm text-slate-200">{row.activeUsers}</td>
-                          <td className="px-4 py-3 text-sm text-slate-200">{row.sessionsToday}</td>
-                          <td className="px-4 py-3 text-sm text-slate-200">{row.avgTimeMin}</td>
-                        </motion.tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-
-              {/* Traffic & Device Insights */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="bg-slate-900/80 border border-slate-700">
-                  <h3 className="text-lg font-semibold text-slate-100 mb-4">Device Usage</h3>
-                  <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: 'Mobile', value: fakeAnalytics.deviceUsage.mobile },
-                            { name: 'Desktop', value: fakeAnalytics.deviceUsage.desktop },
-                          ]}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={40}
-                          outerRadius={64}
-                          paddingAngle={2}
-                          dataKey="value"
-                          label={(props: { name?: string; value?: number }) => `${props.name ?? ''} ${props.value ?? 0}%`}
-                        >
-                          <Cell fill="#475569" />
-                          <Cell fill="#64748b" />
-                        </Pie>
-                        <Tooltip formatter={(value: number | undefined) => [`${value ?? 0}%`, '']} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-                <Card className="bg-slate-900/80 border border-slate-700">
-                  <h3 className="text-lg font-semibold text-slate-100 mb-4">Traffic by Location</h3>
-                  <div className="space-y-3">
-                    {fakeAnalytics.locations.map((loc) => (
-                      <div key={loc.name} className="flex justify-between items-center">
-                        <span className="text-sm text-slate-300">{loc.name}</span>
-                        <span className="text-sm font-medium text-slate-200">{loc.value}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-                <Card className="bg-slate-900/80 border border-slate-700">
-                  <h3 className="text-lg font-semibold text-slate-100 mb-4">Browser Split</h3>
-                  <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={fakeAnalytics.browsers.map((b) => ({ name: b.name, value: b.value }))}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={40}
-                          outerRadius={64}
-                          paddingAngle={2}
-                          dataKey="value"
-                          nameKey="name"
-                          label={(props: { name?: string; value?: number }) => `${props.name ?? ''} ${props.value ?? 0}%`}
-                        >
-                          {fakeAnalytics.browsers.map((_, i) => (
-                            <Cell key={i} fill={['#3b82f6', '#94a3b8', '#64748b', '#475569'][i] ?? '#475569'} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value: number | undefined) => [`${value ?? 0}%`, '']} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-              </div>
+          {viewMode === 'database-structure' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4 sm:p-6 lg:p-8 max-w-[1800px] mx-auto"
+            >
+              <DatabaseStructurePanel />
             </motion.div>
           )}
 

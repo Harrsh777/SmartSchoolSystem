@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { requireSuperAdminSession } from '@/lib/super-admin-api';
 
 export interface DemoRequest {
   id: string;
@@ -11,7 +12,9 @@ export interface DemoRequest {
   created_at: string | null;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = await requireSuperAdminSession(request);
+  if (denied) return denied;
   try {
     const { data, error } = await supabase
       .from('demo_requests')

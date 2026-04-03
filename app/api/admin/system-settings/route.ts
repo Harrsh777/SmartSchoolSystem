@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { requireSuperAdminSession } from '@/lib/super-admin-api';
 
 // GET - Fetch system settings
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = await requireSuperAdminSession(request);
+  if (denied) return denied;
   try {
     const supabase = getServiceRoleClient();
     
@@ -61,6 +64,8 @@ export async function GET() {
 
 // PATCH - Update system settings
 export async function PATCH(request: NextRequest) {
+  const denied = await requireSuperAdminSession(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const supabase = getServiceRoleClient();

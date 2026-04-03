@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { generateAndHashPassword } from '@/lib/password-generator';
+import { requireSuperAdminSession } from '@/lib/super-admin-api';
 
 // GET - Fetch all users across all schools
 export async function GET(request: NextRequest) {
+  const denied = await requireSuperAdminSession(request);
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
     const schoolCode = searchParams.get('school_code');
@@ -154,6 +157,8 @@ export async function GET(request: NextRequest) {
 
 // PATCH - Update user status (activate/deactivate)
 export async function PATCH(request: NextRequest) {
+  const denied = await requireSuperAdminSession(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const { user_type, identifier, school_code, is_active } = body;

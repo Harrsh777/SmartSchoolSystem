@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { hashPassword } from '@/lib/password-utils';
+import { requireSuperAdminSession } from '@/lib/super-admin-api';
 
 function generateEmployeeId(): string {
   const random = Math.floor(1000 + Math.random() * 9000).toString();
@@ -17,7 +18,9 @@ function generateRandomPassword(length = 10): string {
   return password;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = await requireSuperAdminSession(request);
+  if (denied) return denied;
   try {
     // Fetch employees with their assigned schools
     const { data: employees, error } = await supabase
@@ -60,6 +63,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = await requireSuperAdminSession(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const {

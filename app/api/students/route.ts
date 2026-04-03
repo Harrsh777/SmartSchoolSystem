@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requirePermission } from '@/lib/permission-middleware';
+import { normalizeStudentGenderForDb } from '@/lib/students/gender';
 
 export async function GET(request: NextRequest) {
   try {
@@ -312,7 +313,7 @@ export async function POST(request: NextRequest) {
       middle_name: studentData.middle_name || null,
       last_name: studentData.last_name || null,
       date_of_birth: studentData.date_of_birth || null,
-      gender: studentData.gender || null,
+      gender: normalizeStudentGenderForDb(studentData.gender),
       blood_group: studentData.blood_group || null,
       email: studentData.email || null,
       student_contact: studentData.student_contact || null,

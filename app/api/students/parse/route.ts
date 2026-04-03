@@ -6,6 +6,7 @@ import {
   parseStudentImportClassSection,
   matchCanonicalClassFromAllowList,
 } from '@/lib/students/import-class-section';
+import { normalizeStudentGenderForDb } from '@/lib/students/gender';
 import type { StudentRow } from '@/app/dashboard/[school]/students/import/page';
 
 // Field mapping: CSV header -> database field
@@ -200,8 +201,9 @@ export async function POST(request: NextRequest) {
         ? parseFloat(String(rowData.last_school_percentage)) 
         : undefined;
 
-      // Normalize gender
-      const gender = normalizeGender(rowData.gender);
+      // Normalize gender to DB-safe canonical values (or omit)
+      const gender =
+        normalizeStudentGenderForDb(rowData.gender) ?? undefined;
 
       // Normalize blood group
       const bloodGroup = normalizeBloodGroup(rowData.blood_group);
@@ -396,17 +398,6 @@ function parseBoolean(value: unknown, defaultValue: boolean = false): boolean {
     return lower === 'true' || lower === 'yes' || lower === '1' || lower === 'y';
   }
   return defaultValue;
-}
-
-function normalizeGender(gender: unknown): string | undefined {
-  if (!gender) return undefined;
-  const genderStr = String(gender);
-  const normalized = genderStr.trim();
-  const lower = normalized.toLowerCase();
-  if (lower === 'male' || lower === 'm') return 'Male';
-  if (lower === 'female' || lower === 'f') return 'Female';
-  if (lower === 'other' || lower === 'o') return 'Other';
-  return normalized;
 }
 
 function normalizeBloodGroup(bg: unknown): string | undefined {

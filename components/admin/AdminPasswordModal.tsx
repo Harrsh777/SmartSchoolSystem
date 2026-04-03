@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -11,45 +11,148 @@ interface AdminPasswordModalProps {
   onSuccess: () => void;
 }
 
-const ADMIN_PASSWORD = 'educorerp@123';
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (el: HTMLElement, opts: Record<string, unknown>) => string;
+      remove: (id: string) => void;
+    };
+  }
+}
+
+function TurnstileWidget({
+  siteKey,
+  onToken,
+}: {
+  siteKey: string;
+  onToken: (t: string | null) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const render = () => {
+      if (!window.turnstile || !containerRef.current) return;
+      if (widgetIdRef.current) {
+        try {
+          window.turnstile.remove(widgetIdRef.current);
+        } catch {
+          /* noop */
+        }
+        widgetIdRef.current = null;
+      }
+      containerRef.current.innerHTML = '';
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        sitekey: siteKey,
+        callback: (token: string) => onToken(token),
+        'error-callback': () => onToken(null),
+        'expired-callback': () => onToken(null),
+      });
+    };
+
+    if (window.turnstile) {
+      render();
+      return () => {
+        if (widgetIdRef.current && window.turnstile) {
+          try {
+            window.turnstile.remove(widgetIdRef.current);
+          } catch {
+            /* noop */
+          }
+        }
+        widgetIdRef.current = null;
+        if (containerRef.current) containerRef.current.innerHTML = '';
+      };
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.onload = render;
+    document.body.appendChild(script);
+
+    return () => {
+      if (widgetIdRef.current && window.turnstile) {
+        try {
+          window.turnstile.remove(widgetIdRef.current);
+        } catch {
+          /* noop */
+        }
+      }
+      widgetIdRef.current = null;
+      if (containerRef.current) containerRef.current.innerHTML = '';
+      script.remove();
+    };
+  }, [siteKey, onToken]);
+
+  return <div ref={containerRef} className="flex justify-center min-h-[65px]" />;
+}
 
 export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordModalProps) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(TURNSTILE_SITE_KEY ? null : '');
+  const [turnstileReset, setTurnstileReset] = useState(0);
+
+  const onTsToken = useCallback((t: string | null) => {
+    setTurnstileToken(t);
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      setError('Please complete the verification challenge.');
+      return;
+    }
     setLoading(true);
 
-    // Simulate a small delay for better UX
-    await new Promise(resolve => setTimeout(resolve, 300));
+    try {
+      const res = await fetch('/api/auth/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          password,
+          turnstileToken: turnstileToken || undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        retryAfterSec?: number;
+      };
 
-    const success = password === ADMIN_PASSWORD;
-
-    // Record login attempt in audit log (works with /api/auth/log-login)
-    await fetch('/api/auth/log-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: null,
-        name: 'Admin Panel',
-        role: 'Super Admin',
-        loginType: 'admin-panel',
-        status: success ? 'success' : 'failed',
-      }),
-    }).catch(() => {});
-
-    if (success) {
+      if (res.ok) {
+        setPassword('');
+        setTurnstileToken(TURNSTILE_SITE_KEY ? null : '');
+        setTurnstileReset((n) => n + 1);
+        onSuccess();
+      } else {
+        if (res.status === 429) {
+          setError(
+            data.retryAfterSec
+              ? `Too many attempts. Retry after about ${Math.ceil(data.retryAfterSec / 60)} minutes.`
+              : 'Too many attempts. Please try again later.'
+          );
+        } else if (res.status === 503) {
+          setError(data.error || 'Admin login is not configured on the server.');
+        } else {
+          setError(data.error || 'Invalid credentials.');
+        }
+        setTurnstileToken(TURNSTILE_SITE_KEY ? null : '');
+        setTurnstileReset((n) => n + 1);
+      }
+    } catch {
+      setError('Network error. Try again.');
+    } finally {
       setLoading(false);
-      onSuccess();
-      setPassword('');
-    } else {
-      setLoading(false);
-      setError('Incorrect password. Please try again.');
-      setPassword('');
     }
   };
 
@@ -62,7 +165,6 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -71,7 +173,6 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
             onClick={handleClose}
           />
 
-          {/* Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -80,7 +181,6 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 glass-card border border-white/20 dark:border-white/10">
-              {/* Header */}
               <div className="flex items-center justify-center mb-6">
                 <div className="w-16 h-16 rounded-full bg-[#2C3E50] dark:bg-[#3D5A80] flex items-center justify-center soft-shadow-lg">
                   <Shield className="text-white" size={28} />
@@ -91,12 +191,10 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
                 Admin Access Required
               </h2>
               <p className="text-sm text-center text-muted-foreground mb-6">
-                Please enter the admin password to continue
+                Sign in with your super-admin password. Verification happens on the server only.
               </p>
 
-              {/* Form */}
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Password Field */}
                 <div className="relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10">
                     <Lock className="text-muted-foreground" size={18} />
@@ -108,8 +206,9 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
                       setPassword(e.target.value);
                       setError('');
                     }}
-                    placeholder="Enter admin password"
+                    placeholder="Password"
                     required
+                    autoComplete="current-password"
                     className={`pl-12 pr-12 py-3 bg-card border-input text-foreground placeholder:text-muted-foreground focus:ring-primary/20 dark:focus:ring-accent/30 ${
                       error ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''
                     }`}
@@ -124,7 +223,14 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
                   </button>
                 </div>
 
-                {/* Error Message */}
+                {TURNSTILE_SITE_KEY ? (
+                  <TurnstileWidget
+                    key={turnstileReset}
+                    siteKey={TURNSTILE_SITE_KEY}
+                    onToken={onTsToken}
+                  />
+                ) : null}
+
                 <AnimatePresence>
                   {error && (
                     <motion.div
@@ -139,13 +245,14 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
                   )}
                 </AnimatePresence>
 
-                {/* Submit Button */}
                 <Button
                   type="submit"
                   variant="primary"
                   size="lg"
                   className="w-full"
-                  disabled={loading || !password.trim()}
+                  disabled={
+                    loading || !password.trim() || (Boolean(TURNSTILE_SITE_KEY) && !turnstileToken)
+                  }
                 >
                   {loading ? (
                     <>
@@ -167,7 +274,6 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
                 </Button>
               </form>
 
-              {/* Security Note */}
               <p className="text-xs text-center text-muted-foreground mt-6 pt-6 border-t border-input">
                 This is a secure area. Unauthorized access is prohibited.
               </p>
