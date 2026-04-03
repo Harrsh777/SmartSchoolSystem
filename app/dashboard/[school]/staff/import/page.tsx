@@ -353,6 +353,7 @@ export default function ImportStaffPage({
   const validCount = staffRows.filter(r => r.status === 'valid').length;
   const warningCount = staffRows.filter(r => r.status === 'warning').length;
   const errorCount = staffRows.filter(r => r.status === 'error').length;
+  const importableCount = staffRows.filter((r) => r.status !== 'error').length;
 
   return (
     <div className="space-y-8">
@@ -403,7 +404,6 @@ export default function ImportStaffPage({
                   <li><span className="font-medium">date_of_joining</span> — YYYY-MM-DD or DD-MM-YYYY</li>
                   <li><span className="font-medium">dob</span> — Date of birth (before joining)</li>
                   <li><span className="font-medium">gender</span> — Male, Female, Other</li>
-                  <li><span className="font-medium">adhar_no</span> — 12 digits</li>
                   <li><span className="font-medium">category</span> — e.g. General, OBC</li>
                   <li><span className="font-medium">email</span> — Valid email</li>
                 </ul>
@@ -412,6 +412,7 @@ export default function ImportStaffPage({
                 </p>
                 <h3 className="font-semibold text-black mt-4 mb-3">Optional columns:</h3>
                 <ul className="space-y-2 text-sm text-gray-700">
+                  <li><span className="font-medium">adhar_no</span> — 12 digits if provided; must be unique (no duplicates in file or vs existing staff)</li>
                   <li><span className="font-medium">employment_type</span>, <span className="font-medium">qualification</span>, <span className="font-medium">experience_years</span>, <span className="font-medium">address</span>, and other personal fields</li>
                 </ul>
               </div>
@@ -534,7 +535,7 @@ export default function ImportStaffPage({
             </Button>
             <Button
               onClick={handleImport}
-              disabled={errorCount > 0 || validCount === 0 || importing}
+              disabled={errorCount > 0 || importableCount === 0 || importing}
             >
               {importing ? 'Importing...' : 'Import Staff'}
             </Button>
@@ -550,6 +551,7 @@ export default function ImportStaffPage({
         >
           <ImportSummary
             result={importResult}
+            finishButtonLabel="View staff"
             onFinish={() => router.push(`/dashboard/${schoolCode}/staff`)}
           />
         </motion.div>

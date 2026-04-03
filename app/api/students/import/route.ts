@@ -7,6 +7,7 @@ import {
   matchCanonicalClassFromAllowList,
 } from '@/lib/students/import-class-section';
 import { normalizeStudentGenderForDb } from '@/lib/students/gender';
+import { friendlyStudentImportDbError } from '@/lib/import-friendly-errors';
 
 const BATCH_SIZE = 500;
 
@@ -339,26 +340,18 @@ export async function POST(request: NextRequest) {
         .insert(batchForDb)
         .select('admission_no');
 
-      if (insertError) {
-        batch.forEach((s: Record<string, unknown>) => {
-          errors.push({
-            row: (s._importRow as number) ?? i + 1,
-            error: insertError.message,
-          });
-          failedCount++;
-        });
-      } else {
-        successCount += batch.length;
-
-        // Generate passwords for successfully inserted students
+      const insertLoginsFor = async (
+        admissionNos: { admission_no: string }[]
+      ) => {
+        successCount += admissionNos.length;
         const loginRecords = [];
-        for (const student of insertedStudents || []) {
+        for (const student of admissionNos) {
           const { password, hashedPassword } = await generateAndHashPassword();
           loginRecords.push({
             school_code: school_code,
             admission_no: student.admission_no,
             password_hash: hashedPassword,
-            plain_password: password, // Store plain text password
+            plain_password: password,
             is_active: true,
           });
           generatedPasswords.push({
@@ -366,18 +359,50 @@ export async function POST(request: NextRequest) {
             password: password,
           });
         }
-
-        // Insert login records
         if (loginRecords.length > 0) {
           const { error: loginInsertError } = await supabase
             .from('student_login')
             .insert(loginRecords);
-
           if (loginInsertError) {
             console.error('Error inserting student login records:', loginInsertError);
-            // Don't fail the entire import, but log the error
-            // Passwords can be regenerated later if needed
           }
+        }
+      };
+
+      if (
+        !insertError &&
+        insertedStudents &&
+        insertedStudents.length === batch.length
+      ) {
+        await insertLoginsFor(insertedStudents);
+        continue;
+      }
+
+      if (insertError) {
+        console.warn('Student batch insert failed, retrying per row:', insertError.message);
+      }
+
+      for (const s of batch) {
+        const rowNum = (s as { _importRow?: number })._importRow ?? 0;
+        const { _importRow, ...payload } = s as Record<string, unknown> & {
+          _importRow?: number;
+        };
+        void _importRow;
+
+        const { error: rowErr, data: rowStudent } = await supabase
+          .from('students')
+          .insert([payload])
+          .select('admission_no')
+          .maybeSingle();
+
+        if (rowErr || !rowStudent) {
+          errors.push({
+            row: rowNum,
+            error: friendlyStudentImportDbError(rowErr ?? insertError ?? { message: '' }),
+          });
+          failedCount++;
+        } else {
+          await insertLoginsFor([rowStudent]);
         }
       }
     }
@@ -393,7 +418,7 @@ export async function POST(request: NextRequest) {
         if (updateError) {
           errors.push({
             row,
-            error: updateError.message,
+            error: friendlyStudentImportDbError(updateError),
           });
           failedCount++;
         } else {
@@ -404,8 +429,8 @@ export async function POST(request: NextRequest) {
           row,
           error:
             e instanceof Error
-              ? e.message
-              : 'Unknown error while updating existing student',
+              ? friendlyStudentImportDbError({ message: e.message })
+              : 'Something went wrong while updating this row. Please try again.',
         });
         failedCount++;
       }

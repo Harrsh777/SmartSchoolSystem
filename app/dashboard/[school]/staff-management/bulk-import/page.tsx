@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { Download, Upload, CheckCircle, AlertCircle, XCircle, ArrowRight, ArrowLeft, FileCheck } from 'lucide-react';
 import { getString } from '@/lib/type-utils';
+import { simplifyValidationErrorForUser } from '@/lib/import-friendly-errors';
 
 interface ValidatedRow {
   rowIndex: number;
@@ -247,7 +248,7 @@ export default function BulkImportPage({
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Required: Full Name, Role, Department, Designation (subject), Phone, Primary Contact, Date of Joining, DOB, Gender, Aadhaar, Category, Email</span>
+                        <span>Required: Full Name, Role, Department, Designation (subject), Phone, Primary Contact, Date of Joining, DOB, Gender, Category, Email</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
@@ -268,9 +269,9 @@ export default function BulkImportPage({
   <Button
     variant="outline"
     onClick={() => setCurrentStep(2)}
-    className="border-orange-600 text-orange-600 hover:bg-orange-300 "
+    className="border-orange-600 text-orange-600 hover:bg-orange-500 "
   >
-    Continue to Upload  <ArrowRight size={18} className="ml-2" />
+    Continue to Upload  
    
   </Button>
 </div>
@@ -393,7 +394,7 @@ export default function BulkImportPage({
                           <p className="font-medium text-red-800 mb-1">Row {row.rowIndex}:</p>
                           <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
                             {row.errors.map((error, idx) => (
-                              <li key={idx}>{error}</li>
+                              <li key={idx}>{simplifyValidationErrorForUser(error)}</li>
                             ))}
                           </ul>
                         </div>
@@ -498,11 +499,19 @@ export default function BulkImportPage({
 
                 {importResult.errors.length > 0 && (
                   <div className="mb-8 max-w-3xl mx-auto">
-                    <h3 className="font-semibold text-black mb-4">Errors:</h3>
-                    <div className="bg-red-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                    <h3 className="font-semibold text-black mb-2">What needs attention</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      These rows were not saved. Update your spreadsheet and try again, or add the staff member from the directory.
+                    </p>
+                    <div className="bg-red-50 border border-red-100 rounded-lg p-4 max-h-64 overflow-y-auto space-y-2">
                       {importResult.errors.map((error, idx) => (
-                        <div key={idx} className="text-sm text-red-700 mb-2">
-                          Row {error.row}: {error.error}
+                        <div
+                          key={idx}
+                          className="text-sm text-red-900 bg-white/70 rounded-md px-3 py-2 border border-red-100"
+                        >
+                          <span className="font-semibold">Row {error.row}</span>
+                          <span className="text-red-800"> — </span>
+                          <span>{simplifyValidationErrorForUser(error.error)}</span>
                         </div>
                       ))}
                     </div>

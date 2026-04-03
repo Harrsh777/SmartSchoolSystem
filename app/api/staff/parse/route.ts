@@ -5,6 +5,7 @@ import {
   normalizeStaffGenderForImport,
   validateStaffImportCore,
   digits10,
+  digits12Aadhaar,
 } from '@/lib/staff/import-validation';
 
 type ValidationStatus = 'valid' | 'warning' | 'error';
@@ -102,6 +103,16 @@ export async function POST(request: NextRequest) {
       (subjectsRows ?? []).map((s) => s.name).filter(Boolean) as string[]
     );
 
+    const { data: staffAdharRows } = await supabase
+      .from('staff')
+      .select('adhar_no')
+      .eq('school_code', schoolCode);
+    const existingAdhars = new Set(
+      (staffAdharRows ?? [])
+        .map((r) => digits12Aadhaar(r.adhar_no))
+        .filter((a): a is string => Boolean(a))
+    );
+
     const fileContent = await file.text();
     const lines = fileContent.split('\n').filter((line) => line.trim());
 
@@ -145,7 +156,8 @@ export async function POST(request: NextRequest) {
       }
 
       const phoneDigits = digits10(rowData.phone);
-      const c1Digits = digits10(rowData.contact1);
+      const c1Digits =
+        digits10(rowData.contact1) ?? phoneDigits ?? undefined;
 
       const staffData: Record<string, unknown> = {
         school_id: schoolId,
@@ -188,20 +200,29 @@ export async function POST(request: NextRequest) {
       if (genderNorm) staffData.gender = genderNorm;
       if (phoneDigits) staffData.phone = phoneDigits;
       if (c1Digits) staffData.contact1 = c1Digits;
-      const ad = String(staffData.adhar_no ?? '').replace(/\D/g, '');
-      if (ad.length === 12) staffData.adhar_no = ad;
+      const adNorm = digits12Aadhaar(staffData.adhar_no);
+      if (adNorm) staffData.adhar_no = adNorm;
+
+      const errors = [...validation.errors];
+      const adhar12 = digits12Aadhaar(staffData.adhar_no);
+      const warnings = [...validation.warnings];
+      if (adhar12 && existingAdhars.has(adhar12)) {
+        warnings.push(
+          'This Aadhaar is already on file — import will update that staff record when you confirm.'
+        );
+      }
 
       rows.push({
         rowIndex: i,
         data: staffData,
         status:
-          validation.errors.length > 0
+          errors.length > 0
             ? 'error'
-            : validation.warnings.length > 0
+            : warnings.length > 0
               ? 'warning'
               : 'valid',
-        errors: validation.errors,
-        warnings: [...validation.warnings],
+        errors,
+        warnings,
       });
     }
 
@@ -238,6 +259,26 @@ export async function POST(request: NextRequest) {
           rows[idx].status = 'error';
           if (!rows[idx].errors.includes('Duplicate phone in file')) {
             rows[idx].errors.push('Duplicate phone in file');
+          }
+        });
+      }
+    });
+
+    const aadhars = new Map<string, number[]>();
+    rows.forEach((row, idx) => {
+      const a = digits12Aadhaar(row.data.adhar_no);
+      if (a) {
+        if (!aadhars.has(a)) aadhars.set(a, []);
+        aadhars.get(a)!.push(idx);
+      }
+    });
+    aadhars.forEach((indices) => {
+      if (indices.length > 1) {
+        indices.forEach((idx) => {
+          const w =
+            'Same Aadhaar on multiple rows — they will target the same staff record on import.';
+          if (!rows[idx].warnings.includes(w)) {
+            rows[idx].warnings.push(w);
           }
         });
       }

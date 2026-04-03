@@ -298,12 +298,13 @@ export async function POST(request: NextRequest) {
       const { data: existingAadhaar } = await supabase
         .from('students')
         .select('aadhaar_number')
+        .eq('school_code', school_code)
         .eq('aadhaar_number', studentData.aadhaar_number)
-        .single();
+        .maybeSingle();
 
       if (existingAadhaar) {
         return NextResponse.json(
-          { error: 'Aadhaar number already exists' },
+          { error: 'Aadhaar number already exists for a student at this school' },
           { status: 400 }
         );
       }

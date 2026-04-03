@@ -75,7 +75,7 @@ export default function AddStaffPage({
         department: formData.department.trim(),
         designation: formData.designation.trim(),
         phone: formData.phone,
-        contact1: formData.contact1,
+        contact1: formData.contact1.trim() || formData.phone,
         date_of_joining: formData.date_of_joining,
         dob: formData.dob,
         gender: formData.gender,
@@ -133,8 +133,8 @@ export default function AddStaffPage({
           // staff_id, employee_code, rfid, uuid, short_code are auto-generated - don't send them
           full_name: formData.full_name.trim(),
           role: formData.role.trim(),
-          department: formData.department.trim(),
-          designation: formData.designation.trim(),
+          department: formData.department.trim() || null,
+          designation: formData.designation.trim() || null,
           phone: cleanPhone(formData.phone) || null,
           date_of_joining: formData.date_of_joining,
           dob: formData.dob || null,
@@ -145,7 +145,8 @@ export default function AddStaffPage({
           category: formData.category.trim() || null,
           nationality: formData.nationality.trim() || 'Indian',
           email: formData.email.trim() || null,
-          contact1: cleanPhone(formData.contact1) || null,
+          contact1:
+            cleanPhone(formData.contact1) || cleanPhone(formData.phone) || null,
           contact2: cleanPhone(formData.contact2) || null,
           address: formData.address.trim() || null,
           employment_type: formData.employment_type.trim() || null,
@@ -362,21 +363,21 @@ export default function AddStaffPage({
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Department <span className="text-red-500">*</span>
+                      Department <span className="text-gray-400 font-normal">(optional)</span>
                     </label>
                     <Input
                       type="text"
                       value={formData.department}
                       onChange={(e) => handleChange('department', e.target.value)}
                       error={errors.department}
-                      required
                       placeholder="e.g., Mathematics, Administration"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Designation (Subject) <span className="text-red-500">*</span>
+                      Designation (Subject){' '}
+                      <span className="text-gray-400 font-normal">(optional)</span>
                     </label>
                     <select
                       value={formData.designation}
@@ -384,9 +385,8 @@ export default function AddStaffPage({
                       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-black focus:border-transparent ${
                         errors.designation ? 'border-red-500' : 'border-gray-300'
                       }`}
-                      required
                     >
-                      <option value="">Select a subject</option>
+                      <option value="">Not specified</option>
                       {subjects.map((subject) => (
                         <option key={subject.id} value={subject.name}>
                           {subject.name}
@@ -580,7 +580,8 @@ export default function AddStaffPage({
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Primary Contact <span className="text-red-500">*</span>
+                      Primary Contact{' '}
+                      <span className="text-gray-400 font-normal">(optional — uses Phone if empty)</span>
                     </label>
                     <Input
                       type="tel"
@@ -589,7 +590,6 @@ export default function AddStaffPage({
                       error={errors.contact1}
                       placeholder="10-digit phone number"
                       maxLength={10}
-                      required
                     />
                   </div>
 

@@ -4,12 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { 
-  FiArrowRight, FiCheck, FiPlay
-} from 'react-icons/fi';
-import { 
- MdPeopleAlt, MdPayments, 
+  FiArrowRight, FiCheck} from 'react-icons/fi';
+import { MdPeopleAlt, MdPayments, 
   MdLibraryBooks, MdDirectionsBus, MdChat, 
-  MdAnalytics, MdAutoGraph,
+  MdAnalytics, 
   MdPlace, MdEmail, MdPhone, MdFormatQuote,
   MdTrendingUp, MdArrowForward, MdSchool,
   MdCopyright
@@ -303,11 +301,152 @@ export default function EduCoreLanding() {
   </div>
 </nav>
 
-      {/* Hero Section */}
-     <section ref={heroRef} className="relative overflow-hidden min-h-screen flex items-center pt-24 pb-14"> <div className="absolute inset-0 z-0"> <Background className="opacity-95" /> <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(154,82,255,0.35),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(42,191,255,0.22),transparent_40%)]" /> </div> <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full"> <div className="text-center mt-5 mb-10"> <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight"> Powerful Tools for Effective <br /> School Management </h1> <p className="mt-5 text-base sm:text-lg text-white/75 max-w-3xl mx-auto"> Your complete SaaS platform for academic operations, finance, attendance, communication, and growth. </p> <div className="mt-8 flex flex-wrap items-center justify-center gap-3"> <Link href="/signup" className="px-7 py-3.5 rounded-full bg-gradient-to-r from-[#8b5cf6] to-[#a855f7] text-white font-semibold shadow-[0_10px_30px_rgba(139,92,246,0.45)] hover:scale-[1.02] transition-all duration-300 flex items-center gap-2" > Get started <FiArrowRight className="text-sm" /> </Link> <a href="#features" className="px-7 py-3.5 rounded-full border border-white/25 bg-white/5 text-white font-semibold hover:bg-white/10 transition-all duration-300 flex items-center gap-2" > <FiPlay className="text-sm" /> See How it works </a> </div> </div> {/* Hero bento — high-res educational imagery */} <div className="grid grid-cols-12 gap-4 md:gap-5 lg:gap-6"> {/* LEFT INFO CARD */} <div className="col-span-12 md:col-span-4 lg:col-span-3 rounded-2xl bg-white/10 backdrop-blur-lg border border-white/20 p-5 flex flex-col justify-between min-h-[180px]"> <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-violet-300"> <div className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-white">→</div> Platform </div> <div> <h3 className="text-white font-semibold text-lg leading-snug mt-4"> Empower your institution with School Manager Pro </h3> <p className="text-white/60 text-sm mt-2"> One connected workspace for academics, finance, and community—built for modern schools. </p> </div> </div> {/* HERO IMAGE (FIXED HEIGHT NOW) */} <div className="col-span-12 md:col-span-8 lg:col-span-6 rounded-2xl overflow-hidden relative group min-h-[200px]"> <Image src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=3840&q=88" alt="Students collaborating" fill className="object-cover transition-transform duration-700 group-hover:scale-105" /> <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" /> <div className="absolute bottom-4 left-4"> <p className="text-xs text-white/70 uppercase tracking-wider"> Learning together </p> <p className="text-white font-semibold text-sm"> Collaboration that scales from class to campus </p> </div> </div> {/* STATS COLUMN */} <div className="col-span-12 md:col-span-12 lg:col-span-3 flex flex-row lg:flex-col gap-4"> {/* 260% */} <div className="flex-1 rounded-2xl bg-white/90 backdrop-blur-md p-4 flex flex-col justify-end shadow-lg"> <span className="text-3xl font-extrabold bg-gradient-to-br from-violet-600 to-fuchsia-500 bg-clip-text text-transparent"> 260% </span> <p className="text-xs text-gray-600 mt-2"> Faster workflows when admin & teaching tools live together </p> </div> {/* 98% */} <div className="flex-1 rounded-2xl bg-white/90 backdrop-blur-md p-4 flex flex-col justify-end shadow-lg"> <span className="text-3xl font-extrabold bg-gradient-to-br from-cyan-600 to-violet-500 bg-clip-text text-transparent"> 98% </span> <p className="text-xs text-gray-600 mt-2"> Stronger trust in reporting & parent communication </p> </div> </div> {/* BOTTOM LEFT */} <div className="col-span-12 md:col-span-6 rounded-2xl overflow-hidden relative group min-h-[160px]"> <Image src="https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=3840&q=88" alt="Campus" fill className="object-cover transition-transform duration-700 group-hover:scale-105" /> <div className="absolute inset-0 bg-black/40" /> <span className="absolute bottom-3 left-3 text-xs text-white uppercase"> Campus & Library Ready </span> </div> {/* BOTTOM RIGHT */} <div className="col-span-12 md:col-span-6 rounded-2xl overflow-hidden relative group min-h-[160px]"> <Image src="https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=3840&q=88" alt="Teaching" fill className="object-cover transition-transform duration-700 group-hover:scale-105" /> <div className="absolute inset-0 bg-black/40" /> <span className="absolute bottom-3 left-3 text-xs text-white uppercase"> Engaged Teaching </span> </div> </div> </div> </section>
+     <section
+  ref={heroRef}
+  className="relative overflow-hidden min-h-screen flex items-center justify-center pt-24 pb-14"
+>
+  {/* Background (unchanged) */}
+  <div className="absolute inset-0 z-0">
+    <Background className="opacity-95" />
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(154,82,255,0.35),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(42,191,255,0.22),transparent_40%)]" />
+  </div>
 
+  {/* CENTER CONTENT */}
+  <div className="relative z-10 text-center max-w-4xl mx-auto px-6">
+    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight">
+      Powerful Tools for Effective <br />
+      School Management
+    </h1>
+
+    <p className="mt-5 text-base sm:text-lg text-white/75 max-w-2xl mx-auto">
+      Your complete SaaS platform for academic operations, finance, attendance, communication, and growth.
+    </p>
+
+    <div className="mt-8 flex justify-center">
+      <Link
+        href="/signup"
+        className="px-7 py-3.5 rounded-full bg-gradient-to-r from-[#8b5cf6] to-[#a855f7] text-white font-semibold shadow-[0_10px_30px_rgba(139,92,246,0.45)] hover:scale-[1.02] transition-all duration-300 flex items-center gap-2"
+      >
+        Get started
+        <FiArrowRight className="text-sm" />
+      </Link>
+    </div>
+  </div>
+
+  {/* LEFT FLOATING IMAGE */}
+  <div className="hidden md:block absolute left-6 lg:left-20 top-1/3 w-44 sm:w-56 lg:w-64 aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl animate-floatSlow">
+    <Image
+      src="https://images.unsplash.com/photo-1714859100394-abfb1762485f?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTB8fHRlYWNoZXIlMjB1c2luZyUyMHRhYmxldHxlbnwwfHwwfHx8MA%3D%3D"
+      alt="Student using tablet"
+      fill
+      className="object-cover"
+      priority
+    />
+  </div>
+
+  {/* RIGHT FLOATING IMAGE */}
+  <div className="hidden md:block absolute right-6 lg:right-20 top-1/4 w-44 sm:w-56 lg:w-64 aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl animate-float">
+    <Image
+      src="https://images.unsplash.com/photo-1588072432836-e10032774350?auto=format&fit=crop&w=3840&q=100"
+      alt="Teacher using tablet"
+      fill
+      className="object-cover"
+      priority
+    />
+  </div>
+
+  {/* OPTIONAL SMALL FLOAT CARD (like screenshot feel) */}
+  <div className="hidden md:flex absolute right-16 bottom-20 bg-white/90 backdrop-blur-md rounded-xl px-4 py-2 shadow-lg animate-floatFast">
+    <span className="text-xs text-gray-600">Active Users</span>
+    <span className="ml-2 font-bold text-gray-800">2K+</span>
+  </div>
+</section>
       {/* Logo Section */}
-     
+      <section className="relative py-20 px-6 bg-gradient-to-b from-[#0b0b12] to-[#11111a]">
+  <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
+
+    {/* LEFT CONTENT */}
+    <div>
+      <span className="text-sm text-purple-400 font-medium">
+        FS Systems
+      </span>
+
+      <h2 className="mt-4 text-3xl sm:text-4xl font-bold text-white leading-tight">
+        End-to-End Management <br />
+        to Scale Your Institution
+      </h2>
+
+      <ul className="mt-6 space-y-3 text-white/70 text-sm sm:text-base">
+        <li className="flex items-start gap-2">
+          ✓ Simplify and automate daily operations
+        </li>
+        <li className="flex items-start gap-2">
+          ✓ Detailed reports for insights & decisions
+        </li>
+        <li className="flex items-start gap-2">
+          ✓ Reduce operational costs efficiently
+        </li>
+      </ul>
+
+      <button className="mt-8 px-6 py-3 rounded-lg bg-gradient-to-r from-purple-500 to-violet-600 text-white font-medium shadow-lg hover:scale-[1.03] transition">
+        Get Started
+      </button>
+    </div>
+
+    {/* RIGHT DASHBOARD PREVIEW */}
+    <div className="relative">
+      <div className="absolute -inset-4 bg-gradient-to-r from-purple-600/30 to-blue-500/20 blur-2xl rounded-2xl"></div>
+
+      <div className="relative bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl">
+        <img
+          src="https://images.unsplash.com/photo-1551288049-bebda4e38f71"
+          alt="Dashboard Preview"
+          className="rounded-xl object-cover"
+        />
+      </div>
+    </div>
+  </div>
+
+  {/* FEATURE CARDS */}
+  <div className="max-w-7xl mx-auto mt-16 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+
+    {[
+      {
+        title: "Security",
+        desc: "Built with enterprise-grade protection and compliance standards."
+      },
+      {
+        title: "Cloud",
+        desc: "Cloud infrastructure ensures speed, scalability, and reliability."
+      },
+      {
+        title: "Multi-tenant",
+        desc: "Manage multiple institutions from a single platform."
+      },
+      {
+        title: "24/7 Support",
+        desc: "Dedicated support team always ready to assist you."
+      }
+    ].map((item, i) => (
+      <div
+        key={i}
+        className="group p-5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition shadow-md hover:shadow-purple-500/10"
+      >
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-purple-500 to-violet-600 flex items-center justify-center text-white mb-4">
+          ✦
+        </div>
+
+        <h3 className="text-white font-semibold">
+          {item.title}
+        </h3>
+
+        <p className="text-sm text-white/60 mt-2">
+          {item.desc}
+        </p>
+      </div>
+    ))}
+  </div>
+</section>
 
       {/* Features Section */}
       <section className="py-16 sm:py-24 lg:py-32 bg-gradient-to-b from-gray-50 to-white dark:from-[#1a2332] dark:to-[#0f172a] relative overflow-hidden" id="features">

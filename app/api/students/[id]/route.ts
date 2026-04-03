@@ -111,13 +111,14 @@ export async function PATCH(
       const { data: duplicateAadhaar } = await supabase
         .from('students')
         .select('id')
+        .eq('school_code', schoolCode)
         .eq('aadhaar_number', body.aadhaar_number)
         .neq('id', id)
-        .single();
+        .maybeSingle();
 
       if (duplicateAadhaar) {
         return NextResponse.json(
-          { error: 'Aadhaar number already exists' },
+          { error: 'Aadhaar number already exists for another student at this school' },
           { status: 400 }
         );
       }

@@ -6,6 +6,7 @@ import {
   digits10,
   digits12Aadhaar,
 } from '@/lib/staff/import-validation';
+import { friendlyStaffImportDbError } from '@/lib/import-friendly-errors';
 
 export async function GET(request: NextRequest) {
   try {
@@ -210,7 +211,10 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       return NextResponse.json(
-        { error: 'Failed to create staff', details: insertError.message },
+        {
+          error: friendlyStaffImportDbError(insertError),
+          details: insertError.message,
+        },
         { status: 500 }
       );
     }

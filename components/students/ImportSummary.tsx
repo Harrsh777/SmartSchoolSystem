@@ -3,6 +3,7 @@
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { simplifyValidationErrorForUser } from '@/lib/import-friendly-errors';
 
 interface ImportSummaryProps {
   result: {
@@ -12,9 +13,15 @@ interface ImportSummaryProps {
     errors: Array<{ row: number; error: string }>;
   };
   onFinish: () => void;
+  /** e.g. "View Students" (default) or "View staff" */
+  finishButtonLabel?: string;
 }
 
-export default function ImportSummary({ result, onFinish }: ImportSummaryProps) {
+export default function ImportSummary({
+  result,
+  onFinish,
+  finishButtonLabel = 'View Students',
+}: ImportSummaryProps) {
   return (
     <Card>
       <div className="space-y-6">
@@ -22,7 +29,7 @@ export default function ImportSummary({ result, onFinish }: ImportSummaryProps) 
           <CheckCircle className="mx-auto text-green-600 mb-4" size={64} />
           <h2 className="text-2xl font-bold text-black mb-2">Import Complete</h2>
           <p className="text-gray-600">
-            Your student import has been processed
+            Your file has been processed. Check the counts below.
           </p>
         </div>
 
@@ -52,12 +59,20 @@ export default function ImportSummary({ result, onFinish }: ImportSummaryProps) 
 
         {result.errors.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <h3 className="font-semibold text-red-800 mb-2">Errors:</h3>
-            <div className="space-y-1 max-h-48 overflow-y-auto">
+            <h3 className="font-semibold text-red-800 mb-2">What needs attention</h3>
+            <p className="text-sm text-red-800/90 mb-3">
+              These spreadsheet rows were not saved. Fix the issue in your file and import again, or add the student manually.
+            </p>
+            <div className="space-y-2 max-h-56 overflow-y-auto">
               {result.errors.map((error, idx) => (
-                <p key={idx} className="text-sm text-red-700">
-                  Row {error.row}: {error.error}
-                </p>
+                <div
+                  key={idx}
+                  className="text-sm text-red-900 bg-white/60 rounded-md px-3 py-2 border border-red-100"
+                >
+                  <span className="font-semibold">Row {error.row}</span>
+                  <span className="text-red-800"> — </span>
+                  <span>{simplifyValidationErrorForUser(error.error)}</span>
+                </div>
               ))}
             </div>
           </div>
@@ -65,7 +80,7 @@ export default function ImportSummary({ result, onFinish }: ImportSummaryProps) 
 
         <div className="flex justify-center">
           <Button onClick={onFinish} className="w-full md:w-auto">
-            View Students
+            {finishButtonLabel}
           </Button>
         </div>
       </div>

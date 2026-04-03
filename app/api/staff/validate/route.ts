@@ -6,6 +6,7 @@ import {
   validateStaffImportCore,
   normalizeStaffGenderForImport,
   digits10,
+  digits12Aadhaar,
 } from '@/lib/staff/import-validation';
 
 interface ValidatedRow {
@@ -49,6 +50,16 @@ export async function POST(request: NextRequest) {
       (subjects ?? []).map((s) => s.name).filter(Boolean) as string[]
     );
 
+    const { data: staffAdharRows } = await supabase
+      .from('staff')
+      .select('adhar_no')
+      .eq('school_code', schoolCode);
+    const existingAdhars = new Set(
+      (staffAdharRows ?? [])
+        .map((r) => digits12Aadhaar(r.adhar_no))
+        .filter((a): a is string => Boolean(a))
+    );
+
     const columnMapping: Record<string, string> = {
       'Full Name': 'full_name',
       Role: 'role',
@@ -58,6 +69,9 @@ export async function POST(request: NextRequest) {
       Email: 'email',
       Phone: 'phone',
       'Date of Joining': 'date_of_joining',
+      'Date of Join': 'date_of_joining',
+      'Date of join': 'date_of_joining',
+      DOJ: 'date_of_joining',
       'Employment Type': 'employment_type',
       'Date of Birth': 'dob',
       DOB: 'dob',
@@ -74,6 +88,7 @@ export async function POST(request: NextRequest) {
       'Date of Promotion': 'dop',
       Qualification: 'qualification',
       'Experience (Years)': 'experience_years',
+      Experience: 'experience_years',
       'Alma Mater': 'alma_mater',
       'Major/Specialization': 'major',
       Website: 'website',
@@ -108,13 +123,14 @@ export async function POST(request: NextRequest) {
 
       const phoneD = digits10(mappedData.phone);
       if (phoneD) mappedData.phone = phoneD;
+      if (!mappedData.contact1 && phoneD) mappedData.contact1 = phoneD;
       const c1 = digits10(mappedData.contact1);
       if (c1) mappedData.contact1 = c1;
       const c2 = digits10(mappedData.contact2);
       if (c2) mappedData.contact2 = c2;
 
-      const ad = String(mappedData.adhar_no ?? '').replace(/\D/g, '');
-      if (ad.length === 12) mappedData.adhar_no = ad;
+      const adNorm = digits12Aadhaar(mappedData.adhar_no);
+      if (adNorm) mappedData.adhar_no = adNorm;
 
       const g = normalizeStaffGenderForImport(mappedData.gender);
       if (g) mappedData.gender = g;
@@ -124,6 +140,13 @@ export async function POST(request: NextRequest) {
       const core = validateStaffImportCore(mappedData, { validSubjects });
       const errors = [...core.errors];
       const warnings = [...core.warnings];
+
+      const adhar12 = digits12Aadhaar(mappedData.adhar_no);
+      if (adhar12 && existingAdhars.has(adhar12)) {
+        warnings.push(
+          'This Aadhaar is already on file for a staff member at your school — import will update that record with the row you upload (matched by Aadhaar, phone, or staff ID).'
+        );
+      }
 
       const exp = mappedData.experience_years;
       if (exp !== undefined && exp !== null && String(exp).trim() !== '') {
@@ -164,6 +187,26 @@ export async function POST(request: NextRequest) {
         indices.forEach((idx) => {
           if (!validatedRows[idx].errors.includes('Duplicate phone in file')) {
             validatedRows[idx].errors.push('Duplicate phone in file');
+          }
+        });
+      }
+    });
+
+    const aadhars = new Map<string, number[]>();
+    validatedRows.forEach((row, idx) => {
+      const a = digits12Aadhaar(row.data.adhar_no);
+      if (a) {
+        if (!aadhars.has(a)) aadhars.set(a, []);
+        aadhars.get(a)!.push(idx);
+      }
+    });
+    aadhars.forEach((indices) => {
+      if (indices.length > 1) {
+        indices.forEach((idx) => {
+          const w =
+            'Same Aadhaar appears on multiple rows — each row will update the same staff record if that Aadhaar exists, or only the first new row can be created; remove duplicate rows if they are different people.';
+          if (!validatedRows[idx].warnings.includes(w)) {
+            validatedRows[idx].warnings.push(w);
           }
         });
       }

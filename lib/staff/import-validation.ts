@@ -6,9 +6,25 @@ export function digits10(value: unknown): string | undefined {
   return s.length === 10 ? s : undefined;
 }
 
+/** Normalize Aadhaar from Excel/CSV (string, number, or scientific notation). */
 export function digits12Aadhaar(value: unknown): string | undefined {
-  const s = String(value ?? '').replace(/\D/g, '');
-  return s.length === 12 ? s : undefined;
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const n = Math.round(value);
+    if (n >= 100000000000 && n <= 999999999999) {
+      return String(n);
+    }
+    return undefined;
+  }
+  const raw = String(value).trim();
+  if (/^\d+(\.\d+)?[eE][+-]?\d+$/.test(raw)) {
+    const n = Math.round(Number(raw));
+    if (Number.isFinite(n) && n >= 100000000000 && n <= 999999999999) {
+      return String(n);
+    }
+  }
+  const digits = raw.replace(/\D/g, '');
+  return digits.length === 12 ? digits : undefined;
 }
 
 export function normalizeStaffGenderForImport(
@@ -62,8 +78,8 @@ function setErr(
 }
 
 /**
- * Same required set for single add, CSV parse preview, Excel validate, and bulk import API.
- * Optional fields: validate format only when present.
+ * Same rules for single add, CSV parse preview, Excel validate, and bulk import API.
+ * Optional fields: validate format only when present (e.g. Aadhaar — 12 digits if filled).
  */
 export function validateStaffImportCore(
   data: Record<string, unknown>,
@@ -84,19 +100,21 @@ export function validateStaffImportCore(
   if (!role) setErr(fieldErrors, errors, 'role', 'Role is required');
 
   const department = String(data.department ?? '').trim();
-  if (!department) setErr(fieldErrors, errors, 'department', 'Department is required');
+  // Department is optional — many spreadsheets omit it; it can be added later in the directory.
 
   const designation = String(data.designation ?? '').trim();
-  if (!designation) setErr(fieldErrors, errors, 'designation', 'Designation (Subject) is required');
-  else if (opts?.validSubjects && opts.validSubjects.size > 0) {
-    if (!opts.validSubjects.has(designation)) {
-      setErr(
-        fieldErrors,
-        errors,
-        'designation',
-        'Designation must match an existing subject from your timetable'
-      );
-    }
+  if (
+    designation &&
+    opts?.validSubjects &&
+    opts.validSubjects.size > 0 &&
+    !opts.validSubjects.has(designation)
+  ) {
+    setErr(
+      fieldErrors,
+      errors,
+      'designation',
+      'If you enter a designation (subject), it must match a subject name from your timetable'
+    );
   }
 
   const phone = digits10(data.phone);
@@ -104,10 +122,9 @@ export function validateStaffImportCore(
   else if (!phone)
     setErr(fieldErrors, errors, 'phone', 'Phone must be a valid 10-digit number');
 
-  const contact1 = digits10(data.contact1);
-  if (!String(data.contact1 ?? '').trim()) {
-    setErr(fieldErrors, errors, 'contact1', 'Primary contact is required');
-  } else if (!contact1) {
+  const contact1FromField = digits10(data.contact1);
+  const contact1Typed = String(data.contact1 ?? '').trim();
+  if (contact1Typed && !contact1FromField) {
     setErr(
       fieldErrors,
       errors,
@@ -115,6 +132,7 @@ export function validateStaffImportCore(
       'Primary contact must be a valid 10-digit number'
     );
   }
+  // When Primary Contact column is empty, the validated phone number is used as primary contact.
 
   const dojStr = String(data.date_of_joining ?? '').trim();
   if (!dojStr)
@@ -170,11 +188,16 @@ export function validateStaffImportCore(
     setErr(fieldErrors, errors, 'gender', 'Gender must be Male, Female, or Other');
   }
 
+  const adharRaw = String(data.adhar_no ?? '').trim();
   const adhar = digits12Aadhaar(data.adhar_no);
-  if (!String(data.adhar_no ?? '').trim())
-    setErr(fieldErrors, errors, 'adhar_no', 'Aadhaar number is required');
-  else if (!adhar)
-    setErr(fieldErrors, errors, 'adhar_no', 'Aadhaar number must be 12 digits');
+  if (adharRaw && !adhar) {
+    setErr(
+      fieldErrors,
+      errors,
+      'adhar_no',
+      'Aadhaar number must be exactly 12 digits when provided'
+    );
+  }
 
   const category = String(data.category ?? '').trim();
   if (!category) setErr(fieldErrors, errors, 'category', 'Category is required');
