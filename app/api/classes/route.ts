@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL, invalidateCache } from '@/lib/cache';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
@@ -37,6 +38,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const classesWithCounts = await getCached(
+      cacheKeys.schoolClasses(schoolCode),
+      async () => {
     // Fetch classes (including class_teacher_staff_id)
     const { data: classes, error: classesError } = await supabase
       .from('classes')
@@ -47,10 +51,7 @@ export async function GET(request: NextRequest) {
       .order('academic_year', { ascending: false });
 
     if (classesError) {
-      return NextResponse.json(
-        { error: 'Failed to fetch classes', details: classesError.message },
-        { status: 500 }
-      );
+      throw new Error(classesError.message);
     }
 
     // Get student counts and teacher info for each class
@@ -92,6 +93,11 @@ export async function GET(request: NextRequest) {
           class_teacher_staff_id: classTeacherStaffId,
         };
       })
+    );
+
+        return classesWithCounts;
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.classes }
     );
 
     return NextResponse.json({ data: classesWithCounts }, { status: 200 });
@@ -194,6 +200,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    void invalidateCache(cacheKeys.schoolClasses(school_code));
 
     return NextResponse.json({ data: newClass }, { status: 201 });
   } catch (error) {

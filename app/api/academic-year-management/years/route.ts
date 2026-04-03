@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { parseAcademicYearName } from '@/lib/academic-year-name';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL, invalidateCache } from '@/lib/cache';
 
 /**
  * GET /api/academic-year-management/years?school_code=XXX
@@ -23,17 +24,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'School not found' }, { status: 404 });
     }
 
-    const { data: ayData } = await supabase
-      .from('academic_years')
-      .select('*')
-      .eq('school_code', schoolCode)
-      .order('start_date', { ascending: false });
+    const merged = await getCached(
+      cacheKeys.academicYearsSchool(schoolCode),
+      async () => {
+        const { data: ayData } = await supabase
+          .from('academic_years')
+          .select('*')
+          .eq('school_code', schoolCode)
+          .order('start_date', { ascending: false });
 
-    const merged = Array.from((ayData || []).map((row) => ({ ...row, source: 'academic_years' as const }))).sort((a, b) => {
-      const yearA = parseInt(String((a as { year_name?: string }).year_name).split('-')[0] || '0', 10);
-      const yearB = parseInt(String((b as { year_name?: string }).year_name).split('-')[0] || '0', 10);
-      return yearB - yearA;
-    });
+        return Array.from(
+          (ayData || []).map((row) => ({ ...row, source: 'academic_years' as const }))
+        ).sort((a, b) => {
+          const yearA = parseInt(
+            String((a as { year_name?: string }).year_name).split('-')[0] || '0',
+            10
+          );
+          const yearB = parseInt(
+            String((b as { year_name?: string }).year_name).split('-')[0] || '0',
+            10
+          );
+          return yearB - yearA;
+        });
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.academicYearsList }
+    );
 
     return NextResponse.json({ data: merged }, { status: 200 });
   } catch (error) {
@@ -126,6 +141,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    void invalidateCache(cacheKeys.academicYearsSchool(school_code));
 
     return NextResponse.json({ data: created }, { status: 201 });
   } catch (error) {

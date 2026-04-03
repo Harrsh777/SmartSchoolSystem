@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 /**
  * GET /api/student/stats
@@ -18,8 +19,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get current month attendance
     const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const statsKey = cacheKeys.studentStats(schoolCode, studentId, monthKey);
+
+    const statsPayload = await getCached(
+      statsKey,
+      async () => {
+    // Get current month attendance
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const startDate = firstDay.toISOString().split('T')[0];
@@ -115,8 +122,7 @@ export async function GET(request: NextRequest) {
     const progressCurrent = termExams ? new Set(termExams.map(e => e.exam_id)).size : 0;
     const progressTotal = allTermExams?.length || 0;
 
-    return NextResponse.json({
-      data: {
+    return {
         attendance: currentPercentage,
         attendance_change: attendanceChange,
         gpa: examPercentage.toFixed(2),
@@ -125,8 +131,12 @@ export async function GET(request: NextRequest) {
         progress_current: progressCurrent,
         progress_total: progressTotal,
         term: term,
-      }
-    }, { status: 200 });
+      };
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.studentPortalStats }
+    );
+
+    return NextResponse.json({ data: statsPayload }, { status: 200 });
   } catch (error) {
     console.error('Error fetching student stats:', error);
     return NextResponse.json(

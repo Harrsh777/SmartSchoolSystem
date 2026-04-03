@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 // Get academic calendar - fetches from both events table and academic_calendar table
 export async function GET(request: NextRequest) {
@@ -17,6 +18,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const uniqueEntries = await getCached(
+      cacheKeys.calendarAcademic(schoolCode, academicYear, includeEvents),
+      async () => {
     // Fetch from events table (where new events are created) - optional
     let events: Array<{ [key: string]: unknown }> = [];
     if (includeEvents) {
@@ -139,6 +143,11 @@ export async function GET(request: NextRequest) {
       const dateB = b.event_date ? new Date(String(b.event_date)).getTime() : 0;
       return dateA - dateB;
     });
+
+    return uniqueEntries;
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.calendarAcademic }
+    );
 
     return NextResponse.json({ data: uniqueEntries }, {
       status: 200,

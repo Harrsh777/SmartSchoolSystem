@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,7 +32,12 @@ export async function GET(request: NextRequest) {
       : now.toISOString().split('T')[0];
     
     const startDate = startOfFinancialYear.toISOString().split('T')[0];
+    const today = now.toISOString().split('T')[0];
+    const cacheKey = cacheKeys.dashboardFinancial(schoolCode, period, endDate);
 
+    const payload = await getCached(
+      cacheKey,
+      async () => {
     // Fetch income entries
     const { data: incomeEntries } = await supabase
       .from('income_entries')
@@ -104,8 +110,6 @@ export async function GET(request: NextRequest) {
         .lte('payment_date', endDate);
       feesData = oldFeesData || [];
     }
-
-    const today = new Date().toISOString().split('T')[0];
 
     // Today's expense
     const todayExpense = (expenseEntries || [])
@@ -223,8 +227,7 @@ export async function GET(request: NextRequest) {
     const collectedPercent = totalFeeAmount > 0 ? (totalCollected / totalFeeAmount) * 100 : 0;
     const duePercent = totalFeeAmount > 0 ? (totalDueAmount / totalFeeAmount) * 100 : 0;
 
-    return NextResponse.json({
-      data: {
+    return {
         incomeAndExpense: {
           totalIncome,
           totalExpense,
@@ -240,8 +243,12 @@ export async function GET(request: NextRequest) {
           totalStudents: totalStudents || 0,
           pendingStudents: pendingStudents > 0 ? pendingStudents : 0,
         },
+      };
       },
-    }, { status: 200 });
+      { ttlSeconds: DASHBOARD_REDIS_TTL.financialOverview }
+    );
+
+    return NextResponse.json({ data: payload }, { status: 200 });
   } catch (error) {
     console.error('Error fetching financial overview:', error);
     return NextResponse.json(

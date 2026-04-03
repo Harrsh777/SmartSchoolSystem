@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 // Get examinations
 export async function GET(request: NextRequest) {
@@ -16,6 +17,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const dayBucket =
+      status === 'upcoming'
+        ? new Date().toISOString().split('T')[0]
+        : 'all';
+    const examsKey = cacheKeys.dashboardExaminations(
+      schoolCode,
+      classId,
+      status,
+      dayBucket
+    );
+
+    const enrichedExams = await getCached(
+      examsKey,
+      async () => {
     let query = supabase
       .from('examinations')
       .select(`
@@ -56,14 +71,10 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Examinations query error:', error);
-      // If error is due to missing columns, return empty array instead of error
       if (error.message?.includes('column') || error.message?.includes('does not exist')) {
-        return NextResponse.json({ data: [] }, { status: 200 });
+        return [];
       }
-      return NextResponse.json(
-        { error: 'Failed to fetch examinations', details: error.message },
-        { status: 500 }
-      );
+      throw new Error(error.message);
     }
 
     // Calculate subjects count and total max marks
@@ -96,7 +107,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ data: enrichedExams || [] }, { status: 200 });
+    return enrichedExams || [];
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.dashboardExaminations }
+    );
+
+    return NextResponse.json({ data: enrichedExams }, { status: 200 });
   } catch (error) {
     console.error('Error fetching examinations:', error);
     return NextResponse.json(

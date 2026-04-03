@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { invalidateCachePattern, cacheKeys } from '@/lib/cache';
 
 /**
  * GET /api/students/[id]
@@ -196,6 +197,8 @@ export async function PATCH(
         { status: 500 }
       );
     }
+
+    void invalidateCachePattern(cacheKeys.studentsListPattern(schoolCode));
 
     return NextResponse.json({ data: updatedStudent }, { status: 200 });
   } catch (error) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +14,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const timetables = await getCached(
+      cacheKeys.timetableList(schoolCode),
+      async () => {
     // Get all classes with timetable slots
     const { data: classes, error: classesError } = await supabase
       .from('classes')
@@ -22,10 +26,7 @@ export async function GET(request: NextRequest) {
       .order('section', { ascending: true });
 
     if (classesError) {
-      return NextResponse.json(
-        { error: 'Failed to fetch classes', details: classesError.message },
-        { status: 500 }
-      );
+      throw new Error(classesError.message);
     }
 
     // For each class, check if it has timetable slots
@@ -61,6 +62,11 @@ export async function GET(request: NextRequest) {
           class_teacher: classTeacher,
         };
       })
+    );
+
+        return timetables;
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.timetableList }
     );
 
     return NextResponse.json({ data: timetables }, { status: 200 });

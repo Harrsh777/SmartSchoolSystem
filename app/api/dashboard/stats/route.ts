@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,9 +29,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get today's date string (used for exams and attendance queries)
     const today = new Date().toISOString().split('T')[0];
+    const cacheKey = cacheKeys.dashboardStats(schoolCode, academicYear, today);
 
+    const stats = await getCached(
+      cacheKey,
+      async () => {
     // Build student count query (match /api/students: include null academic_year with selected year)
     let studentQuery = supabase
       .from('students')
@@ -191,7 +195,7 @@ export async function GET(request: NextRequest) {
       console.log('Fee collection tables not available:', err);
     }
 
-    const stats = {
+    return {
       totalStudents: studentCount || 0,
       totalStaff: staffCount || 0,
       feeCollection: {
@@ -218,6 +222,9 @@ export async function GET(request: NextRequest) {
       upcomingExams: upcomingExams?.length || 0,
       recentNotices: recentNotices?.length || 0,
     };
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.stats }
+    );
 
     return NextResponse.json({ data: stats }, {
       status: 200,

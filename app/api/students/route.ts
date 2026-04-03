@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { requirePermission } from '@/lib/permission-middleware';
 import { normalizeStudentGenderForDb } from '@/lib/students/gender';
+import {
+  getCached,
+  cacheKeys,
+  DASHBOARD_REDIS_TTL,
+  invalidateCachePattern,
+} from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -162,29 +168,68 @@ export async function GET(request: NextRequest) {
       query = query.limit(limit);
     }
 
-    // Execute query
-    const { data: students, error: studentsError, count } = await query;
+    const listFingerprint = [
+      paginate ? `pg:${page}:${pageSize}` : 'nopg',
+      limit != null ? `lim:${limit}` : '',
+      classFilter || '-',
+      String(sectionFilter ?? '').slice(0, 64),
+      academicYearFilter || '-',
+      statusFilter || '-',
+      searchRaw.slice(0, 160),
+      sortByParam || '-',
+      sortOrderParam || '-',
+    ].join('|');
 
-    if (studentsError) {
+    const listCacheKey = cacheKeys.studentsList(schoolCode, listFingerprint);
+
+    let listPayload: {
+      mode: 'page';
+      data: unknown[];
+      total: number;
+      page: number;
+      page_size: number;
+    } | { mode: 'list'; data: unknown[] };
+
+    try {
+      listPayload = await getCached(
+        listCacheKey,
+        async () => {
+          const { data: students, error: studentsError, count } = await query;
+          if (studentsError) throw new Error(studentsError.message);
+          if (paginate) {
+            return {
+              mode: 'page' as const,
+              data: students || [],
+              total: count ?? 0,
+              page,
+              page_size: pageSize,
+            };
+          }
+          return { mode: 'list' as const, data: students || [] };
+        },
+        { ttlSeconds: DASHBOARD_REDIS_TTL.studentsDirectory }
+      );
+    } catch (err) {
+      const details = err instanceof Error ? err.message : 'Unknown error';
       return NextResponse.json(
-        { error: 'Failed to fetch students', details: studentsError.message },
+        { error: 'Failed to fetch students', details },
         { status: 500 }
       );
     }
 
-    if (paginate) {
+    if (listPayload.mode === 'page') {
       return NextResponse.json(
         {
-          data: students || [],
-          total: count ?? 0,
-          page,
-          page_size: pageSize,
+          data: listPayload.data,
+          total: listPayload.total,
+          page: listPayload.page,
+          page_size: listPayload.page_size,
         },
         { status: 200 }
       );
     }
 
-    return NextResponse.json({ data: students || [] }, { status: 200 });
+    return NextResponse.json({ data: listPayload.data }, { status: 200 });
   } catch (error) {
     console.error('Error fetching students:', error);
     return NextResponse.json(
@@ -388,6 +433,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    void invalidateCachePattern(cacheKeys.studentsListPattern(school_code));
 
     return NextResponse.json({ data: newStudent }, { status: 201 });
   } catch (error) {

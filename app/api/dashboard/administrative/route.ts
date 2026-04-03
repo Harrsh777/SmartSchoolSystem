@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +15,11 @@ export async function GET(request: NextRequest) {
     }
 
     const today = new Date().toISOString().split('T')[0];
+    const cacheKey = cacheKeys.dashboardAdministrative(schoolCode, today);
 
+    const adminData = await getCached(
+      cacheKey,
+      async () => {
     // Run attendance + count queries in parallel to reduce latency
     const [studentAttendanceRes, totalStudentsRes, staffAttendanceRes, totalStaffRes] = await Promise.all([
       supabase.from('student_attendance').select('status, student_id').eq('school_code', schoolCode).eq('attendance_date', today),
@@ -222,8 +227,7 @@ export async function GET(request: NextRequest) {
       return dateB - dateA;
     }).slice(0, 10);
 
-    return NextResponse.json({
-      data: {
+    return {
         attendance: {
           students: studentStats,
           staff: staffStats,
@@ -236,11 +240,18 @@ export async function GET(request: NextRequest) {
           visitorsArePending: visitorsArePending,
           leavesArePending: leavesArePending,
         },
+      };
       },
-    }, {
-      status: 200,
-      headers: { 'Cache-Control': 'private, s-maxage=60, stale-while-revalidate=120' },
-    });
+      { ttlSeconds: DASHBOARD_REDIS_TTL.administrative }
+    );
+
+    return NextResponse.json(
+      { data: adminData },
+      {
+        status: 200,
+        headers: { 'Cache-Control': 'private, s-maxage=60, stale-while-revalidate=120' },
+      }
+    );
   } catch (error) {
     console.error('Error fetching administrative data:', error);
     return NextResponse.json(

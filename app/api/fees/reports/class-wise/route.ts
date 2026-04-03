@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 /**
  * GET /api/fees/reports/class-wise?school_code=SCH001
@@ -24,7 +25,11 @@ export async function GET(request: NextRequest) {
     const financialYearStart = currentMonth >= 3 ? currentYear : currentYear - 1;
     const startDate = new Date(financialYearStart, 3, 1).toISOString().split('T')[0];
     const endDate = now.toISOString().split('T')[0];
+    const cwKey = cacheKeys.feesClassWise(schoolCode, endDate);
 
+    const reportRows = await getCached(
+      cwKey,
+      async () => {
     // Fetch all active students with class info
     const { data: students, error: studentsError } = await supabase
       .from('students')
@@ -33,10 +38,7 @@ export async function GET(request: NextRequest) {
       .eq('status', 'active');
 
     if (studentsError || !students) {
-      return NextResponse.json(
-        { error: 'Failed to fetch students', details: studentsError?.message },
-        { status: 500 }
-      );
+      throw new Error(studentsError?.message || 'Failed to fetch students');
     }
 
     // Fetch payments (v2) - collected per student
@@ -163,6 +165,11 @@ export async function GET(request: NextRequest) {
         if (ac !== bc) return ac.localeCompare(bc);
         return (a.section || '').localeCompare(b.section || '');
       });
+
+    return reportRows;
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.feesClassWiseReport }
+    );
 
     return NextResponse.json({ data: reportRows }, { status: 200 });
   } catch (error) {

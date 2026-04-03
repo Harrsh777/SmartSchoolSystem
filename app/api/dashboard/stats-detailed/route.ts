@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,6 +29,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const today = new Date().toISOString().split('T')[0];
+    const cacheKey = cacheKeys.dashboardStatsDetailed(schoolCode, academicYear, today);
+
+    const detailedPayload = await getCached(
+      cacheKey,
+      async () => {
     // schoolId kept for potential future use
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const schoolId = schoolData.id;
@@ -78,7 +85,6 @@ export async function GET(request: NextRequest) {
     const staffOtherCount = totalStaff - staffMaleCount - staffFemaleCount;
 
     // Calculate attendance rate for today
-    const today = new Date().toISOString().split('T')[0];
     const { data: todayAttendance } = await supabase
       .from('student_attendance')
       .select('status')
@@ -89,8 +95,7 @@ export async function GET(request: NextRequest) {
     const presentCount = todayAttendance?.filter(a => a.status === 'present').length || 0;
     const attendanceRate = totalMarked > 0 ? (presentCount / totalMarked) * 100 : 0;
 
-    return NextResponse.json({
-      data: {
+    return {
         genderStats: {
           total: totalStudents,
           male: maleCount,
@@ -126,8 +131,12 @@ export async function GET(request: NextRequest) {
           present: presentCount,
           percentage: attendanceRate,
         },
+      };
       },
-    }, { status: 200 });
+      { ttlSeconds: DASHBOARD_REDIS_TTL.statsDetailed }
+    );
+
+    return NextResponse.json({ data: detailedPayload }, { status: 200 });
   } catch (error) {
     console.error('Error fetching detailed stats:', error);
     return NextResponse.json(

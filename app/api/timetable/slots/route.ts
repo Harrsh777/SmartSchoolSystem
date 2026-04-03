@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import {
+  getCached,
+  cacheKeys,
+  DASHBOARD_REDIS_TTL,
+  invalidateTimetableSchoolCaches,
+} from '@/lib/cache';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MIN_PERIOD = 1;
@@ -21,7 +27,11 @@ export async function GET(request: NextRequest) {
     }
 
     const teacherId = searchParams.get('teacher_id');
+    const cacheKey = cacheKeys.timetableSlots(schoolCode, classId, teacherId);
 
+    const slotsPayload = await getCached(
+      cacheKey,
+      async () => {
     // Note: We can't use nested select for class:class_id if there's no FK constraint
     // So we'll fetch class data separately if needed
     let query = supabase
@@ -71,15 +81,7 @@ export async function GET(request: NextRequest) {
         hint: error?.hint,
         details: error?.details,
       });
-      return NextResponse.json(
-        { 
-          error: 'Failed to fetch timetable slots', 
-          details: error?.message || 'Unknown error occurred',
-          code: error?.code,
-          hint: error?.hint 
-        },
-        { status: 500 }
-      );
+      throw new Error(error?.message || 'Failed to fetch timetable slots');
     }
 
     // Log successful fetch for debugging
@@ -183,7 +185,12 @@ export async function GET(request: NextRequest) {
       filteredSlots: filteredSlots.length,
     });
 
-    return NextResponse.json({ data: slotsWithTeachers || [] }, { status: 200 });
+    return slotsWithTeachers || [];
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.timetableSlots }
+    );
+
+    return NextResponse.json({ data: slotsPayload }, { status: 200 });
   } catch (error) {
     console.error('Error fetching timetable slots:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -891,6 +898,8 @@ export async function POST(request: NextRequest) {
       responseData.conflicts = conflicts;
     }
 
+    void invalidateTimetableSchoolCaches(school_code);
+
     return NextResponse.json(responseData, { status: existingSlot ? 200 : 201 });
   } catch (error) {
     console.error('Error saving timetable slot:', error);
@@ -948,6 +957,7 @@ export async function DELETE(request: NextRequest) {
       // If slot doesn't exist, return success (nothing to clear)
       if (!slotData) {
         console.log('Slot not found, already cleared or does not exist');
+        void invalidateTimetableSchoolCaches(school_code);
         return NextResponse.json({ success: true, message: 'Slot already cleared' }, { status: 200 });
       }
 
@@ -1038,6 +1048,8 @@ export async function DELETE(request: NextRequest) {
         );
       }
     }
+
+    void invalidateTimetableSchoolCaches(school_code);
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {

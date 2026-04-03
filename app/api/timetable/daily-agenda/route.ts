@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -35,8 +36,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get today's day name
     const today = new Date();
+    const dayKey = today.toISOString().split('T')[0];
+    const agendaCacheKey = cacheKeys.timetableDailyAgenda(schoolCode, teacherId, dayKey);
+
+    const combinedPayload = await getCached(
+      agendaCacheKey,
+      async () => {
+    // Get today's day name
     const todayDayName = DAYS[today.getDay()];
 
     // Fetch all slots for today, then filter in JavaScript to avoid JSONB query issues
@@ -56,15 +63,7 @@ export async function GET(request: NextRequest) {
 
     if (slotsError) {
       console.error('Error fetching timetable slots:', slotsError);
-      return NextResponse.json(
-        { 
-          error: 'Failed to fetch daily agenda', 
-          details: slotsError.message,
-          code: slotsError.code,
-          hint: slotsError.hint
-        },
-        { status: 500 }
-      );
+      throw new Error(slotsError.message);
     }
 
     // Filter slots where teacher_id matches OR teacher_id is in teacher_ids array
@@ -228,12 +227,15 @@ export async function GET(request: NextRequest) {
 
     if (todosError) {
       console.warn('Error fetching todos for daily agenda:', todosError.message);
-      // Continue with just timetable slots if todos fail
-      // Return agenda without todos if there's an error
-      return NextResponse.json({ data: agendaSlots }, { status: 200 });
+      return agendaSlots;
     }
 
-    return NextResponse.json({ data: combinedAgenda }, { status: 200 });
+    return combinedAgenda;
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.timetableDailyAgenda }
+    );
+
+    return NextResponse.json({ data: combinedPayload }, { status: 200 });
   } catch (error) {
     console.error('Error fetching daily agenda:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

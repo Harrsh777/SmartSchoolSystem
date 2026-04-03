@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
+import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
 
 const TABLE = 'exam_terms';
 
@@ -30,6 +31,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const termsKey = cacheKeys.dashboardTerms(
+      schoolCode,
+      classId,
+      section,
+      includeDeleted
+    );
+
+    try {
+    const rows = await getCached(
+      termsKey,
+      async () => {
     const { data, error } = await supabase
       .from(TABLE)
       .select('*')
@@ -39,29 +51,46 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       if (error.code === '42P01') {
+        const err = new Error('exam_terms_table_missing');
+        (err as Error & { noTable?: boolean }).noTable = true;
+        throw err;
+      }
+      throw new Error(error.message);
+    }
+
+    let out = data ?? [];
+    if (!includeDeleted) {
+      out = out.filter((r) => !r.is_deleted);
+    }
+    if (classId) {
+      out = out.filter((r) => String(r.class_id ?? '') === String(classId));
+    }
+    if (section) {
+      out = out.filter((r) => norm(r.section).toLowerCase() === norm(section).toLowerCase());
+    }
+
+    return out;
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.dashboardTerms }
+    );
+
+    return NextResponse.json({ data: rows }, { status: 200 });
+    } catch (inner) {
+      if (
+        inner instanceof Error &&
+        (inner as Error & { noTable?: boolean }).noTable
+      ) {
         return NextResponse.json(
-          { data: [], message: 'exam_terms table not found. Run exam_terms_and_reports_schema.sql to enable term config.' },
+          {
+            data: [],
+            message:
+              'exam_terms table not found. Run exam_terms_and_reports_schema.sql to enable term config.',
+          },
           { status: 200 }
         );
       }
-      return NextResponse.json(
-        { error: 'Failed to fetch terms', details: error.message },
-        { status: 500 }
-      );
+      throw inner;
     }
-
-    let rows = data ?? [];
-    if (!includeDeleted) {
-      rows = rows.filter((r) => !r.is_deleted);
-    }
-    if (classId) {
-      rows = rows.filter((r) => String(r.class_id ?? '') === String(classId));
-    }
-    if (section) {
-      rows = rows.filter((r) => norm(r.section).toLowerCase() === norm(section).toLowerCase());
-    }
-
-    return NextResponse.json({ data: rows }, { status: 200 });
   } catch (e) {
     console.error('Terms GET:', e);
     return NextResponse.json(
