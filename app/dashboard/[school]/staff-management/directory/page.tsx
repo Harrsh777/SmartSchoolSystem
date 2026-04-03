@@ -19,7 +19,8 @@ import {
   Phone,
   Briefcase,
   GraduationCap,
-  Building2,
+  Car,
+  CircleDot,
   ArrowLeft,
   CheckCircle2,
   Eye,
@@ -38,7 +39,9 @@ export default function StaffDirectoryPage({
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTab, setSelectedTab] = useState<'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'OTHERS' | 'ADMIN'>('TEACHING');
+  const [selectedTab, setSelectedTab] = useState<
+    'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'OTHER' | 'ADMIN'
+  >('TEACHING');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
@@ -117,21 +120,24 @@ export default function StaffDirectoryPage({
 
   const getStaffByRole = (role: string) => {
     const roleMap: Record<string, string[]> = {
-      'TEACHING': ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'],
+      TEACHING: ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'],
+      /** Office / academic support roles only — not driver/support or catch-all. */
       'NON-TEACHING': ['Accountant', 'Clerk', 'Librarian', 'Admin Staff'],
       'DRIVER/SUPPORTING STAFF': ['Driver', 'Support Staff', 'Helper', 'Security'],
-      'OTHERS': [],
-      'ADMIN': ['Admin', 'Super Admin'],
+      OTHER: [],
+      ADMIN: ['Admin', 'Super Admin'],
     };
-    
+
     const roles = roleMap[role] || [];
-    return staff.filter(s => {
-      const staffRole = getString(s.role);
-      if (role === 'OTHERS') {
-        return !roleMap['TEACHING'].includes(staffRole) && 
-               !roleMap['NON-TEACHING'].includes(staffRole) && 
-               !roleMap['DRIVER/SUPPORTING STAFF'].includes(staffRole) &&
-               !roleMap['ADMIN'].includes(staffRole);
+    return staff.filter((s) => {
+      const staffRole = getString(s.role).trim();
+      if (role === 'OTHER') {
+        return (
+          !roleMap.TEACHING.includes(staffRole) &&
+          !roleMap['NON-TEACHING'].includes(staffRole) &&
+          !roleMap['DRIVER/SUPPORTING STAFF'].includes(staffRole) &&
+          !roleMap.ADMIN.includes(staffRole)
+        );
       }
       return roles.includes(staffRole);
     });
@@ -255,16 +261,17 @@ export default function StaffDirectoryPage({
     }
   };
 
-  // Statistics
+  // Statistics (Non-Teaching = listed office/support roles only; unmatched roles → Other)
   const stats = {
     total: staff.length,
     teaching: getStaffByRole('TEACHING').length,
     nonTeaching: getStaffByRole('NON-TEACHING').length,
+    driverSupporting: getStaffByRole('DRIVER/SUPPORTING STAFF').length,
     admin: getStaffByRole('ADMIN').length,
-    currentTab: filteredStaff.length,
+    other: getStaffByRole('OTHER').length,
   };
 
-  const tabs = ['TEACHING', 'NON-TEACHING', 'DRIVER/SUPPORTING STAFF', 'OTHERS', 'ADMIN'];
+  const tabs = ['TEACHING', 'NON-TEACHING', 'DRIVER/SUPPORTING STAFF', 'OTHER', 'ADMIN'] as const;
 
   if (loading) {
     return (
@@ -303,7 +310,7 @@ export default function StaffDirectoryPage({
       </motion.div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -363,6 +370,24 @@ export default function StaffDirectoryPage({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
+          <Card className="p-6 bg-gradient-to-br from-amber-500 to-amber-600 text-white hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-amber-100 text-sm mb-1">Driver / Supporting</p>
+                <p className="text-3xl font-bold">{stats.driverSupporting}</p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                <Car size={24} />
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
           <Card className="p-6 bg-gradient-to-br from-orange-500 to-orange-600 text-white hover:shadow-lg transition-shadow">
             <div className="flex items-center justify-between">
               <div>
@@ -379,16 +404,16 @@ export default function StaffDirectoryPage({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.55 }}
         >
           <Card className="p-6 bg-gradient-to-br from-teal-500 to-teal-600 text-white hover:shadow-lg transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-teal-100 text-sm mb-1">Current Tab</p>
-                <p className="text-3xl font-bold">{stats.currentTab}</p>
+                <p className="text-teal-100 text-sm mb-1">Other</p>
+                <p className="text-3xl font-bold">{stats.other}</p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                <Building2 size={24} />
+                <CircleDot size={24} />
               </div>
             </div>
           </Card>
@@ -402,7 +427,7 @@ export default function StaffDirectoryPage({
             <button
               key={tab}
               onClick={() => {
-                setSelectedTab(tab as typeof selectedTab);
+                setSelectedTab(tab);
                 setCurrentPage(1);
               }}
               className={`px-4 py-2.5 font-medium text-sm transition-all rounded-t-lg ${

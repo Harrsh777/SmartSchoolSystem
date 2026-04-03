@@ -42,14 +42,25 @@ export default function ModifyClassesPage({
   const fetchClasses = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/classes?school_code=${schoolCode}`);
+      const controller = new AbortController();
+      const timeoutMs = 45_000;
+      const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+      const response = await fetch(`/api/classes?school_code=${schoolCode}`, {
+        signal: controller.signal,
+      });
+      window.clearTimeout(timeoutId);
+
       const result = await response.json();
-      
+
       if (response.ok && result.data) {
         setClasses(result.data);
+      } else {
+        console.error('Classes API error:', result.error || response.status);
+        setClasses([]);
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
+      setClasses([]);
     } finally {
       setLoading(false);
     }

@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import { ArrowLeft } from 'lucide-react';
+import { validateStaffImportCore } from '@/lib/staff/import-validation';
 
 interface FormErrors {
   [key: string]: string;
@@ -66,42 +67,44 @@ export default function AddStaffPage({
   });
 
   const validateForm = (): boolean => {
-    const newErrors: FormErrors = {};
+    const validSubjects = new Set(subjects.map((s) => s.name));
+    const { fieldErrors } = validateStaffImportCore(
+      {
+        full_name: formData.full_name.trim(),
+        role: formData.role.trim(),
+        department: formData.department.trim(),
+        designation: formData.designation.trim(),
+        phone: formData.phone,
+        contact1: formData.contact1,
+        date_of_joining: formData.date_of_joining,
+        dob: formData.dob,
+        gender: formData.gender,
+        adhar_no: formData.adhar_no,
+        category: formData.category.trim(),
+        email: formData.email.trim(),
+        contact2: formData.contact2,
+      },
+      { validSubjects }
+    );
 
-    // Required fields (removed staff_id validation)
-    if (!formData.full_name.trim()) {
-      newErrors.full_name = 'Full name is required';
-    }
-    if (!formData.role.trim()) {
-      newErrors.role = 'Role is required';
-    }
-    if (!formData.department.trim()) {
-      newErrors.department = 'Department is required';
-    }
-    if (!formData.designation.trim()) {
-      newErrors.designation = 'Designation is required';
-    }
-    if (!formData.phone.trim() && !formData.contact1.trim()) {
-      newErrors.phone = 'Phone number is required';
-    }
-    if (!formData.date_of_joining) {
-      newErrors.date_of_joining = 'Date of joining is required';
-    }
+    const newErrors: FormErrors = { ...fieldErrors };
 
-    // Email validation
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Invalid email format';
-    }
-
-    // Phone validation
-    const phone = formData.phone || formData.contact1;
-    if (phone && !/^\d{10}$/.test(phone.replace(/\D/g, ''))) {
-      newErrors.phone = 'Phone number must be 10 digits';
+    if (formData.dop) {
+      const dop = new Date(formData.dop);
+      const today = new Date();
+      if (dop > today) newErrors.dop = 'Date of promotion cannot be in the future';
     }
 
-    // Aadhaar validation
-    if (formData.adhar_no && !/^\d{12}$/.test(formData.adhar_no.replace(/\D/g, ''))) {
-      newErrors.adhar_no = 'Aadhaar number must be 12 digits';
+    const validBlood = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+    if (formData.blood_group && !validBlood.includes(formData.blood_group)) {
+      newErrors.blood_group = 'Please select a valid blood group';
+    }
+
+    if (formData.experience_years) {
+      const n = parseFloat(formData.experience_years);
+      if (Number.isNaN(n) || n < 0) {
+        newErrors.experience_years = 'Experience must be a positive number';
+      }
     }
 
     setErrors(newErrors);
@@ -132,7 +135,7 @@ export default function AddStaffPage({
           role: formData.role.trim(),
           department: formData.department.trim(),
           designation: formData.designation.trim(),
-          phone: cleanPhone(formData.phone || formData.contact1) || null,
+          phone: cleanPhone(formData.phone) || null,
           date_of_joining: formData.date_of_joining,
           dob: formData.dob || null,
           gender: formData.gender || null,
@@ -142,7 +145,7 @@ export default function AddStaffPage({
           category: formData.category.trim() || null,
           nationality: formData.nationality.trim() || 'Indian',
           email: formData.email.trim() || null,
-          contact1: cleanPhone(formData.contact1 || formData.phone) || null,
+          contact1: cleanPhone(formData.contact1) || null,
           contact2: cleanPhone(formData.contact2) || null,
           address: formData.address.trim() || null,
           employment_type: formData.employment_type.trim() || null,
@@ -450,24 +453,26 @@ export default function AddStaffPage({
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Date of Birth
+                      Date of Birth <span className="text-red-500">*</span>
                     </label>
                     <Input
                       type="date"
                       value={formData.dob}
                       onChange={(e) => handleChange('dob', e.target.value)}
                       error={errors.dob}
+                      required
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Gender
+                      Gender <span className="text-red-500">*</span>
                     </label>
                     <select
                       value={formData.gender}
                       onChange={(e) => handleChange('gender', e.target.value)}
                       className={`w-full px-4 py-2 border ${errors.gender ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:outline-none focus:ring-2 focus:ring-black`}
+                      required
                     >
                       <option value="">Select gender</option>
                       <option value="Male">Male</option>
@@ -479,7 +484,7 @@ export default function AddStaffPage({
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Aadhaar Number
+                      Aadhaar Number <span className="text-red-500">*</span>
                     </label>
                     <Input
                       type="text"
@@ -488,6 +493,7 @@ export default function AddStaffPage({
                       error={errors.adhar_no}
                       placeholder="12-digit Aadhaar number"
                       maxLength={12}
+                      required
                     />
                   </div>
 
@@ -527,13 +533,14 @@ export default function AddStaffPage({
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Category
+                      Category <span className="text-red-500">*</span>
                     </label>
                     <Input
                       type="text"
                       value={formData.category}
                       onChange={(e) => handleChange('category', e.target.value)}
                       placeholder="e.g., General, SC, ST, OBC"
+                      required
                     />
                   </div>
 
@@ -559,7 +566,7 @@ export default function AddStaffPage({
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Email
+                      Email <span className="text-red-500">*</span>
                     </label>
                     <Input
                       type="email"
@@ -567,19 +574,22 @@ export default function AddStaffPage({
                       onChange={(e) => handleChange('email', e.target.value)}
                       error={errors.email}
                       placeholder="email@example.com"
+                      required
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Primary Contact
+                      Primary Contact <span className="text-red-500">*</span>
                     </label>
                     <Input
                       type="tel"
                       value={formData.contact1}
                       onChange={(e) => handleChange('contact1', e.target.value)}
+                      error={errors.contact1}
                       placeholder="10-digit phone number"
                       maxLength={10}
+                      required
                     />
                   </div>
 

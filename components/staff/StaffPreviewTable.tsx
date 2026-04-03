@@ -67,14 +67,14 @@ export default function StaffPreviewTable({ rows, onRowUpdate }: StaffPreviewTab
           <thead>
             <tr className="border-b border-gray-200">
               <th className="text-left py-3 px-4 font-semibold text-gray-700 sticky left-0 bg-white z-10">Status</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Staff ID*</th>
+              <th className="text-left py-3 px-4 font-semibold text-gray-700">Staff ID</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-700">Full Name*</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-700">Role*</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Department</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Designation</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Email</th>
+              <th className="text-left py-3 px-4 font-semibold text-gray-700">Dept*</th>
+              <th className="text-left py-3 px-4 font-semibold text-gray-700">Designation*</th>
+              <th className="text-left py-3 px-4 font-semibold text-gray-700">Email*</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-700">Phone*</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Date of Joining*</th>
+              <th className="text-left py-3 px-4 font-semibold text-gray-700">DOJ*</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-700">Issues</th>
             </tr>
           </thead>

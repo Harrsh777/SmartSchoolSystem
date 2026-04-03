@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabase';
-
-interface ValidationError {
-  row: number;
-  field: string;
-  message: string;
-}
+import { parseDate } from '@/lib/date-parser';
+import {
+  validateStaffImportCore,
+  normalizeStaffGenderForImport,
+  digits10,
+} from '@/lib/staff/import-validation';
 
 interface ValidatedRow {
   rowIndex: number;
@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Read Excel file
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
     const sheetName = workbook.SheetNames[0];
@@ -42,69 +41,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get existing staff IDs to check for duplicates
-    const { data: existingStaff } = await supabase
-      .from('staff')
-      .select('staff_id, email, phone, adhar_no')
-      .eq('school_code', schoolCode);
-
-    // existingStaffIds kept for potential future use
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const existingStaffIds = new Set(existingStaff?.map(s => s.staff_id) || []);
-    const existingEmails = new Set(existingStaff?.map(s => s.email).filter(Boolean) || []);
-    const existingPhones = new Set(existingStaff?.map(s => s.phone).filter(Boolean) || []);
-    const existingAadhaars = new Set(existingStaff?.map(s => s.adhar_no).filter(Boolean) || []);
-
-    // Get subjects for designation validation
     const { data: subjects } = await supabase
       .from('timetable_subjects')
       .select('name')
       .eq('school_code', schoolCode);
+    const validSubjects = new Set(
+      (subjects ?? []).map((s) => s.name).filter(Boolean) as string[]
+    );
 
-    const validSubjects = new Set(subjects?.map(s => s.name) || []);
-
-    // Map Excel columns to database fields
     const columnMapping: Record<string, string> = {
       'Full Name': 'full_name',
-      'Role': 'role',
-      'Department': 'department',
-      'Designation': 'designation',
-      'Email': 'email',
-      'Phone': 'phone',
+      Role: 'role',
+      Department: 'department',
+      Designation: 'designation',
+      'Designation (Subject)': 'designation',
+      Email: 'email',
+      Phone: 'phone',
       'Date of Joining': 'date_of_joining',
       'Employment Type': 'employment_type',
       'Date of Birth': 'dob',
-      'Gender': 'gender',
+      DOB: 'dob',
+      Gender: 'gender',
       'Aadhaar Number': 'adhar_no',
+      Aadhaar: 'adhar_no',
       'Blood Group': 'blood_group',
-      'Religion': 'religion',
-      'Category': 'category',
-      'Nationality': 'nationality',
+      Religion: 'religion',
+      Category: 'category',
+      Nationality: 'nationality',
       'Primary Contact': 'contact1',
       'Secondary Contact': 'contact2',
-      'Address': 'address',
+      Address: 'address',
       'Date of Promotion': 'dop',
-      'Qualification': 'qualification',
+      Qualification: 'qualification',
       'Experience (Years)': 'experience_years',
       'Alma Mater': 'alma_mater',
       'Major/Specialization': 'major',
-      'Website': 'website',
+      Website: 'website',
     };
 
     const validatedRows: ValidatedRow[] = [];
-    // allErrors kept for potential future use
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const allErrors: ValidationError[] = [];
 
-    // Validate each row
     (data as Array<Record<string, unknown>>).forEach((row, index: number) => {
-      const rowNumber = index + 2; // +2 because Excel rows start at 1 and we have header
-      const errors: string[] = [];
-      const warnings: string[] = [];
+      const rowNumber = index + 2;
       const mappedData: Record<string, unknown> = {};
 
-      // Map columns
-      Object.keys(columnMapping).forEach(excelCol => {
+      Object.keys(columnMapping).forEach((excelCol) => {
         const dbField = columnMapping[excelCol];
         const value = row[excelCol];
         if (value !== undefined && value !== null && value !== '') {
@@ -112,149 +93,54 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Required field validations
-      const fullName = String(mappedData.full_name || '');
-      if (!fullName.trim()) {
-        errors.push('Full Name is required');
+      if (mappedData.date_of_joining) {
+        const p = parseDate(String(mappedData.date_of_joining));
+        if (p) mappedData.date_of_joining = p;
+      }
+      if (mappedData.dob) {
+        const p = parseDate(String(mappedData.dob));
+        if (p) mappedData.dob = p;
+      }
+      if (mappedData.dop) {
+        const p = parseDate(String(mappedData.dop));
+        if (p) mappedData.dop = p;
       }
 
-      const role = String(mappedData.role || '');
-      if (!role.trim()) {
-        errors.push('Role is required');
-      }
+      const phoneD = digits10(mappedData.phone);
+      if (phoneD) mappedData.phone = phoneD;
+      const c1 = digits10(mappedData.contact1);
+      if (c1) mappedData.contact1 = c1;
+      const c2 = digits10(mappedData.contact2);
+      if (c2) mappedData.contact2 = c2;
 
-      const department = String(mappedData.department || '');
-      if (!department.trim()) {
-        errors.push('Department is required');
-      }
+      const ad = String(mappedData.adhar_no ?? '').replace(/\D/g, '');
+      if (ad.length === 12) mappedData.adhar_no = ad;
 
-      const designation = String(mappedData.designation || '');
-      if (!designation.trim()) {
-        errors.push('Designation is required');
-      } else if (validSubjects.size > 0 && !validSubjects.has(designation)) {
-        warnings.push(`Designation "${designation}" does not match any existing subject`);
-      }
+      const g = normalizeStaffGenderForImport(mappedData.gender);
+      if (g) mappedData.gender = g;
 
-      const phone = String(mappedData.phone || mappedData.contact1 || '');
-      if (!phone.trim()) {
-        errors.push('Phone or Primary Contact is required');
-      } else {
-        const cleanPhone = phone.replace(/\D/g, '');
-        if (cleanPhone.length !== 10) {
-          errors.push('Phone number must be 10 digits');
+      if (!mappedData.nationality) mappedData.nationality = 'Indian';
+
+      const core = validateStaffImportCore(mappedData, { validSubjects });
+      const errors = [...core.errors];
+      const warnings = [...core.warnings];
+
+      const exp = mappedData.experience_years;
+      if (exp !== undefined && exp !== null && String(exp).trim() !== '') {
+        const n = typeof exp === 'number' ? exp : parseFloat(String(exp));
+        if (Number.isNaN(n) || n < 0) {
+          errors.push('Experience (Years) must be a valid non-negative number');
         } else {
-          mappedData.phone = cleanPhone;
-          if (mappedData.contact1) {
-            mappedData.contact1 = String(mappedData.contact1).replace(/\D/g, '');
-          }
+          mappedData.experience_years = n;
         }
       }
 
-      const contact2 = String(mappedData.contact2 || '');
-      if (contact2) {
-        const cleanContact2 = contact2.replace(/\D/g, '');
-        if (cleanContact2.length !== 10) {
-          errors.push('Secondary Contact must be 10 digits');
-        } else {
-          mappedData.contact2 = cleanContact2;
-        }
-      }
-
-      const dateOfJoining = String(mappedData.date_of_joining || '');
-      if (!dateOfJoining) {
-        errors.push('Date of Joining is required');
-      } else {
-        // Validate date format
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(dateOfJoining)) {
-          errors.push('Date of Joining must be in YYYY-MM-DD format');
-        }
-      }
-
-      // Email validation
-      const email = String(mappedData.email || '');
-      if (email) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-          errors.push('Invalid email format');
-        }
-        if (existingEmails.has(email)) {
-          warnings.push('Email already exists in the system');
-        }
-      }
-
-      // Phone duplicate check
-      if (phone && existingPhones.has(phone.replace(/\D/g, ''))) {
-        warnings.push('Phone number already exists in the system');
-      }
-
-      // Aadhaar validation
-      const adharNo = String(mappedData.adhar_no || '');
-      if (adharNo) {
-        const cleanAadhaar = adharNo.replace(/\D/g, '');
-        if (cleanAadhaar.length !== 12) {
-          errors.push('Aadhaar number must be 12 digits');
-        } else {
-          mappedData.adhar_no = cleanAadhaar;
-          if (existingAadhaars.has(cleanAadhaar)) {
-            warnings.push('Aadhaar number already exists in the system');
-          }
-        }
-      }
-
-      // Date validations
-      ['dob', 'dop'].forEach(dateField => {
-        const dateValue = String(mappedData[dateField] || '');
-        if (dateValue) {
-          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-          if (!dateRegex.test(dateValue)) {
-            errors.push(`${dateField} must be in YYYY-MM-DD format`);
-          }
-        }
-      });
-
-      // Gender validation
-      const gender = String(mappedData.gender || '');
-      if (gender) {
-        const validGenders = ['Male', 'Female', 'Other', 'male', 'female', 'other'];
-        if (!validGenders.includes(gender)) {
-          errors.push('Gender must be Male, Female, or Other');
-        }
-      }
-
-      // Blood group validation
-      const bloodGroup = String(mappedData.blood_group || '');
-      if (bloodGroup) {
-        const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-        if (!validBloodGroups.includes(bloodGroup)) {
-          errors.push('Invalid blood group');
-        }
-      }
-
-      // Experience years validation
-      const experienceYears = mappedData.experience_years;
-      if (experienceYears !== undefined && experienceYears !== null) {
-        const expYears = typeof experienceYears === 'number' 
-          ? experienceYears 
-          : parseFloat(String(experienceYears));
-        if (isNaN(expYears) || expYears < 0) {
-          errors.push('Experience (Years) must be a valid number');
-        } else {
-          mappedData.experience_years = expYears;
-        }
-      }
-
-      // Set defaults
-      if (!mappedData.nationality) {
-        mappedData.nationality = 'Indian';
-      }
-
-      // Clean phone numbers
-      if (mappedData.contact1) {
-        mappedData.contact1 = String(mappedData.contact1).replace(/\D/g, '');
-      }
-      if (mappedData.contact2) {
-        mappedData.contact2 = String(mappedData.contact2).replace(/\D/g, '');
+      const bg = String(mappedData.blood_group || '').trim();
+      if (bg) {
+        const valid = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+        const u = bg.toUpperCase();
+        if (!valid.includes(u)) errors.push('Invalid blood group');
+        else mappedData.blood_group = u;
       }
 
       validatedRows.push({
@@ -265,19 +151,42 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    return NextResponse.json({
-      data: validatedRows,
-      total: validatedRows.length,
-      valid: validatedRows.filter(r => r.errors.length === 0).length,
-      invalid: validatedRows.filter(r => r.errors.length > 0).length,
-      warnings: validatedRows.filter(r => r.warnings.length > 0).length,
-    }, { status: 200 });
+    const phones = new Map<string, number[]>();
+    validatedRows.forEach((row, idx) => {
+      const p = digits10(row.data.phone);
+      if (p) {
+        if (!phones.has(p)) phones.set(p, []);
+        phones.get(p)!.push(idx);
+      }
+    });
+    phones.forEach((indices) => {
+      if (indices.length > 1) {
+        indices.forEach((idx) => {
+          if (!validatedRows[idx].errors.includes('Duplicate phone in file')) {
+            validatedRows[idx].errors.push('Duplicate phone in file');
+          }
+        });
+      }
+    });
+
+    return NextResponse.json(
+      {
+        data: validatedRows,
+        total: validatedRows.length,
+        valid: validatedRows.filter((r) => r.errors.length === 0).length,
+        invalid: validatedRows.filter((r) => r.errors.length > 0).length,
+        warnings: validatedRows.filter((r) => r.warnings.length > 0).length,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error validating staff file:', error);
     return NextResponse.json(
-      { error: 'Failed to validate file', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: 'Failed to validate file',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }
 }
-

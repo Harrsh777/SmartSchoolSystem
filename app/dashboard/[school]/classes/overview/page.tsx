@@ -83,8 +83,6 @@ export default function ClassOverviewPage({
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [loadingAcademicYears, setLoadingAcademicYears] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [expandedClassIds, setExpandedClassIds] = useState<Set<string>>(new Set());
   const [studentsByClassId, setStudentsByClassId] = useState<Record<string, ClassStudentRow[]>>({});
   const [loadingStudentsByClassId, setLoadingStudentsByClassId] = useState<Record<string, boolean>>({});
@@ -199,30 +197,6 @@ export default function ClassOverviewPage({
     URL.revokeObjectURL(url);
   };
 
-  const syncClassesFromStudents = async () => {
-    try {
-      setSyncing(true);
-      setSyncMessage(null);
-      const response = await fetch('/api/classes/sync-from-students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ school_code: schoolCode }),
-      });
-      const result = await response.json();
-      if (response.ok && result.created !== undefined) {
-        setSyncMessage(result.message ?? (result.created > 0 ? `Created ${result.created} class(es) from students.` : 'All classes are already in sync.'));
-        if (result.created > 0) await fetchClassOverview();
-      } else {
-        setSyncMessage(result.error ?? 'Sync failed.');
-      }
-    } catch (err) {
-      console.error('Error syncing classes from students:', err);
-      setSyncMessage('Failed to sync classes.');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const loadClassStudents = async (classItem: ClassOverviewData) => {
     const classId = String(classItem.id);
     if (studentsByClassId[classId] || loadingStudentsByClassId[classId]) return;
@@ -231,16 +205,10 @@ export default function ClassOverviewPage({
     try {
       const params = new URLSearchParams({
         school_code: schoolCode,
-        class: classItem.class,
-        section: classItem.section,
         status: 'all',
-        limit: '500',
-        sort_by: 'roll_number',
-        sort_order: 'asc',
       });
-      if (selectedAcademicYear) params.set('academic_year', selectedAcademicYear);
 
-      const res = await fetch(`/api/students?${params.toString()}`);
+      const res = await fetch(`/api/classes/${encodeURIComponent(classId)}/students?${params.toString()}`);
       const json = await res.json();
       const rows = Array.isArray(json?.data) ? json.data : [];
       const normalized: ClassStudentRow[] = rows.map((s: Record<string, unknown>) => ({
@@ -352,15 +320,6 @@ export default function ClassOverviewPage({
           <p className="text-[#64748B]">View all classes with their statistics and timetables</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={syncClassesFromStudents}
-            disabled={syncing}
-            className="inline-flex items-center gap-2 px-4 py-2.5 border border-[#E1E1DB] rounded-lg bg-white text-[#0F172A] text-sm font-medium hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#60A5FA] focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
-            {syncing ? 'Syncing...' : 'Sync from students'}
-          </button>
           <label className="text-sm font-medium text-[#64748B]">Academic Year:</label>
           <select
             value={selectedAcademicYear}
@@ -374,9 +333,6 @@ export default function ClassOverviewPage({
             ))}
           </select>
         </div>
-        {syncMessage && (
-          <p className="w-full mt-2 text-sm text-[#64748B]">{syncMessage}</p>
-        )}
       </motion.div>
 
       {/* Summary Statistics */}

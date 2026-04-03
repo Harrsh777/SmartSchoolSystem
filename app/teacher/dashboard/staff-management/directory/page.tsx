@@ -26,7 +26,9 @@ export default function StaffDirectoryPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTab, setSelectedTab] = useState<'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'OTHERS' | 'ADMIN'>('TEACHING');
+  const [selectedTab, setSelectedTab] = useState<
+    'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'OTHER' | 'ADMIN'
+  >('TEACHING');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -64,21 +66,23 @@ export default function StaffDirectoryPage() {
 
   const getStaffByRole = (role: string) => {
     const roleMap: Record<string, string[]> = {
-      'TEACHING': ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'],
+      TEACHING: ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'],
       'NON-TEACHING': ['Accountant', 'Clerk', 'Librarian', 'Admin Staff'],
       'DRIVER/SUPPORTING STAFF': ['Driver', 'Support Staff', 'Helper', 'Security'],
-      'OTHERS': [],
-      'ADMIN': ['Admin', 'Super Admin'],
+      OTHER: [],
+      ADMIN: ['Admin', 'Super Admin'],
     };
-    
+
     const roles = roleMap[role] || [];
-    return staff.filter(s => {
-      const staffRole = getString(s.role);
-      if (role === 'OTHERS') {
-        return !roleMap['TEACHING'].includes(staffRole) && 
-               !roleMap['NON-TEACHING'].includes(staffRole) && 
-               !roleMap['DRIVER/SUPPORTING STAFF'].includes(staffRole) &&
-               !roleMap['ADMIN'].includes(staffRole);
+    return staff.filter((s) => {
+      const staffRole = getString(s.role).trim();
+      if (role === 'OTHER') {
+        return (
+          !roleMap.TEACHING.includes(staffRole) &&
+          !roleMap['NON-TEACHING'].includes(staffRole) &&
+          !roleMap['DRIVER/SUPPORTING STAFF'].includes(staffRole) &&
+          !roleMap.ADMIN.includes(staffRole)
+        );
       }
       return roles.includes(staffRole);
     });
@@ -186,7 +190,7 @@ export default function StaffDirectoryPage() {
 
           {/* Tabs */}
           <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700">
-            {(['TEACHING', 'NON-TEACHING', 'DRIVER/SUPPORTING STAFF', 'OTHERS', 'ADMIN'] as const).map((tab) => {
+            {(['TEACHING', 'NON-TEACHING', 'DRIVER/SUPPORTING STAFF', 'OTHER', 'ADMIN'] as const).map((tab) => {
               const count = getStaffByRole(tab).length;
               return (
                 <button

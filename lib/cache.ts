@@ -10,9 +10,19 @@ import { redisGet, redisSet, redisDel, redisDelByPattern } from '@/lib/redis';
 
 const DEFAULT_TTL_SECONDS = 300; // 5 minutes
 
+/** Hard cap on cache read wait so API routes always return even if Redis hangs. */
+const REDIS_READ_BUDGET_MS = 3500;
+
+async function redisGetBudgeted(key: string): Promise<string | null> {
+  return Promise.race([
+    redisGet(key),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), REDIS_READ_BUDGET_MS)),
+  ]);
+}
+
 /**
  * Cache-first get. Returns cached value or calls fetcher and caches result.
- * If Redis is down, always calls fetcher and returns (no cache write).
+ * If Redis is down or slow, always calls fetcher and returns (cache write is best-effort).
  */
 export async function getCached<T>(
   key: string,
@@ -21,7 +31,7 @@ export async function getCached<T>(
 ): Promise<T> {
   const { ttlSeconds = DEFAULT_TTL_SECONDS, serialize = JSON.stringify, deserialize = JSON.parse } = options;
 
-  const raw = await redisGet(key);
+  const raw = await redisGetBudgeted(key);
   if (raw !== null) {
     try {
       return deserialize(raw) as T;
@@ -32,7 +42,8 @@ export async function getCached<T>(
 
   const data = await fetcher();
   const toStore = serialize(data);
-  await redisSet(key, toStore, ttlSeconds);
+  /** Never block the HTTP response on Redis SET (flaky connections caused infinite “loading”). */
+  void redisSet(key, toStore, ttlSeconds);
   return data;
 }
 

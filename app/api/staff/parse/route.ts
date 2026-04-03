@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { parseDate, isValidDateFormat } from '@/lib/date-parser';
+import { parseDate } from '@/lib/date-parser';
+import {
+  normalizeStaffGenderForImport,
+  validateStaffImportCore,
+  digits10,
+} from '@/lib/staff/import-validation';
 
 type ValidationStatus = 'valid' | 'warning' | 'error';
 
@@ -12,6 +17,61 @@ export interface StaffRow {
   warnings: string[];
 }
 
+/** Normalize first CSV header row to DB-ish keys */
+const HEADER_ALIASES: Record<string, string> = {
+  name: 'full_name',
+  'full name': 'full_name',
+  full_name: 'full_name',
+  role: 'role',
+  department: 'department',
+  designation: 'designation',
+  subject: 'designation',
+  email: 'email',
+  phone: 'phone',
+  mobile: 'phone',
+  'primary contact': 'contact1',
+  primary_contact: 'contact1',
+  contact_1: 'contact1',
+  contact1: 'contact1',
+  'secondary contact': 'contact2',
+  secondary_contact: 'contact2',
+  contact2: 'contact2',
+  doj: 'date_of_joining',
+  'date of joining': 'date_of_joining',
+  date_of_joining: 'date_of_joining',
+  dob: 'dob',
+  'date of birth': 'dob',
+  gender: 'gender',
+  'aadhaar number': 'adhar_no',
+  aadhaar_number: 'adhar_no',
+  adhar_no: 'adhar_no',
+  aadhaar: 'adhar_no',
+  category: 'category',
+  'blood group': 'blood_group',
+  blood_group: 'blood_group',
+  religion: 'religion',
+  nationality: 'nationality',
+  address: 'address',
+  staff_id: 'staff_id',
+  'employee code': 'employee_code',
+  employee_code: 'employee_code',
+  'employment type': 'employment_type',
+  employment_type: 'employment_type',
+  qualification: 'qualification',
+  'experience years': 'experience_years',
+  experience_years: 'experience_years',
+  'alma mater': 'alma_mater',
+  alma_mater: 'alma_mater',
+  'major/specialization': 'major',
+  major: 'major',
+  website: 'website',
+  dop: 'dop',
+  'date of promotion': 'dop',
+  short_code: 'short_code',
+  rfid: 'rfid',
+  uuid: 'uuid',
+};
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -19,13 +79,9 @@ export async function POST(request: NextRequest) {
     const schoolCode = formData.get('school_code') as string;
 
     if (!file) {
-      return NextResponse.json(
-        { error: 'No file provided' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Get school ID
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
       .select('id')
@@ -33,18 +89,22 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (schoolError || !schoolData) {
-      return NextResponse.json(
-        { error: 'School not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'School not found' }, { status: 404 });
     }
 
     const schoolId = schoolData.id;
 
-    // Read file content
+    const { data: subjectsRows } = await supabase
+      .from('timetable_subjects')
+      .select('name')
+      .eq('school_code', schoolCode);
+    const validSubjects = new Set(
+      (subjectsRows ?? []).map((s) => s.name).filter(Boolean) as string[]
+    );
+
     const fileContent = await file.text();
-    const lines = fileContent.split('\n').filter(line => line.trim());
-    
+    const lines = fileContent.split('\n').filter((line) => line.trim());
+
     if (lines.length < 2) {
       return NextResponse.json(
         { error: 'File must contain at least a header row and one data row' },
@@ -52,8 +112,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse CSV
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const rawHeaders = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase());
+    const headers = rawHeaders.map((h) => HEADER_ALIASES[h] || h);
+
     const rows: StaffRow[] = [];
 
     for (let i = 1; i < lines.length; i++) {
@@ -61,109 +122,122 @@ export async function POST(request: NextRequest) {
       const rowData: Record<string, unknown> = {};
 
       headers.forEach((header, idx) => {
-        rowData[header] = values[idx]?.trim() || '';
+        const v = values[idx]?.trim() ?? '';
+        if (v !== '') rowData[header] = v;
       });
 
-      // Parse and normalize dates
       let dateOfJoining = '';
-      if (rowData.doj || rowData.date_of_joining) {
-        const dateStr = String(rowData.doj || rowData.date_of_joining || '');
-        const parsedDate = parseDate(dateStr);
-        if (parsedDate) {
-          dateOfJoining = parsedDate;
-        } else {
-          dateOfJoining = dateStr;
-        }
+      if (rowData.date_of_joining) {
+        const parsed = parseDate(String(rowData.date_of_joining));
+        dateOfJoining = parsed || String(rowData.date_of_joining);
       }
 
       let dateOfBirth = '';
       if (rowData.dob) {
-        const dobStr = String(rowData.dob || '');
-        const parsedDate = parseDate(dobStr);
-        if (parsedDate) {
-          dateOfBirth = parsedDate;
-        } else {
-          dateOfBirth = dobStr;
-        }
+        const parsed = parseDate(String(rowData.dob));
+        dateOfBirth = parsed || String(rowData.dob);
       }
 
       let dateOfPromotion = '';
       if (rowData.dop) {
-        const parsedDate = parseDate(String(rowData.dop || ''));
-        if (parsedDate) {
-          dateOfPromotion = parsedDate;
-        } else {
-          dateOfPromotion = String(rowData.dop || '');
-        }
+        const parsed = parseDate(String(rowData.dop));
+        dateOfPromotion = parsed || String(rowData.dop);
       }
 
-      // Map to staff data structure
-      const staffData = {
+      const phoneDigits = digits10(rowData.phone);
+      const c1Digits = digits10(rowData.contact1);
+
+      const staffData: Record<string, unknown> = {
         school_id: schoolId,
         school_code: schoolCode,
         staff_id: rowData.staff_id || rowData.employee_code || '',
-        full_name: rowData.name || rowData.full_name || '',
+        full_name: rowData.full_name || '',
         role: rowData.role || '',
-        department: rowData.department || undefined,
-        designation: rowData.designation || undefined,
-        email: rowData.email || undefined,
-        phone: rowData.phone || rowData.contact1 || '',
+        department: rowData.department,
+        designation: rowData.designation,
+        email: rowData.email,
+        phone: phoneDigits ?? rowData.phone ?? '',
         date_of_joining: dateOfJoining,
-        employment_type: rowData.employment_type || undefined,
-        qualification: rowData.qualification || undefined,
-        experience_years: rowData.experience_years ? parseInt(String(rowData.experience_years)) : undefined,
-        gender: rowData.gender || undefined,
-        address: rowData.address || undefined,
-        // New fields
+        employment_type: rowData.employment_type,
+        qualification: rowData.qualification,
+        experience_years: rowData.experience_years
+          ? parseInt(String(rowData.experience_years), 10)
+          : undefined,
+        gender: rowData.gender,
+        address: rowData.address,
         dob: dateOfBirth || undefined,
-        adhar_no: rowData.adhar_no || rowData.aadhaar_number || undefined,
-        blood_group: rowData.blood_group || undefined,
-        religion: rowData.religion || undefined,
-        category: rowData.category || undefined,
+        adhar_no: rowData.adhar_no,
+        blood_group: rowData.blood_group,
+        religion: rowData.religion,
+        category: rowData.category,
         nationality: rowData.nationality || 'Indian',
-        contact1: rowData.contact1 || rowData.phone || undefined,
-        contact2: rowData.contact2 || undefined,
-        employee_code: rowData.employee_code || rowData.staff_id || undefined,
+        contact1: c1Digits ?? rowData.contact1,
+        contact2: rowData.contact2,
+        employee_code: rowData.employee_code || rowData.staff_id,
         dop: dateOfPromotion || undefined,
-        short_code: rowData.short_code || undefined,
-        rfid: rowData.rfid || undefined,
-        uuid: rowData.uuid || undefined,
-        alma_mater: rowData.alma_mater || undefined,
-        major: rowData.major || undefined,
-        website: rowData.website || undefined,
+        short_code: rowData.short_code,
+        rfid: rowData.rfid,
+        uuid: rowData.uuid,
+        alma_mater: rowData.alma_mater,
+        major: rowData.major,
+        website: rowData.website,
       };
 
-      // Validate row
-      const validation = validateRow(staffData);
-      
+      const validation = validateStaffImportCore(staffData, { validSubjects });
+      const genderNorm = normalizeStaffGenderForImport(staffData.gender);
+      if (genderNorm) staffData.gender = genderNorm;
+      if (phoneDigits) staffData.phone = phoneDigits;
+      if (c1Digits) staffData.contact1 = c1Digits;
+      const ad = String(staffData.adhar_no ?? '').replace(/\D/g, '');
+      if (ad.length === 12) staffData.adhar_no = ad;
+
       rows.push({
         rowIndex: i,
         data: staffData,
-        status: validation.status,
+        status:
+          validation.errors.length > 0
+            ? 'error'
+            : validation.warnings.length > 0
+              ? 'warning'
+              : 'valid',
         errors: validation.errors,
-        warnings: validation.warnings,
+        warnings: [...validation.warnings],
       });
     }
 
-    // Check for duplicate staff_ids within file
     const staffIds = new Map<string, number[]>();
     rows.forEach((row, idx) => {
-      const staffId = String(row.data.staff_id || '');
-      if (staffId) {
-        if (!staffIds.has(staffId)) {
-          staffIds.set(staffId, []);
-        }
-        staffIds.get(staffId)!.push(idx);
+      const id = String(row.data.staff_id || '').trim();
+      if (id) {
+        if (!staffIds.has(id)) staffIds.set(id, []);
+        staffIds.get(id)!.push(idx);
+      }
+    });
+    staffIds.forEach((indices) => {
+      if (indices.length > 1) {
+        indices.forEach((idx) => {
+          rows[idx].status = 'error';
+          if (!rows[idx].errors.includes('Duplicate staff ID in file')) {
+            rows[idx].errors.push('Duplicate staff ID in file');
+          }
+        });
       }
     });
 
-    // Mark duplicates as errors
-    staffIds.forEach((indices) => {
+    const phones = new Map<string, number[]>();
+    rows.forEach((row, idx) => {
+      const p = digits10(row.data.phone);
+      if (p) {
+        if (!phones.has(p)) phones.set(p, []);
+        phones.get(p)!.push(idx);
+      }
+    });
+    phones.forEach((indices) => {
       if (indices.length > 1) {
-        indices.forEach(idx => {
-          if (rows[idx].status !== 'error') {
-            rows[idx].status = 'error';
-            rows[idx].errors.push('Duplicate staff ID in file');
+        indices.forEach((idx) => {
+          rows[idx].status = 'error';
+          if (!rows[idx].errors.includes('Duplicate phone in file')) {
+            rows[idx].errors.push('Duplicate phone in file');
           }
         });
       }
@@ -173,7 +247,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error parsing file:', error);
     return NextResponse.json(
-      { error: 'Failed to parse file', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: 'Failed to parse file',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }
@@ -186,7 +263,7 @@ function parseCSVLine(line: string): string[] {
 
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
-    
+
     if (char === '"') {
       inQuotes = !inQuotes;
     } else if (char === ',' && !inQuotes) {
@@ -196,159 +273,7 @@ function parseCSVLine(line: string): string[] {
       current += char;
     }
   }
-  
+
   result.push(current);
   return result;
 }
-
-function validateRow(data: Record<string, unknown>): {
-  status: ValidationStatus;
-  errors: string[];
-  warnings: string[];
-} {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  // Required fields
-  const staffId = String(data.staff_id || '');
-  const employeeCode = String(data.employee_code || '');
-  const fullName = String(data.full_name || '');
-  const role = String(data.role || '');
-  const phone = String(data.phone || '');
-  const contact1 = String(data.contact1 || '');
-  const dateOfJoining = String(data.date_of_joining || '');
-  const department = String(data.department || '');
-  const designation = String(data.designation || '');
-  if (!staffId.trim() && !employeeCode.trim()) {
-    errors.push('Staff ID or Employee Code is required');
-  }
-  if (!fullName.trim()) errors.push('Name/Full Name is required');
-  if (!role.trim()) errors.push('Role is required');
-  if (!phone.trim() && !contact1.trim()) {
-    errors.push('Phone or Contact1 is required');
-  }
-  if (!dateOfJoining.trim()) errors.push('Date of joining (DOJ) is required');
-  if (!department.trim()) errors.push('Department is required');
-  if (!designation.trim()) errors.push('Designation is required');
-
-  // Date validation
-  if (dateOfJoining) {
-    if (!isValidDateFormat(dateOfJoining)) {
-      errors.push('Invalid date of joining format. Supported formats: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD');
-    } else {
-      const date = new Date(dateOfJoining);
-      if (!isNaN(date.getTime())) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (date > today) {
-          warnings.push('Date of joining is in the future');
-        }
-      }
-    }
-  }
-
-  // Date of birth validation
-  const dobStr = String(data.dob || '');
-  if (dobStr) {
-    if (!isValidDateFormat(dobStr)) {
-      errors.push('Invalid date of birth format. Supported formats: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD');
-    } else {
-      const dob = new Date(dobStr);
-      const today = new Date();
-      if (!isNaN(dob.getTime()) && dob > today) {
-        errors.push('Date of birth cannot be in the future');
-      }
-    }
-  }
-
-  // Date of promotion validation
-  const dopStr = String(data.dop || '');
-  if (dopStr) {
-    if (!isValidDateFormat(dopStr)) {
-      warnings.push('Invalid date of promotion format. Supported formats: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD');
-    } else {
-      const dop = new Date(dopStr);
-      const today = new Date();
-      if (!isNaN(dop.getTime()) && dop > today) {
-        warnings.push('Date of promotion is in the future');
-      }
-      if (dateOfJoining) {
-        const doj = new Date(dateOfJoining);
-        if (!isNaN(dop.getTime()) && !isNaN(doj.getTime()) && dop < doj) {
-          warnings.push('Date of promotion is before date of joining');
-        }
-      }
-    }
-  }
-
-  // Email validation
-  const email = String(data.email || '');
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    warnings.push('Invalid email format');
-  }
-
-  // Contact validation
-  const contact1Str = String(data.contact1 || '');
-  const contact2Str = String(data.contact2 || '');
-  if (contact1Str && !/^[0-9+\-\s()]+$/.test(contact1Str)) {
-    warnings.push('Contact1 may contain invalid characters');
-  }
-  if (contact2Str && !/^[0-9+\-\s()]+$/.test(contact2Str)) {
-    warnings.push('Contact2 may contain invalid characters');
-  }
-
-  // Aadhaar validation (12 digits)
-  const adharNo = String(data.adhar_no || '');
-  if (adharNo) {
-    const aadhaar = adharNo.replace(/\s|-/g, '');
-    if (!/^\d{12}$/.test(aadhaar)) {
-      warnings.push('Aadhaar number should be 12 digits');
-    }
-  }
-
-  // Blood group validation
-  const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-  const bloodGroup = String(data.blood_group || '');
-  if (bloodGroup && !validBloodGroups.includes(bloodGroup.toUpperCase())) {
-    warnings.push(`Invalid blood group. Valid values: ${validBloodGroups.join(', ')}`);
-  }
-
-  // Gender validation
-  const validGenders = ['Male', 'Female', 'Other', 'male', 'female', 'other'];
-  const gender = String(data.gender || '');
-  if (gender && !validGenders.includes(gender)) {
-    warnings.push('Invalid gender. Valid values: Male, Female, Other');
-  }
-
-  // Experience years validation
-  const experienceYears = typeof data.experience_years === 'number' 
-    ? data.experience_years 
-    : (data.experience_years ? Number(data.experience_years) : NaN);
-  if (!isNaN(experienceYears) && (isNaN(experienceYears) || experienceYears < 0)) {
-    warnings.push('Invalid experience years');
-  }
-
-  // Website URL validation
-  const website = String(data.website || '');
-  if (website) {
-    try {
-      new URL(website);
-    } catch {
-      warnings.push('Invalid website URL format');
-    }
-  }
-
-  // Role validation (warning for unknown roles, but allow custom)
-  const commonRoles = ['Principal', 'Teacher', 'Helper', 'Driver', 'Conductor', 'Administration'];
-  const roleStr = String(data.role || '');
-  if (roleStr && !commonRoles.some(r => roleStr.toLowerCase().includes(r.toLowerCase()))) {
-    warnings.push('Uncommon role - please verify');
-  }
-
-  return {
-    status: errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'valid',
-    errors,
-    warnings,
-  };
-}
-

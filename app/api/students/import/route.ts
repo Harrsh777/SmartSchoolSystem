@@ -10,6 +10,27 @@ import { normalizeStudentGenderForDb } from '@/lib/students/gender';
 
 const BATCH_SIZE = 500;
 
+interface StudentInput {
+  admission_no: string;
+  class?: unknown;
+  section?: unknown;
+  academic_year?: unknown;
+  [key: string]: unknown;
+}
+
+interface ExistingStudentRow extends Record<string, unknown> {
+  id: string;
+  admission_no: string;
+  class?: string | null;
+  section?: string | null;
+}
+
+function isNonEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  return true;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -59,31 +80,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for existing admission numbers
-    interface StudentInput {
-      admission_no: string;
-      class?: unknown;
-      section?: unknown;
-      academic_year?: unknown;
-      [key: string]: unknown;
-    }
-    const admissionNos = students.map((s: StudentInput) => s.admission_no).filter(Boolean);
+    // Preload existing students by admission_no for UPSERT behaviour
+    const admissionNos = (students as StudentInput[])
+      .map((s) => s.admission_no)
+      .filter(Boolean);
+
     const { data: existingStudents } = await supabase
       .from('students')
-      .select('admission_no')
+      .select(
+        'id, admission_no, class, section, student_name, first_name, last_name, date_of_birth, gender, address, city, state, pincode, aadhaar_number, email, student_contact, blood_group, sr_no, date_of_admission, religion, category, nationality, house, last_class, last_school_name, last_school_percentage, last_school_result, medium, schooling_type, roll_number, rfid, pen_no, apaar_no, rte, is_rte, new_admission, father_name, father_occupation, father_contact, mother_name, mother_occupation, mother_contact, staff_relation, transport_type, parent_name, parent_phone, parent_email, academic_year, status'
+      )
       .eq('school_code', school_code)
       .in('admission_no', admissionNos);
 
-    const existingAdmissionNos = new Set(
-      existingStudents?.map(s => s.admission_no) || []
-    );
+    const existingByAdmission = new Map<string, ExistingStudentRow>();
+    for (const row of existingStudents || []) {
+      existingByAdmission.set(String(row.admission_no), row as ExistingStudentRow);
+    }
 
     // Get existing students without passwords (for password generation)
     interface StudentWithAdmission {
       admission_no?: string;
       [key: string]: unknown;
     }
-    const allAdmissionNos = students.map((s: StudentWithAdmission) => s.admission_no).filter(Boolean);
+    const allAdmissionNos = (students as StudentWithAdmission[])
+      .map((s) => s.admission_no)
+      .filter(Boolean);
     const { data: existingLogins } = await supabase
       .from('student_login')
       .select('admission_no')
@@ -91,98 +113,212 @@ export async function POST(request: NextRequest) {
       .in('admission_no', allAdmissionNos);
 
     const existingLoginAdmissionNos = new Set(
-      existingLogins?.map(l => l.admission_no) || []
+      existingLogins?.map((l) => l.admission_no) || []
     );
 
     const errors: Array<{ row: number; error: string }> = [];
     let failedCount = 0;
 
-    // Build list of students to insert: only those with non-duplicate admission_no AND class/section that exists in Classes
+    // Build lists for inserts and updates
     const studentsToInsert: Array<Record<string, unknown>> = [];
-    students.forEach((student: StudentInput, idx: number) => {
+    const studentsToUpdate: Array<{ id: string; admission_no: string; patch: Record<string, unknown>; row: number }> = [];
+
+    (students as StudentInput[]).forEach((student, idx: number) => {
       const row = idx + 1;
-      if (existingAdmissionNos.has(student.admission_no)) {
-        errors.push({ row, error: 'Admission number already exists' });
-        failedCount++;
-        return;
-      }
+      const existing = student.admission_no
+        ? existingByAdmission.get(String(student.admission_no))
+        : undefined;
+
+      // Normalize class/section using Classes module when we actually need to set them
       const parsed = parseStudentImportClassSection({
         class: student.class,
         section: student.section,
       });
-      if (!parsed.ok) {
-        errors.push({ row, error: parsed.error });
-        failedCount++;
-        return;
-      }
-      const canonical = matchCanonicalClassFromAllowList(
-        { class: parsed.class, section: parsed.section },
-        currentYear,
-        existingClasses ?? [],
-        currentYear
-      );
-      if (!canonical) {
-        errors.push({
-          row,
-          error: `Unknown class/section "${parsed.class}" / "${parsed.section}" for academic year ${currentYear}. Add it in Classes (e.g. class ${parsed.class}, section ${parsed.section}) or fix the cell.`,
+
+      if (!existing) {
+        // INSERT branch - strict on class/section validity
+        if (!parsed.ok) {
+          errors.push({ row, error: parsed.error });
+          failedCount++;
+          return;
+        }
+        const canonical = matchCanonicalClassFromAllowList(
+          { class: parsed.class, section: parsed.section },
+          currentYear,
+          existingClasses ?? [],
+          currentYear
+        );
+        if (!canonical) {
+          errors.push({
+            row,
+            error: `Unknown class/section "${parsed.class}" / "${parsed.section}" for academic year ${currentYear}. Add it in Classes (e.g. class ${parsed.class}, section ${parsed.section}) or fix the cell.`,
+          });
+          failedCount++;
+          return;
+        }
+
+        studentsToInsert.push({
+          _importRow: row,
+          school_id: schoolId,
+          school_code: school_code,
+          admission_no: student.admission_no,
+          student_name:
+            (student.student_name as string | undefined) ||
+            `${(student.first_name as string | undefined) || ''} ${(student.last_name as string | undefined) || ''}`.trim(),
+          first_name: student.first_name || null,
+          last_name: student.last_name || null,
+          class: canonical.class,
+          section: canonical.section,
+          date_of_birth: student.date_of_birth || null,
+          gender: normalizeStudentGenderForDb(student.gender),
+          address: student.address || null,
+          city: student.city || null,
+          state: student.state || null,
+          pincode: student.pincode || null,
+          aadhaar_number: student.aadhaar_number || null,
+          email: student.email || null,
+          student_contact: student.student_contact || null,
+          blood_group: student.blood_group || null,
+          sr_no: student.sr_no || null,
+          date_of_admission: student.date_of_admission || null,
+          religion: student.religion || null,
+          category: student.category || null,
+          nationality: student.nationality || 'Indian',
+          house: student.house || null,
+          last_class: student.last_class || null,
+          last_school_name: student.last_school_name || null,
+          last_school_percentage: student.last_school_percentage || null,
+          last_school_result: student.last_school_result || null,
+          medium: student.medium || null,
+          schooling_type: student.schooling_type || null,
+          roll_number: student.roll_number || null,
+          rfid: student.rfid || null,
+          pen_no: student.pen_no || null,
+          apaar_no: student.apaar_no || null,
+          rte: student.rte ?? false,
+          // `fees/v2` uses `is_rte` for RTE checks/display.
+          is_rte: student.rte ?? false,
+          new_admission: student.new_admission ?? true,
+          father_name: student.father_name || null,
+          father_occupation: student.father_occupation || null,
+          father_contact: student.father_contact || null,
+          mother_name: student.mother_name || null,
+          mother_occupation: student.mother_occupation || null,
+          mother_contact: student.mother_contact || null,
+          staff_relation: student.staff_relation || null,
+          transport_type: student.transport_type || null,
+          parent_name:
+            student.father_name ||
+            student.mother_name ||
+            (student.parent_name as string | null) ||
+            null,
+          parent_phone:
+            student.father_contact ||
+            student.mother_contact ||
+            (student.parent_phone as string | null) ||
+            null,
+          parent_email: student.parent_email || null,
+          academic_year: canonical.academic_year,
+          status: 'active',
         });
-        failedCount++;
-        return;
+      } else {
+        // UPDATE branch - only fill missing/null fields, never overwrite existing non-empty values
+        const patch: Record<string, unknown> = {};
+
+        const candidate: Record<string, unknown> = {
+          student_name:
+            (student.student_name as string | undefined) ||
+            `${(student.first_name as string | undefined) || ''} ${(student.last_name as string | undefined) || ''}`.trim(),
+          first_name: student.first_name,
+          last_name: student.last_name,
+          date_of_birth: student.date_of_birth,
+          gender: normalizeStudentGenderForDb(student.gender),
+          address: student.address,
+          city: student.city,
+          state: student.state,
+          pincode: student.pincode,
+          aadhaar_number: student.aadhaar_number,
+          email: student.email,
+          student_contact: student.student_contact,
+          blood_group: student.blood_group,
+          sr_no: student.sr_no,
+          date_of_admission: student.date_of_admission,
+          religion: student.religion,
+          category: student.category,
+          nationality: student.nationality,
+          house: student.house,
+          last_class: student.last_class,
+          last_school_name: student.last_school_name,
+          last_school_percentage: student.last_school_percentage,
+          last_school_result: student.last_school_result,
+          medium: student.medium,
+          schooling_type: student.schooling_type,
+          roll_number: student.roll_number,
+          rfid: student.rfid,
+          pen_no: student.pen_no,
+          apaar_no: student.apaar_no,
+          rte: student.rte,
+          is_rte: student.rte,
+          new_admission: student.new_admission,
+          father_name: student.father_name,
+          father_occupation: student.father_occupation,
+          father_contact: student.father_contact,
+          mother_name: student.mother_name,
+          mother_occupation: student.mother_occupation,
+          mother_contact: student.mother_contact,
+          staff_relation: student.staff_relation,
+          transport_type: student.transport_type,
+          parent_name:
+            student.father_name ||
+            student.mother_name ||
+            (student.parent_name as string | null) ||
+            null,
+          parent_phone:
+            student.father_contact ||
+            student.mother_contact ||
+            (student.parent_phone as string | null) ||
+            null,
+          parent_email: student.parent_email,
+        };
+
+        for (const [field, incoming] of Object.entries(candidate)) {
+          if (!isNonEmptyValue(incoming)) continue;
+          const current = (existing as Record<string, unknown>)[field];
+          if (!isNonEmptyValue(current)) {
+            patch[field] = incoming;
+          }
+        }
+
+        // Only consider class/section if the existing record doesn't have them yet
+        if ((!existing.class || !existing.section) && parsed.ok) {
+          const canonical = matchCanonicalClassFromAllowList(
+            { class: parsed.class, section: parsed.section },
+            currentYear,
+            existingClasses ?? [],
+            currentYear
+          );
+          if (canonical) {
+            if (!isNonEmptyValue(existing.class) && isNonEmptyValue(canonical.class)) {
+              patch.class = canonical.class;
+            }
+            if (!isNonEmptyValue(existing.section) && isNonEmptyValue(canonical.section)) {
+              patch.section = canonical.section;
+            }
+            if (!isNonEmptyValue(existing.academic_year) && isNonEmptyValue(canonical.academic_year)) {
+              patch.academic_year = canonical.academic_year;
+            }
+          }
+        }
+
+        if (Object.keys(patch).length > 0) {
+          studentsToUpdate.push({
+            id: existing.id,
+            admission_no: existing.admission_no,
+            patch,
+            row,
+          });
+        }
       }
-      studentsToInsert.push({
-        _importRow: row,
-        school_id: schoolId,
-        school_code: school_code,
-        admission_no: student.admission_no,
-        student_name: student.student_name || `${student.first_name || ''} ${student.last_name || ''}`.trim(),
-        first_name: student.first_name || null,
-        last_name: student.last_name || null,
-        class: canonical.class,
-        section: canonical.section,
-        date_of_birth: student.date_of_birth || null,
-        gender: normalizeStudentGenderForDb(student.gender),
-        address: student.address || null,
-        city: student.city || null,
-        state: student.state || null,
-        pincode: student.pincode || null,
-        aadhaar_number: student.aadhaar_number || null,
-        email: student.email || null,
-        student_contact: student.student_contact || null,
-        blood_group: student.blood_group || null,
-        sr_no: student.sr_no || null,
-        date_of_admission: student.date_of_admission || null,
-        religion: student.religion || null,
-        category: student.category || null,
-        nationality: student.nationality || 'Indian',
-        house: student.house || null,
-        last_class: student.last_class || null,
-        last_school_name: student.last_school_name || null,
-        last_school_percentage: student.last_school_percentage || null,
-        last_school_result: student.last_school_result || null,
-        medium: student.medium || null,
-        schooling_type: student.schooling_type || null,
-        roll_number: student.roll_number || null,
-        rfid: student.rfid || null,
-        pen_no: student.pen_no || null,
-        apaar_no: student.apaar_no || null,
-        rte: student.rte ?? false,
-        // `fees/v2` uses `is_rte` for RTE checks/display.
-        is_rte: student.rte ?? false,
-        new_admission: student.new_admission ?? true,
-        father_name: student.father_name || null,
-        father_occupation: student.father_occupation || null,
-        father_contact: student.father_contact || null,
-        mother_name: student.mother_name || null,
-        mother_occupation: student.mother_occupation || null,
-        mother_contact: student.mother_contact || null,
-        staff_relation: student.staff_relation || null,
-        transport_type: student.transport_type || null,
-        parent_name: student.father_name || student.mother_name || student.parent_name || null,
-        parent_phone: student.father_contact || student.mother_contact || student.parent_phone || null,
-        parent_email: student.parent_email || null,
-        academic_year: canonical.academic_year,
-        status: 'active',
-      });
     });
 
     let successCount = 0;
@@ -213,7 +349,7 @@ export async function POST(request: NextRequest) {
         });
       } else {
         successCount += batch.length;
-        
+
         // Generate passwords for successfully inserted students
         const loginRecords = [];
         for (const student of insertedStudents || []) {
@@ -230,13 +366,13 @@ export async function POST(request: NextRequest) {
             password: password,
           });
         }
-        
+
         // Insert login records
         if (loginRecords.length > 0) {
           const { error: loginInsertError } = await supabase
             .from('student_login')
             .insert(loginRecords);
-          
+
           if (loginInsertError) {
             console.error('Error inserting student login records:', loginInsertError);
             // Don't fail the entire import, but log the error
@@ -246,12 +382,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Apply partial updates (UPSERT behaviour) one-by-one
+    for (const { id, patch, row } of studentsToUpdate) {
+      try {
+        const { error: updateError } = await supabase
+          .from('students')
+          .update(patch)
+          .eq('id', id);
+
+        if (updateError) {
+          errors.push({
+            row,
+            error: updateError.message,
+          });
+          failedCount++;
+        } else {
+          successCount++;
+        }
+      } catch (e) {
+        errors.push({
+          row,
+          error:
+            e instanceof Error
+              ? e.message
+              : 'Unknown error while updating existing student',
+        });
+        failedCount++;
+      }
+    }
+
     // Generate passwords for existing students without passwords
-    const existingStudentsWithoutPasswords = students
-      .filter((s: StudentInput) => 
-        existingAdmissionNos.has(s.admission_no) && 
+    const existingStudentsWithoutPasswords = (students as StudentInput[]).filter(
+      (s) =>
+        s.admission_no &&
+        existingByAdmission.has(String(s.admission_no)) &&
         !existingLoginAdmissionNos.has(s.admission_no)
-      );
+    );
 
     for (const student of existingStudentsWithoutPasswords) {
       try {
@@ -265,13 +431,18 @@ export async function POST(request: NextRequest) {
             plain_password: password, // Store plain text password
             is_active: true,
           });
-        
+
         if (loginInsertError) {
           // Check if it's a duplicate (already exists)
           if (loginInsertError.code === '23505') {
-            console.log(`Password already exists for student ${student.admission_no}, skipping`);
+            console.log(
+              `Password already exists for student ${student.admission_no}, skipping`
+            );
           } else {
-            console.error(`Error generating password for ${student.admission_no}:`, loginInsertError);
+            console.error(
+              `Error generating password for ${student.admission_no}:`,
+              loginInsertError
+            );
           }
         } else {
           generatedPasswords.push({
@@ -280,17 +451,23 @@ export async function POST(request: NextRequest) {
           });
         }
       } catch (err) {
-        console.error(`Error generating password for ${student.admission_no}:`, err);
+        console.error(
+          `Error generating password for ${student.admission_no}:`,
+          err
+        );
       }
     }
 
-    return NextResponse.json({
-      total: students.length,
-      success: successCount,
-      failed: failedCount,
-      errors,
-      passwords: generatedPasswords,
-    }, { status: 200 });
+    return NextResponse.json(
+      {
+        total: (students as unknown[]).length,
+        success: successCount,
+        failed: failedCount,
+        errors,
+        passwords: generatedPasswords,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     if (error instanceof Error && error.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
       return NextResponse.json(
@@ -300,9 +477,11 @@ export async function POST(request: NextRequest) {
     }
     console.error('Error importing students:', error);
     return NextResponse.json(
-      { error: 'Failed to import students', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: 'Failed to import students',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }
 }
-

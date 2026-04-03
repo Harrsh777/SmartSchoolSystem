@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 
+const INSERT_CHUNK = 200;
+
+interface ClassInput {
+  class?: string;
+  section?: string;
+}
+
+interface SkipRecord {
+  class: string;
+  section: string;
+  reason: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -17,7 +30,6 @@ export async function POST(request: NextRequest) {
     const currentYear = await getRequiredCurrentAcademicYear(String(school_code));
     const academic_year = currentYear.year_name;
 
-    // Get school ID
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
       .select('id')
@@ -25,75 +37,100 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (schoolError || !schoolData) {
+      return NextResponse.json({ error: 'School not found' }, { status: 404 });
+    }
+
+    const skipped: SkipRecord[] = [];
+    const normalized: { class: string; section: string }[] = [];
+
+    for (const c of classes as ClassInput[]) {
+      const cls = String(c.class ?? '')
+        .trim()
+        .toUpperCase();
+      const secRaw = String(c.section ?? '').trim().toUpperCase();
+
+      if (!cls) {
+        skipped.push({
+          class: '(empty)',
+          section: secRaw || '—',
+          reason: 'Missing class name',
+        });
+        continue;
+      }
+
+      if (!/^[A-Z]$/.test(secRaw)) {
+        skipped.push({
+          class: cls,
+          section: secRaw || '—',
+          reason: 'Invalid section (single letter A–Z only)',
+        });
+        continue;
+      }
+
+      normalized.push({ class: cls, section: secRaw });
+    }
+
+    const seen = new Set<string>();
+    const deduped: { class: string; section: string }[] = [];
+    for (const p of normalized) {
+      const k = `${p.class}|${p.section}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      deduped.push(p);
+    }
+
+    if (deduped.length === 0) {
       return NextResponse.json(
-        { error: 'School not found' },
-        { status: 404 }
-      );
-    }
-
-    // Validate all classes have required fields
-    interface ClassInput {
-      class?: string;
-      section?: string;
-    }
-    const invalidClasses = classes.filter((c: ClassInput) => !c.class || !c.section);
-    if (invalidClasses.length > 0) {
-      return NextResponse.json(
-        { error: 'All classes must have class and section fields' },
-        { status: 400 }
-      );
-    }
-
-    // Check for existing classes to avoid duplicates
-    const classKeys = classes.map((c: ClassInput) => ({
-      class: String(c.class || '').toUpperCase(),
-      section: String(c.section || '').toUpperCase(),
-    }));
-
-    const existingClassesQuery = supabase
-      .from('classes')
-      .select('class, section')
-      .eq('school_code', school_code)
-      .eq('academic_year', academic_year);
-
-    const { data: existingClasses, error: existingError } = await existingClassesQuery;
-
-    if (existingError) {
-      return NextResponse.json(
-        { error: 'Failed to check existing classes', details: existingError.message },
-        { status: 500 }
-      );
-    }
-
-    // Filter out duplicates
-    interface ExistingClass {
-      class: string;
-      section: string;
-    }
-    const existingSet = new Set(
-      (existingClasses || []).map((c: ExistingClass) => `${c.class}-${c.section}`)
-    );
-
-    const classesToInsert = classKeys.filter(
-      (c: ClassInput) => !existingSet.has(`${c.class}-${c.section}`)
-    );
-
-    const duplicateClasses = classKeys.filter(
-      (c: ClassInput) => existingSet.has(`${c.class}-${c.section}`)
-    );
-
-    if (classesToInsert.length === 0) {
-      return NextResponse.json(
-        { 
-          error: 'All classes already exist',
-          duplicates: duplicateClasses,
+        {
+          error: 'No valid class–section pairs to create',
+          created: 0,
+          skipped,
         },
         { status: 400 }
       );
     }
 
-    // Prepare records for insertion
-    const recordsToInsert = classesToInsert.map((c: ClassInput) => ({
+    const { data: existingClasses, error: existingError } = await supabase
+      .from('classes')
+      .select('class, section')
+      .eq('school_code', school_code)
+      .eq('academic_year', academic_year);
+
+    if (existingError) {
+      return NextResponse.json(
+        {
+          error: 'Failed to check existing classes',
+          details: existingError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    interface ExistingRow {
+      class: string;
+      section: string;
+    }
+    const existingSet = new Set(
+      (existingClasses || []).map(
+        (c: ExistingRow) => `${String(c.class).trim().toUpperCase()}|${String(c.section).trim().toUpperCase()}`
+      )
+    );
+
+    const classesToInsert: { class: string; section: string }[] = [];
+    for (const p of deduped) {
+      const k = `${p.class}|${p.section}`;
+      if (existingSet.has(k)) {
+        skipped.push({
+          class: p.class,
+          section: p.section,
+          reason: `${p.class}-${p.section} already exists`,
+        });
+        continue;
+      }
+      classesToInsert.push(p);
+    }
+
+    const recordsToInsert = classesToInsert.map((c) => ({
       school_id: schoolData.id,
       school_code: school_code,
       class: c.class,
@@ -101,26 +138,48 @@ export async function POST(request: NextRequest) {
       academic_year: academic_year,
     }));
 
-    // Insert classes in batch
-    const { data: insertedClasses, error: insertError } = await supabase
-      .from('classes')
-      .insert(recordsToInsert)
-      .select();
+    const insertedAll: unknown[] = [];
 
-    if (insertError) {
-      return NextResponse.json(
-        { error: 'Failed to create classes', details: insertError.message },
-        { status: 500 }
-      );
+    for (let i = 0; i < recordsToInsert.length; i += INSERT_CHUNK) {
+      const chunk = recordsToInsert.slice(i, i + INSERT_CHUNK);
+      const { data: insertedChunk, error: insertError } = await supabase
+        .from('classes')
+        .insert(chunk)
+        .select();
+
+      if (insertError) {
+        return NextResponse.json(
+          {
+            error: 'Failed to create classes',
+            details: insertError.message,
+            created: insertedAll.length,
+            skipped,
+            partial: true,
+          },
+          { status: 500 }
+        );
+      }
+      if (insertedChunk?.length) insertedAll.push(...insertedChunk);
     }
 
-    return NextResponse.json({
-      data: insertedClasses,
-      message: `Successfully created ${insertedClasses?.length || 0} class${insertedClasses?.length !== 1 ? 'es' : ''}`,
-      created: insertedClasses?.length || 0,
-      skipped: duplicateClasses.length,
-      duplicates: duplicateClasses.length > 0 ? duplicateClasses : undefined,
-    }, { status: 201 });
+    const created = insertedAll.length;
+    const message =
+      created > 0
+        ? `Successfully created ${created} class${created !== 1 ? 'es' : ''}`
+        : skipped.length > 0
+          ? 'No new classes created (all skipped)'
+          : 'No classes created';
+
+    return NextResponse.json(
+      {
+        ok: true,
+        data: insertedAll,
+        message,
+        created,
+        skipped: skipped.length > 0 ? skipped : undefined,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     if (error instanceof Error && error.message === 'ACADEMIC_YEAR_NOT_CONFIGURED') {
       return NextResponse.json(
@@ -130,9 +189,11 @@ export async function POST(request: NextRequest) {
     }
     console.error('Error bulk creating classes:', error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }
 }
-

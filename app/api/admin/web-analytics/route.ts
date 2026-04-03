@@ -216,8 +216,7 @@ export async function GET(request: NextRequest) {
         }
       }
     } catch {
-      /* keep default range */
-    }
+      }
   }
   const unit = pageviewUnit(period);
   const evUnit = eventUnit(period);

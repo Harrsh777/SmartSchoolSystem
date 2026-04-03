@@ -1,16 +1,17 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, ArrowRight, Download, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Download, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import Stepper from '@/components/students/Stepper';
 import UploadZone from '@/components/students/UploadZone';
 import StaffPreviewTable from '@/components/staff/StaffPreviewTable';
 import ImportSummary from '@/components/students/ImportSummary';
 import type { Staff } from '@/lib/supabase';
+import { validateStaffImportCore } from '@/lib/staff/import-validation';
 
 type ValidationStatus = 'valid' | 'warning' | 'error';
 
@@ -41,6 +42,28 @@ export default function ImportStaffPage({
     failed: number;
     errors: Array<{ row: number; error: string }>;
   } | null>(null);
+  const [subjectNames, setSubjectNames] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `/api/timetable/subjects?school_code=${encodeURIComponent(schoolCode)}`
+        );
+        const json = await res.json();
+        if (res.ok && json.data) {
+          setSubjectNames(
+            new Set(
+              (json.data as Array<{ name: string }>).map((s) => s.name).filter(Boolean)
+            )
+          );
+        }
+      } catch {
+        // preview validation still runs; designation subject check may be skipped
+      }
+    };
+    load();
+  }, [schoolCode]);
 
   const handleFileUpload = (file: File) => {
     setUploadedFile(file);
@@ -78,7 +101,7 @@ export default function ImportStaffPage({
       const updated = prev.map(row => {
         if (row.rowIndex === rowIndex) {
           const newData = { ...row.data, [field]: value };
-          const validation = validateRow(newData);
+          const validation = validateRow(newData, rowIndex, prev);
           return {
             ...row,
             data: newData,
@@ -90,81 +113,111 @@ export default function ImportStaffPage({
         return row;
       });
       
-      // Re-check duplicates
-      return updated.map(row => {
-        const staffId = typeof row.data.staff_id === 'string' ? row.data.staff_id : '';
-        const duplicateCount = updated.filter(
-          (r) => {
-            const rStaffId = typeof r.data.staff_id === 'string' ? r.data.staff_id : '';
-            return rStaffId === staffId && 
-                   r.rowIndex !== row.rowIndex &&
-                   staffId.trim().length > 0;
-          }
-        ).length;
-        
-        if (duplicateCount > 0 && !row.errors.includes('Duplicate staff ID in file')) {
-          return {
-            ...row,
-            status: 'error' as ValidationStatus,
-            errors: [...row.errors.filter(e => e !== 'Duplicate staff ID in file'), 'Duplicate staff ID in file'],
-          };
-        } else if (duplicateCount === 0) {
-          const errors = row.errors.filter(e => e !== 'Duplicate staff ID in file');
-          return {
-            ...row,
-            errors,
-            status: errors.length > 0 ? 'error' : row.warnings.length > 0 ? 'warning' : 'valid',
-          };
-        }
-        return row;
+      const phoneDigits = (v: unknown) =>
+        String(v ?? '')
+          .replace(/\D/g, '')
+          .slice(0, 10);
+
+      return updated.map((row) => {
+        const staffId =
+          typeof row.data.staff_id === 'string' ? row.data.staff_id.trim() : '';
+        const dupStaff = updated.filter((r) => {
+          const rs =
+            typeof r.data.staff_id === 'string' ? r.data.staff_id.trim() : '';
+          return rs === staffId && r.rowIndex !== row.rowIndex && staffId.length > 0;
+        }).length;
+
+        const p = phoneDigits(row.data.phone);
+        const dupPhone =
+          p.length === 10
+            ? updated.filter(
+                (r) =>
+                  phoneDigits(r.data.phone) === p &&
+                  r.rowIndex !== row.rowIndex
+              ).length
+            : 0;
+
+            const errors = [
+              ...row.errors.filter(
+                (e) => e !== 'Duplicate staff ID in file' && e !== 'Duplicate phone in file'
+              ),
+              ...(dupStaff > 0 ? ['Duplicate staff ID in file'] : []),
+              ...(dupPhone > 0 ? ['Duplicate phone in file'] : []),
+            ];
+
+        const status: ValidationStatus =
+          errors.length > 0
+            ? 'error'
+            : row.warnings.length > 0
+              ? 'warning'
+              : 'valid';
+
+        return { ...row, errors, status };
       });
     });
   };
 
-  const validateRow = (data: Partial<Staff>): {
+  const validateRow = (
+    data: Partial<Staff>,
+    rowIndex: number,
+    allRows: StaffRow[]
+  ): {
     status: ValidationStatus;
     errors: string[];
     warnings: string[];
   } => {
-    const errors: string[] = [];
-    const warnings: string[] = [];
+    const getString = (value: unknown): string =>
+      typeof value === 'string' ? value : '';
 
-    // Helper to safely get string value
-    const getString = (value: unknown): string => {
-      return typeof value === 'string' ? value : '';
-    };
+    const core = validateStaffImportCore(
+      {
+        full_name: getString(data.full_name).trim(),
+        role: getString(data.role).trim(),
+        department: getString(data.department).trim(),
+        designation: getString(data.designation).trim(),
+        phone: data.phone,
+        contact1: data.contact1,
+        date_of_joining: getString(data.date_of_joining).trim(),
+        dob: getString(data.dob).trim(),
+        gender: data.gender,
+        adhar_no: data.adhar_no,
+        category: getString(data.category).trim(),
+        email: getString(data.email).trim(),
+        contact2: data.contact2,
+      },
+      { validSubjects: subjectNames }
+    );
 
-    // Required fields - ensure they're strings before calling trim
-    const staffId: string = getString(data.staff_id);
-    const fullName: string = getString(data.full_name);
-    const role: string = getString(data.role);
-    const phone: string = getString(data.phone);
-    const dateOfJoining: string = getString(data.date_of_joining);
-
-    if (!staffId.trim()) errors.push('Staff ID is required');
-    if (!fullName.trim()) errors.push('Full name is required');
-    if (!role.trim()) errors.push('Role is required');
-    if (!phone.trim()) errors.push('Phone is required');
-    if (!dateOfJoining.trim()) errors.push('Date of joining is required');
-
-    // Date validation
-    if (dateOfJoining) {
-      const date = new Date(dateOfJoining);
-      if (isNaN(date.getTime())) {
-        errors.push('Invalid date format (use YYYY-MM-DD)');
-      }
+    const errors = [...core.errors];
+    const staffId = getString(data.staff_id).trim();
+    if (staffId) {
+      const dup = allRows.some(
+        (r) =>
+          getString(r.data.staff_id).trim() === staffId &&
+          r.rowIndex !== rowIndex
+      );
+      if (dup) errors.push('Duplicate staff ID in file');
     }
 
-    // Email validation
-    const email: string = getString(data.email);
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      warnings.push('Invalid email format');
+    const p = getString(data.phone).replace(/\D/g, '');
+    if (p.length === 10) {
+      const dupP = allRows.some(
+        (r) =>
+          getString(r.data.phone).replace(/\D/g, '') === p &&
+          r.rowIndex !== rowIndex
+      );
+      if (dupP) errors.push('Duplicate phone in file');
     }
 
     return {
-      status: errors.length > 0 ? 'error' : warnings.length > 0 ? 'warning' : 'valid',
+      status:
+        errors.length > 0
+          ? 'error'
+          : core.warnings.length > 0
+            ? 'warning'
+            : 'valid',
       errors,
-      warnings,
+      warnings: core.warnings,
     };
   };
 
@@ -177,18 +230,22 @@ export default function ImportStaffPage({
       'designation',
       'email',
       'phone',
+      'primary_contact',
       'date_of_joining',
+      'dob',
+      'gender',
+      'adhar_no',
+      'category',
       'employment_type',
       'qualification',
       'experience_years',
-      'gender',
-      'address'
+      'address',
     ];
 
     const csvContent = [
       headers.join(','),
-      'STF001,Dr. Anjali Mehta,Principal,Administration,Principal,anjali.mehta@school.com,+91 98765 43001,2020-01-15,Full-time,PhD,10,Female,123 Main St',
-      'STF002,Prof. Rajesh Singh,Teacher,Mathematics,Math Teacher,rajesh.singh@school.com,+91 98765 43002,2019-06-01,Full-time,MSc,8,Male,456 Oak Ave'
+      'STF001,Dr. Anjali Mehta,Principal,Administration,Mathematics,anjali@school.com,9876543001,9876543001,2020-01-15,1985-05-10,Female,123456789012,General,Full-time,PhD,10,123 Main St',
+      'STF002,Prof. Rajesh Singh,Teacher,Science,Physics,rajesh@school.com,9876543002,9876543002,2019-06-01,1990-08-20,Male,234567890123,OBC,Full-time,MSc,8,456 Oak Ave',
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -212,13 +269,17 @@ export default function ImportStaffPage({
       'designation',
       'email',
       'phone',
+      'primary_contact',
       'date_of_joining',
+      'dob',
+      'gender',
+      'adhar_no',
+      'category',
       'employment_type',
       'qualification',
       'experience_years',
-      'gender',
       'address',
-      'errors'
+      'errors',
     ];
 
     const csvContent = [
@@ -231,11 +292,15 @@ export default function ImportStaffPage({
         row.data.designation || '',
         row.data.email || '',
         row.data.phone || '',
+        row.data.contact1 || '',
         row.data.date_of_joining || '',
+        row.data.dob || '',
+        row.data.gender || '',
+        row.data.adhar_no || '',
+        row.data.category || '',
         row.data.employment_type || '',
         row.data.qualification || '',
         row.data.experience_years || '',
-        row.data.gender || '',
         row.data.address || '',
         row.errors.join('; ')
       ].join(','))
@@ -327,24 +392,27 @@ export default function ImportStaffPage({
                 </p>
               </div>
               <div className="bg-gray-50 p-6 rounded-lg">
-                <h3 className="font-semibold text-black mb-3">Required Fields:</h3>
+                <h3 className="font-semibold text-black mb-3">Required columns:</h3>
                 <ul className="space-y-2 text-sm text-gray-700">
-                  <li><span className="font-medium">staff_id*</span> - Unique staff ID per school</li>
-                  <li><span className="font-medium">full_name*</span> - Full name of staff member</li>
-                  <li><span className="font-medium">role*</span> - Role (Principal, Teacher, Helper, Driver, Conductor, Administration)</li>
-                  <li><span className="font-medium">phone*</span> - Contact number</li>
-                  <li><span className="font-medium">date_of_joining*</span> - Format: YYYY-MM-DD</li>
+                  <li><span className="font-medium">full_name</span> — Full name</li>
+                  <li><span className="font-medium">role</span> — e.g. Teacher, Principal</li>
+                  <li><span className="font-medium">department</span> — e.g. Mathematics, Administration</li>
+                  <li><span className="font-medium">designation</span> — Must match a timetable subject</li>
+                  <li><span className="font-medium">phone</span> — 10 digits</li>
+                  <li><span className="font-medium">primary_contact</span> — 10 digits (can match phone)</li>
+                  <li><span className="font-medium">date_of_joining</span> — YYYY-MM-DD or DD-MM-YYYY</li>
+                  <li><span className="font-medium">dob</span> — Date of birth (before joining)</li>
+                  <li><span className="font-medium">gender</span> — Male, Female, Other</li>
+                  <li><span className="font-medium">adhar_no</span> — 12 digits</li>
+                  <li><span className="font-medium">category</span> — e.g. General, OBC</li>
+                  <li><span className="font-medium">email</span> — Valid email</li>
                 </ul>
-                <h3 className="font-semibold text-black mt-4 mb-3">Optional Fields:</h3>
+                <p className="text-sm text-gray-600 mt-2">
+                  <span className="font-medium">staff_id</span> is optional; re-imports with the same phone or staff_id update empty fields only.
+                </p>
+                <h3 className="font-semibold text-black mt-4 mb-3">Optional columns:</h3>
                 <ul className="space-y-2 text-sm text-gray-700">
-                  <li><span className="font-medium">department</span> - Department name</li>
-                  <li><span className="font-medium">designation</span> - Job designation</li>
-                  <li><span className="font-medium">email</span> - Email address</li>
-                  <li><span className="font-medium">employment_type</span> - Full-time, Part-time, Contract</li>
-                  <li><span className="font-medium">qualification</span> - Educational qualification</li>
-                  <li><span className="font-medium">experience_years</span> - Years of experience</li>
-                  <li><span className="font-medium">gender</span> - Male, Female, Other</li>
-                  <li><span className="font-medium">address</span> - Full address</li>
+                  <li><span className="font-medium">employment_type</span>, <span className="font-medium">qualification</span>, <span className="font-medium">experience_years</span>, <span className="font-medium">address</span>, and other personal fields</li>
                 </ul>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">

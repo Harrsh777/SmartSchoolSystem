@@ -247,7 +247,7 @@ export default function BulkImportPage({
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Required fields: Full Name, Role, Department, Designation, Phone, Date of Joining</span>
+                        <span>Required: Full Name, Role, Department, Designation (subject), Phone, Primary Contact, Date of Joining, DOB, Gender, Aadhaar, Category, Email</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
@@ -268,7 +268,7 @@ export default function BulkImportPage({
   <Button
     variant="outline"
     onClick={() => setCurrentStep(2)}
-    className="border-orange-600 text-orange-600 hover:bg-orange-50 "
+    className="border-orange-600 text-orange-600 hover:bg-orange-300 "
   >
     Continue to Upload  <ArrowRight size={18} className="ml-2" />
    

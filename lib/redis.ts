@@ -4,13 +4,45 @@
  * If Redis is down, the app must fallback to Supabase (see lib/cache.ts).
  *
  * Redis is **off by default**. Set REDIS_ENABLED=true and REDIS_URL to use it.
- * Otherwise getRedis() returns null (in-memory rate limits, no Redis cache).
+ *
+ * Flaky Redis (ECONNRESET, etc.): opens a long circuit breaker and, after repeated
+ * failures, disables Redis for the rest of the Node process so the app stays on DB-only
+ * without log spam or reconnect storms.
  */
 
 import Redis from 'ioredis';
 
 let client: Redis | null = null;
-let available: boolean | null = null;
+/** While Date.now() < this, getRedis() returns null (skip Redis entirely). */
+let circuitOpenUntil = 0;
+/** After too many failures, never use Redis again until process restart. */
+let redisHardOff = false;
+
+function parseCircuitMs(): number {
+  const raw = process.env.REDIS_CIRCUIT_MS;
+  if (raw == null || raw === '') return 300_000; // 5 minutes — avoids reconnect hammering
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 5_000) return 300_000;
+  return Math.min(n, 3_600_000);
+}
+
+const CIRCUIT_MS = parseCircuitMs();
+
+/** Rapid tripCircuit calls in this window count toward hard-off. */
+const TRIP_WINDOW_MS = 120_000;
+const TRIPS_BEFORE_HARD_OFF = 4;
+let tripWindowStart = 0;
+let tripsInWindow = 0;
+
+let lastErrorLogAt = 0;
+const ERROR_LOG_THROTTLE_MS = 15_000;
+
+function throttledWarn(message: string): void {
+  const now = Date.now();
+  if (now - lastErrorLogAt < ERROR_LOG_THROTTLE_MS) return;
+  lastErrorLogAt = now;
+  console.warn(message);
+}
 
 function isRedisExplicitlyEnabled(): boolean {
   return process.env.REDIS_ENABLED === 'true';
@@ -21,75 +53,129 @@ function getRedisUrl(): string | undefined {
   return process.env.REDIS_URL?.trim() || undefined;
 }
 
+function connectionLikeMessage(msg: string): boolean {
+  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|EPIPE|Connection is closed|Command timed out|Socket closed|READONLY|Broken pipe/i.test(
+    msg
+  );
+}
+
+function killClient(c: Redis | null): void {
+  if (!c) return;
+  try {
+    c.removeAllListeners();
+  } catch {
+    /* ignore */
+  }
+  try {
+    c.disconnect(true);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
- * Get Redis client. Returns null unless REDIS_ENABLED=true and REDIS_URL is set, or if connection fails.
- * All callers must handle null (fallback to Supabase or in-memory).
+ * Drop the client and pause Redis usage. Idempotent while circuit is already open.
+ */
+function tripCircuit(reason: string): void {
+  if (redisHardOff) return;
+
+  const now = Date.now();
+  /** Same outage often emits many errors; only count when opening from a closed circuit. */
+  const circuitWasOpen = now < circuitOpenUntil;
+
+  if (!circuitWasOpen) {
+    if (now - tripWindowStart > TRIP_WINDOW_MS) {
+      tripWindowStart = now;
+      tripsInWindow = 0;
+    }
+    tripsInWindow += 1;
+
+    if (tripsInWindow >= TRIPS_BEFORE_HARD_OFF) {
+      redisHardOff = true;
+      circuitOpenUntil = Number.MAX_SAFE_INTEGER;
+      killClient(client);
+      client = null;
+      throttledWarn(
+        '[Redis] Disabled for this process after repeated connection failures. ' +
+          'Fix REDIS_URL / network or set REDIS_ENABLED=false. Using database only.'
+      );
+      return;
+    }
+  }
+
+  circuitOpenUntil = now + CIRCUIT_MS;
+  const c = client;
+  client = null;
+  killClient(c);
+
+  if (!circuitWasOpen) {
+    throttledWarn(
+      `[Redis] Circuit open ~${Math.round(CIRCUIT_MS / 1000)}s (DB only): ${reason.slice(0, 100)}`
+    );
+  }
+}
+
+/**
+ * Get Redis client. Returns null if disabled, hard-off, circuit open, or init failed.
  */
 export function getRedis(): Redis | null {
-  if (available === false) return null;
+  if (redisHardOff) return null;
+  if (Date.now() < circuitOpenUntil) return null;
   if (client) return client;
 
   const url = getRedisUrl();
-  if (!url) {
-    available = false;
-    return null;
-  }
+  if (!url) return null;
 
   try {
     client = new Redis(url, {
-      maxRetriesPerRequest: 2,
-      retryStrategy(times) {
-        if (times > 2) return null;
-        return Math.min(times * 200, 2000);
+      maxRetriesPerRequest: 1,
+      retryStrategy() {
+        return null;
       },
       lazyConnect: true,
+      enableOfflineQueue: false,
+      connectTimeout: 5000,
+      commandTimeout: 4000,
+      socketTimeout: 10000,
     });
 
-    client.on('error', (err) => {
-      console.error('[Redis] connection error:', err.message);
-      available = false;
-    });
-    client.on('connect', () => {
-      available = true;
+    client.on('error', (err: Error) => {
+      tripCircuit(err.message || 'error');
     });
 
     return client;
   } catch (err) {
-    console.error('[Redis] init error:', (err as Error).message);
-    available = false;
+    tripCircuit((err as Error).message || 'init');
     return null;
   }
 }
 
 /**
- * Call once at app startup (e.g. in a route or middleware) to connect and set `available`.
- * Optional; first use of getRedis() can also trigger lazy connect.
+ * Call once at app startup (e.g. in a route or middleware) to connect and verify Redis.
  */
 export async function connectRedis(): Promise<boolean> {
   const redis = getRedis();
   if (!redis) return false;
   try {
     await redis.ping();
-    available = true;
     return true;
-  } catch {
-    available = false;
+  } catch (e) {
+    tripCircuit((e as Error).message);
     return false;
   }
 }
 
 /**
- * Whether Redis is configured and currently usable.
- * Use this to decide whether to use cache or fallback.
+ * Whether Redis is configured and the circuit allows attempts (does not create a client).
  */
 export function isRedisAvailable(): boolean {
-  if (available !== null) return available;
-  const r = getRedis();
-  return r !== null;
+  if (redisHardOff) return false;
+  if (Date.now() < circuitOpenUntil) return false;
+  return Boolean(getRedisUrl());
 }
 
 /**
- * Safe get: returns null on any error. Caller should fallback to DB.
+ * Safe get: returns null on any error. Opens circuit on transport failures.
  */
 export async function redisGet(key: string): Promise<string | null> {
   const redis = getRedis();
@@ -97,13 +183,14 @@ export async function redisGet(key: string): Promise<string | null> {
   try {
     return await redis.get(key);
   } catch (err) {
-    console.error('[Redis] GET error:', (err as Error).message);
+    const msg = (err as Error).message || String(err);
+    if (connectionLikeMessage(msg)) tripCircuit(msg);
     return null;
   }
 }
 
 /**
- * Safe set with TTL. Always use TTL for cache keys.
+ * Safe set with TTL. Returns false on error (caller should not depend on cache).
  */
 export async function redisSet(key: string, value: string, ttlSeconds: number): Promise<boolean> {
   const redis = getRedis();
@@ -112,7 +199,8 @@ export async function redisSet(key: string, value: string, ttlSeconds: number): 
     await redis.setex(key, ttlSeconds, value);
     return true;
   } catch (err) {
-    console.error('[Redis] SET error:', (err as Error).message);
+    const msg = (err as Error).message || String(err);
+    if (connectionLikeMessage(msg)) tripCircuit(msg);
     return false;
   }
 }
@@ -127,7 +215,8 @@ export async function redisDel(key: string): Promise<boolean> {
     await redis.del(key);
     return true;
   } catch (err) {
-    console.error('[Redis] DEL error:', (err as Error).message);
+    const msg = (err as Error).message || String(err);
+    if (connectionLikeMessage(msg)) tripCircuit(msg);
     return false;
   }
 }
@@ -151,7 +240,8 @@ export async function redisDelByPattern(pattern: string): Promise<number> {
     } while (cursor !== '0');
     return deleted;
   } catch (err) {
-    console.error('[Redis] DEL pattern error:', (err as Error).message);
+    const msg = (err as Error).message || String(err);
+    if (connectionLikeMessage(msg)) tripCircuit(msg);
     return 0;
   }
 }

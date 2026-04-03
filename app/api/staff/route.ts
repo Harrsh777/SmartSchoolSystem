@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import {
+  validateStaffImportCore,
+  normalizeStaffGenderForImport,
+  digits10,
+  digits12Aadhaar,
+} from '@/lib/staff/import-validation';
 
 export async function GET(request: NextRequest) {
   try {
@@ -78,8 +84,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { data: subjectsRows } = await supabase
+      .from('timetable_subjects')
+      .select('name')
+      .eq('school_code', school_code);
+    const validSubjects = new Set(
+      (subjectsRows ?? []).map((s) => s.name).filter(Boolean) as string[]
+    );
+
+    const phoneClean = digits10(staffData.phone);
+    const contact1Clean = digits10(staffData.contact1) ?? phoneClean;
+    const adharClean = digits12Aadhaar(staffData.adhar_no);
+    const genderNorm = normalizeStaffGenderForImport(staffData.gender);
+
+    const validationPayload = {
+      full_name: staffData.full_name,
+      role: staffData.role,
+      department: staffData.department,
+      designation: staffData.designation,
+      phone: phoneClean ?? staffData.phone,
+      contact1: contact1Clean ?? staffData.contact1,
+      date_of_joining: staffData.date_of_joining,
+      dob: staffData.dob,
+      gender: genderNorm ?? staffData.gender,
+      adhar_no: adharClean ?? staffData.adhar_no,
+      category: staffData.category,
+      email: staffData.email,
+      contact2: staffData.contact2,
+    };
+
+    const v = validateStaffImportCore(validationPayload, { validSubjects });
+    if (v.errors.length > 0) {
+      return NextResponse.json(
+        { error: v.errors.join(' ') },
+        { status: 400 }
+      );
+    }
+
     // Auto-generate staff_id if not provided
-    let generatedStaffId = staffData.staff_id;
+    let generatedStaffId =
+      typeof staffData.staff_id === 'string'
+        ? staffData.staff_id.trim()
+        : staffData.staff_id;
     if (!generatedStaffId) {
       // Get the highest staff_id number for this school
       const { data: existingStaff } = await supabase
@@ -131,22 +177,24 @@ export async function POST(request: NextRequest) {
         department: staffData.department || null,
         designation: staffData.designation || null,
         email: staffData.email || null,
-        phone: staffData.phone || staffData.contact1 || null,
+        phone: phoneClean || null,
         date_of_joining: staffData.date_of_joining,
         employment_type: staffData.employment_type || null,
         qualification: staffData.qualification || null,
         experience_years: staffData.experience_years || null,
-        gender: staffData.gender || null,
+        gender: genderNorm || null,
         address: staffData.address || null,
         // New fields
         dob: staffData.dob || null,
-        adhar_no: staffData.adhar_no || null,
+        adhar_no: adharClean || null,
         blood_group: staffData.blood_group || null,
         religion: staffData.religion || null,
         category: staffData.category || null,
         nationality: staffData.nationality || 'Indian',
-        contact1: staffData.contact1 || staffData.phone || null,
-        contact2: staffData.contact2 || null,
+        contact1: contact1Clean || null,
+        contact2: staffData.contact2
+          ? digits10(staffData.contact2) || null
+          : null,
         employee_code: staffData.employee_code || generatedStaffId || null,
         dop: staffData.dop || null,
         short_code: staffData.short_code || null,
