@@ -6,7 +6,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, ArrowRight, Check, Calendar, BookOpen, FileText, Save, Clock, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Calendar,
+  BookOpen,
+  FileText,
+  Save,
+  Clock,
+  Users,
+  Lock,
+} from 'lucide-react';
 
 type ScheduleTimeStep = 15 | 30 | 45;
 
@@ -172,6 +183,12 @@ function addDaysISO(base: string, offset: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function sortStructureClassNames(names: string[]): string[] {
+  return [...names].sort((a, b) =>
+    String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+  );
+}
+
 export default function CreateExaminationPage({
   params,
 }: {
@@ -228,6 +245,22 @@ export default function CreateExaminationPage({
   const existingSectionIdSet = useMemo(
     () => new Set(existingSectionIdList.map(String)),
     [existingSectionIdList]
+  );
+
+  const step2SelectionSummary = useMemo(
+    () =>
+      selectedClasses.map((sc) => ({
+        className: sc.className,
+        sectionLabels: sc.sections
+          .map((id) => classes.find((c) => c.id === id)?.section)
+          .filter((s): s is string => Boolean(s)),
+      })),
+    [selectedClasses, classes]
+  );
+
+  const step2SelectedSectionCount = useMemo(
+    () => selectedClasses.reduce((n, c) => n + c.sections.length, 0),
+    [selectedClasses]
   );
 
   const scheduleTimeOptions = useMemo(
@@ -1144,109 +1177,240 @@ export default function CreateExaminationPage({
             {/* Step 2: Map Classes */}
             {currentStep === 2 && (
               <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-1">Select Classes to Create Exams</h2>
-                  <p className="text-sm text-gray-600">
-                    Only checked class-sections will be included. Sections that already have this examination for the
-                    selected term are marked and cannot be selected again.
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                    Select classes & sections
+                  </h2>
+                  <p className="text-sm text-slate-600 max-w-2xl">
+                    Turn on a class to choose sections.{' '}
+                    <span className="text-emerald-700 font-medium">Available</span> sections can be added to this run;{' '}
+                    <span className="text-red-700 font-medium">Already created</span> sections are locked for this term
+                    and exam type.
                   </p>
                 </div>
-                
+
                 {errors.class_selection && (
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-600">{errors.class_selection}</p>
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                    <p className="text-sm text-red-700">{errors.class_selection}</p>
                   </div>
                 )}
 
-                <div className="space-y-4">
-                  {Array.from(new Set(structureClasses.map((c) => c.class))).map((className) => {
-                    const classItems = structureClasses.filter((c) => c.class === className);
-                    const selectedClass = selectedClasses.find((sc) => sc.className === className);
-                    const repId = classItems[0]?.id || '';
-                    const creatableCount = classItems.filter((s) => !existingSectionIdSet.has(String(s.id))).length;
-                    const allCreated = classItems.length > 0 && creatableCount === 0;
-                    
-                    return (
-                      <div key={className} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <label
-                            className={`flex items-center gap-2 ${allCreated ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={!!selectedClass}
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {sortStructureClassNames(Array.from(new Set(structureClasses.map((c) => c.class)))).map(
+                    (className) => {
+                      const classItems = structureClasses.filter((c) => c.class === className);
+                      const selectedClass = selectedClasses.find((sc) => sc.className === className);
+                      const repId = classItems[0]?.id || '';
+                      const creatableCount = classItems.filter(
+                        (s) => !existingSectionIdSet.has(String(s.id))
+                      ).length;
+                      const allCreated = classItems.length > 0 && creatableCount === 0;
+                      const isClassOn = !!selectedClass && !allCreated;
+
+                      return (
+                        <motion.div
+                          key={className}
+                          layout
+                          className={[
+                            'rounded-2xl border bg-white p-4 shadow-sm transition-all duration-200 ease-out',
+                            'hover:-translate-y-0.5 hover:shadow-md hover:scale-[1.02]',
+                            isClassOn
+                              ? 'border-[#5A7A95]/50 ring-2 ring-[#5A7A95]/20 shadow-md'
+                              : 'border-slate-200/80',
+                            allCreated ? 'opacity-75 hover:scale-100 hover:translate-y-0' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-lg font-semibold text-slate-900 truncate">
+                                Class {className}
+                              </p>
+                              <p className="mt-0.5 text-xs text-slate-500">
+                                {classItems.length} section{classItems.length === 1 ? '' : 's'} ·{' '}
+                                {creatableCount} available
+                                {allCreated ? ' · all created' : ''}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isClassOn}
+                              aria-label={`Include class ${className} in this examination`}
                               disabled={allCreated}
-                              onChange={() => handleClassToggle(repId, className)}
-                              className="w-5 h-5 text-[#5A7A95] rounded focus:ring-[#5A7A95] disabled:opacity-50"
-                            />
-                            <span className="text-lg font-semibold text-gray-900">
-                              Class {className}
-                            </span>
-                            {allCreated ? (
-                              <span className="text-xs font-medium uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                                All sections created
-                              </span>
-                            ) : null}
-                          </label>
-                        </div>
-                        
-                        <div className="ml-7 mt-2 space-y-2">
-                          <p className="text-sm text-gray-600 mb-2">Sections in this structure:</p>
-                          <div className="flex flex-wrap gap-2">
-                            {classItems.map((section) => {
-                              const created = existingSectionIdSet.has(String(section.id));
-                              return (
-                                <div
-                                  key={section.id}
-                                  className={`flex flex-col gap-1 px-3 py-2 border rounded-lg min-w-[140px] ${
-                                    created ? 'border-emerald-200 bg-emerald-50/80' : 'border-gray-300 bg-white'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      disabled={created || !selectedClass}
-                                      checked={selectedClass?.sections.includes(section.id) ?? false}
-                                      onChange={() => handleSectionToggle(selectedClass!.classId, section.id)}
-                                      className="w-4 h-4 text-[#5A7A95] rounded focus:ring-[#5A7A95] disabled:opacity-50"
-                                    />
-                                    <span className="text-sm text-gray-800 font-medium">Sec. {section.section}</span>
-                                  </div>
-                                  <span
-                                    className={`text-[11px] font-semibold uppercase tracking-wide ${
-                                      created ? 'text-emerald-800' : 'text-amber-800'
-                                    }`}
-                                  >
-                                    {created ? 'Created' : 'Not created'}
-                                  </span>
-                                  {created && (
-                                    <p className="text-[11px] text-gray-600 leading-snug">
-                                      View or edit from the Examinations dashboard or marks entry.
-                                    </p>
-                                  )}
-                                </div>
-                              );
-                            })}
+                              onClick={() => handleClassToggle(repId, className)}
+                              className={[
+                                'relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5A7A95] focus-visible:ring-offset-2',
+                                allCreated ? 'cursor-not-allowed bg-slate-200' : '',
+                                !allCreated && isClassOn ? 'bg-[#5A7A95]' : '',
+                                !allCreated && !isClassOn ? 'bg-slate-200 hover:bg-slate-300' : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                            >
+                              <motion.span
+                                transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                                className={[
+                                  'inline-block h-5 w-5 rounded-full bg-white shadow-md will-change-transform',
+                                  isClassOn ? 'translate-x-6' : 'translate-x-1',
+                                ].join(' ')}
+                              />
+                            </button>
                           </div>
-                          {!selectedClass && !allCreated && (
-                            <p className="text-xs text-slate-500 mt-1">
-                              Turn on the class above, then choose which sections to include in this run.
+
+                          {allCreated ? (
+                            <div className="mt-3 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+                              <Lock className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
+                              Every section already has this exam for the selected term.
+                            </div>
+                          ) : null}
+
+                          <AnimatePresence initial={false}>
+                            {isClassOn ? (
+                              <motion.div
+                                key="sections"
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                                className="overflow-hidden"
+                              >
+                                <div className="pt-4 border-t border-slate-100 mt-4 space-y-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Sections
+                                  </p>
+                                  <ul className="space-y-1.5">
+                                    {classItems.map((section) => {
+                                      const created = existingSectionIdSet.has(String(section.id));
+                                      const checked = selectedClass?.sections.includes(section.id) ?? false;
+                                      return (
+                                        <li key={section.id}>
+                                          {created ? (
+                                            <div
+                                              className="flex items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50/60 px-3 py-2.5 opacity-80"
+                                              aria-disabled
+                                            >
+                                              <div className="flex items-center gap-2.5 min-w-0">
+                                                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 bg-slate-100">
+                                                  <Lock
+                                                    className="h-2.5 w-2.5 text-slate-500"
+                                                    aria-hidden
+                                                  />
+                                                </span>
+                                                <span className="text-sm font-medium text-slate-700 truncate">
+                                                  Sec {section.section}
+                                                </span>
+                                              </div>
+                                              <span className="inline-flex items-center gap-1 shrink-0 rounded-full border border-red-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-800">
+                                                <span
+                                                  className="h-1.5 w-1.5 rounded-full bg-red-500"
+                                                  aria-hidden
+                                                />
+                                                Already created
+                                              </span>
+                                            </div>
+                                          ) : (
+                                            <label
+                                              className={[
+                                                'flex cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 py-2.5 transition-colors',
+                                                checked
+                                                  ? 'border-[#5A7A95]/40 bg-[#5A7A95]/5'
+                                                  : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-white',
+                                              ].join(' ')}
+                                            >
+                                              <div className="flex items-center gap-2.5 min-w-0">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={checked}
+                                                  disabled={!selectedClass}
+                                                  onChange={() =>
+                                                    selectedClass &&
+                                                    handleSectionToggle(selectedClass.classId, section.id)
+                                                  }
+                                                  className="h-4 w-4 rounded border-slate-300 text-[#5A7A95] focus:ring-[#5A7A95]/30"
+                                                />
+                                                <span className="text-sm font-medium text-slate-800 truncate">
+                                                  Sec {section.section}
+                                                </span>
+                                              </div>
+                                              <span className="inline-flex items-center gap-1 shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                                                <span
+                                                  className="h-1.5 w-1.5 rounded-full bg-emerald-500"
+                                                  aria-hidden
+                                                />
+                                                Available
+                                              </span>
+                                            </label>
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                </div>
+                              </motion.div>
+                            ) : null}
+                          </AnimatePresence>
+
+                          {!isClassOn && !allCreated ? (
+                            <p className="mt-3 text-xs text-slate-500">
+                              Enable the class to pick sections for this examination.
                             </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                          ) : null}
+                        </motion.div>
+                      );
+                    }
+                  )}
                 </div>
 
-                <div className="flex justify-between pt-4">
+                <div className="sticky bottom-0 z-10 -mx-1 px-1 pt-2 pb-1 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
+                  <div className="rounded-2xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-lg px-4 py-4 sm:px-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          Selected for this run
+                        </p>
+                        {step2SelectedSectionCount === 0 ? (
+                          <p className="mt-2 text-sm text-slate-500">
+                            No sections yet — turn on a class and choose sections above.
+                          </p>
+                        ) : (
+                          <ul className="mt-2 space-y-1.5 text-sm text-slate-800">
+                            {step2SelectionSummary.map((row) => (
+                              <li key={row.className} className="flex flex-wrap gap-x-2 gap-y-0.5">
+                                <span className="font-semibold text-slate-900">Class {row.className}</span>
+                                <span className="text-slate-400">→</span>
+                                <span className="text-slate-700">
+                                  {row.sectionLabels.map((s) => `Sec ${s}`).join(', ')}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <p className="mt-2 text-xs text-slate-500">
+                          {step2SelectedSectionCount} section
+                          {step2SelectedSectionCount === 1 ? '' : 's'} selected
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center shrink-0">
+                        <Button
+                          type="button"
+                          className="w-full sm:w-auto shadow-sm"
+                          onClick={handleStep2Next}
+                          disabled={step2SelectedSectionCount === 0}
+                        >
+                          Next: Map Subjects
+                          <ArrowRight size={18} className="ml-2" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-start pt-2">
                   <Button variant="outline" onClick={() => setCurrentStep(1)}>
                     <ArrowLeft size={18} className="mr-2" />
                     Previous
-                  </Button>
-                  <Button onClick={handleStep2Next}>
-                    Next: Map Subjects
-                    <ArrowRight size={18} className="ml-2" />
                   </Button>
                 </div>
               </div>

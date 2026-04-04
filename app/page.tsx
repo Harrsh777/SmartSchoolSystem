@@ -138,6 +138,37 @@ export default function EduCoreLanding() {
         .animate-float {
           animation: float 6s ease-in-out infinite;
         }
+        @keyframes floatSlow {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-14px); }
+        }
+        .animate-floatSlow {
+          animation: floatSlow 7s ease-in-out infinite;
+        }
+        @keyframes floatFast {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-10px); }
+        }
+        .animate-floatFast {
+          animation: floatFast 4.5s ease-in-out infinite;
+        }
+        @keyframes hero-mesh-shift {
+          0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.9; }
+          50% { transform: translate(2%, -1%) scale(1.04); opacity: 1; }
+        }
+        .hero-mesh-animate {
+          animation: hero-mesh-shift 14s ease-in-out infinite;
+        }
+        .hero-noise {
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+        @keyframes hero-cta-glow {
+          0%, 100% { box-shadow: 0 0 40px -8px rgba(167, 139, 250, 0.55), 0 20px 44px -18px rgba(139, 92, 246, 0.45); }
+          50% { box-shadow: 0 0 52px -6px rgba(192, 132, 252, 0.65), 0 24px 50px -14px rgba(139, 92, 246, 0.5); }
+        }
+        .hero-cta-primary-glow {
+          animation: hero-cta-glow 3.5s ease-in-out infinite;
+        }
         
         @keyframes blob {
           0%, 100% {
@@ -303,62 +334,140 @@ export default function EduCoreLanding() {
 
      <section
   ref={heroRef}
-  className="relative overflow-hidden min-h-screen flex items-center justify-center pt-24 pb-14"
+  className="relative overflow-hidden min-h-screen flex items-center justify-center pt-28 pb-28 sm:pt-32 sm:pb-32"
 >
-  {/* Background (unchanged) */}
   <div className="absolute inset-0 z-0">
     <Background className="opacity-95" />
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(154,82,255,0.35),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(42,191,255,0.22),transparent_40%)]" />
+    <div
+      className="absolute inset-0 hero-mesh-animate bg-[radial-gradient(circle_at_20%_30%,rgba(124,58,237,0.22),transparent_52%),radial-gradient(circle_at_80%_72%,rgba(147,51,234,0.2),transparent_50%),radial-gradient(circle_at_top,rgba(154,82,255,0.32),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(42,191,255,0.18),transparent_42%)]"
+      aria-hidden
+    />
+    <div
+      className="absolute -top-32 -left-24 h-[28rem] w-[28rem] rounded-full bg-violet-500/25 blur-[100px] pointer-events-none"
+      aria-hidden
+    />
+    <div
+      className="absolute -bottom-40 -right-20 h-[24rem] w-[24rem] rounded-full bg-fuchsia-600/20 blur-[90px] pointer-events-none"
+      aria-hidden
+    />
+    <div
+      className="absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-black/20 pointer-events-none backdrop-blur-[1px]"
+      aria-hidden
+    />
+    <div
+      className="absolute inset-0 hero-noise opacity-[0.045] mix-blend-overlay pointer-events-none"
+      aria-hidden
+    />
   </div>
 
-  {/* CENTER CONTENT */}
-  <div className="relative z-10 text-center max-w-4xl mx-auto px-6">
-    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight">
-      Powerful Tools for Effective <br />
-      School Management
-    </h1>
+  <div className="relative z-10 w-full max-w-7xl mx-auto px-6">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-14 lg:gap-10 xl:gap-12 items-center">
+      {/* Left — dashboard mockup */}
+      <div className="hidden lg:block lg:col-span-3 order-2 lg:order-1">
+        <div className="group relative animate-floatSlow">
+          <div className="relative -rotate-2 rounded-2xl border border-white/10 bg-white/[0.07] p-2 shadow-[0_28px_64px_-20px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.06)_inset] backdrop-blur-md transition-all duration-500 ease-out group-hover:-translate-y-2 group-hover:shadow-[0_36px_72px_-18px_rgba(88,28,135,0.45)]">
+            <div className="relative aspect-[4/5] w-full overflow-hidden rounded-xl">
+              <Image
+                src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=640&auto=format&fit=crop&q=80"
+                alt="Analytics dashboard preview"
+                fill
+                className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
+                sizes="(min-width: 1024px) 25vw, 0px"
+                priority
+              />
+            </div>
+            <div className="absolute top-3 left-3 flex gap-1.5" aria-hidden>
+              <span className="h-2.5 w-2.5 rounded-full bg-red-400/90" />
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-400/90" />
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/90" />
+            </div>
+          </div>
+        </div>
+      </div>
 
-    <p className="mt-5 text-base sm:text-lg text-white/75 max-w-2xl mx-auto">
-      Your complete SaaS platform for academic operations, finance, attendance, communication, and growth.
-    </p>
+      {/* Center — copy & CTAs */}
+      <div className="lg:col-span-6 order-1 lg:order-2 text-center">
+        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white leading-[1.06] tracking-tight drop-shadow-[0_2px_32px_rgba(0,0,0,0.35)]">
+          Powerful Tools for Effective <br className="hidden sm:block" />
+          School Management
+        </h1>
 
-    <div className="mt-8 flex justify-center">
-      <Link
-        href="/signup"
-        className="px-7 py-3.5 rounded-full bg-gradient-to-r from-[#8b5cf6] to-[#a855f7] text-white font-semibold shadow-[0_10px_30px_rgba(139,92,246,0.45)] hover:scale-[1.02] transition-all duration-300 flex items-center gap-2"
-      >
-        Get started
-        <FiArrowRight className="text-sm" />
-      </Link>
+        <p className="mt-7 sm:mt-8 text-base sm:text-lg leading-relaxed text-white/70 max-w-2xl mx-auto">
+          Your complete SaaS platform for academic operations, finance, attendance, communication, and growth.
+        </p>
+
+        <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-center gap-4">
+          <Link
+            href="/signup"
+            className="hero-cta-primary-glow inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-500 px-8 py-4 text-[15px] font-semibold text-white transition-transform duration-300 hover:scale-105 active:scale-[0.98]"
+          >
+            Get started
+            <FiArrowRight className="text-base shrink-0" />
+          </Link>
+          <Link
+            href="/demo"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/25 bg-white/[0.07] px-8 py-4 text-[15px] font-semibold text-white shadow-[0_8px_32px_rgba(0,0,0,0.2)] backdrop-blur-md transition-all duration-300 hover:border-white/40 hover:bg-white/12 hover:scale-105 active:scale-[0.98]"
+          >
+            Book demo
+          </Link>
+          <a
+            href="#analytics"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-transparent px-6 py-3.5 text-[15px] font-medium text-white/80 underline-offset-4 transition-all duration-300 hover:text-white hover:underline sm:border-white/20 sm:bg-white/[0.05] sm:backdrop-blur-sm sm:hover:bg-white/10 sm:no-underline"
+          >
+            See live dashboard
+            <MdArrowForward className="text-lg opacity-90" />
+          </a>
+        </div>
+
+        <div className="mt-14 sm:mt-16 space-y-8">
+          <p className="text-xs sm:text-sm font-medium uppercase tracking-[0.2em] text-white/45">
+            Trusted by 50+ schools
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4 opacity-80">
+            {['Greenfield Academy', 'Maple Ridge HS', 'Riverside Prep', 'Oak Lane School'].map((name) => (
+              <span
+                key={name}
+                className="text-sm font-semibold text-white/55 tracking-wide"
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-10 sm:gap-14 border-t border-white/10 pt-8 max-w-xl mx-auto">
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl sm:text-4xl font-bold tabular-nums text-white tracking-tight">2K+</span>
+              <span className="text-sm text-white/55">active users</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-2 text-white/50">
+              <FiCheck className="text-emerald-400/90 text-lg shrink-0" />
+              <span className="text-sm text-white/60">99.9% uptime</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right — product UI mockup */}
+      <div className="hidden lg:block lg:col-span-3 order-3">
+        <div className="group relative animate-float">
+          <div className="relative rotate-2 rounded-2xl border border-white/10 bg-white/[0.07] p-2 shadow-[0_28px_64px_-20px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.06)_inset] backdrop-blur-md transition-all duration-500 ease-out group-hover:-translate-y-2 group-hover:shadow-[0_36px_72px_-18px_rgba(88,28,135,0.45)]">
+            <div className="relative aspect-[4/5] w-full overflow-hidden rounded-xl">
+              <Image
+                src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=640&auto=format&fit=crop&q=80"
+                alt="Operations dashboard preview"
+                fill
+                className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
+                sizes="(min-width: 1024px) 25vw, 0px"
+              />
+            </div>
+            <div className="absolute top-3 left-3 flex gap-1.5" aria-hidden>
+              <span className="h-2.5 w-2.5 rounded-full bg-red-400/90" />
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-400/90" />
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/90" />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-
-  {/* LEFT FLOATING IMAGE */}
-  <div className="hidden md:block absolute left-6 lg:left-20 top-1/3 w-44 sm:w-56 lg:w-64 aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl animate-floatSlow">
-    <Image
-      src="https://images.unsplash.com/photo-1714859100394-abfb1762485f?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTB8fHRlYWNoZXIlMjB1c2luZyUyMHRhYmxldHxlbnwwfHwwfHx8MA%3D%3D"
-      alt="Student using tablet"
-      fill
-      className="object-cover"
-      priority
-    />
-  </div>
-
-  {/* RIGHT FLOATING IMAGE */}
-  <div className="hidden md:block absolute right-6 lg:right-20 top-1/4 w-44 sm:w-56 lg:w-64 aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl animate-float">
-    <Image
-      src="https://images.unsplash.com/photo-1588072432836-e10032774350?auto=format&fit=crop&w=3840&q=100"
-      alt="Teacher using tablet"
-      fill
-      className="object-cover"
-      priority
-    />
-  </div>
-
-  {/* OPTIONAL SMALL FLOAT CARD (like screenshot feel) */}
-  <div className="hidden md:flex absolute right-16 bottom-20 bg-white/90 backdrop-blur-md rounded-xl px-4 py-2 shadow-lg animate-floatFast">
-    <span className="text-xs text-gray-600">Active Users</span>
-    <span className="ml-2 font-bold text-gray-800">2K+</span>
   </div>
 </section>
       {/* Logo Section */}
