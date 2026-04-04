@@ -27,7 +27,7 @@ export default function StaffDirectoryPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState<
-    'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'OTHER' | 'ADMIN'
+    'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'ADMIN'
   >('TEACHING');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
@@ -65,26 +65,23 @@ export default function StaffDirectoryPage() {
   };
 
   const getStaffByRole = (role: string) => {
-    const roleMap: Record<string, string[]> = {
-      TEACHING: ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'],
-      'NON-TEACHING': ['Accountant', 'Clerk', 'Librarian', 'Admin Staff'],
-      'DRIVER/SUPPORTING STAFF': ['Driver', 'Support Staff', 'Helper', 'Security'],
-      OTHER: [],
-      ADMIN: ['Admin', 'Super Admin'],
-    };
+    const teaching = ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'];
+    const driverSupporting = ['Driver', 'Support Staff', 'Helper', 'Security'];
+    const admin = ['Admin', 'Super Admin'];
 
-    const roles = roleMap[role] || [];
     return staff.filter((s) => {
       const staffRole = getString(s.role).trim();
-      if (role === 'OTHER') {
+      if (role === 'TEACHING') return teaching.includes(staffRole);
+      if (role === 'DRIVER/SUPPORTING STAFF') return driverSupporting.includes(staffRole);
+      if (role === 'ADMIN') return admin.includes(staffRole);
+      if (role === 'NON-TEACHING') {
         return (
-          !roleMap.TEACHING.includes(staffRole) &&
-          !roleMap['NON-TEACHING'].includes(staffRole) &&
-          !roleMap['DRIVER/SUPPORTING STAFF'].includes(staffRole) &&
-          !roleMap.ADMIN.includes(staffRole)
+          !teaching.includes(staffRole) &&
+          !driverSupporting.includes(staffRole) &&
+          !admin.includes(staffRole)
         );
       }
-      return roles.includes(staffRole);
+      return false;
     });
   };
 
@@ -190,7 +187,7 @@ export default function StaffDirectoryPage() {
 
           {/* Tabs */}
           <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700">
-            {(['TEACHING', 'NON-TEACHING', 'DRIVER/SUPPORTING STAFF', 'OTHER', 'ADMIN'] as const).map((tab) => {
+            {(['TEACHING', 'NON-TEACHING', 'DRIVER/SUPPORTING STAFF', 'ADMIN'] as const).map((tab) => {
               const count = getStaffByRole(tab).length;
               return (
                 <button

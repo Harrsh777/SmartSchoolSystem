@@ -20,7 +20,6 @@ import {
   Briefcase,
   GraduationCap,
   Car,
-  CircleDot,
   ArrowLeft,
   CheckCircle2,
   Eye,
@@ -40,7 +39,7 @@ export default function StaffDirectoryPage({
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState<
-    'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'OTHER' | 'ADMIN'
+    'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'ADMIN'
   >('TEACHING');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -119,27 +118,23 @@ export default function StaffDirectoryPage({
   };
 
   const getStaffByRole = (role: string) => {
-    const roleMap: Record<string, string[]> = {
-      TEACHING: ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'],
-      /** Office / academic support roles only — not driver/support or catch-all. */
-      'NON-TEACHING': ['Accountant', 'Clerk', 'Librarian', 'Admin Staff'],
-      'DRIVER/SUPPORTING STAFF': ['Driver', 'Support Staff', 'Helper', 'Security'],
-      OTHER: [],
-      ADMIN: ['Admin', 'Super Admin'],
-    };
+    const teaching = ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'];
+    const driverSupporting = ['Driver', 'Support Staff', 'Helper', 'Security'];
+    const admin = ['Admin', 'Super Admin'];
 
-    const roles = roleMap[role] || [];
     return staff.filter((s) => {
       const staffRole = getString(s.role).trim();
-      if (role === 'OTHER') {
+      if (role === 'TEACHING') return teaching.includes(staffRole);
+      if (role === 'DRIVER/SUPPORTING STAFF') return driverSupporting.includes(staffRole);
+      if (role === 'ADMIN') return admin.includes(staffRole);
+      if (role === 'NON-TEACHING') {
         return (
-          !roleMap.TEACHING.includes(staffRole) &&
-          !roleMap['NON-TEACHING'].includes(staffRole) &&
-          !roleMap['DRIVER/SUPPORTING STAFF'].includes(staffRole) &&
-          !roleMap.ADMIN.includes(staffRole)
+          !teaching.includes(staffRole) &&
+          !driverSupporting.includes(staffRole) &&
+          !admin.includes(staffRole)
         );
       }
-      return roles.includes(staffRole);
+      return false;
     });
   };
 
@@ -261,17 +256,15 @@ export default function StaffDirectoryPage({
     }
   };
 
-  // Statistics (Non-Teaching = listed office/support roles only; unmatched roles → Other)
   const stats = {
     total: staff.length,
     teaching: getStaffByRole('TEACHING').length,
     nonTeaching: getStaffByRole('NON-TEACHING').length,
     driverSupporting: getStaffByRole('DRIVER/SUPPORTING STAFF').length,
     admin: getStaffByRole('ADMIN').length,
-    other: getStaffByRole('OTHER').length,
   };
 
-  const tabs = ['TEACHING', 'NON-TEACHING', 'DRIVER/SUPPORTING STAFF', 'OTHER', 'ADMIN'] as const;
+  const tabs = ['TEACHING', 'NON-TEACHING', 'DRIVER/SUPPORTING STAFF', 'ADMIN'] as const;
 
   if (loading) {
     return (
@@ -310,7 +303,7 @@ export default function StaffDirectoryPage({
       </motion.div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -396,24 +389,6 @@ export default function StaffDirectoryPage({
               </div>
               <div className="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
                 <UserCheck size={24} />
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55 }}
-        >
-          <Card className="p-6 bg-gradient-to-br from-teal-500 to-teal-600 text-white hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-teal-100 text-sm mb-1">Other</p>
-                <p className="text-3xl font-bold">{stats.other}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                <CircleDot size={24} />
               </div>
             </div>
           </Card>

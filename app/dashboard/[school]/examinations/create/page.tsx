@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo } from 'react';
+import { use, useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -17,19 +17,15 @@ import {
   Clock,
   Users,
   Lock,
+  ChevronDown,
 } from 'lucide-react';
 
 type ScheduleTimeStep = 15 | 30 | 45;
 
-function buildTimeSlotOptions(step: ScheduleTimeStep): string[] {
-  const opts: string[] = [];
-  for (let h = 0; h < 24; h++) {
-    const minutes = step === 15 ? [0, 15, 30, 45] : step === 30 ? [0, 30] : [0, 45];
-    for (const m of minutes) {
-      opts.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-    }
-  }
-  return opts;
+function minuteMarksForStep(step: ScheduleTimeStep): number[] {
+  if (step === 15) return [0, 15, 30, 45];
+  if (step === 30) return [0, 30];
+  return [0, 45];
 }
 
 function formatTimeLabel(hhmm: string): string {
@@ -40,31 +36,172 @@ function formatTimeLabel(hhmm: string): string {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-function ScheduleTimeSelect({
+function parseHHMM(v: string): { h: number; m: number } | null {
+  if (!v || !/^\d{2}:\d{2}$/.test(v)) return null;
+  const [h, m] = v.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return { h, m };
+}
+
+const timeSelectClass =
+  'min-w-[4.75rem] px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-900 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#5A7A95]/30 focus:border-[#5A7A95]/50 transition-colors hover:border-gray-400 disabled:bg-gray-100 disabled:text-gray-500';
+
+const hourListScrollClass =
+  'max-h-[4cm] overflow-y-scroll overscroll-contain rounded-lg border border-gray-200 bg-white py-1 shadow-lg [scrollbar-width:thin] [scrollbar-color:rgb(148_163_184)_rgb(241_245_249)] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-400/80 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-100';
+
+const HOURS_00_TO_23 = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+
+/** Hour picker: list area is fixed ~4cm tall with a scrollbar (native select cannot do this). */
+function HourScrollSelect({
+  hourPadded,
+  onPickHour,
+  disabled,
+}: {
+  hourPadded: string;
+  onPickHour: (h: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className={`${timeSelectClass} flex min-w-[5.25rem] items-center justify-between gap-1 text-left`}
+        aria-label="Hour"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <span className="tabular-nums">{hourPadded || 'Hour'}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 opacity-60" aria-hidden />
+      </button>
+      {open ? (
+        <ul
+          role="listbox"
+          className={`absolute left-0 top-full z-[100] mt-1 w-full min-w-[5.25rem] ${hourListScrollClass}`}
+        >
+          <li>
+            <button
+              type="button"
+              role="option"
+              className="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50"
+              onClick={() => {
+                onPickHour('');
+                setOpen(false);
+              }}
+            >
+              Hour
+            </button>
+          </li>
+          {HOURS_00_TO_23.map((h) => (
+            <li key={h}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={hourPadded === h}
+                className={`w-full px-3 py-2 text-left text-sm tabular-nums hover:bg-[#5A7A95]/10 ${
+                  hourPadded === h ? 'bg-[#5A7A95]/15 font-medium text-[#5A7A95]' : ''
+                }`}
+                onClick={() => {
+                  onPickHour(h);
+                  setOpen(false);
+                }}
+              >
+                {h}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** Compact hour + minute pickers (interval applies to minutes only). */
+function ScheduleTimeDualSelect({
   value,
   onChange,
-  options,
-  placeholder = 'Select time',
+  step,
 }: {
   value: string;
   onChange: (v: string) => void;
-  options: string[];
-  placeholder?: string;
+  step: ScheduleTimeStep;
 }) {
-  const list = value && !options.includes(value) ? [value, ...options] : options;
+  const baseMarks = minuteMarksForStep(step);
+  const parsed = parseHHMM(value);
+  const marks =
+    parsed && !baseMarks.includes(parsed.m)
+      ? [...baseMarks, parsed.m].sort((a, b) => a - b)
+      : baseMarks;
+
+  const hourVal = parsed ? String(parsed.h).padStart(2, '0') : '';
+  const minVal = parsed ? String(parsed.m).padStart(2, '0') : '';
+
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-900 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#5A7A95]/30 focus:border-[#5A7A95]/50 transition-colors hover:border-gray-400"
-    >
-      <option value="">{placeholder}</option>
-      {list.map((t) => (
-        <option key={t} value={t}>
-          {formatTimeLabel(t)}
-        </option>
-      ))}
-    </select>
+    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+      <HourScrollSelect
+        hourPadded={hourVal}
+        onPickHour={(h) => {
+          if (!h) {
+            onChange('');
+            return;
+          }
+          const prevM = parseHHMM(value)?.m;
+          const m =
+            prevM != null && marks.includes(prevM) ? prevM : marks[0];
+          onChange(`${h}:${String(m).padStart(2, '0')}`);
+        }}
+      />
+      <span className="text-slate-400 select-none text-sm" aria-hidden>
+        :
+      </span>
+      <select
+        value={minVal}
+        onChange={(e) => {
+          const m = e.target.value;
+          if (!m) {
+            onChange('');
+            return;
+          }
+          if (!hourVal) return;
+          onChange(`${hourVal}:${m}`);
+        }}
+        disabled={!hourVal}
+        className={timeSelectClass}
+        aria-label="Minutes"
+      >
+        <option value="">Min</option>
+        {marks.map((m) => (
+          <option key={m} value={String(m).padStart(2, '0')}>
+            {String(m).padStart(2, '0')}
+          </option>
+        ))}
+      </select>
+      {value ? (
+        <span className="text-xs text-slate-500 whitespace-nowrap tabular-nums hidden sm:inline">
+          {formatTimeLabel(value)}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -261,11 +398,6 @@ export default function CreateExaminationPage({
   const step2SelectedSectionCount = useMemo(
     () => selectedClasses.reduce((n, c) => n + c.sections.length, 0),
     [selectedClasses]
-  );
-
-  const scheduleTimeOptions = useMemo(
-    () => buildTimeSlotOptions(scheduleTimeStep),
-    [scheduleTimeStep]
   );
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -808,22 +940,55 @@ export default function CreateExaminationPage({
 
   const handleAutoFillSequentialDatesFromFirst = () => {
     if (!examSchedules.length) return;
-    const first = examSchedules[0];
-    if (!first.exam_date) {
-      setErrors({ schedule: 'Pick a date on the first exam row before auto-filling the rest.' });
+    const winStart = examMetadata.start_date;
+    const winEnd = examMetadata.end_date;
+    if (!winStart || !winEnd) {
+      setErrors({
+        schedule: 'Exam start and end dates from step 1 are required before filling sequential dates.',
+      });
       return;
     }
-    setErrors((e) => {
-      const next = { ...e };
-      delete next.schedule;
-      return next;
+
+    const groups = new Map<string, number[]>();
+    examSchedules.forEach((s, idx) => {
+      const key = `${s.classId}|${s.sectionId}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(idx);
     });
-    setExamSchedules((prev) =>
-      prev.map((s, idx) => ({
-        ...s,
-        exam_date: addDaysISO(first.exam_date, idx),
-      }))
-    );
+
+    const missingAnchor: string[] = [];
+    for (const [key, indices] of groups) {
+      const anchor = examSchedules[indices[0]]?.exam_date;
+      if (!anchor) missingAnchor.push(key);
+    }
+    if (missingAnchor.length > 0) {
+      setErrors({
+        schedule:
+          'For each class-section, set the exam date on the first subject row in that group, then use Fill sequential dates. Dates stay within your step 1 exam window.',
+      });
+      return;
+    }
+
+    const next = [...examSchedules];
+    for (const indices of groups.values()) {
+      const anchor = next[indices[0]].exam_date;
+      for (let o = 0; o < indices.length; o++) {
+        const candidate = addDaysISO(anchor, o);
+        if (candidate < winStart || candidate > winEnd) {
+          setErrors({
+            schedule: `Sequential dates would go outside the exam window (${winStart} – ${winEnd}). Add days between papers, reduce subjects per section, or widen the window in step 1.`,
+          });
+          return;
+        }
+        next[indices[o]] = { ...next[indices[o]], exam_date: candidate };
+      }
+    }
+    setErrors((e) => {
+      const n = { ...e };
+      delete n.schedule;
+      return n;
+    });
+    setExamSchedules(next);
   };
 
   const handleStep4Submit = async () => {
@@ -842,6 +1007,20 @@ export default function CreateExaminationPage({
     if (invalidTime) {
       setErrors({ schedule: 'End time must be after start time' });
       return;
+    }
+
+    const winStart = examMetadata.start_date;
+    const winEnd = examMetadata.end_date;
+    if (winStart && winEnd) {
+      const outOfWindow = examSchedules.some(
+        (s) => !s.exam_date || s.exam_date < winStart || s.exam_date > winEnd
+      );
+      if (outOfWindow) {
+        setErrors({
+          schedule: `Every exam date must be between ${winStart} and ${winEnd} (from step 1).`,
+        });
+        return;
+      }
     }
 
     // Prevent overlapping schedules for same class-section and date.
@@ -1649,9 +1828,11 @@ export default function CreateExaminationPage({
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">Schedule Examinations</h2>
                     <p className="text-sm text-gray-600 mt-1 max-w-2xl">
-                      Times use the slot interval you pick (every 15, 30, or 45 minutes). Use{' '}
-                      <span className="font-medium text-gray-800">Apply to all</span> when every paper shares the same
-                      slot, then adjust individual rows if needed.
+                      Exam dates are limited to the start and end dates you set in step 1. Times use hour and minute
+                      pickers; minutes follow the interval you choose (15, 30, or 45). Use{' '}
+                      <span className="font-medium text-gray-800">Apply to all rows</span> for the same slot everywhere.
+                      <span className="font-medium text-gray-800"> Fill sequential dates</span> advances one day per
+                      subject within each class-section (not across classes).
                     </p>
                   </div>
                 </div>
@@ -1665,7 +1846,7 @@ export default function CreateExaminationPage({
                       <div>
                         <p className="text-sm font-semibold text-slate-800">Time slot interval</p>
                         <p className="text-xs text-slate-600 mt-0.5">
-                          Dropdown lists only these minute marks within each hour.
+                          Minute dropdown lists only these marks (:00, :15, …) for the selected hour.
                         </p>
                         <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
                           {([15, 30, 45] as const).map((step) => (
@@ -1692,20 +1873,18 @@ export default function CreateExaminationPage({
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
                           <div className="sm:col-span-1 lg:col-span-3">
                             <label className="block text-xs font-medium text-slate-600 mb-1.5">Start time</label>
-                            <ScheduleTimeSelect
+                            <ScheduleTimeDualSelect
                               value={bulkScheduleStart}
                               onChange={setBulkScheduleStart}
-                              options={scheduleTimeOptions}
-                              placeholder="Start"
+                              step={scheduleTimeStep}
                             />
                           </div>
                           <div className="sm:col-span-1 lg:col-span-3">
                             <label className="block text-xs font-medium text-slate-600 mb-1.5">End time</label>
-                            <ScheduleTimeSelect
+                            <ScheduleTimeDualSelect
                               value={bulkScheduleEnd}
                               onChange={setBulkScheduleEnd}
-                              options={scheduleTimeOptions}
-                              placeholder="End"
+                              step={scheduleTimeStep}
                             />
                           </div>
                           <div className="flex flex-wrap items-center gap-2 lg:col-span-6">
@@ -1725,7 +1904,7 @@ export default function CreateExaminationPage({
                                 size="sm"
                                 onClick={handleAutoFillSequentialDatesFromFirst}
                                 className="shrink-0 px-3 py-1 text-xs"
-                                title="Starting from the first exam date, fill each subsequent exam with the next calendar date"
+                                title="Per class-section: uses the first row’s date in that group, then +1 day for each next subject (stays within step 1 dates)"
                               >
                                 Fill sequential dates
                               </Button>
@@ -1790,6 +1969,8 @@ export default function CreateExaminationPage({
                                 <Input
                                   type="date"
                                   value={schedule.exam_date}
+                                  min={examMetadata.start_date || undefined}
+                                  max={examMetadata.end_date || undefined}
                                   onChange={(e) => handleScheduleChange(index, 'exam_date', e.target.value)}
                                   className="pl-3 pr-9 text-sm rounded-lg border-slate-200 focus:border-[#5A7A95] focus:ring-[#5A7A95]/20"
                                 />
@@ -1802,11 +1983,10 @@ export default function CreateExaminationPage({
                                 START TIME
                               </span>
                               <div className="relative">
-                                <ScheduleTimeSelect
+                                <ScheduleTimeDualSelect
                                   value={schedule.start_time}
                                   onChange={(v) => handleScheduleChange(index, 'start_time', v)}
-                                  options={scheduleTimeOptions}
-                                  placeholder="Start"
+                                  step={scheduleTimeStep}
                                 />
                                 <Clock className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                               </div>
@@ -1817,11 +1997,10 @@ export default function CreateExaminationPage({
                                 END TIME
                               </span>
                               <div className="relative">
-                                <ScheduleTimeSelect
+                                <ScheduleTimeDualSelect
                                   value={schedule.end_time}
                                   onChange={(v) => handleScheduleChange(index, 'end_time', v)}
-                                  options={scheduleTimeOptions}
-                                  placeholder="End"
+                                  step={scheduleTimeStep}
                                 />
                                 <Clock className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                               </div>

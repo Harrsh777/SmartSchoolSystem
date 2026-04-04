@@ -145,6 +145,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const windowStart = String(start_date).slice(0, 10);
+    const windowEnd = String(end_date).slice(0, 10);
+    for (let i = 0; i < schedules.length; i++) {
+      const row = schedules[i] as { exam_date?: string };
+      const d = row.exam_date ? String(row.exam_date).slice(0, 10) : '';
+      if (!d || d < windowStart || d > windowEnd) {
+        return NextResponse.json(
+          {
+            error: 'Each exam date must fall within the examination start and end dates',
+            details: `Row ${i + 1}: date ${d || '(missing)'} is outside ${windowStart} – ${windowEnd}`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Get school ID
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
