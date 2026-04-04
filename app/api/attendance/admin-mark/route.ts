@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
+import {
+  isMissingStudentAttendanceAcademicYearIdColumn,
+  stripAcademicYearIdFromAttendanceRows,
+} from '@/lib/student-attendance-compat';
 
 /**
  * POST /api/attendance/admin-mark
@@ -11,6 +15,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { school_code, class_id, attendance_date, attendance_records, marked_by, academic_year, academic_year_id } = body;
+    const supabase = getServiceRoleClient();
 
     if (!school_code || !class_id || !attendance_date || !marked_by) {
       return NextResponse.json(
@@ -43,34 +48,49 @@ export async function POST(request: NextRequest) {
     // Verify class exists (no class teacher restriction for admin)
     const { data: classData, error: classError } = await supabase
       .from('classes')
-      .select('id, class, section, academic_year_id')
+      .select('id, class, section, academic_year')
       .eq('id', class_id)
       .eq('school_code', school_code)
-      .single();
+      .maybeSingle();
 
     if (classError || !classData) {
       return NextResponse.json(
-        { error: 'Class not found' },
+        { error: 'Class not found', details: classError?.message },
         { status: 404 }
       );
     }
 
-    const resolvedAcademicYearId =
-      academic_year_id || academic_year
-        ? (await resolveAcademicYear({
+    let resolvedAcademicYearId: string | null = null;
+    try {
+      if (academic_year_id || academic_year) {
+        resolvedAcademicYearId = (
+          await resolveAcademicYear({
             schoolCode: school_code,
             academic_year,
             academic_year_id,
-          })).yearId
-        : (classData as { academic_year_id?: string | null })?.academic_year_id ?? null;
+          })
+        ).yearId;
+      } else if (classData.academic_year) {
+        resolvedAcademicYearId = (
+          await resolveAcademicYear({
+            schoolCode: school_code,
+            academic_year: String(classData.academic_year),
+          })
+        ).yearId;
+      }
+    } catch (e) {
+      console.warn('Admin attendance mark: academic year not resolved', e);
+    }
 
     const adminOverride = request.headers.get('x-admin-override') === 'true';
-    const lockCheck = await assertAcademicYearNotLocked({
-      schoolCode: school_code,
-      academic_year_id: resolvedAcademicYearId,
-      adminOverride,
-    });
-    if (lockCheck) return lockCheck;
+    if (resolvedAcademicYearId) {
+      const lockCheck = await assertAcademicYearNotLocked({
+        schoolCode: school_code,
+        academic_year_id: resolvedAcademicYearId,
+        adminOverride,
+      });
+      if (lockCheck) return lockCheck;
+    }
 
     // Verify marked_by staff exists
     const { data: staffData, error: staffError } = await supabase
@@ -113,19 +133,40 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // Upsert attendance records (update if exists, insert if new)
-    const { data: savedAttendance, error: upsertError } = await supabase
-      .from('student_attendance')
-      .upsert(recordsToUpsert, {
-        onConflict: 'student_id,attendance_date',
-        ignoreDuplicates: false,
-      })
-      .select();
+    const upsertRows = (rows: Record<string, unknown>[]) =>
+      supabase
+        .from('student_attendance')
+        .upsert(rows, {
+          onConflict: 'student_id,attendance_date',
+          ignoreDuplicates: false,
+        })
+        .select();
 
-    if (upsertError) {
-      console.error('Error upserting attendance:', upsertError);
+    let savedAttendance: unknown[] | null = null;
+    let upsertError: { message?: string } | null = null;
+
+    const firstUpsert = await upsertRows(recordsToUpsert as Record<string, unknown>[]);
+    if (!firstUpsert.error) {
+      savedAttendance = firstUpsert.data as unknown[];
+    } else if (isMissingStudentAttendanceAcademicYearIdColumn(firstUpsert.error)) {
+      const stripped = stripAcademicYearIdFromAttendanceRows(
+        recordsToUpsert as Record<string, unknown>[]
+      );
+      const second = await upsertRows(stripped);
+      if (!second.error) {
+        savedAttendance = second.data as unknown[];
+      } else {
+        upsertError = second.error;
+      }
+    } else {
+      upsertError = firstUpsert.error;
+    }
+
+    if (upsertError || savedAttendance == null) {
+      const err = upsertError || { message: 'Upsert failed' };
+      console.error('Error upserting attendance:', err);
       return NextResponse.json(
-        { error: 'Failed to save attendance', details: upsertError.message },
+        { error: 'Failed to save attendance', details: err.message },
         { status: 500 }
       );
     }

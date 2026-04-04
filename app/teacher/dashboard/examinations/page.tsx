@@ -15,6 +15,8 @@ interface Exam {
   end_date?: string;
   status?: string;
   subject_mappings?: Array<{
+    id?: string;
+    class_id?: string;
     subject_id: string;
     subject_name?: string;
     teacher_name?: string;
@@ -81,11 +83,17 @@ export default function TeacherExaminationsPage() {
     }));
   }, [sortedExams]);
 
-  const fetchExams = async (teacherData: { school_code?: string }) => {
+  const fetchExams = async (teacherData: {
+    school_code?: string;
+    id?: string;
+    staff_id?: string;
+  }) => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
       params.set('school_code', teacherData.school_code || '');
+      if (teacherData.id) params.set('teacher_id', String(teacherData.id));
+      if (teacherData.staff_id) params.set('staff_id', String(teacherData.staff_id));
 
       const response = await fetch(`/api/examinations/v2/teacher?${params.toString()}`);
       const result = await response.json();
@@ -219,7 +227,10 @@ export default function TeacherExaminationsPage() {
                                       <tbody>
                                         {exam.subject_mappings.map((sm, idx) => (
                                           <tr
-                                            key={sm.subject_id ?? idx}
+                                            key={
+                                              sm.id ??
+                                              `${sm.subject_id}-${String(sm.class_id ?? 'all')}-${idx}`
+                                            }
                                             className="border-t border-gray-100 dark:border-gray-700/80"
                                           >
                                             <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">

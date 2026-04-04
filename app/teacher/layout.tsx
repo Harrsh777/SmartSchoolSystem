@@ -57,6 +57,8 @@ type TeacherMenuItem = {
   permission: string | null;
   viewPermission: string | null;
   requiresClassTeacher?: boolean;
+  /** If true with requiresClassTeacher, also show when staff has timetable subject assignments */
+  allowsSubjectTeacher?: boolean;
 };
 
 // Default teacher menu items (always visible)
@@ -64,7 +66,8 @@ const teacherBaseItems: TeacherMenuItem[] = [
   { id: 'home', label: 'Home', icon: Home, path: '/teacher/dashboard', permission: null, viewPermission: null },
   { id: 'attendance', label: 'Mark Attendance', icon: Calendar, path: '/teacher/dashboard/attendance', permission: null, viewPermission: null },
   { id: 'my-attendance', label: 'My Attendance', icon: Calendar, path: '/teacher/dashboard/attendance-staff', permission: null, viewPermission: null },
-  { id: 'marks', label: 'Marks Entry', icon: FileText, path: '/teacher/dashboard/marks', requiresClassTeacher: true, permission: null, viewPermission: null },
+  { id: 'my-timetable', label: 'My Timetable', icon: CalendarDays, path: '/teacher/dashboard/my-timetable', permission: null, viewPermission: null },
+  { id: 'marks', label: 'Marks Entry', icon: FileText, path: '/teacher/dashboard/marks', requiresClassTeacher: true, allowsSubjectTeacher: true, permission: null, viewPermission: null },
   { id: 'examinations', label: 'Examinations', icon: FileText, path: '/teacher/dashboard/examinations', permission: null, viewPermission: null },
   { id: 'my-class', label: 'My Class', icon: UserCheck, path: '/teacher/dashboard/my-class', requiresClassTeacher: true, permission: null, viewPermission: null },
   { id: 'classes', label: 'Classes', icon: UserCheck, path: '/teacher/dashboard/classes', permission: null, viewPermission: null },
@@ -117,6 +120,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const [isDesktop, setIsDesktop] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isClassTeacher, setIsClassTeacher] = useState(false);
+  const [hasTimetableTeaching, setHasTimetableTeaching] = useState(false);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [staffPermissions, setStaffPermissions] = useState<Record<string, unknown> | null>(null);
   const [dynamicModules, setDynamicModules] = useState<Array<{
@@ -221,6 +225,23 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
         setTeacher(teacherData);
         fetchSchoolName(teacherData.school_code);
         checkIfClassTeacher(teacherData.id, teacherData.school_code, teacherData);
+        void (async () => {
+          try {
+            const q = new URLSearchParams({
+              school_code: String(teacherData.school_code || ''),
+              staff_id: String(teacherData.id || ''),
+            });
+            const r = await fetch(`/api/teachers/teaching-assignments?${q.toString()}`);
+            const j = await r.json();
+            if (r.ok && Array.isArray(j.data?.assignments) && j.data.assignments.length > 0) {
+              setHasTimetableTeaching(true);
+            } else {
+              setHasTimetableTeaching(false);
+            }
+          } catch {
+            setHasTimetableTeaching(false);
+          }
+        })();
         fetchStaffPermissions(teacherData.id);
       } catch (err) {
         console.error('Error parsing teacher data:', err);
@@ -628,6 +649,9 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
   // Filter sidebar items based on class teacher status
   const filteredTeacherItems = teacherBaseItems.filter(item => {
     if (item.requiresClassTeacher) {
+      if (item.allowsSubjectTeacher) {
+        return isClassTeacher || hasTimetableTeaching;
+      }
       return isClassTeacher;
     }
     return true;
@@ -794,11 +818,43 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
               >
                 {sidebarOpen ? <X size={24} className="text-[#1e3a8a]" /> : <Menu size={24} className="text-[#1e3a8a]" />}
               </button>
-              <Link href="/" className="text-xl font-bold text-[#1e3a8a]">
-                Edu<span className="text-[#5A7A9A]">-Core</span>
+              <Link
+                href="/teacher/dashboard"
+                className="flex items-center gap-3 min-w-0 max-w-[min(100%,20rem)] sm:max-w-md"
+              >
+                {(() => {
+                  const logoUrl =
+                    typeof school?.logo_url === 'string' && String(school.logo_url).trim()
+                      ? String(school.logo_url).trim()
+                      : '';
+                  const initial = (
+                    school?.school_name ||
+                    teacher.school_code ||
+                    'S'
+                  )
+                    .charAt(0)
+                    .toUpperCase();
+                  return (
+                    <>
+                      {logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- school logos from various storage URLs
+                        <img
+                          src={logoUrl}
+                          alt=""
+                          className="h-9 w-9 sm:h-10 sm:w-10 object-contain rounded-lg border border-[#E1E1DB] bg-white shrink-0"
+                        />
+                      ) : (
+                        <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-lg bg-[#1e3a8a] flex items-center justify-center text-white font-bold text-sm sm:text-base shrink-0 shadow-sm">
+                          {initial}
+                        </div>
+                      )}
+                      <span className="text-[#1e3a8a] font-semibold text-sm sm:text-base truncate">
+                        {school?.school_name || teacher.school_code}
+                      </span>
+                    </>
+                  );
+                })()}
               </Link>
-              <div className="hidden sm:block h-6 w-px bg-[#E1E1DB]" />
-              <span className="hidden sm:block text-[#1e3a8a] font-semibold">{school?.school_name || teacher.school_code}</span>
             </div>
             <div className="flex items-center space-x-2">
               {/* Search */}
@@ -989,19 +1045,11 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                 style={{ width: '280px', background: 'linear-gradient(180deg, #064e3b 0%, #022c22 100%)' }}
               >
                 <nav className="p-5 space-y-1.5 overflow-visible">
-                  {/* Header Section */}
-                  <div className="mb-6 px-4 py-3.5 bg-emerald-900/90 rounded-2xl border border-emerald-800 backdrop-blur-sm">
-                    <h3 className="text-white font-bold text-base uppercase tracking-widest">
-                      Teacher Portal
-                    </h3>
-                    <p className="text-emerald-100 text-xs mt-1">Dashboard Menu</p>
-                  </div>
-                  
                   {/* Grouped Menu Items */}
                   {(() => {
                     const sections = [
                       { id: 'core', label: 'Core', items: ['home'] },
-                      { id: 'academics', label: 'Academics', items: ['attendance', 'my-attendance', 'marks', 'examinations', 'my-class', 'classes', 'calendar', 'homework', 'copy-checking', 'timetable'] },
+                      { id: 'academics', label: 'Academics', items: ['attendance', 'my-attendance', 'my-timetable', 'marks', 'examinations', 'my-class', 'classes', 'calendar', 'homework', 'copy-checking', 'timetable'] },
                       { id: 'leave', label: 'Leave & Requests', items: ['apply-leave', 'my-leaves', 'student-leave-approvals', 'leave_management'] },
                       { id: 'info', label: 'Information', items: ['students', 'student_management', 'library', 'certificates', 'gallery', 'communication', 'staff-management', 'transport', 'front_office'] },
                       { id: 'finance', label: 'Finance', items: ['fee_management', 'expense_income'] },

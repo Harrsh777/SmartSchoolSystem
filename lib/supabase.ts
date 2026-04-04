@@ -96,7 +96,10 @@ export interface Staff {
 export interface Student {
   id: string;
   student_name?: string;
+  first_name?: string;
+  last_name?: string;
   admission_no?: string;
+  roll_number?: string | null;
   class?: string;
   section?: string;
   email?: string;
@@ -142,6 +145,7 @@ export interface Notice {
   publish_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  attachment_url?: string | null;
   [key: string]: unknown;
 }
 

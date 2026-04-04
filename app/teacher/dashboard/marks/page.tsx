@@ -6,7 +6,8 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { FileText, Save, CheckCircle, AlertCircle, GraduationCap } from 'lucide-react';
+import { FileText, Save, AlertCircle, GraduationCap } from 'lucide-react';
+import { dedupeExamSubjectMappings } from '@/lib/exam-subject-mappings';
 
 interface Student {
   id: string;
@@ -18,6 +19,7 @@ interface Student {
 }
 
 interface ExamSubject {
+  mapping_id?: string | null;
   subject_id: string;
   subject_name: string;
   max_marks: number;
@@ -32,6 +34,16 @@ interface StudentMark {
     absent: boolean;
   }>;
 }
+
+type AccessMode = 'class_teacher' | 'subject_teacher';
+
+type ClassPickOption = {
+  value: string;
+  classId: string;
+  mode: AccessMode;
+  label: string;
+  group: 'class_teacher' | 'subject_teacher';
+};
 
 interface Exam {
   id: string;
@@ -49,6 +61,7 @@ interface Exam {
     };
   }>;
   subject_mappings?: Array<{
+    id?: string;
     class_id: string;
     subject_id: string;
     subject: {
@@ -59,6 +72,13 @@ interface Exam {
     pass_marks: number;
   }>;
 }
+
+type TeachingAssignment = {
+  class_id: string;
+  class_name: string;
+  section: string;
+  subject_ids: string[];
+};
 
 export default function MarksEntryPage() {
   const searchParams = useSearchParams();
@@ -73,11 +93,22 @@ export default function MarksEntryPage() {
   const [studentMarks, setStudentMarks] = useState<StudentMark[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [locked, setLocked] = useState(false);
+  const [columnLastEditor, setColumnLastEditor] = useState<
+    Record<string, { full_name: string; staff_id: string; at: string }>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [urlExamApplied, setUrlExamApplied] = useState(false);
+  const [teachingAssignments, setTeachingAssignments] = useState<TeachingAssignment[]>([]);
+  const [classTeacherClassIds, setClassTeacherClassIds] = useState<Set<string>>(new Set());
+  const [accessMode, setAccessMode] = useState<AccessMode | null>(null);
+  const [classPickOptions, setClassPickOptions] = useState<ClassPickOption[]>([]);
+  const [selectedClassKey, setSelectedClassKey] = useState('');
+  const [selectedClassSectionLabel, setSelectedClassSectionLabel] = useState('');
+  const [classPickMessage, setClassPickMessage] = useState<string | null>(null);
+  /** One subject at a time in the grid; set after class load (auto if only one subject). */
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [marksLastUpdatedBySubject, setMarksLastUpdatedBySubject] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const storedTeacher = sessionStorage.getItem('teacher');
@@ -94,6 +125,8 @@ export default function MarksEntryPage() {
   const fetchExams = async (schoolCode: string, teacherInfo: Record<string, unknown>) => {
     try {
       setLoading(true);
+      setTeachingAssignments([]);
+      setClassTeacherClassIds(new Set());
 
       const queryParams = new URLSearchParams({
         school_code: schoolCode,
@@ -110,18 +143,21 @@ export default function MarksEntryPage() {
       const result = await response.json();
       
       if (response.ok && result.data) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const activeExams = (result.data as Exam[]).filter((exam) => {
-          if (!exam.start_date) return false;
-          const startDate = new Date(exam.start_date);
-          startDate.setHours(0, 0, 0, 0);
-          const endDate = new Date(exam.end_date);
-          endDate.setHours(0, 0, 0, 0);
-          return (exam.status === 'upcoming' || exam.status === 'ongoing' || exam.status === 'active') &&
-            (today >= startDate && today <= endDate || today < startDate);
+        const assignments = (result.teaching_assignments || []) as TeachingAssignment[];
+        setTeachingAssignments(assignments);
+        setClassTeacherClassIds(new Set((result.class_teacher_class_ids || []) as string[]));
+        // Same status filter as /teacher/dashboard/examinations — do not hide exams that are past end_date
+        // (status may still be "upcoming", or teachers enter marks after the window).
+        const markableExams = (result.data as Exam[]).filter((exam) => {
+          const s = String(exam.status || '').toLowerCase();
+          return (
+            s === 'upcoming' ||
+            s === 'ongoing' ||
+            s === 'active' ||
+            s === 'completed'
+          );
         });
-        setExams(activeExams);
+        setExams(markableExams);
       } else {
         setError(result.error || 'Failed to fetch examinations');
       }
@@ -133,51 +169,128 @@ export default function MarksEntryPage() {
     }
   };
 
-  const fetchTeacherClass = async () => {
-    if (!teacher) return null;
+  const fetchTeacherClassRowIds = async (): Promise<string[]> => {
+    if (!teacher) return [];
     try {
       const queryParams = new URLSearchParams({
         school_code: schoolCode,
+        array: 'true',
       });
-      
-      if (teacher.id) {
-        queryParams.append('teacher_id', teacher.id as string);
-      }
-      if (teacher.staff_id) {
-        queryParams.append('staff_id', teacher.staff_id as string);
-      }
-      
+      if (teacher.id) queryParams.append('teacher_id', teacher.id as string);
+      if (teacher.staff_id) queryParams.append('staff_id', teacher.staff_id as string);
       const response = await fetch(`/api/classes/teacher?${queryParams.toString()}`);
       const result = await response.json();
-      
-      if (response.ok && result.data) {
-        const classesData = Array.isArray(result.data) ? result.data : [result.data];
-        return classesData.length > 0 ? classesData[0] : null;
-      }
+      if (!response.ok || !result.data) return [];
+      const classesData = Array.isArray(result.data) ? result.data : [result.data];
+      return classesData.filter(Boolean).map((c: { id: string }) => c.id);
     } catch (error) {
-      console.error('Error fetching teacher class:', error);
+      console.error('Error fetching teacher classes:', error);
+      return [];
     }
+  };
+
+  const parseClassPickValue = (value: string): { mode: AccessMode; classId: string } | null => {
+    if (!value.includes(':')) return null;
+    const i = value.indexOf(':');
+    const modeRaw = value.slice(0, i);
+    const classId = value.slice(i + 1);
+    if (modeRaw === 'class_teacher') return { mode: 'class_teacher', classId };
+    if (modeRaw === 'subject_teacher') return { mode: 'subject_teacher', classId };
     return null;
   };
 
   const handleExamSelect = async (exam: Exam) => {
     setSelectedExam(exam);
     setSelectedClass('');
+    setSelectedClassKey('');
+    setAccessMode(null);
     setStudents([]);
     setSubjects([]);
     setStudentMarks([]);
-    
-    if (exam.class_mappings && exam.class_mappings.length > 0) {
-      const teacherClass = await fetchTeacherClass();
-      if (teacherClass) {
-        const matchingClass = exam.class_mappings.find(cm => 
-          cm.class?.class === teacherClass.class && cm.class?.section === teacherClass.section
-        );
-        if (matchingClass) {
-          await handleClassSelect(exam, matchingClass.class_id);
-        }
-      }
+    setColumnLastEditor({});
+    setClassPickMessage(null);
+    setClassPickOptions([]);
+    setSelectedClassSectionLabel('');
+    setSelectedSubjectId('');
+    setMarksLastUpdatedBySubject({});
+
+    const examClassIds = (exam.class_mappings || [])
+      .map((cm) => String(cm.class_id))
+      .filter(Boolean);
+
+    if (examClassIds.length === 0) {
+      setClassPickMessage('This examination has no class sections mapped.');
+      return;
     }
+    const effectiveCtSet = new Set(classTeacherClassIds);
+
+    // Get unique class IDs from timetable assignments that match exam classes
+    const timetableClassIds = Array.from(
+      new Set(
+        teachingAssignments
+          .filter((ta) => examClassIds.includes(ta.class_id))
+          .map((ta) => ta.class_id)
+      )
+    );
+    let ctInExam = examClassIds.filter((id) => effectiveCtSet.has(id));
+    let stOnlyInExam = timetableClassIds.filter((id) => !effectiveCtSet.has(id));
+
+    if (ctInExam.length === 0 && stOnlyInExam.length === 0) {
+      const fetchedCt = await fetchTeacherClassRowIds();
+      fetchedCt.forEach((id) => effectiveCtSet.add(id));
+      ctInExam = examClassIds.filter((id) => effectiveCtSet.has(id));
+      stOnlyInExam = timetableClassIds.filter((id) => !effectiveCtSet.has(id));
+    }
+
+    const allowedUnion = [...new Set([...ctInExam, ...stOnlyInExam])];
+
+    if (allowedUnion.length === 0) {
+      setClassPickMessage(
+        'No class on this exam matches your timetable or class-teacher assignment. Contact the admin if this is wrong.'
+      );
+      return;
+    }
+
+    const cmById = new Map((exam.class_mappings || []).map((cm) => [cm.class_id, cm]));
+    const labelFor = (cid: string) => {
+      const cm = cmById.get(cid);
+      return cm ? `${cm.class?.class}-${cm.class?.section}` : cid;
+    };
+
+    const options: ClassPickOption[] = [];
+    for (const cid of ctInExam) {
+      options.push({
+        value: `class_teacher:${cid}`,
+        classId: cid,
+        mode: 'class_teacher',
+        group: 'class_teacher',
+        label: `${labelFor(cid)} — class teacher (all subjects)`,
+      });
+    }
+    for (const cid of stOnlyInExam) {
+      options.push({
+        value: `subject_teacher:${cid}`,
+        classId: cid,
+        mode: 'subject_teacher',
+        group: 'subject_teacher',
+        label: `${labelFor(cid)} — subject teacher (your subjects only)`,
+      });
+    }
+    setClassPickOptions(options);
+
+    if (allowedUnion.length === 1) {
+      const onlyId = allowedUnion[0];
+      const mode: AccessMode = ctInExam.includes(onlyId) ? 'class_teacher' : 'subject_teacher';
+      setSelectedClassKey(mode === 'class_teacher' ? `class_teacher:${onlyId}` : `subject_teacher:${onlyId}`);
+      await handleClassSelect(exam, onlyId, mode);
+      return;
+    }
+
+    setClassPickMessage(
+      ctInExam.length > 0 && stOnlyInExam.length > 0
+        ? 'Choose a class: class-teacher sections have full subject access; other sections are limited to your timetable subjects.'
+        : 'Select the class section you are entering marks for.'
+    );
   };
 
   // When opened with ?exam_id=..., auto-select that exam once exams are loaded
@@ -191,85 +304,212 @@ export default function MarksEntryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- apply URL exam once when list loads
   }, [exams, examIdFromUrl, urlExamApplied]);
 
-  const handleClassSelect = async (exam: Exam, classId: string) => {
+  const mapRowsToExamSubjects = (rows: Record<string, unknown>[]): ExamSubject[] =>
+    dedupeExamSubjectMappings(rows).map((sm: Record<string, unknown>) => ({
+      mapping_id: sm.id != null ? String(sm.id) : null,
+      subject_id: sm.subject_id as string,
+      subject_name: (sm.subject as { name?: string })?.name || 'Unknown',
+      max_marks: Number(sm.max_marks || 100),
+      pass_marks: Number(sm.pass_marks || 33),
+      weightage: Number(sm.weightage || 0),
+    }));
+
+  const handleClassSelect = async (exam: Exam, classId: string, mode: AccessMode) => {
     setSelectedClass(classId);
-    
+    setAccessMode(mode);
+    setSelectedClassSectionLabel('');
+    setSelectedSubjectId('');
+    setMarksLastUpdatedBySubject({});
+
     try {
       const classResponse = await fetch(`/api/classes?school_code=${schoolCode}&id=${classId}`);
       const classResult = await classResponse.json();
-      
+
       if (!classResponse.ok || !classResult.data || classResult.data.length === 0) {
         alert('Class not found');
         return;
       }
-      
+
       const classData = classResult.data[0];
-      
+      setSelectedClassSectionLabel(
+        `${String(classData.class ?? '')} - ${String(classData.section ?? '')}`.trim() || '—'
+      );
+
       const studentsResponse = await fetch(
         `/api/students?school_code=${schoolCode}&class=${classData.class}&section=${classData.section}&status=active`
       );
       const studentsResult = await studentsResponse.json();
-      
-      if (studentsResponse.ok && studentsResult.data) {
-        setStudents(studentsResult.data);
-        // Subject mappings may include class_id (filter to this class) or not (use all)
+
+      if (!studentsResponse.ok || !studentsResult.data) {
+        setStudents([]);
+        return;
+      }
+
+      setStudents(studentsResult.data);
+
+      let examSubjects: ExamSubject[] = [];
+
+      if (mode === 'class_teacher') {
+        const mapParams = new URLSearchParams({
+          school_code: schoolCode,
+          class_id: classId,
+        });
+        const classMapRes = await fetch(
+          `/api/examinations/${encodeURIComponent(exam.id)}/class-mappings?${mapParams.toString()}`
+        );
+        const classMapJson = await classMapRes.json();
+        if (classMapRes.ok && Array.isArray(classMapJson.data) && classMapJson.data.length > 0) {
+          examSubjects = mapRowsToExamSubjects(classMapJson.data as Record<string, unknown>[]);
+        }
+        if (examSubjects.length === 0) {
+          const detailRes = await fetch(
+            `/api/examinations/${encodeURIComponent(exam.id)}?school_code=${encodeURIComponent(schoolCode)}`
+          );
+          const detailJson = await detailRes.json();
+          if (detailRes.ok && detailJson.data?.subject_mappings?.length) {
+            const raw = detailJson.data.subject_mappings as Record<string, unknown>[];
+            const forThisClass = raw.filter((sm) => {
+              const smClassId = sm.class_id;
+              if (smClassId == null || smClassId === '') return true;
+              return String(smClassId) === String(classId);
+            });
+            const pool = forThisClass.length > 0 ? forThisClass : raw;
+            examSubjects = mapRowsToExamSubjects(pool);
+          }
+        }
+        if (examSubjects.length === 0) {
+          const allMappings = exam.subject_mappings || [];
+          const forThisClass = allMappings.filter((sm: Record<string, unknown>) => {
+            const smClassId = sm.class_id;
+            if (smClassId == null || smClassId === '') return true;
+            return String(smClassId) === String(classId);
+          });
+          const mappingsToUse = dedupeExamSubjectMappings(
+            (forThisClass.length > 0 ? forThisClass : allMappings) as Record<string, unknown>[]
+          );
+          examSubjects = mapRowsToExamSubjects(mappingsToUse as Record<string, unknown>[]);
+        }
+      } else {
         const allMappings = exam.subject_mappings || [];
         const forThisClass = allMappings.filter((sm: Record<string, unknown>) => {
           const smClassId = sm.class_id;
-          if (smClassId == null || smClassId === '') return true; // no class_id = applies to all classes
+          if (smClassId == null || smClassId === '') return true;
           return String(smClassId) === String(classId);
         });
-        const mappingsToUse = forThisClass.length > 0 ? forThisClass : allMappings;
-
-        const examSubjects: ExamSubject[] = mappingsToUse.map((sm: Record<string, unknown>) => ({
-          subject_id: sm.subject_id as string,
-          subject_name: (sm.subject as { name?: string })?.name || 'Unknown',
-          max_marks: Number(sm.max_marks || 100),
-          pass_marks: Number(sm.pass_marks || 33),
-          weightage: Number(sm.weightage || 0),
-        }));
-        setSubjects(examSubjects);
-        await loadExistingMarks(exam.id, studentsResult.data.map((s: Student) => s.id));
+        const mappingsToUse = dedupeExamSubjectMappings(
+          (forThisClass.length > 0 ? forThisClass : allMappings) as Record<string, unknown>[]
+        );
+        const ta = teachingAssignments.find((t) => t.class_id === classId);
+        const allowed = new Set(ta?.subject_ids || []);
+        const filtered = mappingsToUse.filter((sm) => allowed.has(String(sm.subject_id ?? '')));
+        examSubjects = mapRowsToExamSubjects(filtered as Record<string, unknown>[]);
       }
+
+      setSubjects(examSubjects);
+      setSelectedSubjectId(examSubjects.length === 1 ? examSubjects[0].subject_id : '');
+      await loadExistingMarks(exam.id, studentsResult.data.map((s: Student) => s.id));
     } catch (error) {
       console.error('Error fetching class data:', error);
       alert('Failed to load class data');
     }
   };
 
+  const parseRowTime = (row: Record<string, unknown>): number => {
+    const u = row.updated_at != null ? new Date(String(row.updated_at)).getTime() : NaN;
+    const c = row.created_at != null ? new Date(String(row.created_at)).getTime() : NaN;
+    return Math.max(!Number.isNaN(u) ? u : 0, !Number.isNaN(c) ? c : 0);
+  };
+
+  const normalizeEnteredByStaff = (
+    raw: unknown
+  ): { full_name: string; staff_id: string } | null => {
+    if (!raw) return null;
+    const row = Array.isArray(raw) ? raw[0] : raw;
+    if (!row || typeof row !== 'object') return null;
+    const o = row as Record<string, unknown>;
+    const full_name = String(o.full_name ?? '').trim() || 'Unknown';
+    const staff_id = String(o.staff_id ?? o.id ?? '').trim();
+    return { full_name, staff_id };
+  };
+
   const loadExistingMarks = async (examId: string, studentIds: string[]) => {
     try {
+      type EditorAcc = { t: number; full_name: string; staff_id: string; at: string };
       const marksPromises = studentIds.map(async (studentId) => {
         const response = await fetch(
           `/api/examinations/marks?exam_id=${examId}&student_id=${studentId}`
         );
         const result = await response.json();
-        
+
+        const localSubjT: Record<string, number> = {};
+        const localBest: Record<string, EditorAcc> = {};
         if (response.ok && result.data) {
+          const rows = result.data as Record<string, unknown>[];
+          for (const mark of rows) {
+            const t = parseRowTime(mark);
+            const subj = String(mark.subject_id ?? '');
+            if (subj && t > 0) {
+              localSubjT[subj] = Math.max(localSubjT[subj] ?? 0, t);
+            }
+            if (!subj) continue;
+            const ed = normalizeEnteredByStaff(mark.entered_by_staff);
+            const atIso = String(mark.updated_at ?? mark.created_at ?? '');
+            if (ed && (!localBest[subj] || t > localBest[subj].t)) {
+              localBest[subj] = {
+                t,
+                full_name: ed.full_name,
+                staff_id: ed.staff_id,
+                at: atIso,
+              };
+            }
+          }
           const marks: Record<string, { marks_obtained: number; absent: boolean }> = {};
-          result.data.forEach((mark: Record<string, unknown>) => {
+          rows.forEach((mark) => {
             marks[mark.subject_id as string] = {
               marks_obtained: Number(mark.marks_obtained) || 0,
               absent: Boolean(mark.absent) || (String(mark.remarks) === 'Absent'),
             };
           });
-          return { student_id: studentId, marks };
+          return {
+            student_id: studentId,
+            marks,
+            localSubjT,
+            localBest,
+          };
         }
-        return { student_id: studentId, marks: {} };
+        return {
+          student_id: studentId,
+          marks: {},
+          localSubjT: {},
+          localBest: {},
+        };
       });
-      
-      const marksResults = await Promise.all(marksPromises);
-      setStudentMarks(marksResults);
-      
-      if (studentIds.length > 0) {
-        const checkResponse = await fetch(
-          `/api/examinations/marks/status?exam_id=${examId}&student_id=${studentIds[0]}`
-        );
-        const checkResult = await checkResponse.json();
-        if (checkResponse.ok && checkResult.data?.status === 'submitted') {
-          setLocked(true);
+
+      const fetched = await Promise.all(marksPromises);
+      const latestMsBySubject: Record<string, number> = {};
+      const bestEditor: Record<string, EditorAcc> = {};
+
+      for (const r of fetched) {
+        for (const [k, v] of Object.entries(r.localSubjT)) {
+          latestMsBySubject[k] = Math.max(latestMsBySubject[k] ?? 0, v);
+        }
+        for (const [subj, v] of Object.entries(r.localBest)) {
+          if (!bestEditor[subj] || v.t > bestEditor[subj].t) bestEditor[subj] = v;
         }
       }
+
+      const marksResults = fetched.map(({ student_id, marks }) => ({ student_id, marks }));
+      setStudentMarks(marksResults);
+      const bySub: Record<string, string> = {};
+      for (const [sid, ms] of Object.entries(latestMsBySubject)) {
+        if (ms > 0) bySub[sid] = new Date(ms).toISOString();
+      }
+      setMarksLastUpdatedBySubject(bySub);
+      const colMap: Record<string, { full_name: string; staff_id: string; at: string }> = {};
+      for (const [subj, v] of Object.entries(bestEditor)) {
+        colMap[subj] = { full_name: v.full_name, staff_id: v.staff_id, at: v.at };
+      }
+      setColumnLastEditor(colMap);
     } catch (error) {
       console.error('Error loading existing marks:', error);
     }
@@ -340,22 +580,31 @@ export default function MarksEntryPage() {
     });
   };
 
-  const handleSaveDraft = async () => {
+  const handleSaveMarks = async () => {
     if (!selectedExam || !selectedClass || !teacher) return;
-    
+    if (!selectedSubjectId) {
+      alert('Please select a subject first.');
+      return;
+    }
+    const subject = subjects.find((s) => s.subject_id === selectedSubjectId);
+    if (!subject) {
+      alert('Selected subject is not available for this class.');
+      return;
+    }
+
     try {
       setSaving(true);
-      
+
       const savePromises = studentMarks.map(async (studentMark) => {
-        const marksArray = subjects.map(subject => {
-          const mark = studentMark.marks[subject.subject_id];
-          return {
+        const mark = studentMark.marks[subject.subject_id];
+        const marksArray = [
+          {
             subject_id: subject.subject_id,
             max_marks: subject.max_marks,
             marks_obtained: mark?.absent ? null : (mark?.marks_obtained || 0),
             remarks: mark?.absent ? 'Absent' : null,
-          };
-        });
+          },
+        ];
         
         const response = await fetch('/api/examinations/marks', {
           method: 'POST',
@@ -367,104 +616,26 @@ export default function MarksEntryPage() {
             class_id: selectedClass,
             marks: marksArray,
             entered_by: teacher.id,
+            teacher_marks_scoped: true,
           }),
         });
         
         return response.ok;
       });
       
-      await Promise.all(savePromises);
-      alert('Marks saved as draft successfully!');
+      const outcomes = await Promise.all(savePromises);
+      const allOk = outcomes.every(Boolean);
+      if (allOk) {
+        await loadExistingMarks(selectedExam.id, students.map((s) => s.id));
+        alert('Marks saved successfully.');
+      } else {
+        alert('Some rows failed to save. Please try again.');
+      }
     } catch (error) {
       console.error('Error saving marks:', error);
       alert('Failed to save marks. Please try again.');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!selectedExam || !selectedClass || !teacher) return;
-    
-    const incomplete = studentMarks.some(sm => {
-      return subjects.some(subject => {
-        const mark = sm.marks[subject.subject_id];
-        return !mark || (mark.marks_obtained === 0 && !mark.absent && mark.marks_obtained !== null);
-      });
-    });
-    
-    if (incomplete) {
-      if (!confirm('Some students have incomplete marks. Do you want to submit anyway?')) {
-        return;
-      }
-    }
-    
-    try {
-      setSubmitting(true);
-      
-      const submitPromises = studentMarks.map(async (studentMark) => {
-        const marksArray = subjects.map(subject => {
-          const mark = studentMark.marks[subject.subject_id];
-          return {
-            subject_id: subject.subject_id,
-            max_marks: subject.max_marks,
-            marks_obtained: mark?.absent ? null : (mark?.marks_obtained || 0),
-            remarks: mark?.absent ? 'Absent' : null,
-          };
-        });
-        
-        const saveResponse = await fetch('/api/examinations/marks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            school_code: schoolCode,
-            exam_id: selectedExam.id,
-            student_id: studentMark.student_id,
-            class_id: selectedClass,
-            marks: marksArray,
-            entered_by: teacher.id,
-          }),
-        });
-        
-        if (saveResponse.ok) {
-          const submitResponse = await fetch('/api/examinations/marks/submit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              school_code: schoolCode,
-              exam_id: selectedExam.id,
-              student_id: studentMark.student_id,
-              class_id: selectedClass,
-            }),
-          });
-          if (!submitResponse.ok) {
-            const errBody = await submitResponse.json().catch(() => ({}));
-            console.error('Submit marks failed:', submitResponse.status, errBody);
-            return { ok: false, error: errBody.error || errBody.details || 'Submit failed' };
-          }
-          return { ok: true };
-        }
-        const errBody = await saveResponse.json().catch(() => ({}));
-        console.error('Save marks failed:', saveResponse.status, errBody);
-        return { ok: false, error: errBody.error || errBody.details || 'Save failed' };
-      });
-      
-      const results = await Promise.all(submitPromises) as Array<{ ok: boolean; error?: string }>;
-      const allOk = results.every(r => r?.ok === true);
-      const firstFail = results.find(r => r?.ok === false);
-
-      if (allOk) {
-        setLocked(true);
-        alert('Marks submitted successfully!');
-        await loadExistingMarks(selectedExam.id, students.map(s => s.id));
-      } else {
-        alert(firstFail?.error ? `Submission failed: ${firstFail.error}` : 'Some marks failed to submit. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error submitting marks:', error);
-      alert('Failed to submit marks. Please try again.');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -503,7 +674,11 @@ export default function MarksEntryPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Marks Entry</h1>
-              <p className="text-gray-600 dark:text-gray-400">Enter marks for your class students</p>
+              <p className="text-gray-600 dark:text-gray-400">
+                Choose examination, class/section, and one subject, then enter marks for that subject only.
+                Class teachers see all exam subjects for their section; subject teachers see timetable subjects only.
+                Co-teachers can both edit — last editor is shown for the subject you are editing.
+              </p>
             </div>
           </div>
 
@@ -526,7 +701,7 @@ export default function MarksEntryPage() {
                   if (exam) handleExamSelect(exam);
                 }}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                disabled={locked || loading}
+                disabled={loading}
               >
                 <option value="">-- Select Examination --</option>
                 {exams.map((exam) => (
@@ -537,24 +712,52 @@ export default function MarksEntryPage() {
               </select>
             </div>
 
-            {selectedExam && selectedExam.class_mappings && selectedExam.class_mappings.length > 0 && !selectedClass && (
+            {classPickMessage && (
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+                {classPickMessage}
+              </div>
+            )}
+
+            {selectedExam && classPickOptions.length > 1 && !selectedClass && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Select Class
+                  Select class &amp; access
                 </label>
                 <select
-                  value={selectedClass}
+                  value={selectedClassKey}
                   onChange={(e) => {
-                    if (selectedExam) handleClassSelect(selectedExam, e.target.value);
+                    const v = e.target.value;
+                    setSelectedClassKey(v);
+                    const parsed = parseClassPickValue(v);
+                    if (selectedExam && parsed) {
+                      void handleClassSelect(selectedExam, parsed.classId, parsed.mode);
+                    }
                   }}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 >
-                  <option value="">-- Select Class --</option>
-                  {selectedExam.class_mappings.map((cm) => (
-                    <option key={cm.class_id} value={cm.class_id}>
-                      {cm.class?.class} - {cm.class?.section}
-                    </option>
-                  ))}
+                  <option value="">-- Select class --</option>
+                  {classPickOptions.some((o) => o.group === 'class_teacher') && (
+                    <optgroup label="Class teacher (all subjects)">
+                      {classPickOptions
+                        .filter((o) => o.group === 'class_teacher')
+                        .map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                  {classPickOptions.some((o) => o.group === 'subject_teacher') && (
+                    <optgroup label="Subject teacher (timetable subjects only)">
+                      {classPickOptions
+                        .filter((o) => o.group === 'subject_teacher')
+                        .map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
             )}
@@ -566,6 +769,12 @@ export default function MarksEntryPage() {
                   <h3 className="font-semibold text-emerald-900 dark:text-emerald-300">{selectedExam.exam_name}</h3>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                  <div className="sm:col-span-2 lg:col-span-4">
+                    <span className="text-gray-600 dark:text-gray-400">Class &amp; section:</span>
+                    <span className="ml-2 font-semibold text-gray-900 dark:text-white">
+                      {selectedClassSectionLabel || '—'}
+                    </span>
+                  </div>
                   <div>
                     <span className="text-gray-600 dark:text-gray-400">Academic Year:</span>
                     <span className="ml-2 font-medium">{selectedExam.academic_year}</span>
@@ -592,15 +801,46 @@ export default function MarksEntryPage() {
                     <span className="text-gray-600 dark:text-gray-400">Students:</span>
                     <span className="ml-2 font-medium">{students.length}</span>
                   </div>
+                  {accessMode && (
+                    <div className="sm:col-span-2 lg:col-span-4">
+                      <span className="text-gray-600 dark:text-gray-400">Access:</span>
+                      <span className="ml-2 font-medium text-emerald-800 dark:text-emerald-200">
+                        {accessMode === 'class_teacher'
+                          ? 'Class teacher — all subjects for this section'
+                          : 'Subject teacher — your assigned subjects only'}
+                      </span>
+                    </div>
+                  )}
+                  {selectedSubjectId ? (
+                    <div className="sm:col-span-2 lg:col-span-4">
+                      <span className="text-gray-600 dark:text-gray-400">Max marks (this subject):</span>
+                      <span className="ml-2 font-medium">
+                        {subjects.find((s) => s.subject_id === selectedSubjectId)?.max_marks ?? '—'}
+                      </span>
+                    </div>
+                  ) : subjects.length > 0 ? (
+                    <div className="sm:col-span-2 lg:col-span-4 text-sm text-gray-600 dark:text-gray-400">
+                      Select a subject below to enter marks (one subject at a time).
+                    </div>
+                  ) : null}
+                  <div className="sm:col-span-2 lg:col-span-4 pt-1 border-t border-emerald-200/60 dark:border-emerald-800/50 mt-1">
+                    <span className="text-gray-600 dark:text-gray-400">Last saved (this subject):</span>
+                    <span className="ml-2 font-medium text-gray-900 dark:text-white">
+                      {selectedSubjectId && marksLastUpdatedBySubject[selectedSubjectId]
+                        ? new Date(marksLastUpdatedBySubject[selectedSubjectId]).toLocaleString(undefined, {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })
+                        : '—'}
+                    </span>
+                    <span className="block sm:inline sm:ml-2 text-xs text-gray-500 dark:text-gray-400 mt-1 sm:mt-0">
+                      You can edit and save marks any time.
+                    </span>
+                  </div>
                 </div>
                 {subjects.length === 0 && students.length > 0 && (
                   <p className="mt-2 text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded p-2">
                     No subjects configured for this exam and class. Ask admin to add subject mappings in Examination → Edit Exam.
-                  </p>
-                )}
-                {locked && (
-                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                    Marks have been submitted and are locked for editing.
                   </p>
                 )}
               </div>
@@ -608,119 +848,182 @@ export default function MarksEntryPage() {
           </div>
         </motion.div>
 
-        {selectedExam && selectedClass && students.length > 0 && (
+        {selectedExam && selectedClass && students.length > 0 && subjects.length > 1 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Card>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Select subject
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Marks are entered for one subject at a time. Switch subject here to edit another.
+              </p>
+              <select
+                value={selectedSubjectId}
+                onChange={(e) => setSelectedSubjectId(e.target.value)}
+                className="w-full max-w-md px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="">-- Select subject --</option>
+                {subjects.map((s) => (
+                  <option key={s.subject_id} value={s.subject_id}>
+                    {s.subject_name} (Max {s.max_marks})
+                  </option>
+                ))}
+              </select>
+            </Card>
+          </motion.div>
+        )}
+
+        {selectedExam && selectedClass && students.length > 0 && selectedSubjectId && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
             <Card>
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Students ({students.length})
-                </h2>
-                <Input
-                  type="text"
-                  placeholder="Search students..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-64"
-                />
-              </div>
+              {(() => {
+                const subject = subjects.find((s) => s.subject_id === selectedSubjectId);
+                if (!subject) {
+                  return (
+                    <p className="text-center text-amber-700 dark:text-amber-400 py-8 text-sm">
+                      This subject is no longer in the list. Reselect class or subject.
+                    </p>
+                  );
+                }
+                const lastEd = columnLastEditor[subject.subject_id];
+                const lastLine =
+                  lastEd && (lastEd.full_name || lastEd.staff_id)
+                    ? `Last edit: ${lastEd.full_name}${lastEd.staff_id ? ` (${lastEd.staff_id})` : ''}${
+                        lastEd.at
+                          ? ` · ${new Date(lastEd.at).toLocaleString(undefined, {
+                              dateStyle: 'short',
+                              timeStyle: 'short',
+                            })}`
+                          : ''
+                      }`
+                    : null;
+                return (
+                  <>
+                    <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          Students ({students.length}) — {subject.subject_name}
+                        </h2>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          Max marks: {subject.max_marks}
+                          {lastLine ? ` · ${lastLine}` : ''}
+                        </p>
+                      </div>
+                      <Input
+                        type="text"
+                        placeholder="Search students..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full sm:w-64"
+                      />
+                    </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Student ID</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Student Name</th>
-                      {subjects.map((subject) => (
-                        <th key={subject.subject_id} className="text-center py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">
-                          {subject.subject_name}
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            (Max: {subject.max_marks})
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStudents.map((student) => {
-                      const studentMark = studentMarks.find(sm => sm.student_id === student.id);
-                      return (
-                        <tr
-                          key={student.id}
-                          className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                        >
-                          <td className="py-3 px-4 text-gray-700 dark:text-gray-300">{student.admission_no}</td>
-                          <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">{student.student_name}</td>
-                          {subjects.map((subject) => {
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-gray-200 dark:border-gray-700">
+                            <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">
+                              Student ID
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">
+                              Student Name
+                            </th>
+                            <th className="text-center py-3 px-4 font-semibold text-gray-700 dark:text-gray-300 align-top">
+                              <div>{subject.subject_name}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-normal">
+                                (Max: {subject.max_marks})
+                              </div>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredStudents.map((student) => {
+                            const studentMark = studentMarks.find((sm) => sm.student_id === student.id);
                             const mark = studentMark?.marks[subject.subject_id];
                             const marksObtained = mark?.marks_obtained || 0;
                             const isAbsent = mark?.absent || false;
-                            const percentage = subject.max_marks > 0 ? (marksObtained / subject.max_marks) * 100 : 0;
-                            
+                            const percentage =
+                              subject.max_marks > 0 ? (marksObtained / subject.max_marks) * 100 : 0;
+
                             return (
-                              <td key={subject.subject_id} className="py-3 px-4 text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                  <Input
-                                    type="number"
-                                    value={isAbsent ? '' : marksObtained}
-                                    onChange={(e) => {
-                                      const val = parseInt(e.target.value) || 0;
-                                      if (val >= 0 && val <= subject.max_marks) {
-                                        handleMarkChange(student.id, subject.subject_id, val);
-                                      }
-                                    }}
-                                    min={0}
-                                    max={subject.max_marks}
-                                    disabled={locked}
-                                    placeholder={isAbsent ? 'Abs' : '0'}
-                                    className={`w-20 text-center ${percentage >= 40 ? 'border-green-500' : percentage > 0 ? 'border-yellow-500' : 'border-gray-300'}`}
-                                  />
-                                  <button
-                                    onClick={() => handleAbsentToggle(student.id, subject.subject_id)}
-                                    disabled={locked}
-                                    className={`px-2 py-1 text-xs rounded ${
-                                      isAbsent 
-                                        ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' 
-                                        : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200'
-                                    }`}
-                                  >
-                                    Abs
-                                  </button>
-                                </div>
-                              </td>
+                              <tr
+                                key={student.id}
+                                className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                              >
+                                <td className="py-3 px-4 text-gray-700 dark:text-gray-300">
+                                  {student.admission_no}
+                                </td>
+                                <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">
+                                  {student.student_name}
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <Input
+                                      type="number"
+                                      value={isAbsent ? '' : marksObtained}
+                                      onChange={(e) => {
+                                        const val = parseInt(e.target.value, 10) || 0;
+                                        if (val >= 0 && val <= subject.max_marks) {
+                                          handleMarkChange(student.id, subject.subject_id, val);
+                                        }
+                                      }}
+                                      min={0}
+                                      max={subject.max_marks}
+                                      placeholder={isAbsent ? 'Abs' : '0'}
+                                      className={`w-20 text-center ${
+                                        percentage >= 40
+                                          ? 'border-green-500'
+                                          : percentage > 0
+                                            ? 'border-yellow-500'
+                                            : 'border-gray-300'
+                                      }`}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAbsentToggle(student.id, subject.subject_id)}
+                                      className={`px-2 py-1 text-xs rounded ${
+                                        isAbsent
+                                          ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                                          : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200'
+                                      }`}
+                                    >
+                                      Abs
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
                             );
                           })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        </tbody>
+                      </table>
+                    </div>
 
-              {!locked && (
-                <div className="mt-6 flex items-center justify-end gap-3">
-                  <Button
-                    onClick={handleSaveDraft}
-                    disabled={saving || submitting}
-                    variant="outline"
-                    className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
-                  >
-                    <Save size={18} className="mr-2" />
-                    {saving ? 'Saving...' : 'Save Draft'}
-                  </Button>
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={saving || submitting}
-                    className="bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                  >
-                    <CheckCircle size={18} className="mr-2" />
-                    {submitting ? 'Submitting...' : 'Submit Marks'}
-                  </Button>
-                </div>
-              )}
+                    <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {marksLastUpdatedBySubject[selectedSubjectId]
+                          ? `Latest save for this subject: ${new Date(marksLastUpdatedBySubject[selectedSubjectId]).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.`
+                          : 'Enter marks and click Save to store them for this subject.'}
+                      </p>
+                      <Button
+                        onClick={handleSaveMarks}
+                        disabled={saving}
+                        className="bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 shrink-0"
+                      >
+                        <Save size={18} className="mr-2" />
+                        {saving ? 'Saving...' : 'Save marks'}
+                      </Button>
+                    </div>
+                  </>
+                );
+              })()}
             </Card>
           </motion.div>
         )}

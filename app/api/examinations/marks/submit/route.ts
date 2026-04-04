@@ -1,6 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
+import { isStaffClassTeacherForClass } from '@/lib/staff-class-teacher';
+
+function missingSchemaColumnMessage(err: { message?: string; code?: string }, column: string): boolean {
+  const m = String(err.message || '');
+  const col = column.replace(/'/g, '');
+  return (
+    err.code === 'PGRST204' ||
+    new RegExp(`Could not find the '${col}' column`, 'i').test(m) ||
+    new RegExp(`column "${col}" does not exist`, 'i').test(m)
+  );
+}
+
+type SubmitRowFilters = {
+  school_code: string;
+  exam_id: string;
+  student_id?: string;
+  class_id?: string;
+  subject_ids?: string[];
+};
+
+/**
+ * Persist submitted state when `status` / `updated_at` exist; otherwise no-op without noisy logs.
+ */
+async function runSubmittedUpdate(
+  supabase: SupabaseClient,
+  filters: SubmitRowFilters
+): Promise<{ data: unknown[] | null; error: { message?: string; code?: string } | null }> {
+  const ts = new Date().toISOString();
+  const run = async (patch: Record<string, unknown>) => {
+    let q = supabase
+      .from('student_subject_marks')
+      .update(patch)
+      .eq('school_code', filters.school_code)
+      .eq('exam_id', filters.exam_id);
+    if (filters.student_id) q = q.eq('student_id', filters.student_id);
+    if (filters.class_id) q = q.eq('class_id', filters.class_id);
+    if (filters.subject_ids?.length) q = q.in('subject_id', filters.subject_ids);
+    return q.select();
+  };
+
+  const { data, error } = await run({ status: 'submitted', updated_at: ts });
+  if (!error) return { data: data as unknown[] | null, error: null };
+
+  if (missingSchemaColumnMessage(error, 'status')) {
+    const r2 = await run({ updated_at: ts });
+    if (!r2.error) return { data: r2.data as unknown[] | null, error: null };
+    if (missingSchemaColumnMessage(r2.error, 'updated_at')) {
+      return { data: null, error: null };
+    }
+    return { data: null, error: r2.error };
+  }
+
+  if (missingSchemaColumnMessage(error, 'updated_at')) {
+    const r3 = await run({ status: 'submitted' });
+    if (!r3.error) return { data: r3.data as unknown[] | null, error: null };
+    return { data: null, error: r3.error };
+  }
+
+  return { data: data as unknown[] | null, error };
+}
 
 /**
  * Submit marks for review (change status from draft to submitted)
@@ -26,6 +87,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const supabase = getServiceRoleClient();
+
     // Get exam subject mappings – filter by class_id when provided so we only require marks for that class's subjects
     let examSubjectQuery = supabase
       .from('exam_subject_mappings')
@@ -35,7 +98,22 @@ export async function POST(request: NextRequest) {
     if (class_id) {
       examSubjectQuery = examSubjectQuery.eq('class_id', class_id);
     }
-    const { data: examSubjectMappings } = await examSubjectQuery;
+    let { data: examSubjectMappings } = await examSubjectQuery;
+
+    if (
+      (!examSubjectMappings || examSubjectMappings.length === 0) &&
+      class_id &&
+      Array.isArray(scoped_subject_ids) &&
+      scoped_subject_ids.length > 0
+    ) {
+      const { data: loose } = await supabase
+        .from('exam_subject_mappings')
+        .select('subject_id')
+        .eq('exam_id', exam_id)
+        .eq('school_code', school_code)
+        .in('subject_id', scoped_subject_ids as string[]);
+      examSubjectMappings = loose;
+    }
 
     if (!examSubjectMappings || examSubjectMappings.length === 0) {
       return NextResponse.json(
@@ -44,7 +122,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let subjectIds = examSubjectMappings.map((esm) => esm.subject_id);
+    let subjectIds = [...new Set(examSubjectMappings.map((esm) => esm.subject_id))];
 
     if (Array.isArray(scoped_subject_ids) && scoped_subject_ids.length > 0) {
       const allowed = new Set(examSubjectMappings.map((m) => m.subject_id));
@@ -58,10 +136,18 @@ export async function POST(request: NextRequest) {
       const teachingMap = await loadTeachingMap(supabase, school_code, String(entered_by));
       const gate = assertTeacherSubjectScope(teachingMap, String(class_id), subjectIds);
       if (!gate.ok) {
-        return NextResponse.json(
-          { error: 'Forbidden: scoped subjects must match your timetable.', forbidden_subjects: gate.forbidden },
-          { status: 403 }
+        const isClassTeacher = await isStaffClassTeacherForClass(
+          supabase,
+          school_code,
+          String(entered_by),
+          String(class_id)
         );
+        if (!isClassTeacher) {
+          return NextResponse.json(
+            { error: 'Forbidden: scoped subjects must match your timetable.', forbidden_subjects: gate.forbidden },
+            { status: 403 }
+          );
+        }
       }
     }
 
@@ -95,25 +181,19 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Update status to submitted (table may not have status/updated_at – treat update failure as non-fatal)
-      let submitQuery = supabase
-        .from('student_subject_marks')
-        .update({
-          status: 'submitted',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('school_code', school_code)
-        .eq('exam_id', exam_id)
-        .eq('student_id', student_id);
+      const subjectFilter =
+        subjectIds.length > 0 && Array.isArray(scoped_subject_ids) && scoped_subject_ids.length > 0
+          ? subjectIds
+          : undefined;
 
-      if (subjectIds.length > 0 && Array.isArray(scoped_subject_ids) && scoped_subject_ids.length > 0) {
-        submitQuery = submitQuery.in('subject_id', subjectIds);
-      }
-
-      const { data: updatedMarks, error: updateError } = await submitQuery.select();
+      const { data: updatedMarks, error: updateError } = await runSubmittedUpdate(supabase, {
+        school_code,
+        exam_id,
+        student_id,
+        subject_ids: subjectFilter,
+      });
 
       if (updateError) {
-        // If columns don't exist or RLS blocks update, marks are already saved – still return success
         console.warn('Submit marks status update failed (non-fatal):', updateError.message);
       }
 
@@ -194,22 +274,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update status to submitted for all students in class (non-fatal if status/updated_at missing)
-    let bulkSubmitQuery = supabase
-      .from('student_subject_marks')
-      .update({
-        status: 'submitted',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('school_code', school_code)
-      .eq('exam_id', exam_id)
-      .eq('class_id', class_id);
+    const bulkSubjectFilter =
+      subjectIds.length > 0 && Array.isArray(scoped_subject_ids) && scoped_subject_ids.length > 0
+        ? subjectIds
+        : undefined;
 
-    if (subjectIds.length > 0 && Array.isArray(scoped_subject_ids) && scoped_subject_ids.length > 0) {
-      bulkSubmitQuery = bulkSubmitQuery.in('subject_id', subjectIds);
-    }
-
-    const { data: updatedMarks, error: updateError } = await bulkSubmitQuery.select();
+    const { data: updatedMarks, error: updateError } = await runSubmittedUpdate(supabase, {
+      school_code,
+      exam_id,
+      class_id,
+      subject_ids: bulkSubjectFilter,
+    });
 
     if (updateError) {
       console.warn('Bulk submit marks status update failed (non-fatal):', updateError.message);

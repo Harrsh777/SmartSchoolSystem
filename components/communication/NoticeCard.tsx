@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Card from '@/components/ui/Card';
-import { Edit2, Archive, Calendar } from 'lucide-react';
+import { Edit2, Archive, Calendar, Paperclip } from 'lucide-react';
 import type { Notice } from '@/lib/supabase';
 
 interface NoticeCardProps {
@@ -93,6 +93,18 @@ export default function NoticeCard({ notice, onEdit, onArchive }: NoticeCardProp
             <h3 className="text-xl font-bold text-black mb-2">{notice.title}</h3>
           </div>
         </div>
+
+        {notice.attachment_url ? (
+          <a
+            href={String(notice.attachment_url)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900"
+          >
+            <Paperclip size={16} />
+            View attachment
+          </a>
+        ) : null}
 
         {/* Content */}
         <div className="text-gray-700 whitespace-pre-wrap">

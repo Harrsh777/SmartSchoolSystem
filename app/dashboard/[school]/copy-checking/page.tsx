@@ -22,6 +22,8 @@ import {
 interface Student {
   id: string;
   student_name: string;
+  first_name?: string | null;
+  last_name?: string | null;
   admission_no: string;
   roll_number?: string | null;
   class: string;
@@ -371,11 +373,21 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
       const result = await response.json();
 
       if (response.ok && result.data) {
-        setStudents(result.data);
-        
+        const rawList = result.data as Student[];
+        const sorted = [...rawList].sort((a, b) => {
+          const ra = String(a.roll_number ?? '').trim();
+          const rb = String(b.roll_number ?? '').trim();
+          const byRoll = ra.localeCompare(rb, undefined, { numeric: true });
+          if (byRoll !== 0) return byRoll;
+          const na = String(a.student_name ?? '').trim();
+          const nb = String(b.student_name ?? '').trim();
+          return na.localeCompare(nb);
+        });
+        setStudents(sorted);
+
         // Initialize student records
         const records: Record<string, { status: string; remarks: string }> = {};
-        result.data.forEach((student: Student) => {
+        sorted.forEach((student: Student) => {
           records[student.id] = {
             status: student.status,
             remarks: student.remarks || '',
@@ -444,7 +456,7 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
 
   const handleSave = async () => {
     if (!selectedClassId || !selectedSubjectId || !selectedDate || !selectedAcademicYear) {
-      setErrorMessage('Please select academic year, class, subject, and date');
+      setErrorMessage('Please select class, subject, and date (academic year is set automatically).');
       return;
     }
 
@@ -617,32 +629,23 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
       {/* Filters Card */}
       <Card className="p-6 bg-gradient-to-br from-white to-indigo-50/30 border-indigo-100">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          {/* Academic Year */}
+          {/* Academic Year — current year only (no manual selection) */}
           <div>
             <label className="block text-sm font-semibold text-[#0F172A] mb-2">
               <Calendar size={14} className="inline mr-1" />
-              Academic Year <span className="text-red-500">*</span>
+              Academic Year
             </label>
-            <select
-              value={selectedAcademicYear}
-              onChange={(e) => {
-                setSelectedAcademicYear(e.target.value);
-                setSelectedClassName('');
-                setSelectedClassId('');
-                setSelectedSection('');
-                setSubjects([]);
-                setSelectedSubjectId('');
-              }}
-              className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:border-transparent bg-white"
-            >
-              <option value="">Select Academic Year</option>
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.year_name}>
-                  {year.year_name}
-                  {year.is_current ? ' (current)' : ''}
-                </option>
-              ))}
-            </select>
+            <div className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl bg-slate-50 text-[#0F172A] font-medium">
+              {selectedAcademicYear
+                ? `${selectedAcademicYear}${
+                    academicYears.some((y) => y.year_name === selectedAcademicYear && y.is_current)
+                      ? ' (current)'
+                      : ''
+                  }`
+                : academicYearsError
+                  ? '—'
+                  : 'Loading...'}
+            </div>
             {academicYearsError ? (
               <p className="mt-1.5 text-xs text-amber-800">{academicYearsError}</p>
             ) : null}
@@ -925,7 +928,7 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
             <p className="text-lg font-semibold text-[#0F172A] mb-2">No students found</p>
             <p className="text-sm text-[#64748B]">
               {!selectedClassId || !selectedSubjectId || !selectedDate || !selectedAcademicYear
-                ? 'Please select academic year, class, subject, and date'
+                ? 'Please select class, subject, and date'
                 : 'No students match the selected criteria'}
             </p>
           </div>
@@ -967,9 +970,15 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-semibold text-sm">
-                            {student.student_name.charAt(0).toUpperCase()}
+                            {(student.student_name || '?').charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-sm font-medium text-[#0F172A]">{student.student_name}</span>
+                          <span className="text-sm font-medium text-[#0F172A]">
+                            {(() => {
+                              const s = student as Student & { first_name?: string; last_name?: string };
+                              const fromParts = `${String(s.first_name ?? '').trim()} ${String(s.last_name ?? '').trim()}`.trim();
+                              return String(s.student_name ?? '').trim() || fromParts || '—';
+                            })()}
+                          </span>
                         </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-[#64748B] font-mono">

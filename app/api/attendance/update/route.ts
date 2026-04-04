@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const { school_code, class_id, attendance_date, attendance_records, marked_by } = body;
+    const supabase = getServiceRoleClient();
+    const normalizedClassId = String(class_id ?? '').trim();
 
-    if (!school_code || !class_id || !attendance_date || !marked_by) {
+    if (!school_code || !normalizedClassId || !attendance_date || !marked_by) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -17,13 +19,18 @@ export async function PATCH(request: NextRequest) {
     const { data: classData, error: classError } = await supabase
       .from('classes')
       .select('class_teacher_id, class_teacher_staff_id')
-      .eq('id', class_id)
+      .eq('id', normalizedClassId)
       .eq('school_code', school_code)
-      .single();
+      .maybeSingle();
 
     if (classError || !classData) {
+      console.error('Attendance update: class lookup failed', {
+        classError,
+        normalizedClassId,
+        school_code,
+      });
       return NextResponse.json(
-        { error: 'Class not found' },
+        { error: 'Class not found', details: classError?.message },
         { status: 404 }
       );
     }
@@ -56,7 +63,7 @@ export async function PATCH(request: NextRequest) {
         .update({ status: record.status })
         .eq('student_id', record.student_id)
         .eq('attendance_date', attendance_date)
-        .eq('class_id', class_id);
+        .eq('class_id', normalizedClassId);
 
       if (updateError) {
         console.error(`Error updating attendance for student ${record.student_id}:`, updateError);

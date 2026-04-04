@@ -37,6 +37,7 @@ export async function GET(
           )
         ),
         subject_mappings:exam_subject_mappings (
+          class_id,
           subject_id,
           subject:subjects (
             id,

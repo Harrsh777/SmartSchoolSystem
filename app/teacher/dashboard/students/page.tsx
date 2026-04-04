@@ -8,6 +8,77 @@ import { GraduationCap, Search, Users, X, ChevronRight } from 'lucide-react';
 import type { Staff, Student } from '@/lib/supabase';
 import { getString } from '@/lib/type-utils';
 
+function displayStudentName(s: Student): string {
+  const direct = getString(s.student_name).trim();
+  if (direct) return direct;
+  const fn = getString(s.first_name);
+  const ln = getString(s.last_name);
+  const combined = `${fn} ${ln}`.trim();
+  return combined || '—';
+}
+
+function studentRollNo(s: Student): string {
+  const ext = s as Student & { roll_no?: string | null };
+  return getString(s.roll_number) || getString(ext.roll_no);
+}
+
+function studentDobRaw(s: Student): string {
+  const ext = s as Student & { date_of_birth?: string | null; dob?: string | null };
+  return getString(ext.date_of_birth) || getString(ext.dob);
+}
+
+function studentPhone(s: Student): string {
+  const ext = s as Student & { student_contact?: string | null };
+  return getString(ext.student_contact) || getString(s.phone);
+}
+
+function studentAadhaar(s: Student): string {
+  const ext = s as Student & { aadhaar_number?: string | null; aadhaar_no?: string | null };
+  return getString(ext.aadhaar_number) || getString(ext.aadhaar_no);
+}
+
+function studentAddressLines(s: Student): string {
+  const ext = s as Student & {
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+  };
+  const line1 = getString(ext.address);
+  const cityState = [getString(ext.city), getString(ext.state)].filter(Boolean).join(', ');
+  const pin = getString(ext.pincode);
+  const tail = [cityState, pin].filter(Boolean).join(' — ');
+  return [line1, tail].filter(Boolean).join('\n') || '';
+}
+
+function parentPhoneDisplay(s: Student): string {
+  const ext = s as Student & {
+    parent_phone?: string | null;
+    father_contact?: string | null;
+    mother_contact?: string | null;
+  };
+  return (
+    getString(ext.parent_phone) ||
+    getString(ext.father_contact) ||
+    getString(ext.mother_contact)
+  );
+}
+
+function DrawerDisplayName({ student }: { student: Student }) {
+  const dn = displayStudentName(student);
+  return <>{dn !== '—' ? dn : 'Student Details'}</>;
+}
+
+function DrawerNameAvatar({ student }: { student: Student }) {
+  const dn = displayStudentName(student);
+  const initial = dn !== '—' ? dn.charAt(0).toUpperCase() : '?';
+  return (
+    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl shrink-0">
+      {initial}
+    </div>
+  );
+}
+
 interface FeeItem {
   balance_due?: number;
   late_fee?: number;
@@ -62,7 +133,7 @@ export default function AllStudentsPage() {
 
   const filteredStudents = students.filter((student) => {
     const query = searchQuery.toLowerCase();
-    const studentName = getString(student.student_name).toLowerCase();
+    const studentName = displayStudentName(student).toLowerCase();
     const admissionNo = getString(student.admission_no).toLowerCase();
     const studentClass = getString(student.class).toLowerCase();
     const section = getString(student.section).toLowerCase();
@@ -217,11 +288,11 @@ export default function AllStudentsPage() {
                   {filteredStudents.map((student, index) => {
                     const studentId = getString(student.id) || `student-${index}`;
                     const admissionNo = getString(student.admission_no);
-                    const studentName = getString(student.student_name);
+                    const studentName = displayStudentName(student);
                     const studentClass = getString(student.class);
                     const section = getString(student.section);
                     const parentName = getString(student.parent_name);
-                    const initial = (studentName || '?').charAt(0).toUpperCase();
+                    const initial = (studentName !== '—' ? studentName : '?').charAt(0).toUpperCase();
                     return (
                       <motion.tr
                         key={studentId}
@@ -237,7 +308,7 @@ export default function AllStudentsPage() {
                               {initial}
                             </div>
                             <div>
-                              <p className="font-semibold text-[#0F172A]">{studentName || 'N/A'}</p>
+                              <p className="font-semibold text-[#0F172A]">{studentName}</p>
                               <p className="text-xs text-[#64748B] sm:hidden font-mono">{admissionNo || '—'}</p>
                             </div>
                           </div>
@@ -288,12 +359,10 @@ export default function AllStudentsPage() {
             >
               <div className="sticky top-0 z-10 p-6 pb-4 border-b border-[#E2E8F0] bg-white/95 backdrop-blur flex items-start justify-between gap-4">
                 <div className="flex items-center gap-4 min-w-0">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-[#3B82F6] flex items-center justify-center text-white font-bold text-xl shrink-0">
-                    {(getString(selectedStudent.student_name) || '?').charAt(0).toUpperCase()}
-                  </div>
+                  <DrawerNameAvatar student={selectedStudent} />
                   <div className="min-w-0">
                     <h2 className="text-xl font-bold text-[#0F172A] truncate">
-                      {getString(selectedStudent.student_name) || 'Student Details'}
+                      <DrawerDisplayName student={selectedStudent} />
                     </h2>
                     <p className="text-sm text-[#64748B] font-mono">
                       {getString(selectedStudent.admission_no) || 'N/A'}
@@ -327,13 +396,13 @@ export default function AllStudentsPage() {
                     <div>
                       <p className="text-gray-500">Academic Year</p>
                       <p className="font-medium text-gray-900">
-                        {getString((selectedStudent as Student & { academic_year?: string }).academic_year) || 'N/A'}
+                        {getString(selectedStudent.academic_year) || '—'}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-500">Roll No</p>
                       <p className="font-medium text-gray-900">
-                        {getString((selectedStudent as Student & { roll_no?: string }).roll_no) || 'N/A'}
+                        {studentRollNo(selectedStudent) || '—'}
                       </p>
                     </div>
                     <div>
@@ -352,28 +421,26 @@ export default function AllStudentsPage() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="text-gray-500">Full Name</p>
-                      <p className="font-medium text-gray-900">
-                        {getString(selectedStudent.student_name) || 'N/A'}
-                      </p>
+                      <p className="font-medium text-gray-900">{displayStudentName(selectedStudent)}</p>
                     </div>
                     <div>
                       <p className="text-gray-500">Gender</p>
                       <p className="font-medium text-gray-900">
-                        {getString((selectedStudent as Student & { gender?: string }).gender) || 'N/A'}
+                        {getString((selectedStudent as Student & { gender?: string }).gender) || '—'}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-500">Date of Birth</p>
                       <p className="font-medium text-gray-900">
-                        {getString((selectedStudent as Student & { dob?: string }).dob)
-                          ? new Date(getString((selectedStudent as Student & { dob?: string }).dob)).toLocaleDateString()
-                          : 'N/A'}
+                        {studentDobRaw(selectedStudent)
+                          ? new Date(studentDobRaw(selectedStudent)).toLocaleDateString()
+                          : '—'}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-500">Blood Group</p>
                       <p className="font-medium text-gray-900">
-                        {getString((selectedStudent as Student & { blood_group?: string }).blood_group) || 'N/A'}
+                        {getString((selectedStudent as Student & { blood_group?: string }).blood_group) || '—'}
                       </p>
                     </div>
                   </div>
@@ -388,20 +455,20 @@ export default function AllStudentsPage() {
                       <div>
                         <p className="text-gray-500">Phone</p>
                         <p className="font-medium text-gray-900">
-                          {getString((selectedStudent as Student & { phone?: string }).phone) || 'N/A'}
+                          {studentPhone(selectedStudent) || '—'}
                         </p>
                       </div>
                       <div>
                         <p className="text-gray-500">Email</p>
                         <p className="font-medium text-gray-900">
-                          {getString((selectedStudent as Student & { email?: string }).email) || 'N/A'}
+                          {getString(selectedStudent.email) || '—'}
                         </p>
                       </div>
                     </div>
                     <div>
                       <p className="text-gray-500">Address</p>
-                      <p className="font-medium text-gray-900">
-                        {getString((selectedStudent as Student & { address?: string }).address) || 'N/A'}
+                      <p className="font-medium text-gray-900 whitespace-pre-line">
+                        {studentAddressLines(selectedStudent) || '—'}
                       </p>
                     </div>
                   </div>
@@ -421,13 +488,13 @@ export default function AllStudentsPage() {
                     <div>
                       <p className="text-gray-500">Parent Phone</p>
                       <p className="font-medium text-gray-900">
-                          {getString((selectedStudent as Student & { parent_phone?: string }).parent_phone) || 'N/A'}
+                          {parentPhoneDisplay(selectedStudent) || '—'}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-500">Parent Email</p>
                       <p className="font-medium text-gray-900">
-                          {getString((selectedStudent as Student & { parent_email?: string }).parent_email) || 'N/A'}
+                          {getString((selectedStudent as Student & { parent_email?: string }).parent_email) || '—'}
                       </p>
                     </div>
                   </div>
@@ -440,11 +507,11 @@ export default function AllStudentsPage() {
                   <div className="space-y-1 text-sm text-gray-900">
                     <p>
                       <span className="text-gray-500">Category:&nbsp;</span>
-                      {getString((selectedStudent as Student & { category?: string }).category) || 'N/A'}
+                      {getString((selectedStudent as Student & { category?: string }).category) || '—'}
                     </p>
                     <p>
                       <span className="text-gray-500">Aadhaar:&nbsp;</span>
-                      {getString((selectedStudent as Student & { aadhaar_no?: string }).aadhaar_no) || 'N/A'}
+                      {studentAadhaar(selectedStudent) || '—'}
                     </p>
                   </div>
                 </section>

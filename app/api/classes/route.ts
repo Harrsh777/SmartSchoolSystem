@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const idFilter = searchParams.get('id')?.trim() || null;
+
     const classesWithCounts = await getCached(
       cacheKeys.schoolClasses(schoolCode),
       async () => {
@@ -100,7 +102,12 @@ export async function GET(request: NextRequest) {
       { ttlSeconds: DASHBOARD_REDIS_TTL.classes }
     );
 
-    return NextResponse.json({ data: classesWithCounts }, { status: 200 });
+    const data =
+      idFilter != null && idFilter !== ''
+        ? classesWithCounts.filter((c) => String((c as { id?: string }).id) === idFilter)
+        : classesWithCounts;
+
+    return NextResponse.json({ data }, { status: 200 });
   } catch (error) {
     console.error('Error fetching classes:', error);
     return NextResponse.json(

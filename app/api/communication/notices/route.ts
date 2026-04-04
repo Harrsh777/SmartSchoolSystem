@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     // Build query - select only required fields
     let query = supabase
       .from('notices')
-      .select('id,title,content,category,priority,status,publish_at,created_at,updated_at')
+      .select('id,title,content,category,priority,status,publish_at,created_at,updated_at,attachment_url')
       .eq('school_code', schoolCode)
       .order('created_at', { ascending: false });
 
@@ -124,11 +124,32 @@ export async function POST(request: NextRequest) {
       priority,
       status,
       publish_at,
+      attachment_url,
     } = body;
 
-    if (!school_code || !title || !content || !category || !priority) {
+    const contentStr = typeof content === 'string' ? content.trim() : '';
+    const attachmentStr =
+      typeof attachment_url === 'string' && attachment_url.trim().length > 0
+        ? attachment_url.trim()
+        : null;
+
+    if (!school_code || !title || !category || !priority) {
       return NextResponse.json(
-        { error: 'School code, title, content, category, and priority are required' },
+        { error: 'School code, title, category, and priority are required' },
+        { status: 400 }
+      );
+    }
+
+    if (!contentStr && !attachmentStr) {
+      return NextResponse.json(
+        { error: 'Either notice content or an attachment is required' },
+        { status: 400 }
+      );
+    }
+
+    if (contentStr.length < 10 && !attachmentStr) {
+      return NextResponse.json(
+        { error: 'Content must be at least 10 characters when no attachment is provided' },
         { status: 400 }
       );
     }
@@ -161,11 +182,12 @@ export async function POST(request: NextRequest) {
           school_id: schoolData.id,
           school_code: school_code,
           title: title,
-          content: content,
+          content: contentStr || '(See attached document)',
           category: category,
           priority: priority,
           status: status || 'Draft',
           publish_at: publishDate || null,
+          ...(attachmentStr ? { attachment_url: attachmentStr } : {}),
         },
       ])
       .select()

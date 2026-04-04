@@ -3,15 +3,16 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import { Bell } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import CreateNoticeModal from '@/components/communication/CreateNoticeModal';
+import { Bell, Plus, Paperclip } from 'lucide-react';
 import type { Staff, Notice } from '@/lib/supabase';
 
 export default function CommunicationPage() {
-  // teacher kept for potential future use
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [teacher, setTeacher] = useState<Staff | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     const storedTeacher = sessionStorage.getItem('teacher');
@@ -79,14 +80,22 @@ export default function CommunicationPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-yellow-100 rounded-lg">
-            <Bell className="text-yellow-600" size={24} />
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-yellow-100 rounded-lg">
+              <Bell className="text-yellow-600" size={24} />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Communication</h1>
+              <p className="text-gray-600">Notices and announcements from your school</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Communication</h1>
-            <p className="text-gray-600">Notices and announcements from your school</p>
-          </div>
+          {teacher?.school_code ? (
+            <Button onClick={() => setShowCreateModal(true)} className="shrink-0 w-full sm:w-auto">
+              <Plus size={18} className="mr-2" />
+              New notice / upload
+            </Button>
+          ) : null}
         </div>
       </motion.div>
 
@@ -95,6 +104,12 @@ export default function CommunicationPage() {
           <div className="text-center py-12">
             <Bell className="mx-auto text-gray-400 mb-4" size={48} />
             <p className="text-gray-600">No notices available</p>
+            {teacher?.school_code ? (
+              <Button className="mt-4" onClick={() => setShowCreateModal(true)}>
+                <Plus size={18} className="mr-2" />
+                Post a notice
+              </Button>
+            ) : null}
           </div>
         </Card>
       ) : (
@@ -114,6 +129,17 @@ export default function CommunicationPage() {
                   )}
                 </div>
               </div>
+              {notice.attachment_url ? (
+                <a
+                  href={String(notice.attachment_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900 mb-3"
+                >
+                  <Paperclip size={16} />
+                  View attachment
+                </a>
+              ) : null}
               <p className="text-gray-700 whitespace-pre-wrap mb-3">{notice.content}</p>
               <p className="text-xs text-gray-500">
                 Posted on {new Date(notice.created_at || '').toLocaleDateString('en-US', {
@@ -125,6 +151,17 @@ export default function CommunicationPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {showCreateModal && teacher?.school_code && (
+        <CreateNoticeModal
+          schoolCode={teacher.school_code}
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={() => {
+            setShowCreateModal(false);
+            if (teacher) fetchNotices(teacher);
+          }}
+        />
       )}
     </div>
   );

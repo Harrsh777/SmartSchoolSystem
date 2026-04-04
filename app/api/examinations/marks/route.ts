@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { normalizeMarksEntryCode } from '@/lib/marks-entry-codes';
 import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
+import { isStaffClassTeacherForClass } from '@/lib/staff-class-teacher';
 
 // Get marks for a student in an exam
 export async function GET(request: NextRequest) {
@@ -97,27 +98,18 @@ export async function POST(request: NextRequest) {
       const subjectIds = marks.map((x: { subject_id?: string }) => String(x.subject_id || '')).filter(Boolean);
       const gate = assertTeacherSubjectScope(teachingMap, String(class_id), subjectIds);
       if (!gate.ok) {
-        return NextResponse.json(
-          {
-            error: 'You can only enter marks for subjects you teach on the timetable for this class.',
-            forbidden_subjects: gate.forbidden,
-          },
-          { status: 403 }
+        const isClassTeacher = await isStaffClassTeacherForClass(
+          supabase,
+          school_code,
+          String(entered_by),
+          String(class_id)
         );
-      }
-
-      const { data: lockedRows } = await supabase
-        .from('student_subject_marks')
-        .select('subject_id')
-        .eq('exam_id', exam_id)
-        .eq('student_id', student_id)
-        .eq('status', 'submitted');
-
-      const locked = new Set((lockedRows || []).map((r: { subject_id: string }) => r.subject_id));
-      for (const m of marks as Array<{ subject_id?: string }>) {
-        if (locked.has(String(m.subject_id))) {
+        if (!isClassTeacher) {
           return NextResponse.json(
-            { error: 'These marks are submitted and locked.', subject_id: m.subject_id },
+            {
+              error: 'You can only enter marks for subjects you teach on the timetable for this class.',
+              forbidden_subjects: gate.forbidden,
+            },
             { status: 403 }
           );
         }

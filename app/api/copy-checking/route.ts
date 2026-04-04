@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
 
     let studentsQuery = supabase
       .from('students')
-      .select('id, student_name, admission_no, roll_number, class, section')
+      .select('id, student_name, first_name, last_name, admission_no, roll_number, class, section')
       .eq('school_code', schoolCode)
       .ilike('class', classLabel);
 
@@ -122,6 +122,8 @@ export async function GET(request: NextRequest) {
     interface Student {
       id: string;
       student_name: string;
+      first_name?: string | null;
+      last_name?: string | null;
       admission_no: string;
       roll_number: string;
       class: string;

@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import {
   fetchTeachingByClass,
-  staffTeachesSubject,
   teachingMapToRecord,
 } from '@/lib/teacher-timetable-teaching';
+import {
+  dedupeExamSubjectMappings,
+  filterSubjectMappingsForStaff,
+} from '@/lib/exam-subject-mappings';
 
 /**
  * GET /api/examinations/v2/teacher
@@ -17,7 +20,8 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
-    const teacherId = searchParams.get('teacher_id')?.trim() || '';
+    let teacherId = searchParams.get('teacher_id')?.trim() || '';
+    const staffIdParam = searchParams.get('staff_id')?.trim() || '';
 
     if (!schoolCode) {
       return NextResponse.json(
@@ -72,7 +76,8 @@ export async function GET(request: NextRequest) {
     });
 
     let subject_ids_by_class: Record<string, string[]> = {};
-    let teacher_scope: 'all' | 'timetable' | 'timetable_empty' = 'all';
+    let teacher_scope: 'all' | 'timetable' | 'class_teacher' | 'timetable_empty' = 'all';
+    let class_teacher_class_ids: string[] = [];
     let teaching_assignments: Array<{
       class_id: string;
       class_name: string;
@@ -80,43 +85,117 @@ export async function GET(request: NextRequest) {
       subject_ids: string[];
     }> = [];
 
+    if (!teacherId && staffIdParam) {
+      const { data: byEmp } = await supabase
+        .from('staff')
+        .select('id')
+        .eq('school_code', schoolCode)
+        .eq('staff_id', staffIdParam)
+        .maybeSingle();
+      if (byEmp?.id) teacherId = String(byEmp.id);
+    }
+
     if (teacherId) {
       const teaching = await fetchTeachingByClass(supabase, schoolCode, teacherId);
       subject_ids_by_class = { ...teachingMapToRecord(teaching) };
-      teacher_scope = teaching.size > 0 ? 'timetable' : 'timetable_empty';
 
-      const classIdList = Array.from(teaching.keys());
-      if (classIdList.length > 0) {
-        const { data: classRows } = await supabase
-          .from('classes')
-          .select('id, class, section')
-          .eq('school_code', schoolCode)
-          .in('id', classIdList);
-        const byId = new Map((classRows || []).map((c) => [c.id, c]));
-        teaching_assignments = classIdList.map((cid) => {
-          const row = byId.get(cid);
-          return {
-            class_id: cid,
-            class_name: row?.class ?? '',
-            section: row?.section ?? '',
-            subject_ids: Array.from(teaching.get(cid) || []),
-          };
-        });
-      }
+      const { data: staffRow } = await supabase
+        .from('staff')
+        .select('staff_id')
+        .eq('id', teacherId)
+        .eq('school_code', schoolCode)
+        .maybeSingle();
+      const empId = staffRow?.staff_id != null ? String(staffRow.staff_id).trim() : '';
+      const ctOrParts: string[] = [`class_teacher_id.eq.${teacherId}`];
+      if (empId) ctOrParts.push(`class_teacher_staff_id.eq.${empId}`);
+      const { data: ctClasses } = await supabase
+        .from('classes')
+        .select('id, class, section')
+        .eq('school_code', schoolCode)
+        .or(ctOrParts.join(','));
+      const classTeacherClassIds = new Set((ctClasses || []).map((c) => c.id));
+      class_teacher_class_ids = Array.from(classTeacherClassIds);
 
-      filteredExams = filteredExams
-        .map((exam: Record<string, unknown>) => {
-          const mappings = ((exam.subject_mappings as Array<Record<string, unknown>>) || []).filter((m) => {
-            const cid = String(m.class_id ?? '');
-            const sid = String(m.subject_id ?? '');
-            return staffTeachesSubject(teaching, cid, sid);
+      if (teaching.size > 0) {
+        teacher_scope = 'timetable';
+        const classIdList = Array.from(teaching.keys());
+        if (classIdList.length > 0) {
+          const { data: classRows } = await supabase
+            .from('classes')
+            .select('id, class, section')
+            .eq('school_code', schoolCode)
+            .in('id', classIdList);
+          const byId = new Map((classRows || []).map((c) => [c.id, c]));
+          teaching_assignments = classIdList.map((cid) => {
+            const row = byId.get(cid);
+            return {
+              class_id: cid,
+              class_name: row?.class ?? '',
+              section: row?.section ?? '',
+              subject_ids: Array.from(teaching.get(cid) || []),
+            };
           });
-          return { ...exam, subject_mappings: mappings };
-        })
-        .filter((exam: Record<string, unknown>) => {
-          const mappings = (exam.subject_mappings as Array<Record<string, unknown>>) || [];
-          return mappings.length > 0;
-        });
+        }
+
+        filteredExams = filteredExams
+          .map((exam: Record<string, unknown>) => {
+            const examClassIds = (
+              (exam.class_mappings as Array<{ class_id?: string }> | undefined) || []
+            ).map((cm) => String(cm.class_id ?? '')).filter(Boolean);
+            const raw = (exam.subject_mappings as Array<Record<string, unknown>>) || [];
+            const deduped = dedupeExamSubjectMappings(raw);
+            const mappings = filterSubjectMappingsForStaff(
+              deduped,
+              teaching,
+              examClassIds,
+              classTeacherClassIds
+            );
+            return { ...exam, subject_mappings: mappings };
+          })
+          .filter((exam: Record<string, unknown>) => {
+            const mappings = (exam.subject_mappings as Array<Record<string, unknown>>) || [];
+            return mappings.length > 0;
+          });
+      } else if (classTeacherClassIds.size > 0) {
+        teacher_scope = 'class_teacher';
+        teaching_assignments = (ctClasses || []).map((row) => ({
+          class_id: row.id,
+          class_name: row.class ?? '',
+          section: row.section ?? '',
+          subject_ids: [] as string[],
+        }));
+
+        filteredExams = filteredExams
+          .map((exam: Record<string, unknown>) => {
+            const examClassIds = (
+              (exam.class_mappings as Array<{ class_id?: string }> | undefined) || []
+            ).map((cm) => String(cm.class_id ?? '')).filter(Boolean);
+            const touchesCt = examClassIds.some((id) => classTeacherClassIds.has(id));
+            if (!touchesCt) return { ...exam, subject_mappings: [] as Record<string, unknown>[] };
+            const raw = (exam.subject_mappings as Array<Record<string, unknown>>) || [];
+            const deduped = dedupeExamSubjectMappings(raw);
+            const mappings = deduped.filter((m) => {
+              const cid = m.class_id;
+              if (cid != null && String(cid).trim() !== '') {
+                return classTeacherClassIds.has(String(cid));
+              }
+              return examClassIds.some((eid) => classTeacherClassIds.has(eid));
+            });
+            return { ...exam, subject_mappings: mappings };
+          })
+          .filter((exam: Record<string, unknown>) => {
+            const mappings = (exam.subject_mappings as Array<Record<string, unknown>>) || [];
+            return mappings.length > 0;
+          });
+      } else {
+        teacher_scope = 'timetable_empty';
+        filteredExams = [];
+      }
+    } else {
+      filteredExams = filteredExams.map((exam: Record<string, unknown>) => {
+        const raw = (exam.subject_mappings as Array<Record<string, unknown>>) || [];
+        return { ...exam, subject_mappings: dedupeExamSubjectMappings(raw) };
+      });
     }
 
     // Collect all subject IDs from subject_mappings to fetch teacher names
@@ -173,6 +252,7 @@ export async function GET(request: NextRequest) {
         teacher_scope,
         subject_ids_by_class,
         teaching_assignments,
+        class_teacher_class_ids,
       },
       { status: 200 }
     );

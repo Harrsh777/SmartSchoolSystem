@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -29,6 +29,8 @@ export default function CreateNoticeModal({
     scheduleForLater: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -48,12 +50,12 @@ export default function CreateNoticeModal({
       newErrors.title = 'Title is required';
     }
 
-    if (!formData.content.trim()) {
-      newErrors.content = 'Content is required';
+    const trimmed = formData.content.trim();
+    if (!attachmentFile && trimmed.length < 10) {
+      newErrors.content = 'Content must be at least 10 characters (or attach a PDF/image)';
     }
-
-    if (formData.content.length < 10) {
-      newErrors.content = 'Content must be at least 10 characters';
+    if (attachmentFile && trimmed.length < 5) {
+      newErrors.content = 'Add at least 5 characters describing the notice or attachment.';
     }
 
     if (formData.scheduleForLater && !formData.publish_at) {
@@ -64,11 +66,32 @@ export default function CreateNoticeModal({
     return Object.keys(newErrors).length === 0;
   };
 
+  const uploadAttachmentIfNeeded = async (): Promise<string | null> => {
+    if (!attachmentFile) return null;
+    const fd = new FormData();
+    fd.append('file', attachmentFile);
+    fd.append('school_code', schoolCode);
+    const res = await fetch('/api/communication/notices/attachment', {
+      method: 'POST',
+      body: fd,
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(typeof json.error === 'string' ? json.error : 'Upload failed');
+    }
+    return typeof json.url === 'string' ? json.url : null;
+  };
+
   const handleSaveDraft = async () => {
     if (!validate()) return;
 
     setSaving(true);
     try {
+      let attachment_url: string | null = null;
+      if (attachmentFile) {
+        attachment_url = await uploadAttachmentIfNeeded();
+      }
+
       const response = await fetch('/api/communication/notices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,6 +103,7 @@ export default function CreateNoticeModal({
           priority: formData.priority,
           status: 'Draft',
           publish_at: null,
+          attachment_url,
         }),
       });
 
@@ -92,7 +116,7 @@ export default function CreateNoticeModal({
       }
     } catch (error) {
       console.error('Error saving notice:', error);
-      alert('Failed to save notice. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to save notice. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -103,6 +127,11 @@ export default function CreateNoticeModal({
 
     setSaving(true);
     try {
+      let attachment_url: string | null = null;
+      if (attachmentFile) {
+        attachment_url = await uploadAttachmentIfNeeded();
+      }
+
       const publishDate = formData.scheduleForLater && formData.publish_at
         ? new Date(formData.publish_at).toISOString()
         : new Date().toISOString();
@@ -118,6 +147,7 @@ export default function CreateNoticeModal({
           priority: formData.priority,
           status: 'Active',
           publish_at: publishDate,
+          attachment_url,
         }),
       });
 
@@ -132,7 +162,7 @@ export default function CreateNoticeModal({
       }
     } catch (error) {
       console.error('Error publishing notice:', error);
-      alert('Failed to publish notice. Please try again.');
+      alert(error instanceof Error ? error.message : 'Failed to publish notice. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -237,6 +267,57 @@ export default function CreateNoticeModal({
                   <p className="text-sm text-gray-500 ml-auto">
                     {formData.content.length} characters
                   </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Attachment (optional)
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,image/jpeg,image/png,image/jpg,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setAttachmentFile(f);
+                    if (errors.content) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.content;
+                        return next;
+                      });
+                    }
+                  }}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Choose file
+                  </Button>
+                  {attachmentFile ? (
+                    <span className="text-sm text-gray-700 truncate max-w-[220px]">
+                      {attachmentFile.name}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-gray-500">PDF or image, max 10MB</span>
+                  )}
+                  {attachmentFile ? (
+                    <button
+                      type="button"
+                      className="text-sm text-red-600 hover:underline"
+                      onClick={() => {
+                        setAttachmentFile(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>

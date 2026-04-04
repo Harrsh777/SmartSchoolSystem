@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
+import {
+  isMissingStudentAttendanceAcademicYearIdColumn,
+  stripAcademicYearIdFromAttendanceRows,
+} from '@/lib/student-attendance-compat';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { school_code, class_id, attendance_date, attendance_records, marked_by, academic_year, academic_year_id } = body;
+    const supabase = getServiceRoleClient();
+    const normalizedClassId = String(class_id ?? '').trim();
 
-    if (!school_code || !class_id || !attendance_date || !marked_by) {
+    if (!school_code || !normalizedClassId || !attendance_date || !marked_by) {
       return NextResponse.json(
         { error: 'Missing required fields: school_code, class_id, attendance_date, marked_by' },
         { status: 400 }
@@ -36,37 +42,58 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify the teacher is the class teacher for this class
+    // Verify the teacher is the class teacher for this class.
+    // Use academic_year (text) — not academic_year_id — so the query works on schemas without classes.academic_year_id.
     const { data: classData, error: classError } = await supabase
       .from('classes')
-      .select('class_teacher_id, class_teacher_staff_id, academic_year_id')
-      .eq('id', class_id)
+      .select('class_teacher_id, class_teacher_staff_id, academic_year')
+      .eq('id', normalizedClassId)
       .eq('school_code', school_code)
-      .single();
+      .maybeSingle();
 
     if (classError || !classData) {
+      console.error('Attendance mark: class lookup failed', {
+        classError,
+        normalizedClassId,
+        school_code,
+      });
       return NextResponse.json(
-        { error: 'Class not found' },
+        { error: 'Class not found', details: classError?.message },
         { status: 404 }
       );
     }
 
-    const resolvedAcademicYearId =
-      academic_year_id || academic_year
-        ? (await resolveAcademicYear({
+    let resolvedAcademicYearId: string | null = null;
+    try {
+      if (academic_year_id || academic_year) {
+        resolvedAcademicYearId = (
+          await resolveAcademicYear({
             schoolCode: school_code,
             academic_year,
             academic_year_id,
-          })).yearId
-        : (classData as { academic_year_id?: string | null })?.academic_year_id ?? null;
+          })
+        ).yearId;
+      } else if (classData.academic_year) {
+        resolvedAcademicYearId = (
+          await resolveAcademicYear({
+            schoolCode: school_code,
+            academic_year: String(classData.academic_year),
+          })
+        ).yearId;
+      }
+    } catch (e) {
+      console.warn('Attendance mark: academic year not resolved', e);
+    }
 
     const adminOverride = request.headers.get('x-admin-override') === 'true';
-    const lockCheck = await assertAcademicYearNotLocked({
-      schoolCode: school_code,
-      academic_year_id: resolvedAcademicYearId,
-      adminOverride,
-    });
-    if (lockCheck) return lockCheck;
+    if (resolvedAcademicYearId) {
+      const lockCheck = await assertAcademicYearNotLocked({
+        schoolCode: school_code,
+        academic_year_id: resolvedAcademicYearId,
+        adminOverride,
+      });
+      if (lockCheck) return lockCheck;
+    }
 
     // Get teacher's staff_id to verify
     const { data: teacherData, error: teacherError } = await supabase
@@ -116,7 +143,7 @@ export async function POST(request: NextRequest) {
     const { data: existingAttendance } = await supabase
       .from('student_attendance')
       .select('student_id')
-      .eq('class_id', class_id)
+      .eq('class_id', normalizedClassId)
       .eq('attendance_date', attendance_date)
       .in('student_id', studentIds);
 
@@ -146,7 +173,7 @@ export async function POST(request: NextRequest) {
       } = {
         school_id: schoolData.id,
         school_code: school_code,
-        class_id: class_id,
+        class_id: normalizedClassId,
         student_id: record.student_id,
         attendance_date: attendance_date,
         status,
@@ -157,21 +184,41 @@ export async function POST(request: NextRequest) {
       return baseRecord;
     });
 
-    // Insert attendance records
-    const { data: insertedRecords, error: insertError } = await supabase
-      .from('student_attendance')
-      .insert(recordsToInsert)
-      .select();
+    // Insert attendance records (retry without academic_year_id if column does not exist)
+    let insertedRecords: unknown[] | null = null;
+    let insertError: { message?: string; code?: string; hint?: string } | null = null;
 
-    if (insertError) {
-      console.error('Error inserting attendance:', insertError);
+    const tryInsert = async (rows: Record<string, unknown>[]) => {
+      return supabase.from('student_attendance').insert(rows).select();
+    };
+
+    const first = await tryInsert(recordsToInsert as Record<string, unknown>[]);
+    if (!first.error) {
+      insertedRecords = first.data as unknown[];
+    } else if (isMissingStudentAttendanceAcademicYearIdColumn(first.error)) {
+      const stripped = stripAcademicYearIdFromAttendanceRows(
+        recordsToInsert as Record<string, unknown>[]
+      );
+      const second = await tryInsert(stripped);
+      if (!second.error) {
+        insertedRecords = second.data as unknown[];
+      } else {
+        insertError = second.error;
+      }
+    } else {
+      insertError = first.error;
+    }
+
+    if (insertError || insertedRecords == null) {
+      const err = insertError || { message: 'Insert failed' };
+      console.error('Error inserting attendance:', err);
       console.error('Insert data:', JSON.stringify(recordsToInsert, null, 2));
       return NextResponse.json(
-        { 
-          error: 'Failed to mark attendance', 
-          details: insertError.message,
-          code: insertError.code,
-          hint: insertError.hint
+        {
+          error: 'Failed to mark attendance',
+          details: err.message,
+          code: err.code,
+          hint: err.hint,
         },
         { status: 500 }
       );

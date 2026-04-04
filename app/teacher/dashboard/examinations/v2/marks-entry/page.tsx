@@ -126,20 +126,16 @@ export default function MarksEntryPage() {
         setTeacherScope(result.teacher_scope || 'all');
         setSubjectIdsByClass(result.subject_ids_by_class || {});
         setTeachingAssignments(result.teaching_assignments || []);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const activeExams = (result.data as Exam[]).filter((exam: Exam) => {
-          if (!exam.start_date) return false;
-          const startDate = new Date(exam.start_date);
-          startDate.setHours(0, 0, 0, 0);
-          const endDate = new Date(exam.end_date);
-          endDate.setHours(0, 0, 0, 0);
+        const markableExams = (result.data as Exam[]).filter((exam: Exam) => {
+          const s = String(exam.status || '').toLowerCase();
           return (
-            (exam.status === 'upcoming' || exam.status === 'ongoing' || exam.status === 'active') &&
-            ((today >= startDate && today <= endDate) || today < startDate)
+            s === 'upcoming' ||
+            s === 'ongoing' ||
+            s === 'active' ||
+            s === 'completed'
           );
         });
-        setExams(activeExams);
+        setExams(markableExams);
       }
     } catch (error) {
       console.error('Error fetching exams:', error);

@@ -111,12 +111,22 @@ export default function TeacherAttendancePage() {
       }
       
       const studentsResponse = await fetch(
-        `/api/students?school_code=${schoolCode}&class=${className}&section=${section}`
+        `/api/students?school_code=${schoolCode}&class=${className}&section=${section}&status=active`
       );
       const studentsResult = await studentsResponse.json();
       
       if (studentsResponse.ok && studentsResult.data) {
-        setStudents(studentsResult.data || []);
+        const raw = (studentsResult.data || []) as Student[];
+        const sorted = [...raw].sort((a, b) => {
+          const ra = String(a.roll_number ?? '').trim();
+          const rb = String(b.roll_number ?? '').trim();
+          const byRoll = ra.localeCompare(rb, undefined, { numeric: true });
+          if (byRoll !== 0) return byRoll;
+          const na = getString(a.student_name) || `${getString(a.first_name)} ${getString(a.last_name)}`.trim();
+          const nb = getString(b.student_name) || `${getString(b.first_name)} ${getString(b.last_name)}`.trim();
+          return na.localeCompare(nb);
+        });
+        setStudents(sorted);
         // Reset attendance when class changes
         setAttendance({});
         setIsMarked(false);
@@ -333,6 +343,7 @@ export default function TeacherAttendancePage() {
           attendance_date: selectedDate,
           attendance_records: attendanceRecords,
           marked_by: teacherId,
+          academic_year: getString(selectedClass.academic_year),
         }),
       });
 
@@ -557,6 +568,7 @@ export default function TeacherAttendancePage() {
             <table className="w-full">
               <thead className="bg-muted/50">
                 <tr className="border-b border-input">
+                  <th className="text-left py-4 px-4 font-semibold text-foreground">Roll No.</th>
                   <th className="text-left py-4 px-4 font-semibold text-foreground">Student</th>
                   <th className="text-left py-4 px-4 font-semibold text-foreground">Admission No</th>
                   <th className="text-center py-4 px-4 font-semibold text-foreground">Present</th>
@@ -572,8 +584,14 @@ export default function TeacherAttendancePage() {
                   const currentStatus = attendance[studentId] || 'present';
                   const studentName = getString(student.student_name) || getString(student.first_name) + ' ' + getString(student.last_name) || 'N/A';
                   const admissionNo = getString(student.admission_no) || 'N/A';
+                  const rollNo =
+                    getString(student.roll_number) ||
+                    getString((student as Student & { roll_no?: string | null }).roll_no);
                   return (
                     <tr key={studentId} className="hover:bg-muted/30 transition-colors">
+                      <td className="py-4 px-4 text-muted-foreground tabular-nums">
+                        {rollNo || '—'}
+                      </td>
                       <td className="py-4 px-4 font-medium text-foreground">{studentName.trim() || 'N/A'}</td>
                       <td className="py-4 px-4 text-muted-foreground">{admissionNo}</td>
                       <td className="py-4 px-4 text-center">
