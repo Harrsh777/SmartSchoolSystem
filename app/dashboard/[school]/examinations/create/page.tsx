@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, ArrowRight, Check, Calendar, BookOpen, FileText, Save, Clock } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Calendar, BookOpen, FileText, Save, Clock, Users } from 'lucide-react';
 
 type ScheduleTimeStep = 15 | 30 | 45;
 
@@ -117,7 +117,7 @@ interface TermOption {
   section: string;
   academic_year?: string;
   serial?: number;
-  exams?: Array<{ id?: string; exam_name: string; serial?: number }>;
+  exams?: Array<{ id: string; exam_name: string; serial?: number }>;
 }
 interface TermStructureOption {
   id: string;
@@ -186,7 +186,8 @@ export default function CreateExaminationPage({
   const [selectedTermId, setSelectedTermId] = useState('');
   const [structures, setStructures] = useState<TermStructureOption[]>([]);
   const [selectedStructureId, setSelectedStructureId] = useState('');
-  const [selectedTemplateExam, setSelectedTemplateExam] = useState('');
+  const [selectedTemplateExamId, setSelectedTemplateExamId] = useState('');
+  const [existingSectionIdList, setExistingSectionIdList] = useState<string[]>([]);
   const [structureMappings, setStructureMappings] = useState<StructureMapping[]>([]);
 
   // Step 1: Exam Metadata
@@ -213,6 +214,21 @@ export default function CreateExaminationPage({
   const [bulkScheduleStart, setBulkScheduleStart] = useState('');
   const [bulkScheduleEnd, setBulkScheduleEnd] = useState('');
   const uniqueTerms = useMemo(() => dedupeTerms(terms), [terms]);
+
+  const mappedSectionIdSet = useMemo(
+    () => new Set(structureMappings.map((m) => String(m.class_id))),
+    [structureMappings]
+  );
+
+  const structureClasses = useMemo(
+    () => classes.filter((c) => mappedSectionIdSet.has(String(c.id))),
+    [classes, mappedSectionIdSet]
+  );
+
+  const existingSectionIdSet = useMemo(
+    () => new Set(existingSectionIdList.map(String)),
+    [existingSectionIdList]
+  );
 
   const scheduleTimeOptions = useMemo(
     () => buildTimeSlotOptions(scheduleTimeStep),
@@ -257,6 +273,8 @@ export default function CreateExaminationPage({
         setSelectedTermId('');
         setStructureMappings([]);
         setSelectedClasses([]);
+        setSelectedTemplateExamId('');
+        setExistingSectionIdList([]);
         return;
       }
       const res = await fetch(
@@ -292,24 +310,61 @@ export default function CreateExaminationPage({
 
   useEffect(() => {
     if (!selectedTermId) {
-      setSelectedTemplateExam('');
+      setSelectedTemplateExamId('');
       setExamMetadata((prev) => ({ ...prev, academic_year: '', exam_name: '' }));
       return;
     }
     const term = uniqueTerms.find((t) => t.id === selectedTermId);
     if (!term) {
-      setSelectedTemplateExam('');
+      setSelectedTemplateExamId('');
       setExamMetadata((prev) => ({ ...prev, academic_year: '', exam_name: '' }));
       return;
     }
-    const firstExam = term.exams && term.exams.length > 0 ? term.exams[0].exam_name : '';
-    setSelectedTemplateExam(firstExam || '');
+    const first = term.exams && term.exams.length > 0 ? term.exams[0] : null;
+    const id = first?.id ? String(first.id) : '';
+    setSelectedTemplateExamId(id);
     setExamMetadata((prev) => ({
       ...prev,
       academic_year: String(term.academic_year || '').trim(),
-      exam_name: String(firstExam || '').trim(),
+      exam_name: String(first?.exam_name || '').trim(),
     }));
   }, [selectedTermId, uniqueTerms]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!schoolCode || !selectedTermId || !selectedTemplateExamId) {
+      setExistingSectionIdList([]);
+      return;
+    }
+    (async () => {
+      const res = await fetch(
+        `/api/examinations/v2/existing-sections?school_code=${encodeURIComponent(schoolCode)}&term_id=${encodeURIComponent(selectedTermId)}&exam_term_exam_id=${encodeURIComponent(selectedTemplateExamId)}`
+      );
+      const json = await res.json();
+      if (cancelled) return;
+      if (res.ok && json.data?.section_ids && Array.isArray(json.data.section_ids)) {
+        setExistingSectionIdList(json.data.section_ids.map((x: string) => String(x)));
+      } else {
+        setExistingSectionIdList([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [schoolCode, selectedTermId, selectedTemplateExamId]);
+
+  useEffect(() => {
+    if (existingSectionIdList.length === 0) return;
+    const blocked = new Set(existingSectionIdList.map(String));
+    setSelectedClasses((prev) =>
+      prev
+        .map((sc) => ({
+          ...sc,
+          sections: sc.sections.filter((id) => !blocked.has(String(id))),
+        }))
+        .filter((sc) => sc.sections.length > 0)
+    );
+  }, [existingSectionIdList]);
 
   const sectionIdsForStep3 = useMemo(
     () => [...new Set(classSubjects.map((c) => c.sectionId))].sort(),
@@ -360,7 +415,7 @@ export default function CreateExaminationPage({
     if (!selectedTermId) {
       newErrors.exam_name = 'Please select a term';
     }
-    if (!selectedTemplateExam || !examMetadata.exam_name.trim()) {
+    if (!selectedTemplateExamId || !examMetadata.exam_name.trim()) {
       newErrors.exam_name = 'Please select an examination template from Select Term flow';
     }
     if (!examMetadata.start_date) {
@@ -379,46 +434,56 @@ export default function CreateExaminationPage({
 
     setErrors(newErrors);
     if (Object.keys(newErrors).length === 0) {
-      handleStep2Next();
+      setCurrentStep(2);
     }
   };
 
   // Step 2: Class Selection
-  const handleClassToggle = (classId: string, className: string) => {
-    setSelectedClasses(prev => {
-      const existing = prev.find(c => c.classId === classId);
+  const handleClassToggle = (representativeSectionId: string, className: string) => {
+    setSelectedClasses((prev) => {
+      const existing = prev.find((c) => c.classId === representativeSectionId);
       if (existing) {
-        return prev.filter(c => c.classId !== classId);
-      } else {
-        // Get all sections for this class
-        const classSections = classes
-          .filter(c => c.id === classId)
-          .map(c => ({ id: c.id, name: c.section }));
-        
-        return [...prev, {
-          classId,
-          className,
-          sections: classSections.map(s => s.id),
-        }];
+        return prev.filter((c) => c.classId !== representativeSectionId);
       }
+      const classSections = structureClasses.filter((c) => c.class === className);
+      const sections = classSections
+        .map((c) => c.id)
+        .filter((id) => !existingSectionIdSet.has(String(id)));
+      if (sections.length === 0) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          classId: representativeSectionId,
+          className,
+          sections,
+        },
+      ];
     });
   };
 
   const handleSectionToggle = (classId: string, sectionId: string) => {
-    setSelectedClasses(prev => prev.map(c => {
-      if (c.classId === classId) {
+    if (existingSectionIdSet.has(String(sectionId))) return;
+    setSelectedClasses((prev) => {
+      const next = prev.map((c) => {
+        if (c.classId !== classId) return c;
         const sections = c.sections.includes(sectionId)
-          ? c.sections.filter(s => s !== sectionId)
-          : [...c.sections, sectionId];
+          ? c.sections.filter((s) => s !== sectionId)
+          : [...c.sections, sectionId].filter((id) => !existingSectionIdSet.has(String(id)));
         return { ...c, sections };
-      }
-      return c;
-    }));
+      });
+      return next.filter((c) => c.sections.length > 0);
+    });
   };
 
   const handleStep2Next = () => {
-    if (selectedClasses.length === 0) {
-      setErrors({ class_selection: 'No mapped class/section found in selected structure' });
+    const totalSections = selectedClasses.reduce((n, c) => n + c.sections.length, 0);
+    if (selectedClasses.length === 0 || totalSections === 0) {
+      setErrors({
+        class_selection:
+          'Select at least one class-section that is not already created for this examination, or all may already exist for this term.',
+      });
       return;
     }
     
@@ -797,6 +862,7 @@ export default function CreateExaminationPage({
           end_date: examMetadata.end_date,
           description: examMetadata.description || null,
           term_id: selectedTermId || null,
+          exam_term_exam_id: selectedTemplateExamId || null,
           class_mappings: selectedClasses,
           class_subjects: classSubjects.map((cs) => ({
             ...cs,
@@ -830,8 +896,13 @@ export default function CreateExaminationPage({
         const errorMessage = String(result.error ?? 'Failed to create examination');
         const errorDetails = result.details ? `\nDetails: ${String(result.details)}` : '';
         const errorHint = result.hint ? `\nHint: ${String(result.hint)}` : '';
+        const conflicts = result.conflicting_class_ids;
+        const conflictNote =
+          Array.isArray(conflicts) && conflicts.length > 0
+            ? `\nConflicting class-section ids: ${conflicts.join(', ')}`
+            : '';
         console.error('Examination creation failed:', result);
-        alert(`${errorMessage}${errorDetails}${errorHint}`);
+        alert(`${errorMessage}${errorDetails}${errorHint}${conflictNote}`);
         setErrors({ submit: errorMessage });
       }
     } catch (error) {
@@ -844,6 +915,7 @@ export default function CreateExaminationPage({
 
   const steps = [
     { number: 1, title: 'Exam Details', icon: FileText },
+    { number: 2, title: 'Select Classes', icon: Users },
     { number: 3, title: 'Map Subjects', icon: BookOpen },
     { number: 4, title: 'Schedule Exams', icon: Calendar },
   ];
@@ -942,7 +1014,7 @@ export default function CreateExaminationPage({
                         onChange={(e) => {
                           setSelectedStructureId(e.target.value);
                           setSelectedTermId('');
-                          setSelectedTemplateExam('');
+                          setSelectedTemplateExamId('');
                           setExamMetadata((prev) => ({ ...prev, exam_name: '', academic_year: '' }));
                         }}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
@@ -962,7 +1034,7 @@ export default function CreateExaminationPage({
                         value={selectedTermId}
                         onChange={(e) => {
                           setSelectedTermId(e.target.value);
-                          setSelectedTemplateExam('');
+                          setSelectedTemplateExamId('');
                           setExamMetadata((prev) => ({ ...prev, exam_name: '' }));
                         }}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100"
@@ -983,11 +1055,13 @@ export default function CreateExaminationPage({
                     <div className="space-y-1">
                       <p className="text-xs font-medium text-slate-600">Step 3: Select Examination</p>
                       <select
-                        value={selectedTemplateExam}
+                        value={selectedTemplateExamId}
                         onChange={(e) => {
                           const v = e.target.value;
-                          setSelectedTemplateExam(v);
-                          if (v) setExamMetadata((prev) => ({ ...prev, exam_name: v }));
+                          setSelectedTemplateExamId(v);
+                          const list = uniqueTerms.find((t) => t.id === selectedTermId)?.exams || [];
+                          const picked = list.find((ex) => String(ex.id) === v);
+                          if (picked) setExamMetadata((prev) => ({ ...prev, exam_name: picked.exam_name }));
                         }}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100"
                         disabled={!selectedTermId}
@@ -995,8 +1069,8 @@ export default function CreateExaminationPage({
                         <option value="">
                           {selectedTermId ? 'Choose examination template' : 'Select term first'}
                         </option>
-                        {(uniqueTerms.find((t) => t.id === selectedTermId)?.exams || []).map((ex, idx) => (
-                          <option key={`${ex.exam_name}-${idx}`} value={ex.exam_name}>
+                        {(uniqueTerms.find((t) => t.id === selectedTermId)?.exams || []).map((ex) => (
+                          <option key={String(ex.id)} value={String(ex.id)}>
                             {ex.serial ? `${ex.serial}. ` : ''}
                             {ex.exam_name}
                           </option>
@@ -1062,10 +1136,7 @@ export default function CreateExaminationPage({
                 </div>
 
                 <div className="flex justify-end pt-4">
-                  <Button onClick={handleStep1Next}>
-                    Next: Map Subjects
-                   
-                  </Button>
+                  <Button onClick={handleStep1Next}>Next: Select Classes</Button>
                 </div>
               </div>
             )}
@@ -1073,7 +1144,13 @@ export default function CreateExaminationPage({
             {/* Step 2: Map Classes */}
             {currentStep === 2 && (
               <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Select Classes & Sections</h2>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-1">Select Classes to Create Exams</h2>
+                  <p className="text-sm text-gray-600">
+                    Only checked class-sections will be included. Sections that already have this examination for the
+                    selected term are marked and cannot be selected again.
+                  </p>
+                </div>
                 
                 {errors.class_selection && (
                   <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -1082,50 +1159,81 @@ export default function CreateExaminationPage({
                 )}
 
                 <div className="space-y-4">
-                  {Array.from(new Set(classes.map(c => c.class))).map(className => {
-                    const classItems = classes.filter(c => c.class === className);
-                    const selectedClass = selectedClasses.find(sc => sc.className === className);
+                  {Array.from(new Set(structureClasses.map((c) => c.class))).map((className) => {
+                    const classItems = structureClasses.filter((c) => c.class === className);
+                    const selectedClass = selectedClasses.find((sc) => sc.className === className);
+                    const repId = classItems[0]?.id || '';
+                    const creatableCount = classItems.filter((s) => !existingSectionIdSet.has(String(s.id))).length;
+                    const allCreated = classItems.length > 0 && creatableCount === 0;
                     
                     return (
                       <div key={className} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex items-center justify-between mb-3">
-                          <label className="flex items-center gap-2 cursor-pointer">
+                          <label
+                            className={`flex items-center gap-2 ${allCreated ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+                          >
                             <input
                               type="checkbox"
                               checked={!!selectedClass}
-                              onChange={() => handleClassToggle(
-                                classItems[0].id,
-                                className
-                              )}
-                              className="w-5 h-5 text-[#5A7A95] rounded focus:ring-[#5A7A95]"
+                              disabled={allCreated}
+                              onChange={() => handleClassToggle(repId, className)}
+                              className="w-5 h-5 text-[#5A7A95] rounded focus:ring-[#5A7A95] disabled:opacity-50"
                             />
                             <span className="text-lg font-semibold text-gray-900">
                               Class {className}
                             </span>
+                            {allCreated ? (
+                              <span className="text-xs font-medium uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                                All sections created
+                              </span>
+                            ) : null}
                           </label>
                         </div>
                         
-                        {selectedClass && (
-                          <div className="ml-7 mt-3 space-y-2">
-                            <p className="text-sm text-gray-600 mb-2">Select Sections:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {classItems.map(section => (
-                                <label
+                        <div className="ml-7 mt-2 space-y-2">
+                          <p className="text-sm text-gray-600 mb-2">Sections in this structure:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {classItems.map((section) => {
+                              const created = existingSectionIdSet.has(String(section.id));
+                              return (
+                                <div
                                   key={section.id}
-                                  className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50"
+                                  className={`flex flex-col gap-1 px-3 py-2 border rounded-lg min-w-[140px] ${
+                                    created ? 'border-emerald-200 bg-emerald-50/80' : 'border-gray-300 bg-white'
+                                  }`}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedClass.sections.includes(section.id)}
-                                    onChange={() => handleSectionToggle(selectedClass.classId, section.id)}
-                                    className="w-4 h-4 text-[#5A7A95] rounded focus:ring-[#5A7A95]"
-                                  />
-                                  <span className="text-sm text-gray-700">Section {section.section}</span>
-                                </label>
-                              ))}
-                            </div>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      disabled={created || !selectedClass}
+                                      checked={selectedClass?.sections.includes(section.id) ?? false}
+                                      onChange={() => handleSectionToggle(selectedClass!.classId, section.id)}
+                                      className="w-4 h-4 text-[#5A7A95] rounded focus:ring-[#5A7A95] disabled:opacity-50"
+                                    />
+                                    <span className="text-sm text-gray-800 font-medium">Sec. {section.section}</span>
+                                  </div>
+                                  <span
+                                    className={`text-[11px] font-semibold uppercase tracking-wide ${
+                                      created ? 'text-emerald-800' : 'text-amber-800'
+                                    }`}
+                                  >
+                                    {created ? 'Created' : 'Not created'}
+                                  </span>
+                                  {created && (
+                                    <p className="text-[11px] text-gray-600 leading-snug">
+                                      View or edit from the Examinations dashboard or marks entry.
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        )}
+                          {!selectedClass && !allCreated && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              Turn on the class above, then choose which sections to include in this run.
+                            </p>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -1358,7 +1466,7 @@ export default function CreateExaminationPage({
                 </div>
 
                 <div className="flex justify-between pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
+                  <Button variant="outline" onClick={() => setCurrentStep(2)}>
                     <ArrowLeft size={18} className="mr-2" />
                     Previous
                   </Button>

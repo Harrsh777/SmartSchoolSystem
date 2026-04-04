@@ -19,6 +19,12 @@ function clientIp(request: NextRequest): string {
   return request.headers.get('x-real-ip') || 'unknown';
 }
 
+/** .env often uses \\$ so Next does not treat $ as expansion; strip those backslashes for bcrypt. */
+function superAdminPasswordHashFromEnv(): string {
+  const raw = process.env.SUPER_ADMIN_PASSWORD_HASH?.trim() ?? '';
+  return raw.replace(/\\\$/g, '$');
+}
+
 export async function POST(request: NextRequest) {
   const lock = await isAdminLoginLocked(request);
   if (lock.locked) {
@@ -41,7 +47,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const hash = process.env.SUPER_ADMIN_PASSWORD_HASH?.trim();
+  const hash = superAdminPasswordHashFromEnv();
   if (!hash || !hash.startsWith('$2')) {
     return NextResponse.json(
       {

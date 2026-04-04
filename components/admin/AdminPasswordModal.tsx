@@ -181,17 +181,17 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 glass-card border border-white/20 dark:border-white/10">
-              <div className="flex items-center justify-center mb-6">
-                <div className="w-16 h-16 rounded-full bg-[#2C3E50] dark:bg-[#3D5A80] flex items-center justify-center soft-shadow-lg">
-                  <Shield className="text-white" size={28} />
+              <div className="flex items-center justify-center mb-5">
+                <div className="w-11 h-11 rounded-xl bg-[#2C3E50]/90 dark:bg-[#3D5A80] flex items-center justify-center">
+                  <Shield className="text-white" size={20} strokeWidth={1.75} />
                 </div>
               </div>
 
-              <h2 className="text-2xl font-serif font-bold text-center text-foreground mb-2">
-                Admin Access Required
+              <h2 className="text-lg font-semibold text-center text-foreground mb-1.5 tracking-tight">
+                Super admin
               </h2>
               <p className="text-sm text-center text-muted-foreground mb-6">
-                Sign in with your super-admin password. Verification happens on the server only.
+                Enter the server-configured password to open the admin portal.
               </p>
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -248,29 +248,13 @@ export default function AdminPasswordModal({ isOpen, onSuccess }: AdminPasswordM
                 <Button
                   type="submit"
                   variant="primary"
-                  size="lg"
-                  className="w-full"
+                  size="md"
+                  className="w-full rounded-md py-2.5 text-sm font-medium"
                   disabled={
                     loading || !password.trim() || (Boolean(TURNSTILE_SITE_KEY) && !turnstileToken)
                   }
                 >
-                  {loading ? (
-                    <>
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                        className="mr-2"
-                      >
-                        <Lock size={18} />
-                      </motion.div>
-                      Verifying...
-                    </>
-                  ) : (
-                    <>
-                      <Lock size={18} className="mr-2" />
-                      Access Admin Panel
-                    </>
-                  )}
+                  {loading ? 'Signing in…' : 'Continue'}
                 </Button>
               </form>
 

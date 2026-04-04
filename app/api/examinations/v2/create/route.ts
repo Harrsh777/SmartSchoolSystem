@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
       end_date,
       description,
       term_id,
+      exam_term_exam_id,
       class_mappings,
       class_subjects,
       schedules,
@@ -71,6 +72,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const termIdStr = term_id ? String(term_id).trim() : '';
+    const templateIdStr = exam_term_exam_id ? String(exam_term_exam_id).trim() : '';
+
+    if (!termIdStr) {
+      return NextResponse.json(
+        { error: 'term_id is required for this examination flow' },
+        { status: 400 }
+      );
+    }
+
+    if (!templateIdStr) {
+      return NextResponse.json(
+        { error: 'exam_term_exam_id is required (select the examination template from the term)' },
+        { status: 400 }
+      );
+    }
+
+    const allSectionIds: string[] = [];
+    for (const classMapping of class_mappings) {
+      const sections = classMapping.sections;
+      if (!Array.isArray(sections)) continue;
+      for (const sectionId of sections) {
+        if (sectionId) allSectionIds.push(String(sectionId));
+      }
+    }
+    if (allSectionIds.length === 0) {
+      return NextResponse.json(
+        { error: 'Select at least one class-section to include in this examination' },
+        { status: 400 }
+      );
+    }
+
+    const { data: conflictRows, error: conflictErr } = await supabase
+      .from('exam_class_mappings')
+      .select('class_id')
+      .eq('school_code', school_code)
+      .eq('term_id', termIdStr)
+      .eq('exam_term_exam_id', templateIdStr)
+      .in('class_id', allSectionIds);
+
+    if (conflictErr) {
+      console.error('Duplicate exam check failed:', conflictErr);
+      return NextResponse.json(
+        { error: 'Could not verify existing examinations', details: conflictErr.message },
+        { status: 500 }
+      );
+    }
+
+    const conflictingIds = new Set((conflictRows || []).map((r) => String((r as { class_id: string }).class_id)));
+    if (conflictingIds.size > 0) {
+      return NextResponse.json(
+        {
+          error: 'Exam already exists for one or more selected class-sections for this term and examination type',
+          conflicting_class_ids: Array.from(conflictingIds),
+        },
+        { status: 409 }
+      );
+    }
+
     if (!class_subjects || !Array.isArray(class_subjects) || class_subjects.length === 0) {
       return NextResponse.json(
         { error: 'At least one subject must be mapped' },
@@ -111,7 +171,8 @@ export async function POST(request: NextRequest) {
       description: description || null,
       is_published: false,
       created_by: created_by || null,
-      term_id: term_id || null,
+      term_id: termIdStr,
+      exam_term_exam_id: templateIdStr,
     };
 
     let examination: { id: string; exam_name?: string; status?: string; [key: string]: unknown } | null = null;
@@ -161,6 +222,8 @@ export async function POST(request: NextRequest) {
           exam_id: examination.id,
           class_id: sectionId, // sectionId is actually the class record ID
           school_code: school_code,
+          term_id: termIdStr,
+          exam_term_exam_id: templateIdStr,
         });
       }
     }
@@ -177,14 +240,18 @@ export async function POST(request: NextRequest) {
         console.error('Error creating class mappings:', JSON.stringify(mappingError, null, 2));
         // Rollback examination
         await supabase.from('examinations').delete().eq('id', examination.id);
+        const status = mappingError.code === '23505' ? 409 : 500;
         return NextResponse.json(
-          { 
-            error: 'Failed to create class mappings', 
+          {
+            error:
+              mappingError.code === '23505'
+                ? 'Exam already exists for this class-section (duplicate term + examination type)'
+                : 'Failed to create class mappings',
             details: mappingError.message,
             code: mappingError.code,
             hint: mappingError.hint,
           },
-          { status: 500 }
+          { status }
         );
       }
       console.log('Class mappings created successfully:', insertedMappings?.length || 0, 'records');
