@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
-
-function escapeHtml(text: string): string {
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml } from '@/lib/fees/receipt-html-escape';
+import { rupeesToWords } from '@/lib/fees/receipt-amount-words';
+import { receiptSharedStyles, receiptToolbarHtml } from '@/lib/fees/receipt-html-shared';
 
 /** PostgREST often returns `receipts` as a single-element array for reverse FK embeds. */
 function normalizePaymentReceiptJoin(payment: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -167,7 +161,7 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
   });
 
   const receipt = normalizePaymentReceiptJoin(payment);
-  const receiptDate = receipt?.issued_at 
+  const receiptDate = receipt?.issued_at
     ? new Date(String(receipt.issued_at)).toLocaleDateString('en-IN', {
         year: 'numeric',
         month: 'long',
@@ -177,52 +171,54 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
 
   const logoUrl = String((school as { logo_url?: unknown } | null)?.logo_url ?? '').trim();
 
-  // Generate receipt content (will be duplicated for both copies)
-  const receiptContent = generatePaymentReceiptContent(school, payment, paymentDate, receiptDate, receipt);
+  const receiptContentSchool = generatePaymentReceiptContent(
+    school,
+    payment,
+    paymentDate,
+    receiptDate,
+    receipt,
+    'SCHOOL COPY'
+  );
+  const receiptContentStudent = generatePaymentReceiptContent(
+    school,
+    payment,
+    paymentDate,
+    receiptDate,
+    receipt,
+    'STUDENT COPY'
+  );
 
-  // Return two copies - School Copy and Student Copy
+  const shared = receiptSharedStyles();
+  const schoolName = escapeHtml(String(school?.school_name || 'School'));
+
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Payment Receipt - ${school?.school_name || 'School'}</title>
+  <title>Fee Receipt - ${schoolName}</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    @page {
-      size: A5 landscape;
-      margin: 6mm;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { size: A4 portrait; margin: 12mm; }
     body {
-      font-family: 'Arial', sans-serif;
-      padding: 0;
-      background: #f5f5f5;
-      width: 100%;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+      padding: 16px;
+      background: #e2e8f0;
+      color: #0f172a;
     }
-    .page-container {
-      width: 100%;
-      min-height: calc(100vh - 16mm);
-      background: white;
-      padding: 4mm;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    .page-shell {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #f1f5f9;
+      padding: 16px;
+      border-radius: 16px;
     }
-    .copies-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8mm;
-      align-items: start;
-    }
-    .receipt-container {
-      width: 100%;
-      background: white;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      padding: 4mm;
+    .receipt-sheet {
+      background: #fff;
+      border-radius: 14px;
+      padding: 16px 18px 20px;
+      border: 1px solid #cbd5e1;
       position: relative;
       overflow: hidden;
     }
@@ -236,205 +232,32 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
       z-index: 0;
     }
     .receipt-watermark img {
-      max-width: 75%;
-      max-height: 60%;
+      max-width: 70%;
+      max-height: 55%;
       object-fit: contain;
-      opacity: 0.06;
+      opacity: 0.05;
       filter: grayscale(1);
-      transform: rotate(-10deg);
+      transform: rotate(-12deg);
     }
-    .receipt-inner {
-      position: relative;
-      z-index: 1;
-    }
-    .copy-label {
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
-      color: #2F6FED;
-      margin-bottom: 15px;
-      padding: 8px;
-      background: #e3f2fd;
-      border-radius: 4px;
-    }
-    .header {
-      text-align: center;
-      border-bottom: 2px solid #2F6FED;
-      padding-bottom: 12px;
-      margin-bottom: 15px;
-    }
-    .school-name {
-      font-size: 20px;
-      font-weight: bold;
-      color: #1a1a1a;
-      margin-bottom: 6px;
-    }
-    .school-details {
-      font-size: 11px;
-      color: #666;
-      line-height: 1.4;
-    }
-    .receipt-title {
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
-      color: #2F6FED;
-      margin-bottom: 15px;
-    }
-    .info-section {
-      background: #f8f9fa;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 15px;
-    }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 6px;
-      font-size: 12px;
-    }
-    .info-label {
-      font-weight: 600;
-      color: #555;
-    }
-    .info-value {
-      color: #1a1a1a;
-    }
-    .amount-box {
-      background: linear-gradient(135deg, #2F6FED 0%, #1E3A8A 100%);
-      color: white;
-      padding: 20px;
-      border-radius: 6px;
-      text-align: center;
-      margin-bottom: 15px;
-    }
-    .amount-label {
-      font-size: 12px;
-      opacity: 0.9;
-      margin-bottom: 6px;
-    }
-    .amount-value {
-      font-size: 28px;
-      font-weight: bold;
-    }
-    .allocations-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 15px;
-      font-size: 10px;
-    }
-    .allocations-table th {
-      background: #2F6FED;
-      color: white;
-      padding: 6px;
-      text-align: left;
-      font-size: 10px;
-      font-weight: 600;
-    }
-    .allocations-table td {
-      padding: 6px;
-      border-bottom: 1px solid #e0e0e0;
-      font-size: 10px;
-    }
-    .allocations-table tr:last-child td {
-      border-bottom: none;
-    }
-    .allocations-table tr:nth-child(even) {
-      background: #f8f9fa;
-    }
-    .text-right {
-      text-align: right;
-    }
-    .footer {
-      margin-top: 20px;
-      padding-top: 12px;
-      border-top: 1px solid #e0e0e0;
-      text-align: center;
-      color: #666;
-      font-size: 10px;
-    }
-    .signature-block {
-      margin-top: 14px;
-      padding-top: 10px;
-      border-top: 1px solid #e0e0e0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-    }
-    .signature-line {
-      width: 62%;
-      height: 1px;
-      background: #111;
-      opacity: 0.9;
-    }
-    .signature-label {
-      font-size: 10px;
-      color: #333;
-      font-weight: 600;
-    }
-    .payment-details {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
-      margin-bottom: 20px;
-    }
-    .detail-box {
-      background: white;
-      padding: 15px;
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-    }
-    .detail-label {
-      font-size: 12px;
-      color: #666;
-      margin-bottom: 5px;
-    }
-    .detail-value {
-      font-size: 16px;
-      font-weight: 600;
-      color: #1a1a1a;
-    }
+    .receipt-inner { position: relative; z-index: 1; }
     @media print {
-      body {
-        background: white;
-        padding: 0;
-      }
-      .page-container {
-        box-shadow: none;
-        padding: 0;
-        min-height: auto;
-      }
-      .copies-grid {
-        grid-template-columns: 1fr;
-        gap: 0;
-      }
-      .receipt-container {
-        page-break-after: always;
-        break-after: page;
-        border-radius: 0;
-      }
+      body { background: #fff; padding: 0; }
+      .page-shell { max-width: none; padding: 0; background: #fff; border-radius: 0; }
+      .receipt-sheet { border: none; border-radius: 0; box-shadow: none; page-break-after: always; }
     }
+    ${shared}
   </style>
 </head>
 <body>
-  <div class="page-container">
-    <div class="copies-grid">
-      <div class="receipt-container">
-        <div class="copy-label">SCHOOL COPY</div>
-        ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
-        <div class="receipt-inner">
-          ${receiptContent}
-        </div>
-      </div>
-
-      <div class="receipt-container">
-        <div class="copy-label">STUDENT COPY</div>
-        ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
-        <div class="receipt-inner">
-          ${receiptContent}
-        </div>
-      </div>
+  <div class="page-shell">
+    ${receiptToolbarHtml('Fee receipt')}
+    <div class="receipt-sheet">
+      ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
+      <div class="receipt-inner">${receiptContentSchool}</div>
+    </div>
+    <div class="receipt-sheet" style="margin-top: 20px;">
+      ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
+      <div class="receipt-inner">${receiptContentStudent}</div>
     </div>
   </div>
 </body>
@@ -442,174 +265,285 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
   `;
 }
 
+function formatReceiptShortDate(raw: unknown): string {
+  if (raw == null || raw === '') return '';
+  try {
+    return new Date(String(raw)).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return String(raw);
+  }
+}
+
+function installmentLabelFromPayment(
+  payment: Record<string, unknown>,
+  receiptData: Record<string, unknown> | undefined
+): string {
+  const snap = receiptData?.allocations as Array<{ due_month?: string | null }> | undefined;
+  const allocations = payment.allocations as Record<string, unknown>[] | undefined;
+  const seen = new Set<string>();
+  const labels: string[] = [];
+
+  const push = (raw: unknown) => {
+    if (raw == null || raw === '') return;
+    const key = String(raw).slice(0, 10);
+    if (seen.has(key)) return;
+    seen.add(key);
+    const s = formatReceiptShortDate(raw);
+    if (s) labels.push(s);
+  };
+
+  if (snap && snap.length) {
+    for (const row of snap) push(row.due_month);
+  } else if (allocations?.length) {
+    for (const alloc of allocations) {
+      const sf = alloc.student_fee as Record<string, unknown> | undefined;
+      push(sf?.due_month);
+    }
+  }
+  return labels.length ? labels.join(' · ') : '—';
+}
+
+function schoolWebsiteHref(school: Record<string, unknown>): string {
+  const w = String(
+    school.website ?? school.school_website ?? school.school_url ?? ''
+  ).trim();
+  return w;
+}
+
 function generatePaymentReceiptContent(
   school: Record<string, unknown>,
   payment: Record<string, unknown>,
   paymentDate: string,
   receiptDate: string,
-  receipt: Record<string, unknown> | undefined
+  receipt: Record<string, unknown> | undefined,
+  copyLabel: string
 ): string {
   const receiptNo = receipt?.receipt_no != null ? String(receipt.receipt_no) : '';
   const receiptDataRaw = receipt?.receipt_data as Record<string, unknown> | undefined;
   const installmentsAfter =
     (receiptDataRaw?.installments_after_payment as InstallmentAfterPayment[] | undefined) || [];
-  const balanceByFeeId = new Map<string, InstallmentAfterPayment>();
-  for (const row of installmentsAfter) {
-    if (row?.student_fee_id) balanceByFeeId.set(String(row.student_fee_id), row);
-  }
   const hasAnyOutstanding = installmentsAfter.some((r) => Number(r.balance_due ?? 0) > 0.02);
 
-  return `
-    <div class="header">
-      <div class="school-name">${school?.school_name || 'School Name'}</div>
-      <div class="school-details">
-        ${school?.school_address ? `<div>${school.school_address}</div>` : ''}
-        ${school?.city || school?.state ? `<div>${[school.city, school.state, school.zip_code].filter(Boolean).join(', ')}</div>` : ''}
-        ${school?.school_phone ? `<div>Phone: ${school.school_phone}</div>` : ''}
-        ${school?.school_email ? `<div>Email: ${school.school_email}</div>` : ''}
-      </div>
-    </div>
+  const student = payment.student as Record<string, unknown> | undefined;
+  const studentName = String(student?.student_name || student?.full_name || 'N/A');
+  const admissionNo = String(student?.admission_no || 'N/A');
+  const cls = String(student?.class || 'N/A');
+  const section = String(student?.section || 'N/A');
+  const fatherName = String(student?.father_name || student?.parent_name || '').trim();
+  const board = String(student?.medium || student?.schooling_type || '').trim();
 
-    <div class="receipt-title">PAYMENT RECEIPT</div>
+  const websiteRaw = schoolWebsiteHref(school);
+  const websiteDisplay = websiteRaw
+    ? websiteRaw.replace(/^https?:\/\//i, '')
+    : '';
+  const affiliation = String(school?.affiliation || '').trim();
 
-    <div class="amount-box">
-      <div class="amount-label">Amount received (this receipt)</div>
-      <div class="amount-value">₹${Number(payment.amount || 0).toLocaleString('en-IN')}</div>
-    </div>
+  const logoUrl = String((school as { logo_url?: unknown } | null)?.logo_url ?? '').trim();
+  const totalPaid = Number(payment.amount || 0);
+  const amountWords = rupeesToWords(totalPaid);
 
-    ${hasAnyOutstanding ? `
-    <div class="info-section" style="border-left: 3px solid #f59e0b;">
-      <div class="info-row">
-        <span class="info-label">Payment type:</span>
-        <span class="info-value"><strong>Partial — balance remains on one or more installments</strong></span>
-      </div>
-    </div>
-    ` : ''}
+  const allocations = payment.allocations as Record<string, unknown>[] | undefined;
+  let tableRows = '';
+  let sumActual = 0;
+  let sumConc = 0;
+  let sumLast = 0;
+  let sumPaid = 0;
 
-    <div class="info-section">
-      <div class="info-row">
-        <span class="info-label">Receipt Number:</span>
-        <span class="info-value"><strong>${receiptNo || 'N/A'}</strong></span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Receipt Date:</span>
-        <span class="info-value">${receiptDate}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Payment Date:</span>
-        <span class="info-value">${paymentDate}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Payment Mode:</span>
-        <span class="info-value"><strong>${String(payment.payment_mode || 'Cash').toUpperCase()}</strong></span>
-      </div>
-      ${payment.reference_no ? `
-      <div class="info-row">
-        <span class="info-label">Reference Number:</span>
-        <span class="info-value">${payment.reference_no}</span>
-      </div>
-      ` : ''}
-    </div>
+  if (allocations && allocations.length > 0) {
+    tableRows = allocations
+      .map((alloc: Record<string, unknown>) => {
+        const studentFee = alloc.student_fee as Record<string, unknown> | undefined;
+        const feeStructure = studentFee?.fee_structure as Record<string, unknown> | undefined;
+        const headName = String(feeStructure?.name || 'Fee');
+        const feeSource = String(studentFee?.fee_source || '').toLowerCase();
+        const feeType =
+          feeSource === 'transport'
+            ? 'Transport'
+            : String(feeStructure?.name || 'School Fee');
 
-    <div class="info-section">
-      ${(() => {
-        const student = payment.student as Record<string, unknown> | undefined;
+        const base = Number(studentFee?.base_amount || 0);
+        const late = Number(studentFee?.late_fee || 0);
+        const finalAmt = Number(studentFee?.final_amount ?? base);
+        const actualAmount = base + late;
+        const concession = Math.max(0, Math.round((base - finalAmt) * 100) / 100);
+
+        const allocated = Number(alloc.allocated_amount || 0);
+        const totalPaidOnFee = Number(studentFee?.paid_amount || 0);
+        const lastPaid = Math.max(0, Math.round((totalPaidOnFee - allocated) * 100) / 100);
+
+        sumActual += actualAmount;
+        sumConc += concession;
+        sumLast += lastPaid;
+        sumPaid += allocated;
+
         return `
-      <div class="info-row">
-        <span class="info-label">Student Name:</span>
-        <span class="info-value"><strong>${student?.student_name || student?.full_name || 'N/A'}</strong></span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Admission Number:</span>
-        <span class="info-value">${student?.admission_no || 'N/A'}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Class & Section:</span>
-        <span class="info-value">${student?.class || 'N/A'} - ${student?.section || 'N/A'}</span>
-      </div>
-      ${student?.roll_number ? `
-      <div class="info-row">
-        <span class="info-label">Roll Number:</span>
-        <span class="info-value">${student.roll_number}</span>
-      </div>
-      ` : ''}
-    `;
-      })()}
-    </div>
-
-    ${(() => {
-      const allocations = payment.allocations as Record<string, unknown>[] | undefined;
-      if (!allocations || allocations.length === 0) return '';
-      return `
-    <table class="allocations-table">
-      <thead>
-        <tr>
-          <th>Fee Head</th>
-          <th>Due Month</th>
-          <th>Due Date</th>
-          <th class="text-right">This receipt</th>
-          <th class="text-right">Balance due</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${allocations.map((alloc: Record<string, unknown>) => {
-          const studentFee = alloc.student_fee as Record<string, unknown> | undefined;
-          const feeStructure = studentFee?.fee_structure as Record<string, unknown> | undefined;
-          const feeId = String(alloc.student_fee_id || studentFee?.id || '');
-          const snap = feeId ? balanceByFeeId.get(feeId) : undefined;
-          const balanceDue =
-            snap != null && Number.isFinite(Number(snap.balance_due))
-              ? Number(snap.balance_due)
-              : null;
-          const dueMonth = studentFee?.due_month ? new Date(String(studentFee.due_month)).toLocaleDateString('en-IN', { year: 'numeric', month: 'short' }) : 'N/A';
-          const dueDate = studentFee?.due_date ? new Date(String(studentFee.due_date)).toLocaleDateString('en-IN') : 'N/A';
-          return `
           <tr>
-            <td>${feeStructure?.name || 'Fee'}</td>
-            <td>${dueMonth}</td>
-            <td>${dueDate}</td>
-            <td class="text-right"><strong>₹${Number(alloc.allocated_amount || 0).toLocaleString('en-IN')}</strong></td>
-            <td class="text-right">${balanceDue != null ? `<strong>₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>` : '—'}</td>
+            <td>${escapeHtml(headName)}</td>
+            <td class="text-right">₹${actualAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td class="text-right">₹${concession.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td class="text-right">₹${lastPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td class="text-right"><strong>₹${allocated.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+            <td>${escapeHtml(feeType)}</td>
+          </tr>`;
+      })
+      .join('');
+  }
+
+  const installmentLabel = installmentLabelFromPayment(payment, receiptDataRaw);
+  const paymentMode = String(payment.payment_mode || 'Cash').toUpperCase();
+
+  const collector = payment.collector as Record<string, unknown> | undefined;
+  const collectorLine =
+    collector && (collector.full_name || collector.staff_id)
+      ? `${String(collector.full_name || '')}${collector.staff_id ? ` (${String(collector.staff_id)})` : ''}`.trim()
+      : '';
+
+  return `
+    <div class="copy-label-pill">${escapeHtml(copyLabel)}</div>
+
+    <div class="receipt-card" style="margin-bottom:14px;">
+      <div class="header-grid">
+        <div class="logo-wrap">
+          ${
+            logoUrl
+              ? `<img src="${escapeHtml(logoUrl)}" alt="Logo"/>`
+              : `<span style="font-size:9px;color:#94a3b8;">Logo</span>`
+          }
+        </div>
+        <div class="school-center">
+          <h1>${escapeHtml(String(school?.school_name || 'School Name'))}</h1>
+          <div class="lines">
+            ${school?.school_address ? `<div>${escapeHtml(String(school.school_address))}</div>` : ''}
+            ${
+              school?.city || school?.state
+                ? `<div>${escapeHtml([school.city, school.state, school.zip_code].filter(Boolean).join(', '))}</div>`
+                : ''
+            }
+            ${affiliation ? `<div>Affiliation: ${escapeHtml(affiliation)}</div>` : ''}
+            ${
+              websiteDisplay
+                ? `<div>Website: <span style="word-break:break-all;">${escapeHtml(websiteDisplay)}</span></div>`
+                : ''
+            }
+            ${school?.school_phone ? `<div>Contact: ${escapeHtml(String(school.school_phone))}</div>` : ''}
+            ${school?.school_email ? `<div>Email: ${escapeHtml(String(school.school_email))}</div>` : ''}
+          </div>
+        </div>
+        <div class="header-meta">
+          <div class="doc-title">FEES RECEIPT</div>
+          <div class="kv"><span class="k">Date:</span> <span class="v">${escapeHtml(receiptDate)}</span></div>
+          <div class="kv"><span class="k">Receipt No:</span> <span class="v">${escapeHtml(receiptNo || 'N/A')}</span></div>
+          <div class="kv"><span class="k">Installment:</span> <span class="v">${escapeHtml(installmentLabel)}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-col-info">
+      <div class="receipt-card">
+        <div class="info-card-title">Student information</div>
+        <div class="info-line"><span class="lab">Admission No</span><span class="val">${escapeHtml(admissionNo)}</span></div>
+        <div class="info-line"><span class="lab">Student name</span><span class="val">${escapeHtml(studentName)}</span></div>
+        ${
+          fatherName
+            ? `<div class="info-line"><span class="lab">Father's name</span><span class="val">${escapeHtml(fatherName)}</span></div>`
+            : ''
+        }
+        <div class="info-line"><span class="lab">Class</span><span class="val">${escapeHtml(cls)}</span></div>
+        <div class="info-line"><span class="lab">Section</span><span class="val">${escapeHtml(section)}</span></div>
+        ${
+          board
+            ? `<div class="info-line"><span class="lab">Board</span><span class="val">${escapeHtml(board)}</span></div>`
+            : ''
+        }
+        ${student?.roll_number ? `<div class="info-line"><span class="lab">Roll No.</span><span class="val">${escapeHtml(String(student.roll_number))}</span></div>` : ''}
+      </div>
+      <div class="receipt-card">
+        <div class="info-card-title">Payment details</div>
+        <div class="info-line"><span class="lab">Payment date</span><span class="val">${escapeHtml(paymentDate)}</span></div>
+        <div class="info-line"><span class="lab">Payment mode</span><span class="val">${escapeHtml(paymentMode)}</span></div>
+        <div><span class="payment-mode-pill">${escapeHtml(paymentMode)}</span></div>
+        ${
+          payment.reference_no
+            ? `<div class="info-line" style="margin-top:8px;"><span class="lab">Reference</span><span class="val">${escapeHtml(String(payment.reference_no))}</span></div>`
+            : ''
+        }
+        ${
+          collectorLine
+            ? `<div class="info-line" style="margin-top:8px;"><span class="lab">Collected by</span><span class="val">${escapeHtml(collectorLine)}</span></div>`
+            : ''
+        }
+      </div>
+    </div>
+
+    ${
+      hasAnyOutstanding
+        ? `<div class="partial-banner"><strong>Partial payment:</strong> Balance remains on one or more installments.</div>`
+        : ''
+    }
+
+    ${
+      tableRows
+        ? `
+    <div class="receipt-card" style="padding:12px;">
+      <div class="info-card-title" style="margin-bottom:10px;">Fee breakdown</div>
+      <table class="fees-table-pro">
+        <thead>
+          <tr>
+            <th>Head name</th>
+            <th class="text-right">Actual amount</th>
+            <th class="text-right">Concession</th>
+            <th class="text-right">Last paid</th>
+            <th class="text-right">Paid amount</th>
+            <th>Fee type</th>
           </tr>
-        `;
-        }).join('')}
-      </tbody>
-    </table>
-    `;
-    })()}
+        </thead>
+        <tbody>${tableRows}</tbody>
+        <tfoot>
+          <tr>
+            <td>Total</td>
+            <td class="text-right">₹${sumActual.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td class="text-right">₹${sumConc.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td class="text-right">₹${sumLast.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td class="text-right">₹${sumPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`
+        : ''
+    }
 
-    ${payment.remarks ? `
-    <div class="info-section">
-      <div class="info-label">Remarks:</div>
-      <div class="info-value" style="margin-top: 5px;">${payment.remarks}</div>
+    <div class="total-paid-banner">
+      <span class="lbl">Total amount paid (this receipt)</span>
+      <span class="amt">₹${totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>
-    ` : ''}
 
-    ${(() => {
-      const collector = payment.collector as Record<string, unknown> | undefined;
-      if (!collector) return '';
-      const fullName = collector.full_name as string | undefined;
-      const staffId = collector.staff_id as string | undefined;
-      return `
-    <div class="info-section">
-      <div class="info-row">
-        <span class="info-label">Collected By:</span>
-        <span class="info-value">${fullName || 'N/A'} ${staffId ? `(${staffId})` : ''}</span>
-      </div>
+    <div class="receipt-card amount-words" style="margin-top:12px;">
+      <strong>Amount in words:</strong> ${escapeHtml(amountWords)}
     </div>
-    `;
-    })()}
 
-    <div class="footer">
-      <div style="margin-bottom: 10px;">
-        <strong>This is a computer-generated receipt.</strong>
-      </div>
-      <div>Generated on ${new Date().toLocaleString('en-IN')}</div>
-      ${school?.school_name ? `<div style="margin-top: 10px;">${school.school_name}</div>` : ''}
-      <div class="signature-block">
+    ${payment.remarks ? `<div class="receipt-card" style="font-size:10px;"><strong>Remarks:</strong> ${escapeHtml(String(payment.remarks))}</div>` : ''}
+
+    <div class="signature-grid">
+      <div class="signature-box">
         <div class="signature-line"></div>
-        <div class="signature-label">Cashier Signature</div>
+        <div class="signature-label">Cashier / Accountant signature</div>
       </div>
+      <div class="signature-box">
+        <div class="signature-line"></div>
+        <div class="signature-label">School stamp</div>
+        <div class="stamp-placeholder">Official stamp here</div>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      <div><strong>Computer-generated receipt.</strong></div>
+      <div>Generated on ${escapeHtml(new Date().toLocaleString('en-IN'))}</div>
+      ${school?.school_name ? `<div>${escapeHtml(String(school.school_name))}</div>` : ''}
     </div>
   `;
 }

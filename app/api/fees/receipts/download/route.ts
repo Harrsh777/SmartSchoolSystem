@@ -4,15 +4,9 @@ import {
   enrichStudentFeesWithAdjustments,
   type FeeWithStructure,
 } from '@/lib/fees/enrich-student-fees';
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml } from '@/lib/fees/receipt-html-escape';
+import { rupeesToWords } from '@/lib/fees/receipt-amount-words';
+import { receiptSharedStyles, receiptToolbarHtml } from '@/lib/fees/receipt-html-shared';
 
 /**
  * POST /api/fees/receipts/download
@@ -210,52 +204,62 @@ function generateReceiptHTML(
     return allocations?.some((alloc: Record<string, unknown>) => feeIds.has(alloc.student_fee_id as string));
   });
 
-  // Generate receipt content (will be duplicated for both copies)
-  const receiptContent = generateReceiptContent(school, student, fees, relevantPayments, itemsByStructure, currentDate, totalAmount, totalPaid, totalDue);
+  const receiptContentSchool = generateReceiptContent(
+    school,
+    student,
+    fees,
+    relevantPayments,
+    itemsByStructure,
+    currentDate,
+    totalAmount,
+    totalPaid,
+    totalDue,
+    'SCHOOL COPY'
+  );
+  const receiptContentStudent = generateReceiptContent(
+    school,
+    student,
+    fees,
+    relevantPayments,
+    itemsByStructure,
+    currentDate,
+    totalAmount,
+    totalPaid,
+    totalDue,
+    'STUDENT COPY'
+  );
 
-  // Return two copies - School Copy and Student Copy
+  const shared = receiptSharedStyles();
+  const schoolNameEsc = escapeHtml(String(school.school_name || 'School'));
+
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fee Receipt - ${school.school_name || 'School'}</title>
+  <title>Fee Receipt - ${schoolNameEsc}</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    @page {
-      size: A5 landscape;
-      margin: 6mm;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { size: A4 portrait; margin: 12mm; }
     body {
-      font-family: 'Arial', sans-serif;
-      padding: 0;
-      background: #f5f5f5;
-      width: 100%;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+      padding: 16px;
+      background: #e2e8f0;
+      color: #0f172a;
     }
-    .page-container {
-      width: 100%;
-      min-height: calc(100vh - 16mm);
-      background: white;
-      padding: 4mm;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    .page-shell {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #f1f5f9;
+      padding: 16px;
+      border-radius: 16px;
     }
-    .copies-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8mm;
-      align-items: start;
-    }
-    .receipt-container {
-      width: 100%;
-      background: white;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      padding: 4mm;
+    .receipt-sheet {
+      background: #fff;
+      border-radius: 14px;
+      padding: 16px 18px 20px;
+      border: 1px solid #cbd5e1;
       position: relative;
       overflow: hidden;
     }
@@ -269,224 +273,78 @@ function generateReceiptHTML(
       z-index: 0;
     }
     .receipt-watermark img {
-      max-width: 75%;
-      max-height: 60%;
+      max-width: 70%;
+      max-height: 55%;
       object-fit: contain;
-      opacity: 0.06;
+      opacity: 0.05;
       filter: grayscale(1);
-      transform: rotate(-10deg);
+      transform: rotate(-12deg);
     }
-    .receipt-inner {
-      position: relative;
-      z-index: 1;
-    }
-    .copy-label {
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
-      color: #2F6FED;
-      margin-bottom: 15px;
-      padding: 8px;
-      background: #e3f2fd;
-      border-radius: 4px;
-    }
-    .header {
-      text-align: center;
-      border-bottom: 2px solid #2F6FED;
-      padding-bottom: 12px;
-      margin-bottom: 15px;
-    }
-    .school-name {
-      font-size: 20px;
-      font-weight: bold;
-      color: #1a1a1a;
-      margin-bottom: 6px;
-    }
-    .school-details {
-      font-size: 11px;
-      color: #666;
-      line-height: 1.4;
-    }
-    .student-info {
-      background: #f8f9fa;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 15px;
-    }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 6px;
-      font-size: 12px;
-    }
-    .info-label {
-      font-weight: 600;
-      color: #555;
-    }
-    .info-value {
-      color: #1a1a1a;
-    }
-    .fees-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 15px;
-      font-size: 10px;
-    }
-    .fees-table th {
-      background: #2F6FED;
-      color: white;
-      padding: 6px;
-      text-align: left;
-      font-size: 10px;
-      font-weight: 600;
-    }
-    .fees-table td {
-      padding: 6px;
-      border-bottom: 1px solid #e0e0e0;
-      font-size: 10px;
-    }
-    .fees-table tr:last-child td {
-      border-bottom: none;
-    }
-    .fees-table tr:nth-child(even) {
-      background: #f8f9fa;
-    }
-    .text-right {
-      text-align: right;
-    }
-    .text-center {
-      text-align: center;
-    }
-    .summary {
-      background: #f8f9fa;
-      padding: 12px;
-      border-radius: 6px;
-      margin-top: 12px;
-    }
-    .summary-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 6px;
-      font-size: 12px;
-    }
-    .summary-label {
-      font-weight: 600;
-      color: #555;
-    }
-    .summary-value {
-      font-weight: bold;
-      color: #1a1a1a;
-    }
-    .total-row {
-      border-top: 2px solid #2F6FED;
-      padding-top: 6px;
-      margin-top: 6px;
-      font-size: 14px;
-    }
-    .footer {
-      margin-top: 20px;
-      padding-top: 12px;
-      border-top: 1px solid #e0e0e0;
-      text-align: center;
-      color: #666;
-      font-size: 10px;
-    }
-    .signature-block {
-      margin-top: 14px;
-      padding-top: 10px;
-      border-top: 1px solid #e0e0e0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-    }
-    .signature-line {
-      width: 62%;
-      height: 1px;
-      background: #111;
-      opacity: 0.9;
-    }
-    .signature-label {
-      font-size: 10px;
-      color: #333;
-      font-weight: 600;
-    }
-    .payment-info {
-      margin-top: 12px;
-      padding: 10px;
-      background: #e8f5e9;
-      border-radius: 6px;
-      border-left: 3px solid #4caf50;
-    }
-    .payment-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 4px;
-      font-size: 11px;
-    }
-    .fee-section {
-      margin-bottom: 20px;
-    }
-    .fee-header {
-      background: #2F6FED;
-      color: white;
-      padding: 8px;
-      border-radius: 6px 6px 0 0;
-      margin-bottom: 0;
-      font-size: 12px;
-    }
-    .fee-summary {
-      background: #f8f9fa;
-      padding: 10px;
-      border-radius: 0 0 6px 6px;
-      border-top: 2px solid #e0e0e0;
-      font-size: 11px;
-    }
+    .receipt-inner { position: relative; z-index: 1; }
     @media print {
-      body {
-        background: white;
-        padding: 0;
-      }
-      .page-container {
-        box-shadow: none;
-        padding: 0;
-        min-height: auto;
-      }
-      .copies-grid {
-        grid-template-columns: 1fr;
-        gap: 0;
-      }
-      .receipt-container {
-        page-break-after: always;
-        break-after: page;
-        border-radius: 0;
-      }
+      body { background: #fff; padding: 0; }
+      .page-shell { max-width: none; padding: 0; background: #fff; border-radius: 0; }
+      .receipt-sheet { border: none; border-radius: 0; page-break-after: always; }
     }
+    ${shared}
   </style>
 </head>
 <body>
-  <div class="page-container">
-    <div class="copies-grid">
-      <div class="receipt-container">
-        <div class="copy-label">SCHOOL COPY</div>
-        ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
-        <div class="receipt-inner">
-          ${receiptContent}
-        </div>
-      </div>
-
-      <div class="receipt-container">
-        <div class="copy-label">STUDENT COPY</div>
-        ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
-        <div class="receipt-inner">
-          ${receiptContent}
-        </div>
-      </div>
+  <div class="page-shell">
+    ${receiptToolbarHtml('Fee receipt (statement)')}
+    <div class="receipt-sheet">
+      ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
+      <div class="receipt-inner">${receiptContentSchool}</div>
+    </div>
+    <div class="receipt-sheet" style="margin-top: 20px;">
+      ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
+      <div class="receipt-inner">${receiptContentStudent}</div>
     </div>
   </div>
 </body>
 </html>
   `;
+}
+
+function statementInstallmentLabel(fees: Record<string, unknown>[]): string {
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const fee of fees) {
+    const dm = fee.due_month;
+    if (dm == null || dm === '') continue;
+    const key = String(dm).slice(0, 10);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      labels.push(
+        new Date(String(dm)).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+      );
+    } catch {
+      labels.push(String(dm));
+    }
+  }
+  return labels.length ? labels.join(' · ') : '—';
+}
+
+function statementReceiptNos(payments: Record<string, unknown>[]): string {
+  const nos: string[] = [];
+  const seen = new Set<string>();
+  for (const p of payments) {
+    const r = p.receipt as Record<string, unknown> | Record<string, unknown>[] | undefined;
+    const row = Array.isArray(r) ? r[0] : r;
+    const n = row && row.receipt_no != null ? String(row.receipt_no) : '';
+    if (!n || seen.has(n)) continue;
+    seen.add(n);
+    nos.push(n);
+  }
+  if (nos.length === 0) return '—';
+  if (nos.length <= 3) return nos.join(', ');
+  return `${nos.slice(0, 3).join(', ')} +${nos.length - 3} more`;
+}
+
+function statementPaymentModes(payments: Record<string, unknown>[]): string {
+  const modes = [...new Set(payments.map((p) => String(p.payment_mode || 'Cash').toUpperCase()))];
+  return modes.length ? modes.join(', ') : '—';
 }
 
 function generateReceiptContent(
@@ -498,45 +356,30 @@ function generateReceiptContent(
   currentDate: string,
   totalAmount: number,
   totalPaid: number,
-  totalDue: number
+  totalDue: number,
+  copyLabel: string
 ): string {
-  return `
-    <div class="header">
-      <div class="school-name">${school.school_name || 'School Name'}</div>
-      <div class="school-details">
-        ${school.school_address ? `<div>${school.school_address}</div>` : ''}
-        ${school.city || school.state ? `<div>${[school.city, school.state, school.zip_code].filter(Boolean).join(', ')}</div>` : ''}
-        ${school.school_phone ? `<div>Phone: ${school.school_phone}</div>` : ''}
-        ${school.school_email ? `<div>Email: ${school.school_email}</div>` : ''}
-      </div>
-    </div>
+  const logoUrl = String((school as { logo_url?: unknown } | null)?.logo_url ?? '').trim();
+  const websiteRaw = String(
+    school.website ?? school.school_website ?? school.school_url ?? ''
+  ).trim();
+  const websiteDisplay = websiteRaw ? websiteRaw.replace(/^https?:\/\//i, '') : '';
+  const affiliation = String(school.affiliation || '').trim();
+  const receiptNos = statementReceiptNos(relevantPayments);
+  const installmentLabel = statementInstallmentLabel(fees);
+  const modesLabel = statementPaymentModes(relevantPayments);
 
-    <div class="student-info">
-      <div class="info-row">
-        <span class="info-label">Receipt Date:</span>
-        <span class="info-value">${currentDate}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Student Name:</span>
-        <span class="info-value">${student.student_name || student.full_name || 'N/A'}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Admission Number:</span>
-        <span class="info-value">${student.admission_no || 'N/A'}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Class & Section:</span>
-        <span class="info-value">${student.class || 'N/A'} - ${student.section || 'N/A'}</span>
-      </div>
-      ${student.roll_number ? `
-      <div class="info-row">
-        <span class="info-label">Roll Number:</span>
-        <span class="info-value">${student.roll_number}</span>
-      </div>
-      ` : ''}
-    </div>
+  const studentName = String(student.student_name || student.full_name || 'N/A');
+  const admissionNo = String(student.admission_no || 'N/A');
+  const cls = String(student.class || 'N/A');
+  const section = String(student.section || 'N/A');
+  const fatherName = String(student.father_name || student.parent_name || '').trim();
+  const board = String(student.medium || student.schooling_type || '').trim();
 
-    ${fees.map((fee: Record<string, unknown>) => {
+  const amountWords = rupeesToWords(totalPaid);
+
+  const feeSectionsHtml = fees
+    .map((fee: Record<string, unknown>) => {
       const balance =
         fee.total_due != null
           ? Number(fee.total_due)
@@ -549,203 +392,243 @@ function generateReceiptContent(
           ? Number(fee.effective_adjustment_amount)
           : Number(fee.adjustment_amount || 0);
       const lateFee = fee.late_fee != null ? Number(fee.late_fee) : 0;
-      const manualLines = (fee.installment_manual_lines as Array<{
-        label: string;
-        amount: number;
-        kind: string;
-        source?: string;
-      }>) || [];
+      const manualLines =
+        (fee.installment_manual_lines as Array<{
+          label: string;
+          amount: number;
+          kind: string;
+          source?: string;
+        }>) || [];
       const structureItems = itemsByStructure[fee.fee_structure_id as string] || [];
-      
       const feeStructure = fee.fee_structure as Record<string, unknown> | undefined;
-      const dueMonth = fee.due_month ? new Date(String(fee.due_month)).toLocaleDateString('en-IN', { year: 'numeric', month: 'short' }) : 'N/A';
-      const dueDate = fee.due_date ? new Date(String(fee.due_date)).toLocaleDateString('en-IN') : 'N/A';
-      
+      const feeTypeDefault =
+        String(fee.fee_source || '').toLowerCase() === 'transport'
+          ? 'Transport'
+          : String(feeStructure?.name || 'School Fee');
+
+      const dueMonth = fee.due_month
+        ? new Date(String(fee.due_month)).toLocaleDateString('en-IN', {
+            year: 'numeric',
+            month: 'short',
+          })
+        : 'N/A';
+      const dueDate = fee.due_date
+        ? new Date(String(fee.due_date)).toLocaleDateString('en-IN')
+        : 'N/A';
+
+      const totalStructureAmount = structureItems.reduce(
+        (sum: number, i: Record<string, unknown>) => sum + Number((i.amount as number) || 0),
+        0
+      );
+      const paidPortion = Number(fee.paid_amount || 0);
+
+      let bodyRows = '';
+      if (structureItems.length > 0) {
+        bodyRows += structureItems
+          .map((item: Record<string, unknown>) => {
+            const headAmount = Number((item.amount as number) || 0);
+            const proportionalAmount =
+              totalStructureAmount > 0 ? (headAmount / totalStructureAmount) * paidPortion : 0;
+            const feeHead = item.fee_head as Record<string, unknown> | undefined;
+            const headName = feeHead?.name as string | undefined;
+            const headDescription = feeHead?.description as string | undefined;
+            const isOptional = feeHead?.is_optional as boolean | undefined;
+            const nm = escapeHtml(headName || 'Fee head');
+            const desc = headDescription ? escapeHtml(String(headDescription)) : '';
+            return `
+              <tr>
+                <td>
+                  <div style="font-weight:700;font-size:9px;">${nm}</div>
+                  ${desc ? `<div style="font-size:8px;color:#64748b;margin-top:2px;">${desc}</div>` : ''}
+                  ${isOptional ? `<span style="font-size:8px;color:#2563eb;">(Optional)</span>` : ''}
+                </td>
+                <td class="text-right">₹${headAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td class="text-right">₹0.00</td>
+                <td class="text-right">₹0.00</td>
+                <td class="text-right"><strong>₹${proportionalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                <td>${escapeHtml(feeTypeDefault)}</td>
+              </tr>`;
+          })
+          .join('');
+      }
+
+      for (const line of manualLines) {
+        const amt = Number(line.amount);
+        const isDisc = line.kind === 'discount';
+        bodyRows += `
+              <tr>
+                <td>
+                  <div style="font-weight:700;font-size:9px;">${escapeHtml(line.label)}</div>
+                  <div style="font-size:8px;color:#64748b;margin-top:2px;">${line.kind === 'discount' ? 'Discount' : 'Misc'}${line.source ? ` · ${escapeHtml(line.source)}` : ''}</div>
+                </td>
+                <td class="text-right">${isDisc ? '₹0.00' : `₹${amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</td>
+                <td class="text-right">${isDisc ? `₹${Math.abs(amt).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}</td>
+                <td class="text-right">₹0.00</td>
+                <td class="text-right">${isDisc ? '₹0.00' : `₹${amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</td>
+                <td>${escapeHtml(feeTypeDefault)}</td>
+              </tr>`;
+      }
+
+      if (!bodyRows) {
+        bodyRows = `<tr><td colspan="6" style="text-align:center;color:#64748b;">No line breakdown for this installment.</td></tr>`;
+      }
+
       return `
-      <div class="fee-section">
-        <div class="fee-header">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <strong style="font-size: 13px;">${feeStructure?.name || 'Fee'}</strong>
-              <div style="font-size: 10px; opacity: 0.9; margin-top: 2px;">
-                Due: ${dueMonth} | 
-                Due Date: ${dueDate}
-              </div>
-            </div>
-            <div style="text-align: right;">
-              <div style="font-size: 10px; opacity: 0.9;">Status</div>
-              <div style="font-size: 12px; font-weight: bold;">${status}</div>
-            </div>
+      <div class="receipt-card" style="margin-bottom:12px;padding:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#0f172a;">${escapeHtml(String(feeStructure?.name || 'Fee'))}</div>
+            <div style="font-size:9px;color:#64748b;margin-top:4px;">Due: ${escapeHtml(dueMonth)} · Due date: ${escapeHtml(dueDate)}</div>
           </div>
+          <div style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:999px;background:${balance <= 0 ? '#ecfdf5' : '#fff7ed'};color:${balance <= 0 ? '#047857' : '#c2410c'};border:1px solid ${balance <= 0 ? '#6ee7b7' : '#fdba74'};">${escapeHtml(status)}</div>
         </div>
-        
-        ${structureItems.length > 0 ? `
-        <table class="fees-table" style="margin-bottom: 0;">
+        <table class="fees-table-pro">
           <thead>
             <tr>
-              <th style="width: 50%;">Fee Head</th>
-              <th class="text-right" style="width: 25%;">Amount</th>
-              <th class="text-right" style="width: 25%;">Allocated</th>
+              <th>Head name</th>
+              <th class="text-right">Actual amount</th>
+              <th class="text-right">Concession</th>
+              <th class="text-right">Last paid</th>
+              <th class="text-right">Paid amount</th>
+              <th>Fee type</th>
             </tr>
           </thead>
-          <tbody>
-            ${structureItems.map((item: Record<string, unknown>) => {
-              // Calculate proportional amount for this fee head
-              const headAmount = Number((item.amount as number) || 0);
-              const totalStructureAmount = structureItems.reduce((sum: number, i: Record<string, unknown>) => sum + Number((i.amount as number) || 0), 0);
-              const paidPortion = Number(fee.paid_amount || 0);
-              const proportionalAmount = totalStructureAmount > 0 
-                ? (headAmount / totalStructureAmount) * paidPortion
-                : 0;
-              
-              const feeHead = item.fee_head as Record<string, unknown> | undefined;
-              const headName = feeHead?.name as string | undefined;
-              const headDescription = feeHead?.description as string | undefined;
-              const isOptional = feeHead?.is_optional as boolean | undefined;
-              
-              return `
-              <tr>
-                <td>
-                  <div style="font-weight: 600; font-size: 10px;">${headName || 'Fee Head'}</div>
-                  ${headDescription ? `<div style="font-size: 9px; color: #666; margin-top: 1px;">${headDescription}</div>` : ''}
-                  ${isOptional ? `<span style="font-size: 8px; color: #2F6FED; margin-left: 4px;">(Optional)</span>` : ''}
-                </td>
-                <td class="text-right" style="font-size: 10px;">₹${headAmount.toLocaleString('en-IN')}</td>
-                <td class="text-right" style="font-size: 10px;">₹${proportionalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              </tr>
-              `;
-            }).join('')}
-            ${manualLines
-              .map(
-                (line) => `
-              <tr>
-                <td>
-                  <div style="font-weight: 600; font-size: 10px;">${escapeHtml(line.label)}</div>
-                  <div style="font-size: 9px; color: #666; margin-top: 1px;">${line.kind === 'discount' ? 'Discount' : 'Misc'}${line.source ? ` · ${line.source}` : ''}</div>
-                </td>
-                <td class="text-right" style="font-size: 10px;">₹${Number(line.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td class="text-right" style="font-size: 10px;">₹${Number(line.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              </tr>
-              `
-              )
-              .join('')}
-          </tbody>
+          <tbody>${bodyRows}</tbody>
         </table>
-        ` : manualLines.length > 0 ? `
-        <table class="fees-table" style="margin-bottom: 0;">
-          <thead>
-            <tr>
-              <th style="width: 50%;">Fee Head</th>
-              <th class="text-right" style="width: 25%;">Amount</th>
-              <th class="text-right" style="width: 25%;">Allocated</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${manualLines
-              .map(
-                (line) => `
-              <tr>
-                <td>
-                  <div style="font-weight: 600; font-size: 10px;">${escapeHtml(line.label)}</div>
-                  <div style="font-size: 9px; color: #666; margin-top: 1px;">${line.kind === 'discount' ? 'Discount' : 'Misc'}${line.source ? ` · ${line.source}` : ''}</div>
-                </td>
-                <td class="text-right" style="font-size: 10px;">₹${Number(line.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td class="text-right" style="font-size: 10px;">₹${Number(line.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              </tr>
-              `
-              )
-              .join('')}
-          </tbody>
-        </table>
-        ` : ''}
-        
-        <div class="fee-summary">
-          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center;">
-            <div>
-              <div style="font-size: 9px; color: #666; margin-bottom: 2px;">Base Amount</div>
-              <div style="font-size: 12px; font-weight: bold;">₹${Number(fee.base_amount || 0).toLocaleString('en-IN')}</div>
-            </div>
-            <div>
-              <div style="font-size: 9px; color: #666; margin-bottom: 2px;">Adjustments</div>
-              ${(() => {
-                const color = effectiveAdj > 0 ? '#4caf50' : effectiveAdj < 0 ? '#f44336' : '#1a1a1a';
-                const display =
-                  effectiveAdj !== 0
-                    ? (effectiveAdj > 0 ? '+' : '') +
-                      '₹' +
-                      effectiveAdj.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    : '₹0';
-                return `<div style="font-size: 12px; font-weight: bold; color: ${color};">${display}</div>`;
-              })()}
-              <div style="font-size: 8px; color: #888; margin-top: 2px;">Rules + misc / class lines</div>
-            </div>
-            <div>
-              <div style="font-size: 9px; color: #666; margin-bottom: 2px;">Paid Amount</div>
-              <div style="font-size: 12px; font-weight: bold; color: #4caf50;">₹${Number(fee.paid_amount || 0).toLocaleString('en-IN')}</div>
-            </div>
-            <div>
-              <div style="font-size: 9px; color: #666; margin-bottom: 2px;">Balance due</div>
-              <div style="font-size: 12px; font-weight: bold; color: ${balance > 0 ? '#f44336' : '#4caf50'};">
-                ₹${balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-              ${
-                lateFee > 0
-                  ? `<div style="font-size: 8px; color: #888; margin-top: 2px;">incl. late fee ₹${lateFee.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>`
-                  : ''
-              }
-            </div>
+        <div style="margin-top:10px;padding:10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;font-size:9px;">
+            <div><div style="color:#64748b;margin-bottom:2px;">Base</div><div style="font-weight:800;">₹${Number(fee.base_amount || 0).toLocaleString('en-IN')}</div></div>
+            <div><div style="color:#64748b;margin-bottom:2px;">Adjustments</div><div style="font-weight:800;color:${effectiveAdj < 0 ? '#dc2626' : effectiveAdj > 0 ? '#059669' : '#0f172a'};">${effectiveAdj !== 0 ? `${effectiveAdj > 0 ? '+' : ''}₹${effectiveAdj.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0'}</div></div>
+            <div><div style="color:#64748b;margin-bottom:2px;">Paid</div><div style="font-weight:800;color:#059669;">₹${Number(fee.paid_amount || 0).toLocaleString('en-IN')}</div></div>
+            <div><div style="color:#64748b;margin-bottom:2px;">Balance</div><div style="font-weight:800;color:${balance > 0 ? '#dc2626' : '#059669'};">₹${balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>${lateFee > 0 ? `<div style="font-size:7px;color:#94a3b8;margin-top:2px;">incl. late ₹${lateFee.toLocaleString('en-IN')}</div>` : ''}</div>
           </div>
         </div>
-      </div>
-      `;
-    }).join('')}
+      </div>`;
+    })
+    .join('');
 
-    <div class="summary">
-      <div class="summary-row">
-        <span class="summary-label">Total Amount:</span>
-        <span class="summary-value">₹${totalAmount.toLocaleString('en-IN')}</span>
-      </div>
-      <div class="summary-row">
-        <span class="summary-label">Total Paid:</span>
-        <span class="summary-value" style="color: #4caf50;">₹${totalPaid.toLocaleString('en-IN')}</span>
-      </div>
-      <div class="summary-row total-row">
-        <span class="summary-label">Balance Due:</span>
-        <span class="summary-value" style="color: ${totalDue > 0 ? '#f44336' : '#4caf50'};">
-          ₹${totalDue.toLocaleString('en-IN')}
-        </span>
+  const payHistory =
+    relevantPayments.length > 0
+      ? `<div class="receipt-card" style="font-size:10px;">
+          <div class="info-card-title">Payment history (linked)</div>
+          ${relevantPayments
+            .map((payment: Record<string, unknown>) => {
+              const receipt = payment.receipt as Record<string, unknown> | undefined;
+              const receiptNo = receipt ? (receipt.receipt_no as string | undefined) : undefined;
+              const paymentDateStr = payment.payment_date ? String(payment.payment_date) : null;
+              const paymentDate = paymentDateStr
+                ? new Date(paymentDateStr).toLocaleDateString('en-IN')
+                : 'N/A';
+              const paymentMode = String(payment.payment_mode || 'Cash');
+              return `<div class="info-line"><span class="lab">${escapeHtml(receiptNo || 'N/A')} · ${escapeHtml(paymentDate)} · ${escapeHtml(paymentMode)}</span><span class="val">₹${Number(payment.amount || 0).toLocaleString('en-IN')}</span></div>`;
+            })
+            .join('')}
+        </div>`
+      : '';
+
+  return `
+    <div class="copy-label-pill">${escapeHtml(copyLabel)}</div>
+
+    <div class="receipt-card" style="margin-bottom:14px;">
+      <div class="header-grid">
+        <div class="logo-wrap">
+          ${
+            logoUrl
+              ? `<img src="${escapeHtml(logoUrl)}" alt="Logo"/>`
+              : `<span style="font-size:9px;color:#94a3b8;">Logo</span>`
+          }
+        </div>
+        <div class="school-center">
+          <h1>${escapeHtml(String(school.school_name || 'School Name'))}</h1>
+          <div class="lines">
+            ${school.school_address ? `<div>${escapeHtml(String(school.school_address))}</div>` : ''}
+            ${
+              school.city || school.state
+                ? `<div>${escapeHtml([school.city, school.state, school.zip_code].filter(Boolean).join(', '))}</div>`
+                : ''
+            }
+            ${affiliation ? `<div>Affiliation: ${escapeHtml(affiliation)}</div>` : ''}
+            ${
+              websiteDisplay
+                ? `<div>Website: <span style="word-break:break-all;">${escapeHtml(websiteDisplay)}</span></div>`
+                : ''
+            }
+            ${school.school_phone ? `<div>Contact: ${escapeHtml(String(school.school_phone))}</div>` : ''}
+            ${school.school_email ? `<div>Email: ${escapeHtml(String(school.school_email))}</div>` : ''}
+          </div>
+        </div>
+        <div class="header-meta">
+          <div class="doc-title">FEES RECEIPT</div>
+          <div class="kv"><span class="k">Date:</span> <span class="v">${escapeHtml(currentDate)}</span></div>
+          <div class="kv"><span class="k">Receipt No:</span> <span class="v">${escapeHtml(receiptNos)}</span></div>
+          <div class="kv"><span class="k">Installment:</span> <span class="v">${escapeHtml(installmentLabel)}</span></div>
+        </div>
       </div>
     </div>
 
-    ${relevantPayments.length > 0 ? `
-    <div class="payment-info">
-      <div style="font-weight: 600; margin-bottom: 10px; color: #2e7d32;">Payment History:</div>
-      ${relevantPayments.map((payment: Record<string, unknown>) => {
-        const receipt = payment.receipt as Record<string, unknown> | undefined;
-        const receiptNo = receipt ? (receipt.receipt_no as string | undefined) : undefined;
-        const paymentDateStr = payment.payment_date ? String(payment.payment_date) : null;
-        const paymentDate = paymentDateStr ? new Date(paymentDateStr).toLocaleDateString('en-IN') : 'N/A';
-        const paymentMode = String(payment.payment_mode || 'Cash');
-        return `
-        <div class="payment-row">
-          <span>Receipt: ${receiptNo || 'N/A'} - ${paymentDate} (${paymentMode})</span>
-          <span style="font-weight: 600;">₹${Number(payment.amount || 0).toLocaleString('en-IN')}</span>
-        </div>
-      `;
-      }).join('')}
-    </div>
-    ` : ''}
-
-    <div class="footer">
-      <div style="margin-bottom: 10px;">
-        <strong>This is a computer-generated receipt.</strong>
+    <div class="two-col-info">
+      <div class="receipt-card">
+        <div class="info-card-title">Student information</div>
+        <div class="info-line"><span class="lab">Admission No</span><span class="val">${escapeHtml(admissionNo)}</span></div>
+        <div class="info-line"><span class="lab">Student name</span><span class="val">${escapeHtml(studentName)}</span></div>
+        ${
+          fatherName
+            ? `<div class="info-line"><span class="lab">Father's name</span><span class="val">${escapeHtml(fatherName)}</span></div>`
+            : ''
+        }
+        <div class="info-line"><span class="lab">Class</span><span class="val">${escapeHtml(cls)}</span></div>
+        <div class="info-line"><span class="lab">Section</span><span class="val">${escapeHtml(section)}</span></div>
+        ${
+          board
+            ? `<div class="info-line"><span class="lab">Board</span><span class="val">${escapeHtml(board)}</span></div>`
+            : ''
+        }
+        ${
+          student.roll_number
+            ? `<div class="info-line"><span class="lab">Roll No.</span><span class="val">${escapeHtml(String(student.roll_number))}</span></div>`
+            : ''
+        }
       </div>
-      <div>Generated on ${new Date().toLocaleString('en-IN')}</div>
-      ${school.school_name ? `<div style="margin-top: 10px;">${school.school_name}</div>` : ''}
-      <div class="signature-block">
+      <div class="receipt-card">
+        <div class="info-card-title">Receipt summary</div>
+        <div class="info-line"><span class="lab">Payment mode(s)</span><span class="val">${escapeHtml(modesLabel)}</span></div>
+        <div><span class="payment-mode-pill">${escapeHtml(modesLabel)}</span></div>
+        <div class="info-line" style="margin-top:10px;"><span class="lab">Total billable (selected)</span><span class="val">₹${totalAmount.toLocaleString('en-IN')}</span></div>
+        <div class="info-line"><span class="lab">Total paid (selected)</span><span class="val" style="color:#059669;">₹${totalPaid.toLocaleString('en-IN')}</span></div>
+        <div class="info-line"><span class="lab">Balance due</span><span class="val" style="color:${totalDue > 0 ? '#dc2626' : '#059669'};">₹${totalDue.toLocaleString('en-IN')}</span></div>
+      </div>
+    </div>
+
+    <div class="info-card-title" style="margin:4px 0 8px 2px;">Fee breakdown</div>
+    ${feeSectionsHtml}
+
+    <div class="total-paid-banner">
+      <span class="lbl">Total paid (selected installments)</span>
+      <span class="amt">₹${totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+    </div>
+
+    <div class="receipt-card amount-words" style="margin-top:12px;">
+      <strong>Amount in words:</strong> ${escapeHtml(amountWords)}
+    </div>
+
+    ${payHistory}
+
+    <div class="signature-grid">
+      <div class="signature-box">
         <div class="signature-line"></div>
-        <div class="signature-label">Cashier Signature</div>
+        <div class="signature-label">Cashier / Accountant signature</div>
       </div>
+      <div class="signature-box">
+        <div class="signature-line"></div>
+        <div class="signature-label">School stamp</div>
+        <div class="stamp-placeholder">Official stamp here</div>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      <div><strong>Computer-generated receipt.</strong></div>
+      <div>Generated on ${escapeHtml(new Date().toLocaleString('en-IN'))}</div>
+      ${school.school_name ? `<div>${escapeHtml(String(school.school_name))}</div>` : ''}
     </div>
   `;
 }
