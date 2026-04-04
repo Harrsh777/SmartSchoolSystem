@@ -388,8 +388,8 @@ export default function EduCoreLanding() {
       {/* Center — copy & CTAs */}
       <div className="lg:col-span-6 order-1 lg:order-2 text-center">
         <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white leading-[1.06] tracking-tight drop-shadow-[0_2px_32px_rgba(0,0,0,0.35)]">
-          Powerful Tools for Effective <br className="hidden sm:block" />
-          School Management
+          Powerful Tools for Effective School <br className="hidden sm:block" />
+          Management
         </h1>
 
         <p className="mt-7 sm:mt-8 text-base sm:text-lg leading-relaxed text-white/70 max-w-2xl mx-auto">
