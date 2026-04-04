@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Image from 'next/image';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, TrendingUp, CalendarDays, CalendarX, Clock, Loader2, AlertTriangle, Link as LinkIcon, MessageSquare, Filter, Plus, Trash2, CheckCircle, Circle } from 'lucide-react';
+import { GraduationCap, Users, UserCheck, Calendar, FileText, Bell, TrendingUp, CalendarDays, CalendarX, Clock, Loader2, AlertTriangle, MessageSquare, Plus, Trash2, CheckCircle, Circle } from 'lucide-react';
 import type { Staff, Student, Class, Exam, Notice } from '@/lib/supabase';
 import TeacherTimetableView from '@/components/timetable/TeacherTimetableView';
 import { getString } from '@/lib/type-utils';
@@ -533,13 +533,13 @@ export default function TeacherDashboard() {
   // If assigned class exists, show home page with class students
   if (assignedClass) {
     return (
-      <div className="min-h-screen bg-background space-y-8 p-6">
+      <div className="min-h-screen bg-background space-y-4 p-4 md:p-5">
         {/* Welcome Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {(() => {
               const photoUrl = teacher ? getString(teacher.photo_url) : '';
               const fullName = teacher ? getString(teacher.full_name) : '';
@@ -561,14 +561,14 @@ export default function TeacherDashboard() {
               );
             })()}
             <div>
-              <h1 className="text-3xl font-serif font-bold text-foreground mb-2">
+              <h1 className="text-2xl font-serif font-bold text-foreground mb-1">
                 Welcome, {teacher ? getString(teacher.full_name) || 'Teacher' : 'Teacher'}
               </h1>
-              <p className="text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Class Teacher of {getString(assignedClass.class)}-{getString(assignedClass.section)} ({getString(assignedClass.academic_year) || 'N/A'})
               </p>
               {assignedSubjects.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
                   <span className="text-xs text-muted-foreground">Teaching:</span>
                   {assignedSubjects.map((subject) => (
                     <span
@@ -585,35 +585,35 @@ export default function TeacherDashboard() {
           </div>
         </motion.div>
 
-        {/* Stat Cards — equal-height tiles in each row */}
+        {/* Stat cards: fixed equal height on md+ (compact dashboard density) */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 items-stretch"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 md:items-stretch"
         >
-          {/* Students: All (School) + My Class in one card — same fixed height as peers (md+) */}
-          <div className="bg-card rounded-lg p-6 shadow-sm border border-input flex flex-col w-full min-h-[18rem] md:h-80 overflow-hidden self-stretch">
-            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center shrink-0 mb-3">
-              <Users className="text-blue-600" size={24} />
+          {/* Students: All (School) + My Class */}
+          <div className="bg-card rounded-lg p-4 shadow-sm border border-input flex flex-col w-full md:h-48 min-h-0 overflow-hidden">
+            <div className="w-9 h-9 rounded-md bg-blue-100 flex items-center justify-center shrink-0 mb-2">
+              <Users className="text-blue-600" size={20} />
             </div>
-            <p className="text-sm text-muted-foreground mb-1 shrink-0">Students</p>
-            <div className="flex-1 flex flex-col gap-3 min-h-0 mt-2 overflow-hidden">
+            <p className="text-xs font-medium text-muted-foreground mb-1 shrink-0">Students</p>
+            <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
               <div
-                className="flex-1 min-h-[4.5rem] flex items-center justify-between rounded-lg border border-input/60 bg-muted/30 px-3 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                className="shrink-0 flex items-center justify-between rounded-md border border-input/60 bg-muted/30 px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => router.push('/teacher/dashboard/students')}
                 onKeyDown={(e) => e.key === 'Enter' && router.push('/teacher/dashboard/students')}
                 role="button"
                 tabIndex={0}
               >
                 <div className="min-w-0">
-                  <p className="text-sm text-muted-foreground">All Students (School)</p>
-                  <p className="text-2xl font-bold text-foreground tabular-nums">{students.length}</p>
+                  <p className="text-xs text-muted-foreground">All (school)</p>
+                  <p className="text-xl font-bold text-foreground tabular-nums leading-tight">{students.length}</p>
                 </div>
-                <p className="text-xs text-primary font-medium shrink-0 self-center">View all →</p>
+                <p className="text-[10px] text-primary font-medium shrink-0">View →</p>
               </div>
               <div
-                className={`flex-1 min-h-0 flex flex-col justify-center rounded-lg border px-3 py-3 overflow-y-auto ${assignedClass ? 'border-input/60 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors' : 'border-input/40 bg-muted/20 opacity-80'}`}
+                className={`flex-1 min-h-0 flex flex-col justify-center rounded-md border px-2.5 py-2 overflow-y-auto ${assignedClass ? 'border-input/60 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors' : 'border-input/40 bg-muted/20 opacity-80'}`}
                 onClick={assignedClass ? () => router.push('/teacher/dashboard/my-class') : undefined}
                 onKeyDown={assignedClass ? (e) => e.key === 'Enter' && router.push('/teacher/dashboard/my-class') : undefined}
                 role={assignedClass ? 'button' : undefined}
@@ -621,52 +621,52 @@ export default function TeacherDashboard() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-muted-foreground">Students in My Class</p>
-                    <p className="text-2xl font-bold text-foreground tabular-nums">{myClassStudents.length}</p>
+                    <p className="text-xs text-muted-foreground">My class</p>
+                    <p className="text-xl font-bold text-foreground tabular-nums leading-tight">{myClassStudents.length}</p>
                     {myClassStudents.length === 0 && assignedClass && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">No students in your class yet.</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">No students yet.</p>
                     )}
                     {myClassStudents.length > 0 && (
-                      <div className="max-h-14 overflow-y-auto space-y-0.5 pr-1 mt-1">
-                        {myClassStudents.slice(0, 3).map((s) => {
+                      <div className="max-h-10 overflow-y-auto space-y-0 pr-0.5 mt-0.5">
+                        {myClassStudents.slice(0, 2).map((s) => {
                           const name = getString(s.student_name) || getString(s.first_name) || '—';
                           return (
-                            <div key={s.id} className="text-xs text-foreground truncate" title={name}>
+                            <div key={s.id} className="text-[10px] text-foreground truncate" title={name}>
                               {name}
                             </div>
                           );
                         })}
-                        {myClassStudents.length > 3 && (
-                          <p className="text-xs text-muted-foreground">+{myClassStudents.length - 3} more</p>
+                        {myClassStudents.length > 2 && (
+                          <p className="text-[10px] text-muted-foreground">+{myClassStudents.length - 2}</p>
                         )}
                       </div>
                     )}
                   </div>
                   {assignedClass && (
-                    <p className="text-xs text-primary font-medium shrink-0">My Class →</p>
+                    <p className="text-[10px] text-primary font-medium shrink-0">Class →</p>
                   )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Pending Leave Requests Card - Purple */}
-          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative flex flex-col w-full min-h-[18rem] md:h-80 overflow-hidden self-stretch">
-            <div className="absolute top-4 right-4 z-10">
-              <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded-full font-medium">
+          {/* Pending Leave Requests */}
+          <div className="bg-card rounded-lg p-4 shadow-sm border border-input relative flex flex-col w-full md:h-48 min-h-0 overflow-hidden">
+            <div className="absolute top-3 right-3 z-10">
+              <span className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded-full font-medium">
                 {studentLeaveRequests.length > 0 ? `${studentLeaveRequests.length} New` : 'None'}
               </span>
             </div>
-            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center shrink-0 mb-3">
-              <FileText className="text-purple-600" size={24} />
+            <div className="w-9 h-9 rounded-md bg-purple-100 flex items-center justify-center shrink-0 mb-2">
+              <FileText className="text-purple-600" size={20} />
             </div>
-            <p className="text-sm text-muted-foreground mb-1 pr-16">Pending Requests</p>
-            <div className="flex-1 flex flex-col min-h-0">
-              <h3 className="text-3xl font-bold text-foreground tabular-nums mb-4">
+            <p className="text-xs font-medium text-muted-foreground mb-1 pr-14">Pending requests</p>
+            <div className="flex-1 flex flex-col min-h-0 justify-between">
+              <h3 className="text-2xl font-bold text-foreground tabular-nums leading-tight">
                 {studentLeaveRequests.length}
               </h3>
-              <div className="mt-auto pt-2">
-                <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="pt-1">
+                <div className="relative w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="h-full bg-purple-600 rounded-full transition-all duration-500"
                     style={{ width: `${Math.min((studentLeaveRequests.length / 10) * 100, 100)}%` }}
@@ -676,16 +676,16 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
-          {/* Staff Attendance Card - Green */}
-          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative flex flex-col w-full min-h-[18rem] md:h-80 overflow-hidden self-stretch">
-            <div className="absolute top-4 right-4 z-10">
+          {/* Staff Attendance */}
+          <div className="bg-card rounded-lg p-4 shadow-sm border border-input relative flex flex-col w-full md:h-48 min-h-0 overflow-hidden">
+            <div className="absolute top-3 right-3 z-10">
               <span className={`${
                 attendanceStats && attendanceStats.percentage >= 95 
                   ? 'bg-green-100 text-green-700' 
                   : attendanceStats && attendanceStats.percentage >= 80
                   ? 'bg-yellow-100 text-yellow-700'
                   : 'bg-gray-100 text-gray-700'
-              } text-xs px-2 py-1 rounded-full font-medium`}>
+              } text-[10px] px-1.5 py-0.5 rounded-full font-medium`}>
                 {attendanceStats && attendanceStats.percentage >= 95 
                   ? 'Excellent' 
                   : attendanceStats && attendanceStats.percentage >= 80
@@ -693,16 +693,16 @@ export default function TeacherDashboard() {
                   : 'Stable'}
               </span>
             </div>
-            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center shrink-0 mb-3">
-              <UserCheck className="text-green-600" size={24} />
+            <div className="w-9 h-9 rounded-md bg-green-100 flex items-center justify-center shrink-0 mb-2">
+              <UserCheck className="text-green-600" size={20} />
             </div>
-            <p className="text-sm text-muted-foreground mb-1 pr-16">Staff Attendance</p>
-            <div className="flex-1 flex flex-col min-h-0">
-              <h3 className="text-3xl font-bold text-foreground tabular-nums mb-4">
+            <p className="text-xs font-medium text-muted-foreground mb-1 pr-14">Staff attendance</p>
+            <div className="flex-1 flex flex-col min-h-0 justify-between">
+              <h3 className="text-2xl font-bold text-foreground tabular-nums leading-tight">
                 {attendanceStats ? `${attendanceStats.percentage}%` : '0%'}
               </h3>
-              <div className="mt-auto pt-2">
-                <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="pt-1">
+                <div className="relative w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="h-full bg-green-600 rounded-full transition-all duration-500"
                     style={{ width: `${attendanceStats?.percentage || 0}%` }}
@@ -712,21 +712,21 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
-          {/* Active Notices Card - Orange */}
-          <div className="bg-card rounded-lg p-6 shadow-sm border border-input relative flex flex-col w-full min-h-[18rem] md:h-80 overflow-hidden self-stretch">
-            <div className="absolute top-4 right-4 z-10">
-              <span className="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full font-medium">
+          {/* Active Notices */}
+          <div className="bg-card rounded-lg p-4 shadow-sm border border-input relative flex flex-col w-full md:h-48 min-h-0 overflow-hidden">
+            <div className="absolute top-3 right-3 z-10">
+              <span className="bg-orange-100 text-orange-700 text-[10px] px-1.5 py-0.5 rounded-full font-medium">
                 {noticesCount > 0 ? 'Active' : 'None'}
               </span>
             </div>
-            <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center shrink-0 mb-3">
-              <Bell className="text-orange-600" size={24} />
+            <div className="w-9 h-9 rounded-md bg-orange-100 flex items-center justify-center shrink-0 mb-2">
+              <Bell className="text-orange-600" size={20} />
             </div>
-            <p className="text-sm text-muted-foreground mb-1 pr-16">Active Notices</p>
-            <div className="flex-1 flex flex-col min-h-0">
-              <h3 className="text-3xl font-bold text-foreground tabular-nums mb-4">{noticesCount}</h3>
-              <div className="mt-auto pt-2">
-                <div className="relative w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+            <p className="text-xs font-medium text-muted-foreground mb-1 pr-14">Active notices</p>
+            <div className="flex-1 flex flex-col min-h-0 justify-between">
+              <h3 className="text-2xl font-bold text-foreground tabular-nums leading-tight">{noticesCount}</h3>
+              <div className="pt-1">
+                <div className="relative w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="h-full bg-orange-600 rounded-full transition-all duration-500"
                     style={{ width: `${Math.min((noticesCount / 20) * 100, 100)}%` }}
@@ -742,35 +742,35 @@ export default function TeacherDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className={`grid gap-4 mb-8 ${assignedClass ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}
+          className={`grid gap-2 mb-4 ${assignedClass ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'}`}
         >
           <button
             onClick={() => router.push('/teacher/dashboard/attendance')}
-            className="bg-primary text-primary-foreground py-3 px-6 rounded-lg font-medium hover:bg-primary/90 flex items-center justify-center gap-2 transition-colors"
+            className="bg-primary text-primary-foreground py-2 px-3 rounded-md text-sm font-medium hover:bg-primary/90 flex items-center justify-center gap-2 transition-colors"
           >
-            <Calendar size={20} />
+            <Calendar size={18} />
             Mark Attendance
           </button>
           <button
             onClick={() => router.push('/teacher/dashboard/examinations')}
-            className="bg-card text-foreground py-3 px-6 rounded-lg font-medium hover:bg-muted border border-input flex items-center justify-center gap-2 transition-colors"
+            className="bg-card text-foreground py-2 px-3 rounded-md text-sm font-medium hover:bg-muted border border-input flex items-center justify-center gap-2 transition-colors"
           >
-            <FileText size={20} />
+            <FileText size={18} />
             Input Grades
           </button>
           <button
             onClick={() => router.push('/teacher/dashboard/students')}
-            className="bg-card text-foreground py-3 px-6 rounded-lg font-medium hover:bg-muted border border-input flex items-center justify-center gap-2 transition-colors"
+            className="bg-card text-foreground py-2 px-3 rounded-md text-sm font-medium hover:bg-muted border border-input flex items-center justify-center gap-2 transition-colors"
           >
-            <Users size={20} />
+            <Users size={18} />
             All Students
           </button>
           {assignedClass && (
             <button
               onClick={() => router.push('/teacher/dashboard/my-class')}
-              className="bg-card text-foreground py-3 px-6 rounded-lg font-medium hover:bg-muted border border-input flex items-center justify-center gap-2 transition-colors"
+              className="bg-card text-foreground py-2 px-3 rounded-md text-sm font-medium hover:bg-muted border border-input flex items-center justify-center gap-2 transition-colors"
             >
-              <UserCheck size={20} />
+              <UserCheck size={18} />
               My Class
             </button>
           )}
@@ -781,16 +781,14 @@ export default function TeacherDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+          className="grid grid-cols-1 lg:grid-cols-3 gap-4"
         >
           {/* My Timetable - 2/3 width */}
-          <div className="lg:col-span-2 bg-card rounded-lg shadow-sm border border-input p-6">
-            <div className="flex items-center justify-between mb-6">
+          <div className="lg:col-span-2 bg-card rounded-lg shadow-sm border border-input p-4">
+            <div className="flex items-center justify-between mb-3">
               <div>
-                <h2 className="text-xl font-bold text-foreground">My Timetable</h2>
-                <p className="text-sm text-muted-foreground">
-                  Weekly schedule view
-                </p>
+                <h2 className="text-lg font-bold text-foreground">My Timetable</h2>
+                <p className="text-xs text-muted-foreground">Weekly schedule</p>
               </div>
             </div>
 
@@ -806,10 +804,10 @@ export default function TeacherDashboard() {
                 );
               }
               return (
-                <div className="text-center py-12">
-                  <Calendar className="mx-auto text-muted-foreground mb-4" size={48} />
-                  <p className="text-muted-foreground">No timetable available</p>
-                  <p className="text-xs text-muted-foreground mt-2">
+                <div className="text-center py-8">
+                  <Calendar className="mx-auto text-muted-foreground mb-2" size={36} />
+                  <p className="text-sm text-muted-foreground">No timetable available</p>
+                  <p className="text-xs text-muted-foreground mt-1">
                     Your timetable has not been assigned yet
                   </p>
                 </div>
@@ -818,19 +816,19 @@ export default function TeacherDashboard() {
           </div>
 
           {/* Right Sidebar - 1/3 width */}
-          <div className="space-y-6">
+          <div className="space-y-3">
             {/* Student Alerts */}
-            <div className="bg-card rounded-lg shadow-sm border border-input p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-foreground flex items-center gap-2">
-                  <AlertTriangle className="text-destructive" size={20} />
+            <div className="bg-card rounded-lg shadow-sm border border-input p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                  <AlertTriangle className="text-destructive" size={16} />
                   Student Alerts
                 </h3>
-                <span className="bg-destructive/10 text-destructive text-xs px-2 py-1 rounded-full">
+                <span className="bg-destructive/10 text-destructive text-[10px] px-1.5 py-0.5 rounded-full">
                   {studentLeaveRequests.length} New
                 </span>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {studentLeaveRequests.slice(0, 2).map((leave) => {
                   const leaveId = getString(leave.id) || `leave-${Math.random()}`;
                   const studentName = getString(leave.student_name) || 'Student';
@@ -840,18 +838,18 @@ export default function TeacherDashboard() {
                   const reason = getString(leave.reason) || 'N/A';
                   
                   return (
-                    <div key={leaveId} className="border-l-4 border-destructive bg-destructive/5 p-4 rounded">
-                      <p className="font-semibold text-foreground text-sm mb-1">{studentName}</p>
-                      <p className="text-sm text-muted-foreground mb-3">
+                    <div key={leaveId} className="border-l-4 border-destructive bg-destructive/5 p-2.5 rounded-md">
+                      <p className="font-semibold text-foreground text-xs mb-0.5">{studentName}</p>
+                      <p className="text-xs text-muted-foreground mb-2">
                         {leaveStartDate && leaveEndDate
                           ? `Absent ${new Date(leaveStartDate).toLocaleDateString()} - ${new Date(leaveEndDate).toLocaleDateString()}`
                           : reason}
                       </p>
-                      <div className="flex gap-2">
-                        <button className="text-xs text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded transition-colors">
+                      <div className="flex gap-1.5 flex-wrap">
+                        <button type="button" className="text-[10px] text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded transition-colors">
                           Call Parent
                         </button>
-                        <button className="text-xs text-muted-foreground hover:text-foreground border border-input px-3 py-1.5 rounded transition-colors">
+                        <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground border border-input px-2 py-1 rounded transition-colors">
                           Dismiss
                         </button>
                       </div>
@@ -859,67 +857,31 @@ export default function TeacherDashboard() {
                   );
                 })}
                 {studentLeaveRequests.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">No active alerts</p>
+                  <p className="text-xs text-muted-foreground text-center py-2">No active alerts</p>
                 )}
               </div>
               <button
+                type="button"
                 onClick={() => {
                   const schoolCode = teacher ? getString(teacher.school_code) : '';
                   if (schoolCode) {
                     router.push(`/dashboard/${schoolCode}/leave/student`);
                   }
                 }}
-                className="text-primary text-sm font-medium mt-4 flex items-center gap-1 hover:underline"
+                className="text-primary text-xs font-medium mt-2 flex items-center gap-1 hover:underline"
               >
-                <AlertTriangle size={14} />
-                View All Active Alerts
-              </button>
-            </div>
-
-            {/* Recent Submissions */}
-            <div className="bg-card rounded-lg shadow-sm border border-input p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-foreground">Recent Submissions</h3>
-                <button className="text-muted-foreground hover:text-foreground">
-                  <Filter size={18} />
-                </button>
-              </div>
-              <div className="space-y-3">
-                {/* Placeholder for recent submissions - will be replaced with real data */}
-                <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/30 transition-colors cursor-pointer">
-                  <FileText className="text-blue-500" size={20} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">Assignment_01.pdf</p>
-                    <p className="text-xs text-muted-foreground">Submitted by Student Name • 14m ago</p>
-                  </div>
-                  <button className="text-muted-foreground hover:text-foreground">
-                    <FileText size={18} />
-                  </button>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/30 transition-colors cursor-pointer">
-                  <LinkIcon className="text-blue-500" size={20} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">Project Link</p>
-                    <p className="text-xs text-muted-foreground">Submitted by Student Name • 1h ago</p>
-                  </div>
-                  <button className="text-muted-foreground hover:text-foreground">
-                    <FileText size={18} />
-                  </button>
-                </div>
-              </div>
-              <button className="text-primary text-sm font-medium mt-4 flex items-center gap-1 hover:underline">
-                <FileText size={14} />
-                Grade All ({studentLeaveRequests.length} Pending)
+                <AlertTriangle size={12} />
+                View all alerts
               </button>
             </div>
 
             {/* Communication Hub */}
-            <div className="bg-primary rounded-lg shadow-sm border border-primary/20 p-6 text-white">
-              <h3 className="font-bold mb-2">Communication Hub</h3>
-              <p className="text-sm text-white/80 mb-4">
+            <div className="bg-primary rounded-lg shadow-sm border border-primary/20 p-4 text-white">
+              <h3 className="text-sm font-bold mb-1">Communication Hub</h3>
+              <p className="text-xs text-white/80 mb-3">
                 Instantly reach parents and faculty via SMS, Email, or App notifications.
               </p>
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-3">
                 {/* Avatar cluster - showing first letters of student names from assigned class */}
                 <div className="flex -space-x-2">
                   {myClassStudents.slice(0, 3).map((student, idx) => {
@@ -959,19 +921,20 @@ export default function TeacherDashboard() {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => router.push('/teacher/dashboard/communication')}
-                className="bg-accent text-accent-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-accent/90 transition-colors w-full flex items-center justify-center gap-2 mb-4"
+                className="bg-accent text-accent-foreground px-3 py-1.5 rounded-md text-xs font-medium hover:bg-accent/90 transition-colors w-full flex items-center justify-center gap-1.5 mb-3"
               >
                 <MessageSquare size={16} />
                 New Message
               </button>
 
               {/* Recent Messages/Notices */}
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+              <div className="space-y-1.5 max-h-52 overflow-y-auto">
                 {recentNotices.length === 0 ? (
-                  <div className="text-center py-4">
-                    <Bell className="mx-auto text-white/40 mb-2" size={24} />
-                    <p className="text-xs text-white/60">No new messages</p>
+                  <div className="text-center py-3">
+                    <Bell className="mx-auto text-white/40 mb-1" size={20} />
+                    <p className="text-[10px] text-white/60">No new messages</p>
                   </div>
                 ) : (
                   recentNotices.map((notice) => {
@@ -988,7 +951,7 @@ export default function TeacherDashboard() {
                     return (
                       <div
                         key={notice.id}
-                        className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 hover:bg-white/15 transition-colors cursor-pointer"
+                        className="bg-white/10 backdrop-blur-sm rounded-md p-2 border border-white/20 hover:bg-white/15 transition-colors cursor-pointer"
                         onClick={() => router.push('/teacher/dashboard/communication')}
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
@@ -1037,22 +1000,22 @@ export default function TeacherDashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+          className="grid grid-cols-1 lg:grid-cols-2 gap-4"
         >
           {/* Grade Distribution */}
-          <div className="bg-card rounded-lg shadow-sm border border-input p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-foreground">Grade Distribution</h3>
-              <button className="text-primary text-sm font-medium hover:underline">
+          <div className="bg-card rounded-lg shadow-sm border border-input p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-foreground">Grade Distribution</h3>
+              <button type="button" className="text-primary text-xs font-medium hover:underline">
                 Full Analytics
               </button>
             </div>
             {/* Donut Chart */}
-            <div className="flex items-center justify-center my-8">
-              <div className="relative w-48 h-48">
+            <div className="flex items-center justify-center my-4">
+              <div className="relative w-36 h-36">
                 {gradeDistribution && gradeDistribution.total > 0 ? (
                   <>
-                    <svg className="transform -rotate-90 w-48 h-48">
+                    <svg className="transform -rotate-90 w-36 h-36 shrink-0" viewBox="0 0 192 192">
                       <circle
                         cx="96"
                         cy="96"
@@ -1094,7 +1057,7 @@ export default function TeacherDashboard() {
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="text-center">
-                        <p className="text-3xl font-bold text-foreground">{gradeDistribution.passRate}%</p>
+                        <p className="text-xl font-bold text-foreground tabular-nums">{gradeDistribution.passRate}%</p>
                         <p className="text-xs text-muted-foreground">PASS RATE</p>
                       </div>
                     </div>
@@ -1110,22 +1073,22 @@ export default function TeacherDashboard() {
               </div>
             </div>
             {/* Legend */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-blue-600"></div>
-                <span className="text-sm text-muted-foreground">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded bg-blue-600 shrink-0" />
+                <span className="text-xs text-muted-foreground">
                   A-B ({gradeDistribution?.aToB || 0}%)
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-green-500"></div>
-                <span className="text-sm text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded bg-green-500 shrink-0" />
+                <span className="text-xs text-muted-foreground">
                   C-D ({gradeDistribution?.cToD || 0}%)
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-orange-500"></div>
-                <span className="text-sm text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded bg-orange-500 shrink-0" />
+                <span className="text-xs text-muted-foreground">
                   Below E ({gradeDistribution?.belowE || 0}%)
                 </span>
               </div>
@@ -1133,12 +1096,13 @@ export default function TeacherDashboard() {
           </div>
 
           {/* To-Do List */}
-          <div className="bg-card rounded-lg shadow-sm border border-input p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-foreground">My Tasks</h3>
+          <div className="bg-card rounded-lg shadow-sm border border-input p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-foreground">My Tasks</h3>
               <button
+                type="button"
                 onClick={() => setShowAddTodo(!showAddTodo)}
-                className="text-primary text-sm font-medium hover:underline flex items-center gap-1"
+                className="text-primary text-xs font-medium hover:underline flex items-center gap-1"
               >
                 <Plus size={14} />
                 Add Task
@@ -1147,7 +1111,7 @@ export default function TeacherDashboard() {
 
             {/* Add Todo Form */}
             {showAddTodo && (
-              <div className="mb-4 p-3 bg-muted/30 rounded-lg border border-input">
+              <div className="mb-2 p-2 bg-muted/30 rounded-md border border-input">
                 <input
                   type="text"
                   value={newTodoTitle}
@@ -1184,17 +1148,17 @@ export default function TeacherDashboard() {
 
             {/* Todos List */}
             {loadingTodos ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
               </div>
             ) : todos.length === 0 ? (
-              <div className="text-center py-8">
-                <FileText className="mx-auto text-muted-foreground mb-3" size={32} />
-                <p className="text-sm text-muted-foreground">No tasks yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Click &quot;Add Task&quot; to create one</p>
+              <div className="text-center py-6">
+                <FileText className="mx-auto text-muted-foreground mb-2" size={28} />
+                <p className="text-xs text-muted-foreground">No tasks yet</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Add a task to get started</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-1.5 max-h-72 overflow-y-auto">
                 {todos.map((todo) => {
                   const isCompleted = todo.status === 'completed';
                   const priorityColors: Record<string, string> = {
@@ -1208,7 +1172,7 @@ export default function TeacherDashboard() {
                   return (
                     <div
                       key={todo.id}
-                      className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+                      className={`flex items-start gap-2 p-2 rounded-md border transition-colors ${
                         isCompleted
                           ? 'bg-muted/30 border-input opacity-75'
                           : 'bg-background border-input hover:border-accent'
@@ -1274,14 +1238,14 @@ export default function TeacherDashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
           >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-destructive/10 rounded-lg">
-                  <CalendarX className="text-destructive" size={24} />
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-destructive/10 rounded-md">
+                  <CalendarX className="text-destructive" size={20} />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-serif font-bold text-foreground">Student Leave Requests</h2>
-                  <p className="text-sm text-muted-foreground">
+                  <h2 className="text-lg font-serif font-bold text-foreground">Student Leave Requests</h2>
+                  <p className="text-xs text-muted-foreground">
                     {studentLeaveRequests.length} pending {studentLeaveRequests.length === 1 ? 'request' : 'requests'}
                   </p>
                 </div>
@@ -1423,13 +1387,13 @@ export default function TeacherDashboard() {
 
   // If no assigned class, show message
   return (
-    <div className="min-h-screen bg-background space-y-8 p-6">
+    <div className="min-h-screen bg-background space-y-4 p-4 md:p-5">
       {/* Welcome Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {(() => {
             const photoUrl = teacher ? getString(teacher.photo_url) : '';
             const fullName = teacher ? getString(teacher.full_name) : '';
@@ -1451,115 +1415,115 @@ export default function TeacherDashboard() {
             );
           })()}
           <div>
-            <h1 className="text-3xl font-serif font-bold text-foreground mb-2">
+            <h1 className="text-2xl font-serif font-bold text-foreground mb-1">
               Welcome, {teacher ? getString(teacher.full_name) || 'Teacher' : 'Teacher'}
             </h1>
-            <p className="text-muted-foreground">Teacher Dashboard</p>
+            <p className="text-sm text-muted-foreground">Teacher Dashboard</p>
           </div>
         </div>
       </motion.div>
 
-      {/* Stat Cards */}
+      {/* Stat Cards — equal fixed height on md+ */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:items-stretch"
       >
         {/* Total Students Card */}
         <motion.div
-          whileHover={{ scale: 1.02, y: -4 }}
-          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10 h-full min-h-[180px] flex flex-col"
+          whileHover={{ scale: 1.01 }}
+          className="glass-card soft-shadow rounded-lg p-4 cursor-pointer transition-all hover:shadow-md border border-white/20 dark:border-white/10 md:h-36 flex flex-col justify-between"
           onClick={() => router.push('/teacher/dashboard/students')}
         >
-          <div className="flex items-center justify-between flex-1">
+          <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2.5 bg-primary/10 rounded-lg">
-                  <Users className="text-primary" size={20} />
+              <div className="flex items-center gap-2 mb-1">
+                <div className="p-1.5 bg-primary/10 rounded-md">
+                  <Users className="text-primary" size={18} />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">All Students</p>
+                <p className="text-xs font-medium text-muted-foreground">All Students</p>
               </div>
-              <p className="text-3xl font-bold text-foreground mb-1 tabular-nums">{students.length}</p>
-              <p className="text-xs text-muted-foreground">In school</p>
+              <p className="text-2xl font-bold text-foreground tabular-nums leading-tight">{students.length}</p>
+              <p className="text-[10px] text-muted-foreground">In school</p>
             </div>
-            <div className="opacity-10 shrink-0">
-              <TrendingUp size={48} className="text-primary" />
+            <div className="opacity-[0.08] shrink-0 hidden sm:block">
+              <TrendingUp size={36} className="text-primary" />
             </div>
           </div>
         </motion.div>
 
         {/* Teacher Attendance Card */}
         <motion.div
-          whileHover={{ scale: 1.02, y: -4 }}
-          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10 h-full min-h-[180px] flex flex-col"
+          whileHover={{ scale: 1.01 }}
+          className="glass-card soft-shadow rounded-lg p-4 cursor-pointer transition-all hover:shadow-md border border-white/20 dark:border-white/10 md:h-36 flex flex-col justify-between"
           onClick={() => router.push('/teacher/dashboard/attendance')}
         >
-          <div className="flex items-center justify-between flex-1">
+          <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2.5 bg-accent/10 rounded-lg">
-                  <Calendar className="text-accent" size={20} />
+              <div className="flex items-center gap-2 mb-1">
+                <div className="p-1.5 bg-accent/10 rounded-md">
+                  <Calendar className="text-accent" size={18} />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">My Attendance</p>
+                <p className="text-xs font-medium text-muted-foreground">My Attendance</p>
               </div>
-              <p className="text-3xl font-bold text-foreground mb-1 tabular-nums">
+              <p className="text-2xl font-bold text-foreground tabular-nums leading-tight">
                 {attendanceStats ? `${attendanceStats.percentage}%` : '0%'}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[10px] text-muted-foreground line-clamp-2">
                 {attendanceStats && attendanceStats.total > 0 
                   ? `${attendanceStats.present}/${attendanceStats.total} days present` 
                   : 'This month'}
               </p>
             </div>
-            <div className="opacity-10 shrink-0">
-              <TrendingUp size={48} className="text-accent" />
+            <div className="opacity-[0.08] shrink-0 hidden sm:block">
+              <TrendingUp size={36} className="text-accent" />
             </div>
           </div>
         </motion.div>
 
         {/* Upcoming Exams Card */}
         <motion.div
-          whileHover={{ scale: 1.02, y: -4 }}
-          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10 h-full min-h-[180px] flex flex-col"
+          whileHover={{ scale: 1.01 }}
+          className="glass-card soft-shadow rounded-lg p-4 cursor-pointer transition-all hover:shadow-md border border-white/20 dark:border-white/10 md:h-36 flex flex-col justify-between"
           onClick={() => router.push('/teacher/dashboard/examinations')}
         >
-          <div className="flex items-center justify-between flex-1">
+          <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2.5 bg-destructive/10 rounded-lg">
-                  <FileText className="text-destructive" size={20} />
+              <div className="flex items-center gap-2 mb-1">
+                <div className="p-1.5 bg-destructive/10 rounded-md">
+                  <FileText className="text-destructive" size={18} />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Upcoming Exams</p>
+                <p className="text-xs font-medium text-muted-foreground">Upcoming Exams</p>
               </div>
-              <p className="text-3xl font-bold text-foreground mb-1 tabular-nums">{upcomingExamsCount}</p>
-              <p className="text-xs text-muted-foreground">Scheduled</p>
+              <p className="text-2xl font-bold text-foreground tabular-nums leading-tight">{upcomingExamsCount}</p>
+              <p className="text-[10px] text-muted-foreground">Scheduled</p>
             </div>
-            <div className="opacity-10 shrink-0">
-              <TrendingUp size={48} className="text-destructive" />
+            <div className="opacity-[0.08] shrink-0 hidden sm:block">
+              <TrendingUp size={36} className="text-destructive" />
             </div>
           </div>
         </motion.div>
 
         {/* Notices Card */}
         <motion.div
-          whileHover={{ scale: 1.02, y: -4 }}
-          className="glass-card soft-shadow rounded-xl p-6 cursor-pointer transition-all hover:shadow-lg border border-white/20 dark:border-white/10 h-full min-h-[180px] flex flex-col"
+          whileHover={{ scale: 1.01 }}
+          className="glass-card soft-shadow rounded-lg p-4 cursor-pointer transition-all hover:shadow-md border border-white/20 dark:border-white/10 md:h-36 flex flex-col justify-between"
           onClick={() => router.push('/teacher/dashboard/communication')}
         >
-          <div className="flex items-center justify-between flex-1">
+          <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2.5 bg-accent/10 rounded-lg">
-                  <Bell className="text-accent" size={20} />
+              <div className="flex items-center gap-2 mb-1">
+                <div className="p-1.5 bg-accent/10 rounded-md">
+                  <Bell className="text-accent" size={18} />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Notices</p>
+                <p className="text-xs font-medium text-muted-foreground">Notices</p>
               </div>
-              <p className="text-3xl font-bold text-foreground mb-1 tabular-nums">{noticesCount}</p>
-              <p className="text-xs text-muted-foreground">Active</p>
+              <p className="text-2xl font-bold text-foreground tabular-nums leading-tight">{noticesCount}</p>
+              <p className="text-[10px] text-muted-foreground">Active</p>
             </div>
-            <div className="opacity-10 shrink-0">
-              <TrendingUp size={48} className="text-accent" />
+            <div className="opacity-[0.08] shrink-0 hidden sm:block">
+              <TrendingUp size={36} className="text-accent" />
             </div>
           </div>
         </motion.div>
@@ -1570,28 +1534,28 @@ export default function TeacherDashboard() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="grid grid-cols-1 md:grid-cols-2 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 gap-2"
       >
         <Button
           onClick={() => router.push('/teacher/dashboard/students')}
           variant="primary"
-          className="w-full h-20 flex items-center justify-center gap-3"
+          className="w-full min-h-[3.25rem] py-2 px-3 flex items-center justify-center gap-2 text-sm"
         >
-          <GraduationCap size={24} />
+          <GraduationCap size={20} />
           <div className="text-left">
-            <div className="font-semibold">All Students</div>
-            <div className="text-sm opacity-90">View all students</div>
+            <div className="font-semibold leading-tight">All Students</div>
+            <div className="text-xs opacity-90">View all students</div>
           </div>
         </Button>
         <Button
           onClick={() => router.push('/teacher/dashboard/staff')}
           variant="secondary"
-          className="w-full h-20 flex items-center justify-center gap-3"
+          className="w-full min-h-[3.25rem] py-2 px-3 flex items-center justify-center gap-2 text-sm"
         >
-          <Users size={24} />
+          <Users size={20} />
           <div className="text-left">
-            <div className="font-semibold">All Staff</div>
-            <div className="text-sm opacity-90">View all staff</div>
+            <div className="font-semibold leading-tight">All Staff</div>
+            <div className="text-xs opacity-90">View all staff</div>
           </div>
         </Button>
       </motion.div>
@@ -1601,13 +1565,13 @@ export default function TeacherDashboard() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
-        className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+        className="grid grid-cols-1 lg:grid-cols-3 gap-4"
       >
-        <div className="lg:col-span-2 bg-card rounded-lg shadow-sm border border-input p-6">
-          <div className="flex items-center justify-between mb-6">
+        <div className="lg:col-span-2 bg-card rounded-lg shadow-sm border border-input p-4">
+          <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="text-xl font-bold text-foreground">My Timetable</h2>
-              <p className="text-sm text-muted-foreground">Weekly schedule view</p>
+              <h2 className="text-lg font-bold text-foreground">My Timetable</h2>
+              <p className="text-xs text-muted-foreground">Weekly schedule</p>
             </div>
           </div>
           {teacher && getString(teacher.school_code) && getString(teacher.id) ? (
@@ -1616,21 +1580,21 @@ export default function TeacherDashboard() {
               teacherId={getString(teacher.id)}
             />
           ) : (
-            <div className="text-center py-12">
-              <Calendar className="mx-auto text-muted-foreground mb-4" size={48} />
-              <p className="text-muted-foreground">No timetable available</p>
+            <div className="text-center py-8">
+              <Calendar className="mx-auto text-muted-foreground mb-2" size={36} />
+              <p className="text-sm text-muted-foreground">No timetable available</p>
             </div>
           )}
         </div>
 
         {/* Assigned classes from timetable */}
-        <div className="space-y-6">
-          <div className="bg-card rounded-lg shadow-sm border border-input p-6">
-            <h3 className="font-bold text-foreground mb-3 flex items-center gap-2">
-              <CalendarDays size={20} />
+        <div className="space-y-3">
+          <div className="bg-card rounded-lg shadow-sm border border-input p-4">
+            <h3 className="text-sm font-bold text-foreground mb-1 flex items-center gap-1.5">
+              <CalendarDays size={16} />
               Classes you teach
             </h3>
-            <p className="text-sm text-muted-foreground mb-4">Classes assigned to you in the timetable</p>
+            <p className="text-xs text-muted-foreground mb-2">From your timetable</p>
             {assignedClassesFromTimetable.length === 0 ? (
               <p className="text-sm text-muted-foreground">No classes assigned in timetable yet.</p>
             ) : (
@@ -1654,10 +1618,10 @@ export default function TeacherDashboard() {
         transition={{ delay: 0.3 }}
       >
         <Card className="glass-card soft-shadow">
-          <div className="text-center py-8">
-            <UserCheck className="mx-auto text-muted-foreground mb-3" size={40} />
-            <h3 className="text-lg font-serif font-bold text-foreground mb-1">Not a class teacher</h3>
-            <p className="text-sm text-muted-foreground">
+          <div className="text-center py-5 px-2">
+            <UserCheck className="mx-auto text-muted-foreground mb-2" size={32} />
+            <h3 className="text-base font-serif font-bold text-foreground mb-1">Not a class teacher</h3>
+            <p className="text-xs text-muted-foreground">
               You are not assigned as a class teacher. Contact the principal if you need class teacher access (e.g. My Class, Mark Attendance).
             </p>
           </div>

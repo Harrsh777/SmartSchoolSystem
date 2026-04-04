@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
+import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
 
 export async function GET(request: NextRequest) {
   try {
@@ -134,6 +136,10 @@ export async function POST(request: NextRequest) {
         { error: 'School not found' },
         { status: 404 }
       );
+    }
+
+    if (await isExamClassMarksLocked(getServiceRoleClient(), school_code, exam_id, class_id)) {
+      return NextResponse.json({ error: MARKS_LOCKED_MESSAGE }, { status: 403 });
     }
 
     // Check if exam exists and is ongoing

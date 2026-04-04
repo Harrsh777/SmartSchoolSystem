@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
 
 /**
  * Approve or reject marks for an examination
@@ -43,6 +45,10 @@ export async function POST(request: NextRequest) {
         { error: 'School not found' },
         { status: 404 }
       );
+    }
+
+    if (await isExamClassMarksLocked(getServiceRoleClient(), school_code, exam_id, class_id)) {
+      return NextResponse.json({ error: MARKS_LOCKED_MESSAGE }, { status: 403 });
     }
 
     // Update all marks for this exam and class

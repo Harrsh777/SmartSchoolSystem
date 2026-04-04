@@ -23,6 +23,8 @@ import {
   BookOpen,
   TrendingUp,
   Award,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { getGradeColor, getGradeFromPercentage } from '@/lib/grade-calculator';
@@ -99,6 +101,12 @@ export default function MarksDashboardPage({
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
 
+  /** Last scope for which marks were loaded successfully (exam|class|section) — drives lock UI */
+  const [marksLoadedScopeKey, setMarksLoadedScopeKey] = useState<string | null>(null);
+  const [marksLocked, setMarksLocked] = useState(false);
+  const [lockStatusLoading, setLockStatusLoading] = useState(false);
+  const [lockActionLoading, setLockActionLoading] = useState(false);
+
   // Filters (class_id holds class *name* for /api/marks/view — same as students.class)
   const [filters, setFilters] = useState({
     class_id: '',
@@ -122,6 +130,12 @@ export default function MarksDashboardPage({
     Boolean(filters.exam_id?.trim()) &&
     Boolean(filters.class_id?.trim()) &&
     Boolean(filters.section?.trim());
+
+  const marksScopeKey = `${filters.exam_id}|${filters.class_id}|${filters.section}`;
+
+  useEffect(() => {
+    setMarksLoadedScopeKey(null);
+  }, [filters.exam_id, filters.class_id, filters.section]);
 
   // Fetch marks when exam + class + section are all set (no "all classes/sections")
   useEffect(() => {
@@ -167,6 +181,7 @@ export default function MarksDashboardPage({
 
   const fetchMarks = async () => {
     setLoading(true);
+    const scopeKey = `${filters.exam_id}|${filters.class_id}|${filters.section}`;
     try {
       const params = new URLSearchParams({
         school_code: schoolCode,
@@ -183,11 +198,14 @@ export default function MarksDashboardPage({
       if (response.ok) {
         setMarks(result.data || []);
         setAnalytics(result.analytics || null);
+        setMarksLoadedScopeKey(scopeKey);
       } else {
         console.error('Error fetching marks:', result.error);
+        setMarksLoadedScopeKey(null);
       }
     } catch (err) {
       console.error('Error fetching marks:', err);
+      setMarksLoadedScopeKey(null);
     } finally {
       setLoading(false);
     }
@@ -232,6 +250,72 @@ export default function MarksDashboardPage({
       ) ?? null
     );
   }, [classes, filters.class_id, filters.section]);
+
+  const showMarksLockPanel =
+    canLoadMarks &&
+    Boolean(matchingClassRow?.id) &&
+    marksLoadedScopeKey === marksScopeKey &&
+    !loading;
+
+  useEffect(() => {
+    if (!showMarksLockPanel || !matchingClassRow?.id || !filters.exam_id) {
+      setMarksLocked(false);
+      return;
+    }
+    let cancelled = false;
+    setLockStatusLoading(true);
+    const q = new URLSearchParams({
+      school_code: schoolCode,
+      exam_id: filters.exam_id,
+      class_id: matchingClassRow.id,
+    });
+    fetch(`/api/marks/exam-class-lock?${q}`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((body) => {
+        if (!cancelled && typeof body.locked === 'boolean') setMarksLocked(body.locked);
+      })
+      .catch(() => {
+        if (!cancelled) setMarksLocked(false);
+      })
+      .finally(() => {
+        if (!cancelled) setLockStatusLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showMarksLockPanel, matchingClassRow?.id, filters.exam_id, schoolCode]);
+
+  const handleMarksLockToggle = async (action: 'lock' | 'unlock') => {
+    if (!matchingClassRow?.id || !filters.exam_id) return;
+    if (!confirm(action === 'lock' ? 'Lock marks for this exam and class–section? Teachers will not be able to edit until you unlock.' : 'Unlock marks so teachers can edit again?')) {
+      return;
+    }
+    setLockActionLoading(true);
+    try {
+      const response = await fetch('/api/marks/exam-class-lock', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          exam_id: filters.exam_id,
+          class_id: matchingClassRow.id,
+          action,
+        }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setMarksLocked(Boolean(result.locked));
+      } else {
+        alert(result.error || `Failed to ${action} marks`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert(`Failed to ${action} marks`);
+    } finally {
+      setLockActionLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!matchingClassRow?.id || !schoolCode) {
@@ -580,6 +664,52 @@ export default function MarksDashboardPage({
                 </Button>
               </div>
             </div>
+
+            {showMarksLockPanel ? (
+              <div className="mt-4 pt-4 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg bg-muted/40 dark:bg-muted/20 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    {marksLocked ? (
+                      <Lock className="text-amber-600 shrink-0" size={18} />
+                    ) : (
+                      <Unlock className="text-emerald-600 shrink-0" size={18} />
+                    )}
+                    Marks {marksLocked ? 'locked' : 'unlocked'} for this exam &amp; class–section
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    While locked, class and subject teachers cannot save or submit marks for this examination and class.
+                    Only a school admin can unlock from this page.
+                    {lockStatusLoading ? ' Checking status…' : ''}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  {!marksLocked ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={lockActionLoading || lockStatusLoading}
+                      onClick={() => handleMarksLockToggle('lock')}
+                      className="border-amber-600/50 text-amber-800 dark:text-amber-200 hover:bg-amber-500/10"
+                    >
+                      <Lock size={16} className="mr-1.5" />
+                      Lock marks
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={lockActionLoading || lockStatusLoading}
+                      onClick={() => handleMarksLockToggle('unlock')}
+                      className="bg-[#5A7A95] hover:bg-[#4a6a85] text-white"
+                    >
+                      <Unlock size={16} className="mr-1.5" />
+                      Unlock marks
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
         </Card>
 
@@ -628,45 +758,23 @@ export default function MarksDashboardPage({
         </div>
       )}
 
-      {/* Charts */}
-      {canLoadMarks && marks.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Grade Distribution */}
-          <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <BarChart3 className="text-[#5A7A95]" size={20} />
-              Grade Distribution
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={gradeDistribution}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="name" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
-                <Tooltip />
-                <Bar dataKey="value" fill="#5A7A95" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-
-          {/* Subject Performance */}
-          {subjectPerformance.length > 0 && (
-            <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <BookOpen className="text-[#5A7A95]" size={20} />
-                Subject Average Performance
-              </h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={subjectPerformance}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} stroke="#6b7280" />
-                  <YAxis stroke="#6b7280" />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="average" stroke="#5A7A95" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </Card>
-          )}
-        </div>
+      {/* Subject performance (grade distribution moved to full-width bottom) */}
+      {canLoadMarks && marks.length > 0 && subjectPerformance.length > 0 && (
+        <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <BookOpen className="text-[#5A7A95]" size={20} />
+            Subject Average Performance
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={subjectPerformance}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} stroke="#6b7280" />
+              <YAxis stroke="#6b7280" />
+              <Tooltip />
+              <Line type="monotone" dataKey="average" stroke="#5A7A95" strokeWidth={2} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
       )}
 
       {/* Toppers */}
@@ -853,6 +961,31 @@ export default function MarksDashboardPage({
         )}
       </Card>
       </div>
+
+      {/* Full-width bottom: grade distribution */}
+      {canLoadMarks && marks.length > 0 && gradeDistribution.length > 0 && (
+        <div className="w-full border-t border-border bg-muted/30 dark:bg-muted/10 mt-6">
+          <div className="w-full max-w-none px-4 sm:px-6 lg:px-8 py-6">
+            <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6 w-full">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <BarChart3 className="text-[#5A7A95]" size={20} />
+                Grade Distribution
+              </h3>
+              <div className="w-full min-h-[320px]">
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={gradeDistribution} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="name" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="#5A7A95" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

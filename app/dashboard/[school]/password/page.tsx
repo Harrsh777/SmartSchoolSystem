@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -71,6 +71,10 @@ export default function PasswordPage({
   const [staffPage, setStaffPage] = useState(1);
   const [itemsPerPage] = useState(20);
   const [passwordStatusFilter, setPasswordStatusFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [studentClassFilter, setStudentClassFilter] = useState('');
+  const [studentSectionFilter, setStudentSectionFilter] = useState('');
+
+  const NO_SECTION_VALUE = '__NO_SECTION__';
 
   useEffect(() => {
     fetchLoginCredentials();
@@ -231,21 +235,79 @@ export default function PasswordPage({
     }
   };
 
+  const studentsRaw = loginCredentials?.students;
+
+  const classOptions = useMemo(() => {
+    const list = studentsRaw ?? [];
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const s of list) {
+      const c = (s.class ?? '').trim();
+      if (!c || seen.has(c)) continue;
+      seen.add(c);
+      ordered.push(c);
+    }
+    return ordered.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [studentsRaw]);
+
+  const { sectionChoices, sectionHasBlank } = useMemo(() => {
+    const list = studentsRaw ?? [];
+    const cls = studentClassFilter.trim();
+    if (!cls) return { sectionChoices: [] as string[], sectionHasBlank: false };
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    let hasBlank = false;
+    for (const s of list) {
+      if ((s.class ?? '').trim() !== cls) continue;
+      const sec = (s.section ?? '').trim();
+      if (!sec) {
+        hasBlank = true;
+        continue;
+      }
+      if (seen.has(sec)) continue;
+      seen.add(sec);
+      ordered.push(sec);
+    }
+    return {
+      sectionChoices: ordered.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+      sectionHasBlank: hasBlank,
+    };
+  }, [studentsRaw, studentClassFilter]);
+
+  useEffect(() => {
+    setStudentSectionFilter('');
+  }, [studentClassFilter]);
+
+  const studentFiltersReady =
+    studentClassFilter.trim().length > 0 &&
+    studentSectionFilter.length > 0 &&
+    (studentSectionFilter !== NO_SECTION_VALUE || sectionHasBlank);
+
+  const matchesClassSection = (student: StudentCredential) => {
+    const cls = (student.class ?? '').trim();
+    const sec = (student.section ?? '').trim();
+    if (cls !== studentClassFilter.trim()) return false;
+    if (studentSectionFilter === NO_SECTION_VALUE) return sec.length === 0;
+    return sec === studentSectionFilter;
+  };
+
   // Filter and paginate students
-  const filteredStudents = loginCredentials?.students?.filter((student: StudentCredential) => {
-    const matchesSearch = 
+  const filteredStudents = (studentsRaw ?? []).filter((student: StudentCredential) => {
+    if (!studentFiltersReady || !matchesClassSection(student)) return false;
+
+    const matchesSearch =
       student.admission_no?.toLowerCase().includes(studentSearch.toLowerCase()) ||
       student.name?.toLowerCase().includes(studentSearch.toLowerCase()) ||
       student.class?.toLowerCase().includes(studentSearch.toLowerCase()) ||
       student.section?.toLowerCase().includes(studentSearch.toLowerCase());
-    
-    const matchesFilter = 
+
+    const matchesFilter =
       passwordStatusFilter === 'all' ||
       (passwordStatusFilter === 'with' && student.hasPassword) ||
       (passwordStatusFilter === 'without' && !student.hasPassword);
-    
+
     return matchesSearch && matchesFilter;
-  }) || [];
+  });
 
   const studentStartIndex = (studentPage - 1) * itemsPerPage;
   const studentEndIndex = studentStartIndex + itemsPerPage;
@@ -275,7 +337,7 @@ export default function PasswordPage({
   // Reset pages when search changes
   useEffect(() => {
     setStudentPage(1);
-  }, [studentSearch, passwordStatusFilter]);
+  }, [studentSearch, passwordStatusFilter, studentClassFilter, studentSectionFilter]);
 
   useEffect(() => {
     setStaffPage(1);
@@ -366,11 +428,56 @@ export default function PasswordPage({
 
             {/* Students Table */}
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-lg font-semibold text-[#0F172A]">
-                  Students ({filteredStudents.length})
-                </h4>
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
+                <div>
+                  <h4 className="text-lg font-semibold text-[#0F172A]">
+                    Students{studentFiltersReady ? ` (${filteredStudents.length})` : ''}
+                  </h4>
+                  <p className="text-sm text-[#64748B] mt-1">
+                    Choose class and section to list students and manage passwords for that group.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="pw-filter-class" className="text-xs font-medium text-[#64748B]">
+                      Class
+                    </label>
+                    <select
+                      id="pw-filter-class"
+                      value={studentClassFilter}
+                      onChange={(e) => setStudentClassFilter(e.target.value)}
+                      className="min-w-[140px] px-3 py-2 border border-[#E5E7EB] rounded-lg text-sm text-[#0F172A] bg-white focus:outline-none focus:ring-2 focus:ring-[#2F6FED] focus:border-transparent"
+                    >
+                      <option value="">Select class</option>
+                      {classOptions.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="pw-filter-section" className="text-xs font-medium text-[#64748B]">
+                      Section
+                    </label>
+                    <select
+                      id="pw-filter-section"
+                      value={studentSectionFilter}
+                      onChange={(e) => setStudentSectionFilter(e.target.value)}
+                      disabled={!studentClassFilter}
+                      className="min-w-[140px] px-3 py-2 border border-[#E5E7EB] rounded-lg text-sm text-[#0F172A] bg-white focus:outline-none focus:ring-2 focus:ring-[#2F6FED] focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">{studentClassFilter ? 'Select section' : 'Select class first'}</option>
+                      {sectionHasBlank && (
+                        <option value={NO_SECTION_VALUE}>No section</option>
+                      )}
+                      {sectionChoices.map((sec) => (
+                        <option key={sec} value={sec}>
+                          {sec}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <select
                     value={passwordStatusFilter}
                     onChange={(e) => setPasswordStatusFilter(e.target.value as 'all' | 'with' | 'without')}
@@ -392,7 +499,8 @@ export default function PasswordPage({
                     placeholder="Search students by admission no, name, class, or section..."
                     value={studentSearch}
                     onChange={(e) => setStudentSearch(e.target.value)}
-                    className="pl-10 border-[#E5E7EB] focus:ring-[#2F6FED]"
+                    disabled={!studentFiltersReady}
+                    className="pl-10 border-[#E5E7EB] focus:ring-[#2F6FED] disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -413,7 +521,13 @@ export default function PasswordPage({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E5E7EB] bg-white">
-                    {paginatedStudents.length > 0 ? (
+                    {!studentFiltersReady ? (
+                      <tr>
+                        <td colSpan={showPasswords ? 7 : 6} className="px-4 py-10 text-center text-[#64748B] text-sm">
+                          Select both class and section to view students.
+                        </td>
+                      </tr>
+                    ) : paginatedStudents.length > 0 ? (
                       paginatedStudents.map((student: StudentCredential) => (
                         <tr key={student.admission_no} className="hover:bg-[#F1F5F9] transition-colors">
                           <td className="px-3 py-2 text-xs text-[#0F172A] font-medium">{student.admission_no}</td>
@@ -484,7 +598,7 @@ export default function PasswordPage({
                     ) : (
                       <tr>
                         <td colSpan={showPasswords ? 7 : 6} className="px-4 py-8 text-center text-[#64748B] text-sm">
-                          {studentSearch ? 'No students found matching your search' : 'No students found'}
+                          {studentSearch ? 'No students found matching your search' : 'No students in this class and section'}
                         </td>
                       </tr>
                     )}
@@ -493,7 +607,7 @@ export default function PasswordPage({
               </div>
 
               {/* Pagination */}
-              {totalStudentPages > 1 && (
+              {studentFiltersReady && totalStudentPages > 1 && (
                 <div className="mt-4 flex items-center justify-between">
                   <div className="text-sm text-[#64748B]">
                     Showing {studentStartIndex + 1} to {Math.min(studentEndIndex, filteredStudents.length)} of {filteredStudents.length} students

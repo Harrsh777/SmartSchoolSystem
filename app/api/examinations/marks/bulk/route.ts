@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { normalizeMarksEntryCode } from '@/lib/marks-entry-codes';
 import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
+import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
 
 /**
  * Bulk save marks for multiple students
@@ -99,6 +101,11 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    const adminSupabase = getServiceRoleClient();
+    if (await isExamClassMarksLocked(adminSupabase, school_code, exam_id, class_id)) {
+      return NextResponse.json({ error: MARKS_LOCKED_MESSAGE }, { status: 403 });
     }
 
     if (teacher_marks_scoped) {

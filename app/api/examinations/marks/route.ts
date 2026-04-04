@@ -3,6 +3,7 @@ import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { normalizeMarksEntryCode } from '@/lib/marks-entry-codes';
 import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
 import { isStaffClassTeacherForClass } from '@/lib/staff-class-teacher';
+import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
 
 // Get marks for a student in an exam
 export async function GET(request: NextRequest) {
@@ -91,6 +92,10 @@ export async function POST(request: NextRequest) {
         { error: 'School not found' },
         { status: 404 }
       );
+    }
+
+    if (await isExamClassMarksLocked(supabase, school_code, exam_id, class_id)) {
+      return NextResponse.json({ error: MARKS_LOCKED_MESSAGE }, { status: 403 });
     }
 
     if (scoped) {

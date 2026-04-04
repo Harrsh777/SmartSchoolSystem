@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
 import { isStaffClassTeacherForClass } from '@/lib/staff-class-teacher';
+import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
 
 function missingSchemaColumnMessage(err: { message?: string; code?: string }, column: string): boolean {
   const m = String(err.message || '');
@@ -88,6 +89,25 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getServiceRoleClient();
+
+    let classIdForLock = String(class_id || '').trim();
+    if (!classIdForLock && student_id) {
+      const { data: oneMark } = await supabase
+        .from('student_subject_marks')
+        .select('class_id')
+        .eq('school_code', school_code)
+        .eq('exam_id', exam_id)
+        .eq('student_id', student_id)
+        .limit(1)
+        .maybeSingle();
+      if (oneMark?.class_id) classIdForLock = String(oneMark.class_id);
+    }
+    if (
+      classIdForLock &&
+      (await isExamClassMarksLocked(supabase, school_code, exam_id, classIdForLock))
+    ) {
+      return NextResponse.json({ error: MARKS_LOCKED_MESSAGE }, { status: 403 });
+    }
 
     // Get exam subject mappings – filter by class_id when provided so we only require marks for that class's subjects
     let examSubjectQuery = supabase

@@ -156,10 +156,7 @@ export default function ExaminationDetailPage({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => router.push(`/dashboard/${schoolCode}/examinations/dashboard`)}>
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+       
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{exam.exam_name}</h1>
             <p className="text-gray-600">{exam.academic_year}</p>

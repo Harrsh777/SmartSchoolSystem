@@ -1144,18 +1144,17 @@ export default function CreateExaminationPage({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-4">
-       
+      <div className="flex items-center gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Create Examination</h1>
-          <p className="text-gray-600">Follow the steps to create a new examination</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 leading-tight">Create Examination</h1>
+          <p className="text-xs md:text-sm text-gray-600 mt-0.5">Follow the steps to create a new examination</p>
         </div>
       </div>
 
       {/* Progress Steps */}
-      <Card className="p-6">
+      <Card className="py-2.5 px-3 md:py-3 md:px-4">
         <div className="flex items-center justify-between">
           {steps.map((step, index) => {
             const StepIcon = step.icon;
@@ -1163,10 +1162,10 @@ export default function CreateExaminationPage({
             const isCompleted = currentStep > step.number;
             
             return (
-              <div key={step.number} className="flex items-center flex-1">
-                <div className="flex flex-col items-center flex-1">
+              <div key={step.number} className="flex items-center flex-1 min-w-0">
+                <div className="flex flex-col items-center flex-1 min-w-0">
                   <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                    className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all shrink-0 ${
                       isActive
                         ? 'bg-[#5A7A95] text-white'
                         : isCompleted
@@ -1175,19 +1174,19 @@ export default function CreateExaminationPage({
                     }`}
                   >
                     {isCompleted ? (
-                      <Check size={24} />
+                      <Check size={16} />
                     ) : (
-                      <StepIcon size={24} />
+                      <StepIcon size={16} />
                     )}
                   </div>
-                  <p className={`mt-2 text-sm font-medium ${
+                  <p className={`mt-1 text-[10px] md:text-xs font-medium text-center leading-tight px-0.5 ${
                     isActive ? 'text-[#5A7A95]' : isCompleted ? 'text-green-600' : 'text-gray-500'
                   }`}>
                     {step.title}
                   </p>
                 </div>
                 {index < steps.length - 1 && (
-                  <div className={`flex-1 h-1 mx-4 ${
+                  <div className={`flex-1 h-0.5 min-w-[0.5rem] mx-1 md:mx-2 ${
                     isCompleted ? 'bg-green-500' : 'bg-gray-200'
                   }`} />
                 )}
@@ -1206,19 +1205,19 @@ export default function CreateExaminationPage({
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.3 }}
         >
-          <Card className="p-6">
+          <Card className="p-3 md:p-4">
             {/* Step 1: Exam Details */}
             {currentStep === 1 && (
-              <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Exam Details</h2>
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="space-y-4">
+                <h2 className="text-lg font-bold text-gray-900 mb-3">Exam Details</h2>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                   <label className="block text-sm font-semibold text-slate-800 mb-1">
                     Select Term
                   </label>
                   <p className="text-xs text-slate-600 mb-3">
                     Structure → Term → Examination. Exam name is auto-filled from the selected examination.
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div className="space-y-1">
                       <p className="text-xs font-medium text-slate-600">Step 1: Select Structure</p>
                       <select
@@ -1229,7 +1228,7 @@ export default function CreateExaminationPage({
                           setSelectedTemplateExamId('');
                           setExamMetadata((prev) => ({ ...prev, exam_name: '', academic_year: '' }));
                         }}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
+                        className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-white"
                       >
                         <option value="">Choose term structure</option>
                         {structures.map((s) => (
@@ -1249,7 +1248,7 @@ export default function CreateExaminationPage({
                           setSelectedTemplateExamId('');
                           setExamMetadata((prev) => ({ ...prev, exam_name: '' }));
                         }}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100"
+                        className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-white disabled:bg-slate-100"
                         disabled={!selectedStructureId}
                       >
                         <option value="">
@@ -1275,7 +1274,7 @@ export default function CreateExaminationPage({
                           const picked = list.find((ex) => String(ex.id) === v);
                           if (picked) setExamMetadata((prev) => ({ ...prev, exam_name: picked.exam_name }));
                         }}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100"
+                        className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-white disabled:bg-slate-100"
                         disabled={!selectedTermId}
                       >
                         <option value="">
@@ -1303,9 +1302,9 @@ export default function CreateExaminationPage({
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
                       Start Date <span className="text-red-500">*</span>
                     </label>
                     <Input
@@ -1319,7 +1318,7 @@ export default function CreateExaminationPage({
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
                       End Date <span className="text-red-500">*</span>
                     </label>
                     <Input
@@ -1335,32 +1334,32 @@ export default function CreateExaminationPage({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
                     Description (Optional)
                   </label>
                   <textarea
                     value={examMetadata.description}
                     onChange={(e) => setExamMetadata(prev => ({ ...prev, description: e.target.value }))}
                     placeholder="Add any additional information about this examination"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7A95] focus:border-transparent"
-                    rows={3}
+                    className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#5A7A95] focus:border-transparent"
+                    rows={2}
                   />
                 </div>
 
-                <div className="flex justify-end pt-4">
-                  <Button onClick={handleStep1Next}>Next: Select Classes</Button>
+                <div className="flex justify-end pt-2">
+                  <Button size="sm" onClick={handleStep1Next}>Next: Select Classes</Button>
                 </div>
               </div>
             )}
 
             {/* Step 2: Map Classes */}
             {currentStep === 2 && (
-              <div className="space-y-6">
-                <div className="space-y-1">
-                  <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+              <div className="space-y-3">
+                <div className="space-y-0.5">
+                  <h2 className="text-lg font-bold tracking-tight text-slate-900">
                     Select classes & sections
                   </h2>
-                  <p className="text-sm text-slate-600 max-w-2xl">
+                  <p className="text-xs text-slate-600 max-w-3xl leading-relaxed">
                     Turn on a class to choose sections.{' '}
                     <span className="text-emerald-700 font-medium">Available</span> sections can be added to this run;{' '}
                     <span className="text-red-700 font-medium">Already created</span> sections are locked for this term
@@ -1369,12 +1368,12 @@ export default function CreateExaminationPage({
                 </div>
 
                 {errors.class_selection && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                    <p className="text-sm text-red-700">{errors.class_selection}</p>
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                    <p className="text-xs text-red-700">{errors.class_selection}</p>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2">
                   {sortStructureClassNames(Array.from(new Set(structureClasses.map((c) => c.class)))).map(
                     (className) => {
                       const classItems = structureClasses.filter((c) => c.class === className);
@@ -1391,22 +1390,22 @@ export default function CreateExaminationPage({
                           key={className}
                           layout
                           className={[
-                            'rounded-2xl border bg-white p-4 shadow-sm transition-all duration-200 ease-out',
-                            'hover:-translate-y-0.5 hover:shadow-md hover:scale-[1.02]',
+                            'rounded-lg border bg-white p-2.5 shadow-sm transition-shadow duration-200',
+                            'hover:shadow',
                             isClassOn
-                              ? 'border-[#5A7A95]/50 ring-2 ring-[#5A7A95]/20 shadow-md'
+                              ? 'border-[#5A7A95]/50 ring-1 ring-[#5A7A95]/20'
                               : 'border-slate-200/80',
-                            allCreated ? 'opacity-75 hover:scale-100 hover:translate-y-0' : '',
+                            allCreated ? 'opacity-75' : '',
                           ]
                             .filter(Boolean)
                             .join(' ')}
                         >
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="text-lg font-semibold text-slate-900 truncate">
+                              <p className="text-sm font-semibold text-slate-900 truncate">
                                 Class {className}
                               </p>
-                              <p className="mt-0.5 text-xs text-slate-500">
+                              <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">
                                 {classItems.length} section{classItems.length === 1 ? '' : 's'} ·{' '}
                                 {creatableCount} available
                                 {allCreated ? ' · all created' : ''}
@@ -1420,7 +1419,7 @@ export default function CreateExaminationPage({
                               disabled={allCreated}
                               onClick={() => handleClassToggle(repId, className)}
                               className={[
-                                'relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5A7A95] focus-visible:ring-offset-2',
+                                'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5A7A95] focus-visible:ring-offset-1',
                                 allCreated ? 'cursor-not-allowed bg-slate-200' : '',
                                 !allCreated && isClassOn ? 'bg-[#5A7A95]' : '',
                                 !allCreated && !isClassOn ? 'bg-slate-200 hover:bg-slate-300' : '',
@@ -1431,16 +1430,16 @@ export default function CreateExaminationPage({
                               <motion.span
                                 transition={{ type: 'spring', stiffness: 500, damping: 32 }}
                                 className={[
-                                  'inline-block h-5 w-5 rounded-full bg-white shadow-md will-change-transform',
-                                  isClassOn ? 'translate-x-6' : 'translate-x-1',
+                                  'inline-block h-4 w-4 rounded-full bg-white shadow will-change-transform',
+                                  isClassOn ? 'translate-x-5' : 'translate-x-1',
                                 ].join(' ')}
                               />
                             </button>
                           </div>
 
                           {allCreated ? (
-                            <div className="mt-3 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
-                              <Lock className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
+                            <div className="mt-2 flex items-start gap-1.5 rounded-md bg-slate-50 px-2 py-1.5 text-[11px] font-medium text-slate-600 leading-snug">
+                              <Lock className="h-3 w-3 shrink-0 text-slate-500 mt-0.5" aria-hidden />
                               Every section already has this exam for the selected term.
                             </div>
                           ) : null}
@@ -1455,11 +1454,11 @@ export default function CreateExaminationPage({
                                 transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
                                 className="overflow-hidden"
                               >
-                                <div className="pt-4 border-t border-slate-100 mt-4 space-y-2">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                                <div className="pt-2 border-t border-slate-100 mt-2 space-y-1">
+                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                                     Sections
                                   </p>
-                                  <ul className="space-y-1.5">
+                                  <ul className="space-y-1">
                                     {classItems.map((section) => {
                                       const created = existingSectionIdSet.has(String(section.id));
                                       const checked = selectedClass?.sections.includes(section.id) ?? false;
@@ -1467,21 +1466,21 @@ export default function CreateExaminationPage({
                                         <li key={section.id}>
                                           {created ? (
                                             <div
-                                              className="flex items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50/60 px-3 py-2.5 opacity-80"
+                                              className="flex items-center justify-between gap-1.5 rounded-md border border-red-100 bg-red-50/60 px-2 py-1.5 opacity-80"
                                               aria-disabled
                                             >
-                                              <div className="flex items-center gap-2.5 min-w-0">
-                                                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-slate-300 bg-slate-100">
+                                              <div className="flex items-center gap-2 min-w-0">
+                                                <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-slate-300 bg-slate-100">
                                                   <Lock
-                                                    className="h-2.5 w-2.5 text-slate-500"
+                                                    className="h-2 w-2 text-slate-500"
                                                     aria-hidden
                                                   />
                                                 </span>
-                                                <span className="text-sm font-medium text-slate-700 truncate">
+                                                <span className="text-xs font-medium text-slate-700 truncate">
                                                   Sec {section.section}
                                                 </span>
                                               </div>
-                                              <span className="inline-flex items-center gap-1 shrink-0 rounded-full border border-red-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-800">
+                                              <span className="inline-flex items-center gap-0.5 shrink-0 rounded-full border border-red-200 bg-white px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-red-800">
                                                 <span
                                                   className="h-1.5 w-1.5 rounded-full bg-red-500"
                                                   aria-hidden
@@ -1492,13 +1491,13 @@ export default function CreateExaminationPage({
                                           ) : (
                                             <label
                                               className={[
-                                                'flex cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 py-2.5 transition-colors',
+                                                'flex cursor-pointer items-center justify-between gap-1.5 rounded-md border px-2 py-1.5 transition-colors',
                                                 checked
                                                   ? 'border-[#5A7A95]/40 bg-[#5A7A95]/5'
                                                   : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-white',
                                               ].join(' ')}
                                             >
-                                              <div className="flex items-center gap-2.5 min-w-0">
+                                              <div className="flex items-center gap-2 min-w-0">
                                                 <input
                                                   type="checkbox"
                                                   checked={checked}
@@ -1507,13 +1506,13 @@ export default function CreateExaminationPage({
                                                     selectedClass &&
                                                     handleSectionToggle(selectedClass.classId, section.id)
                                                   }
-                                                  className="h-4 w-4 rounded border-slate-300 text-[#5A7A95] focus:ring-[#5A7A95]/30"
+                                                  className="h-3.5 w-3.5 rounded border-slate-300 text-[#5A7A95] focus:ring-[#5A7A95]/30"
                                                 />
-                                                <span className="text-sm font-medium text-slate-800 truncate">
+                                                <span className="text-xs font-medium text-slate-800 truncate">
                                                   Sec {section.section}
                                                 </span>
                                               </div>
-                                              <span className="inline-flex items-center gap-1 shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                                              <span className="inline-flex items-center gap-0.5 shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-emerald-800">
                                                 <span
                                                   className="h-1.5 w-1.5 rounded-full bg-emerald-500"
                                                   aria-hidden
@@ -1532,7 +1531,7 @@ export default function CreateExaminationPage({
                           </AnimatePresence>
 
                           {!isClassOn && !allCreated ? (
-                            <p className="mt-3 text-xs text-slate-500">
+                            <p className="mt-2 text-[11px] text-slate-500 leading-snug">
                               Enable the class to pick sections for this examination.
                             </p>
                           ) : null}
@@ -1542,19 +1541,19 @@ export default function CreateExaminationPage({
                   )}
                 </div>
 
-                <div className="sticky bottom-0 z-10 -mx-1 px-1 pt-2 pb-1 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
-                  <div className="rounded-2xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-lg px-4 py-4 sm:px-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="sticky bottom-0 z-10 -mx-1 px-1 pt-1.5 pb-0.5 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
+                  <div className="rounded-lg border border-slate-200 bg-white/95 backdrop-blur-sm shadow-md px-3 py-2.5 sm:px-3.5">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                           Selected for this run
                         </p>
                         {step2SelectedSectionCount === 0 ? (
-                          <p className="mt-2 text-sm text-slate-500">
+                          <p className="mt-1 text-xs text-slate-500">
                             No sections yet — turn on a class and choose sections above.
                           </p>
                         ) : (
-                          <ul className="mt-2 space-y-1.5 text-sm text-slate-800">
+                          <ul className="mt-1 space-y-1 text-xs text-slate-800">
                             {step2SelectionSummary.map((row) => (
                               <li key={row.className} className="flex flex-wrap gap-x-2 gap-y-0.5">
                                 <span className="font-semibold text-slate-900">Class {row.className}</span>
@@ -1566,29 +1565,30 @@ export default function CreateExaminationPage({
                             ))}
                           </ul>
                         )}
-                        <p className="mt-2 text-xs text-slate-500">
+                        <p className="mt-1 text-[11px] text-slate-500">
                           {step2SelectedSectionCount} section
                           {step2SelectedSectionCount === 1 ? '' : 's'} selected
                         </p>
                       </div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center shrink-0">
+                      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center shrink-0">
                         <Button
                           type="button"
+                          size="sm"
                           className="w-full sm:w-auto shadow-sm"
                           onClick={handleStep2Next}
                           disabled={step2SelectedSectionCount === 0}
                         >
                           Next: Map Subjects
-                          <ArrowRight size={18} className="ml-2" />
+                          <ArrowRight size={16} className="ml-1.5" />
                         </Button>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex justify-start pt-2">
-                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
-                    <ArrowLeft size={18} className="mr-2" />
+                <div className="flex justify-start pt-1">
+                  <Button variant="outline" size="sm" onClick={() => setCurrentStep(1)}>
+                    <ArrowLeft size={16} className="mr-1.5" />
                     Previous
                   </Button>
                 </div>
@@ -1597,9 +1597,9 @@ export default function CreateExaminationPage({
 
             {/* Step 3: Map Subjects */}
             {currentStep === 3 && (
-              <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Map Subjects & Marks</h2>
-                <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+              <div className="space-y-4">
+                <h2 className="text-lg font-bold text-gray-900 mb-1">Map Subjects & Marks</h2>
+                <p className="text-xs text-gray-600 mb-3 leading-relaxed max-w-3xl">
                   Set <span className="font-medium text-gray-800">max marks</span> for each subject. For passing criteria,
                   either enter <span className="font-medium text-gray-800">pass marks</span> directly, or use an optional{' '}
                   <span className="font-medium text-gray-800">pass %</span> — pass marks are calculated as a rounded
@@ -1609,8 +1609,8 @@ export default function CreateExaminationPage({
                 </p>
                 
                 {(errors.subjects || errors.marks) && (
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-600">{errors.subjects || errors.marks}</p>
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-xs text-red-600">{errors.subjects || errors.marks}</p>
                   </div>
                 )}
 
@@ -1621,19 +1621,19 @@ export default function CreateExaminationPage({
                   </div>
                 )}
 
-                <div className="space-y-6">
+                <div className="space-y-3">
                   {classSubjects.map((cs, csIndex) => {
                     const pool = subjectsBySectionId[cs.sectionId] ?? [];
                     const notYetAdded = pool.filter((s) => !cs.subjects.find((sub) => sub.subject_id === s.id));
                     const hasClassSubjects = pool.length > 0;
 
                     return (
-                    <div key={`${cs.classId}-${cs.sectionId}`} className="border border-gray-200 rounded-lg p-4">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    <div key={`${cs.classId}-${cs.sectionId}`} className="border border-gray-200 rounded-md p-3">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-2">
                         Class {cs.className} - Section {cs.sectionName}
                       </h3>
                       
-                      <div className="mb-4">
+                      <div className="mb-2">
                         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                           <label className="block text-sm font-medium text-gray-700">
                             Add Subject
@@ -1665,7 +1665,7 @@ export default function CreateExaminationPage({
                           </div>
                         </div>
                         {!step3SubjectsLoading && !hasClassSubjects && (
-                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
                             <p className="font-medium">No subjects assigned to this class</p>
                             <p className="mt-1 text-amber-800/90">
                               Map subjects to Class {cs.className} — Section {cs.sectionName} under{' '}
@@ -1681,7 +1681,7 @@ export default function CreateExaminationPage({
                               e.target.value = '';
                             }
                           }}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#5A7A95] focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                          className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#5A7A95] focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                         >
                           <option value="">
                             {step3SubjectsLoading
@@ -1704,13 +1704,13 @@ export default function CreateExaminationPage({
                       </div>
 
                       {cs.subjects.length > 0 && (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           {cs.subjects.map((subject, sIndex) => (
                             <div
                               key={subject.subject_id}
-                              className="p-4 bg-gray-50 rounded-lg border border-gray-200"
+                              className="p-2.5 bg-gray-50 rounded-md border border-gray-200"
                             >
-                              <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center justify-between mb-2">
                                 <span className="font-medium text-gray-900">{subject.subject_name}</span>
                                 <button
                                   onClick={() => handleSubjectRemove(csIndex, sIndex)}
@@ -1719,7 +1719,7 @@ export default function CreateExaminationPage({
                                   Remove
                                 </button>
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                 <div>
                                   <label className="block text-xs text-gray-600 mb-1">Max marks</label>
                                   <Input
@@ -1808,14 +1808,14 @@ export default function CreateExaminationPage({
                   })}
                 </div>
 
-                <div className="flex justify-between pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(2)}>
-                    <ArrowLeft size={18} className="mr-2" />
+                <div className="flex justify-between pt-2 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setCurrentStep(2)}>
+                    <ArrowLeft size={16} className="mr-1.5" />
                     Previous
                   </Button>
-                  <Button onClick={handleStep3Next} disabled={step3SubjectsLoading}>
+                  <Button size="sm" onClick={handleStep3Next} disabled={step3SubjectsLoading}>
                     Next: Schedule Exams
-                    <ArrowRight size={18} className="ml-2" />
+                    <ArrowRight size={16} className="ml-1.5" />
                   </Button>
                 </div>
               </div>
@@ -1823,11 +1823,11 @@ export default function CreateExaminationPage({
 
             {/* Step 4: Schedule */}
             {currentStep === 4 && (
-              <div className="space-y-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="space-y-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Schedule Examinations</h2>
-                    <p className="text-sm text-gray-600 mt-1 max-w-2xl">
+                    <h2 className="text-lg font-bold text-gray-900">Schedule Examinations</h2>
+                    <p className="text-xs text-gray-600 mt-0.5 max-w-3xl leading-relaxed">
                       Exam dates are limited to the start and end dates you set in step 1. Times use hour and minute
                       pickers; minutes follow the interval you choose (15, 30, or 45). Use{' '}
                       <span className="font-medium text-gray-800">Apply to all rows</span> for the same slot everywhere.
@@ -1837,24 +1837,24 @@ export default function CreateExaminationPage({
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm">
-                  <div className="flex flex-wrap items-start gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#5A7A95]/10 text-[#5A7A95]">
-                      <Clock className="h-5 w-5" aria-hidden />
+                <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 shadow-sm">
+                  <div className="flex flex-wrap items-start gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#5A7A95]/10 text-[#5A7A95]">
+                      <Clock className="h-4 w-4" aria-hidden />
                     </div>
-                    <div className="min-w-0 flex-1 space-y-4">
+                    <div className="min-w-0 flex-1 space-y-3">
                       <div>
-                        <p className="text-sm font-semibold text-slate-800">Time slot interval</p>
-                        <p className="text-xs text-slate-600 mt-0.5">
+                        <p className="text-xs font-semibold text-slate-800">Time slot interval</p>
+                        <p className="text-[11px] text-slate-600 mt-0.5">
                           Minute dropdown lists only these marks (:00, :15, …) for the selected hour.
                         </p>
-                        <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                        <div className="mt-2 inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
                           {([15, 30, 45] as const).map((step) => (
                             <button
                               key={step}
                               type="button"
                               onClick={() => setScheduleTimeStep(step)}
-                              className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
                                 scheduleTimeStep === step
                                   ? 'bg-[#5A7A95] text-white shadow-sm'
                                   : 'text-slate-600 hover:bg-slate-50'
@@ -1869,8 +1869,8 @@ export default function CreateExaminationPage({
                       <div className="h-px bg-slate-200" />
 
                       <div>
-                        <p className="text-sm font-semibold text-slate-800 mb-3">Apply same times to every exam</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                        <p className="text-xs font-semibold text-slate-800 mb-2">Apply same times to every exam</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-end">
                           <div className="sm:col-span-1 lg:col-span-3">
                             <label className="block text-xs font-medium text-slate-600 mb-1.5">Start time</label>
                             <ScheduleTimeDualSelect
@@ -1917,12 +1917,12 @@ export default function CreateExaminationPage({
                 </div>
 
                 {errors.schedule && (
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-600">{errors.schedule}</p>
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-xs text-red-600">{errors.schedule}</p>
                   </div>
                 )}
 
-                <div className="space-y-4">
+                <div className="space-y-2">
                   {examSchedules.map((schedule, index) => {
                     const classSubject = classSubjects.find(
                       cs => cs.classId === schedule.classId && cs.sectionId === schedule.sectionId
@@ -1943,14 +1943,14 @@ export default function CreateExaminationPage({
                             <div className="h-px flex-1 bg-slate-200" />
                           </div>
                         )}
-                        <div className="rounded-2xl bg-white shadow-sm border border-slate-100 px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div className="rounded-lg bg-white shadow-sm border border-slate-100 px-3 py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-2.5">
                           {/* Left: subject + class */}
-                          <div className="flex items-start gap-3 min-w-0">
-                            <div className="h-10 w-10 rounded-xl bg-[#5A7A95]/10 text-[#5A7A95] flex items-center justify-center flex-shrink-0">
-                              <BookOpen className="h-5 w-5" aria-hidden />
+                          <div className="flex items-start gap-2 min-w-0">
+                            <div className="h-8 w-8 rounded-lg bg-[#5A7A95]/10 text-[#5A7A95] flex items-center justify-center flex-shrink-0">
+                              <BookOpen className="h-4 w-4" aria-hidden />
                             </div>
-                            <div className="space-y-0.5">
-                              <p className="text-sm font-semibold text-slate-900 truncate">
+                            <div className="space-y-0">
+                              <p className="text-xs font-semibold text-slate-900 truncate">
                                 {subject?.subject_name || 'Subject'}
                               </p>
                               <p className="text-xs text-slate-500">
@@ -1960,7 +1960,7 @@ export default function CreateExaminationPage({
                           </div>
 
                           {/* Right: date + time */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full md:max-w-xl">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 w-full md:max-w-xl">
                             <div className="flex flex-col gap-1">
                               <span className="text-[11px] font-medium text-slate-500 tracking-wide">
                                 EXAM DATE
@@ -2012,20 +2012,20 @@ export default function CreateExaminationPage({
                   })}
                 </div>
 
-                <div className="flex justify-between pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(3)}>
-                    <ArrowLeft size={18} className="mr-2" />
+                <div className="flex justify-between pt-2 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setCurrentStep(3)}>
+                    <ArrowLeft size={16} className="mr-1.5" />
                     Previous
                   </Button>
-                  <Button onClick={handleStep4Submit} disabled={saving}>
+                  <Button size="sm" onClick={handleStep4Submit} disabled={saving}>
                     {saving ? (
                       <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-1.5"></div>
                         Creating...
                       </>
                     ) : (
                       <>
-                        <Save size={18} className="mr-2" />
+                        <Save size={16} className="mr-1.5" />
                         Create Examination
                       </>
                     )}

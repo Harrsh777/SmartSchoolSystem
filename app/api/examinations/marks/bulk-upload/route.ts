@@ -14,6 +14,7 @@ import {
   type BulkMarksRowError,
 } from '@/lib/bulk-marks-excel';
 import { checkRateLimit } from '@/lib/rate-limit-memory';
+import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_DATA_ROWS = 2000;
@@ -204,6 +205,13 @@ export async function POST(request: NextRequest) {
     if (examIsLockedForMarks(exam as Record<string, unknown>)) {
       return NextResponse.json(
         { error: 'Marks entry is locked for this examination. Upload rejected.', code: 'EXAM_LOCKED' },
+        { status: 403 }
+      );
+    }
+
+    if (await isExamClassMarksLocked(supabase, school_code, exam_id, class_id)) {
+      return NextResponse.json(
+        { error: MARKS_LOCKED_MESSAGE, code: 'CLASS_MARKS_LOCKED' },
         { status: 403 }
       );
     }
