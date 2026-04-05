@@ -195,7 +195,8 @@ export default function ParentDashboard() {
     try {
       setMarksLoading(true);
       const response = await fetch(
-        `/api/marks?school_code=${studentData.school_code}&student_id=${studentData.id}`
+        `/api/student/marks?school_code=${encodeURIComponent(String(studentData.school_code))}&student_id=${encodeURIComponent(String(studentData.id))}`,
+        { cache: 'no-store' }
       );
       const result = await response.json();
       

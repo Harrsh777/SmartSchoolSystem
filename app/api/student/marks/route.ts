@@ -3,11 +3,11 @@ import { getServiceRoleClient } from '@/lib/supabase-admin';
 
 /**
  * GET /api/student/marks
- * Fetch all marks for a specific student, grouped by examinations and subjects
+ * Marks visible to the student only after admin locks marks for that exam + class
+ * (row in exam_class_marks_lock). Query: school_code, student_id
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = getServiceRoleClient();
     const searchParams = request.nextUrl.searchParams;
     const schoolCode = searchParams.get('school_code');
     const studentId = searchParams.get('student_id');
@@ -19,227 +19,100 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Select only columns that exist in all deployments (no status, created_at, updated_at)
-    const { data: marks, error: marksError } = await supabase
-      .from('student_subject_marks')
-      .select('id, marks_obtained, max_marks, remarks, subject_id, exam_id')
-      .eq('school_code', schoolCode)
-      .eq('student_id', studentId)
-      .not('marks_obtained', 'is', null);
+    const supabase = getServiceRoleClient();
+    const raw = schoolCode.trim();
+    const upper = raw.toUpperCase();
 
-    if (marksError) {
-      console.error('Error fetching marks:', marksError);
+    const { data: byUpper } = await supabase
+      .from('students')
+      .select('id, school_code, class, section')
+      .eq('id', studentId)
+      .eq('school_code', upper)
+      .maybeSingle();
+
+    const { data: byRaw } =
+      !byUpper && raw !== upper
+        ? await supabase
+            .from('students')
+            .select('id, school_code, class, section')
+            .eq('id', studentId)
+            .eq('school_code', raw)
+            .maybeSingle()
+        : { data: null };
+
+    const student = byUpper || byRaw;
+    if (!student) {
+      return NextResponse.json({ data: [] }, { status: 200 });
+    }
+
+    const sc = String(student.school_code ?? upper);
+
+    let defaultClassId: string | null = null;
+    if (student.class != null && student.section != null) {
+      const { data: classRow } = await supabase
+        .from('classes')
+        .select('id')
+        .eq('school_code', sc)
+        .eq('class', student.class)
+        .eq('section', student.section)
+        .maybeSingle();
+      defaultClassId = classRow?.id ?? null;
+    }
+
+    const { data: marks, error } = await supabase
+      .from('marks')
+      .select(
+        `
+        *,
+        examinations:exam_id (
+          id,
+          exam_name,
+          academic_year,
+          start_date,
+          end_date,
+          status
+        )
+      `
+      )
+      .eq('school_code', sc)
+      .eq('student_id', studentId);
+
+    if (error) {
+      console.error('Error fetching student marks:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch marks', details: marksError.message },
+        { error: 'Failed to fetch marks', details: error.message },
         { status: 500 }
       );
     }
 
-    if (!marks || marks.length === 0) {
-      return NextResponse.json({ data: [] }, { status: 200 });
+    if (!marks?.length) {
+      return NextResponse.json({ data: [] });
     }
 
-    const subjectIds = [...new Set(marks.map((m) => m.subject_id).filter(Boolean))] as string[];
-    const examIds = [...new Set(marks.map((m) => m.exam_id).filter(Boolean))] as string[];
+    const examIds = [...new Set(marks.map((m: { exam_id: string }) => m.exam_id).filter(Boolean))];
+    const { data: locks, error: lockErr } = await supabase
+      .from('exam_class_marks_lock')
+      .select('exam_id, class_id')
+      .eq('school_code', sc)
+      .in('exam_id', examIds);
 
-    type ExamRow = { id: string; exam_name?: string | null; name?: string | null; title?: string | null; exam_type?: string | null; start_date?: string | null; end_date?: string | null; academic_year?: string | null };
-    const [subjectsRes, examsRes] = await Promise.all([
-      subjectIds.length > 0
-        ? supabase.from('subjects').select('id, name, color').in('id', subjectIds)
-        : Promise.resolve({ data: [] as { id: string; name: string; color: string | null }[], error: null }),
-      examIds.length > 0
-        ? supabase
-            .from('examinations')
-            .select('id, exam_name, name, exam_type, start_date, end_date, academic_year')
-            .in('id', examIds)
-        : Promise.resolve({ data: [] as ExamRow[], error: null }),
-    ]);
-
-    const subjectMap = new Map<string, { id: string; name: string; color: string | null }>();
-    (subjectsRes.data || []).forEach((s) => subjectMap.set(String(s.id).trim(), { id: s.id, name: s.name, color: s.color ?? null }));
-
-    const examMap = new Map<string, { id: string; exam_name: string; exam_type: string | null; start_date: string | null; end_date: string | null; academic_year: string | null }>();
-    function putExamInMap(e: ExamRow) {
-      const id = String(e.id).trim();
-      const examName = (e.exam_name ?? e.name ?? e.title ?? 'Examination').toString().trim() || 'Examination';
-      examMap.set(id, {
-        id: e.id,
-        exam_name: examName,
-        exam_type: e.exam_type ?? null,
-        start_date: e.start_date ?? null,
-        end_date: e.end_date ?? null,
-        academic_year: e.academic_year ?? null,
-      });
-    }
-    (examsRes.data || []).forEach((e: ExamRow) => putExamInMap(e));
-
-    // Fallback: fetch any exam we have marks for but didn't get from bulk query (e.g. schema/RLS)
-    const missingExamIds = examIds.filter((id) => !examMap.has(String(id).trim()));
-    for (const examId of missingExamIds) {
-      const { data: singleExam } = await supabase
-        .from('examinations')
-        .select('id, exam_name, name, exam_type, start_date, end_date, academic_year')
-        .eq('id', examId)
-        .maybeSingle();
-      if (singleExam) putExamInMap(singleExam as ExamRow);
+    if (lockErr && lockErr.code !== '42P01') {
+      console.warn('[student/marks] lock fetch:', lockErr.message);
     }
 
-    interface MarkData {
-      id: string;
-      marks_obtained: number;
-      max_marks: number;
-      percentage: number;
-      grade: string | null;
-      status: string | null;
-      remarks: string | null;
-      created_at: string;
-      updated_at: string;
-      subject: { id: string; name: string; color: string | null } | null;
-      exam: { id: string; exam_name: string; exam_type: string | null; start_date: string | null; end_date: string | null; academic_year: string | null };
-    }
-
-    interface ExamGroup {
-      exam_id: string;
-      exam_name: string;
-      exam_type: string | null;
-      start_date: string | null;
-      end_date: string | null;
-      academic_year: string | null;
-      subjects: Array<{
-        id: string;
-        subject_id: string;
-        subject_name: string;
-        subject_color: string | null;
-        marks_obtained: number;
-        max_marks: number;
-        percentage: number;
-        grade: string | null;
-        status: string | null;
-        remarks: string | null;
-        created_at: string;
-      }>;
-      total_marks: number;
-      total_max_marks: number;
-      overall_percentage: number;
-      overall_grade: string;
-    }
-
-    const examGroups: Record<string, ExamGroup> = {};
-
-    function gradeFromPercentage(pct: number): string {
-      if (pct >= 90) return 'A+';
-      if (pct >= 80) return 'A';
-      if (pct >= 70) return 'B';
-      if (pct >= 60) return 'C';
-      if (pct >= 50) return 'D';
-      return 'E';
-    }
-
-    const typedMarks: MarkData[] = marks.map((mark) => {
-      const subject = mark.subject_id ? subjectMap.get(String(mark.subject_id).trim()) ?? null : null;
-      const exam = mark.exam_id ? examMap.get(String(mark.exam_id).trim()) : null;
-      const maxM = Number(mark.max_marks) || 0;
-      const obtained = Number(mark.marks_obtained) ?? 0;
-      const percentage = maxM > 0 ? Math.round((obtained / maxM) * 100) : 0;
-      const grade = gradeFromPercentage(percentage);
-      return {
-        id: mark.id,
-        marks_obtained: obtained,
-        max_marks: maxM,
-        percentage,
-        grade,
-        status: null,
-        remarks: mark.remarks ?? null,
-        created_at: (mark as { created_at?: string }).created_at ?? '',
-        updated_at: (mark as { updated_at?: string }).updated_at ?? '',
-        subject,
-        exam: exam ?? {
-          id: mark.exam_id || '',
-          exam_name: 'Examination',
-          exam_type: null,
-          start_date: null,
-          end_date: null,
-          academic_year: null,
-        },
-      };
-    });
-
-    typedMarks.forEach((mark) => {
-      const examId = mark.exam.id;
-      
-      if (!examGroups[examId]) {
-        examGroups[examId] = {
-          exam_id: examId,
-          exam_name: mark.exam.exam_name,
-          exam_type: mark.exam.exam_type,
-          start_date: mark.exam.start_date,
-          end_date: mark.exam.end_date,
-          academic_year: mark.exam.academic_year,
-          subjects: [],
-          total_marks: 0,
-          total_max_marks: 0,
-          overall_percentage: 0,
-          overall_grade: '',
-        };
-      }
-
-      examGroups[examId].subjects.push({
-        id: mark.id,
-        subject_id: mark.subject?.id || '',
-        subject_name: mark.subject?.name || 'Unknown Subject',
-        subject_color: mark.subject?.color || null,
-        marks_obtained: mark.marks_obtained,
-        max_marks: mark.max_marks,
-        percentage: mark.percentage,
-        grade: mark.grade,
-        status: mark.status,
-        remarks: mark.remarks ?? null,
-        created_at: mark.created_at || '',
-      });
-
-      examGroups[examId].total_marks += mark.marks_obtained;
-      examGroups[examId].total_max_marks += mark.max_marks;
-    });
-
-    // Calculate overall percentage and grade for each exam
-    const formattedExams = Object.values(examGroups).map((exam) => {
-      exam.overall_percentage = exam.total_max_marks > 0
-        ? Math.round((exam.total_marks / exam.total_max_marks) * 100)
-        : 0;
-
-      // Calculate overall grade
-      let overallGrade = 'N/A';
-      if (exam.overall_percentage >= 90) {
-        overallGrade = 'A+';
-      } else if (exam.overall_percentage >= 80) {
-        overallGrade = 'A';
-      } else if (exam.overall_percentage >= 70) {
-        overallGrade = 'B';
-      } else if (exam.overall_percentage >= 60) {
-        overallGrade = 'C';
-      } else if (exam.overall_percentage >= 50) {
-        overallGrade = 'D';
-      } else {
-        overallGrade = 'E';
-      }
-      exam.overall_grade = overallGrade;
-
-      return exam;
-    });
-
-    // Sort by end_date (most recent first)
-    formattedExams.sort((a, b) => {
-      const dateA = a.end_date ? new Date(a.end_date).getTime() : 0;
-      const dateB = b.end_date ? new Date(b.end_date).getTime() : 0;
-      return dateB - dateA;
-    });
-
-    return NextResponse.json({ data: formattedExams }, { status: 200 });
-  } catch (error) {
-    console.error('Error fetching student marks:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: (error as Error).message },
-      { status: 500 }
+    const lockSet = new Set(
+      (locks || []).map((l: { exam_id: string; class_id: string }) => `${l.exam_id}|${l.class_id}`)
     );
+
+    const visible = marks.filter((m: { exam_id: string; class_id?: string | null }) => {
+      const cid = m.class_id || defaultClassId;
+      if (!cid) return false;
+      return lockSet.has(`${m.exam_id}|${cid}`);
+    });
+
+    return NextResponse.json({ data: visible });
+  } catch (e) {
+    console.error('Error in GET /api/student/marks:', e);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -187,6 +187,11 @@ export default function ExaminationsPage() {
                 )}
               </div>
             )}
+            {displayStatus === 'completed' && !mark && (
+              <div className="mt-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">
+                Results are not shown until your school publishes them (marks locked for your class).
+              </div>
+            )}
             {typeof mark === 'object' && mark !== null && (
               <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center gap-2 mb-3">
@@ -297,7 +302,8 @@ ${rows.map((r) => `<tr><td>${r.subject}</td><td>${r.date}</td><td>${r.time}</td>
   const fetchMarks = async (studentData: Student) => {
     try {
       const response = await fetch(
-        `/api/marks?school_code=${studentData.school_code}&student_id=${studentData.id}`
+        `/api/student/marks?school_code=${encodeURIComponent(String(studentData.school_code))}&student_id=${encodeURIComponent(String(studentData.id))}`,
+        { cache: 'no-store' }
       );
       const result = await response.json();
       if (response.ok && result.data) {
@@ -331,7 +337,9 @@ ${rows.map((r) => `<tr><td>${r.subject}</td><td>${r.date}</td><td>${r.time}</td>
       >
         <div>
           <h1 className="text-3xl font-bold text-black mb-2">Examinations</h1>
-          <p className="text-gray-600">View your exam schedules and results (upcoming and previous)</p>
+          <p className="text-gray-600">
+            View schedules for upcoming exams. Published results appear only after your school locks marks for that exam.
+          </p>
         </div>
       </motion.div>
 

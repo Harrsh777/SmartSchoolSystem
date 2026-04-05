@@ -15,6 +15,9 @@ import {
   X,
   Clock,
   Bell,
+  Bus,
+  IndianRupee,
+  Award,
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 import TimetableView from '@/components/timetable/TimetableView';
@@ -72,6 +75,12 @@ export default function StudentDashboardHome() {
   const [attendanceLast7, setAttendanceLast7] = useState<AttendanceDay[]>([]);
   const [recentCommunication, setRecentCommunication] = useState<RecentNotice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [feeDueMonth, setFeeDueMonth] = useState(0);
+  const [feeDueQuarter, setFeeDueQuarter] = useState(0);
+  const [receiptCount, setReceiptCount] = useState(0);
+  const [transportBrief, setTransportBrief] = useState<{ has_transport: boolean; route_name?: string } | null>(null);
+  const [publishedMarksCount, setPublishedMarksCount] = useState(0);
+  const [upcomingExamPeek, setUpcomingExamPeek] = useState<string[]>([]);
 
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
@@ -88,6 +97,9 @@ export default function StudentDashboardHome() {
     }
   };
 
+  const formatInr = (n: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(n);
+
   const fetchAllData = useCallback(async (studentData: Student) => {
     const schoolCode = getString(studentData.school_code);
     const studentId = getString(studentData.id);
@@ -103,15 +115,35 @@ export default function StudentDashboardHome() {
     const startStr = startDate.toISOString().split('T')[0];
     const endStr = endDate.toISOString().split('T')[0];
 
+    const enc = (s: string) => encodeURIComponent(s);
+
     try {
-      // Fetch all data in parallel
-      const [statsRes, upcomingRes, weeklyRes, teacherRes, attendanceRes, noticesRes] = await Promise.all([
-        fetch(`/api/student/stats?school_code=${schoolCode}&student_id=${studentId}`),
-        fetch(`/api/student/upcoming-items?school_code=${schoolCode}&student_id=${studentId}&limit=3`),
-        fetch(`/api/student/weekly-completion?school_code=${schoolCode}&student_id=${studentId}`),
-        fetch(`/api/student/class-teacher?school_code=${schoolCode}&class=${getString(studentData.class)}&section=${getString(studentData.section)}&academic_year=${getString(studentData.academic_year)}`),
-        fetch(`/api/student/attendance?school_code=${schoolCode}&student_id=${studentId}&start_date=${startStr}&end_date=${endStr}`),
-        fetch(`/api/communication/notices?school_code=${schoolCode}&limit=5`),
+      const [
+        statsRes,
+        upcomingRes,
+        weeklyRes,
+        teacherRes,
+        attendanceRes,
+        noticesRes,
+        feesRes,
+        receiptsRes,
+        transportRes,
+        examsV2Res,
+        marksRes,
+      ] = await Promise.all([
+        fetch(`/api/student/stats?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`),
+        fetch(`/api/student/upcoming-items?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}&limit=3`),
+        fetch(`/api/student/weekly-completion?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`),
+        fetch(
+          `/api/student/class-teacher?school_code=${enc(schoolCode)}&class=${enc(getString(studentData.class))}&section=${enc(getString(studentData.section))}&academic_year=${enc(getString(studentData.academic_year))}`
+        ),
+        fetch(`/api/student/attendance?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}&start_date=${startStr}&end_date=${endStr}`),
+        fetch(`/api/communication/notices?school_code=${enc(schoolCode)}&limit=5`),
+        fetch(`/api/student/fees?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
+        fetch(`/api/student/fees/receipts?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
+        fetch(`/api/student/transport?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
+        fetch(`/api/examinations/v2/student?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
+        fetch(`/api/student/marks?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
       ]);
 
       if (statsRes.ok) {
@@ -122,34 +154,71 @@ export default function StudentDashboardHome() {
       if (upcomingRes.ok) {
         const upcomingData = await upcomingRes.json();
         setUpcoming(upcomingData.data || []);
-        // Count only examinations (not events)
         const examsCount = (upcomingData.data || []).filter((item: UpcomingItem) => item.subtitle === 'Examination').length;
         setUpcomingExamsCount(examsCount);
       }
-      
-      // Also fetch total upcoming exams count
-      try {
-        const examsCountRes = await fetch(`/api/examinations?school_code=${schoolCode}&status=upcoming`);
-        if (examsCountRes.ok) {
-          const examsData = await examsCountRes.json();
-          if (examsData.data) {
-            const todayDate = new Date();
-            todayDate.setHours(0, 0, 0, 0);
-            interface Exam {
-              start_date?: string | null;
-              status?: string;
-            }
-            const upcomingExams = examsData.data.filter((exam: Exam) => {
-              if (!exam.start_date) return false;
-              const examDate = new Date(exam.start_date);
-              examDate.setHours(0, 0, 0, 0);
-              return (exam.status === 'upcoming' || exam.status === 'ongoing') && examDate >= todayDate;
-            });
-            setUpcomingExamsCount(upcomingExams.length);
-          }
+
+      if (examsV2Res.ok) {
+        const examsJson = await examsV2Res.json();
+        const examsList = (examsJson.data || []) as { exam_name?: string; start_date?: string | null; end_date?: string | null }[];
+        const todayCut = new Date();
+        todayCut.setHours(0, 0, 0, 0);
+        const upcomingExams = examsList.filter((e) => {
+          const end = new Date(e.end_date || e.start_date || 0);
+          end.setHours(23, 59, 59, 999);
+          return !Number.isNaN(end.getTime()) && end >= todayCut;
+        });
+        setUpcomingExamsCount(upcomingExams.length);
+        setUpcomingExamPeek(
+          upcomingExams.slice(0, 4).map((e) => (typeof e.exam_name === 'string' ? e.exam_name : 'Exam'))
+        );
+      }
+
+      if (feesRes.ok) {
+        const feesJson = await feesRes.json();
+        const fees = (feesJson.data || []) as { due_date?: string; balance_due?: number }[];
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const startMonth = new Date(y, m, 1);
+        const endMonth = new Date(y, m + 1, 0, 23, 59, 59, 999);
+        const qStart = Math.floor(m / 3) * 3;
+        const startQ = new Date(y, qStart, 1);
+        const endQ = new Date(y, qStart + 3, 0, 23, 59, 59, 999);
+        const inRange = (d: Date, a: Date, b: Date) => d >= a && d <= b;
+        let sumMonth = 0;
+        let sumQ = 0;
+        for (const f of fees) {
+          const bal = Math.max(0, Number(f.balance_due ?? 0));
+          if (bal <= 0) continue;
+          const dd = f.due_date ? new Date(f.due_date) : null;
+          if (!dd || Number.isNaN(dd.getTime())) continue;
+          if (inRange(dd, startMonth, endMonth)) sumMonth += bal;
+          if (inRange(dd, startQ, endQ)) sumQ += bal;
         }
-      } catch (err) {
-        console.error('Error fetching upcoming exams count:', err);
+        setFeeDueMonth(Math.round(sumMonth * 100) / 100);
+        setFeeDueQuarter(Math.round(sumQ * 100) / 100);
+      }
+
+      if (receiptsRes.ok) {
+        const recJson = await receiptsRes.json();
+        setReceiptCount(Array.isArray(recJson.data) ? recJson.data.length : 0);
+      }
+
+      if (transportRes.ok) {
+        const tr = await transportRes.json();
+        const d = tr.data;
+        if (d && typeof d === 'object') {
+          setTransportBrief({
+            has_transport: Boolean((d as { has_transport?: boolean }).has_transport),
+            route_name: (d as { route?: { route_name?: string } | null }).route?.route_name,
+          });
+        }
+      }
+
+      if (marksRes.ok) {
+        const mj = await marksRes.json();
+        setPublishedMarksCount(Array.isArray(mj.data) ? mj.data.length : 0);
       }
 
       if (weeklyRes.ok) {
@@ -372,6 +441,103 @@ export default function StudentDashboardHome() {
               ></div>
             </div>
           </motion.div>
+        </section>
+
+        {/* Fees, transport, exams & published results */}
+        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={() => router.push('/student/dashboard/fees')}
+            className="text-left glass-card soft-shadow rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                <IndianRupee className="text-amber-600" size={20} />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Fees</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-1">Balance due (by due date)</p>
+            <p className="text-lg font-semibold text-foreground">This month: {formatInr(feeDueMonth)}</p>
+            <p className="text-sm text-muted-foreground mt-1">This quarter: {formatInr(feeDueQuarter)}</p>
+            {receiptCount > 0 && (
+              <p className="text-[11px] text-muted-foreground mt-2">{receiptCount} paid receipt{receiptCount === 1 ? '' : 's'} — view under Payment History</p>
+            )}
+            <p className="text-[11px] text-primary font-semibold mt-3 uppercase tracking-wide">Open fee statement &amp; receipts →</p>
+          </motion.button>
+
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            onClick={() => router.push('/student/dashboard/transport')}
+            className="text-left glass-card soft-shadow rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-lg bg-sky-500/10 flex items-center justify-center">
+                <Bus className="text-sky-600" size={20} />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Transport</span>
+            </div>
+            {transportBrief?.has_transport ? (
+              <>
+                <p className="text-sm font-medium text-foreground line-clamp-2">
+                  {transportBrief.route_name || 'Route assigned'}
+                </p>
+                <p className="text-[11px] text-primary font-semibold mt-3 uppercase tracking-wide">View route &amp; stops →</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">No transport assigned</p>
+                <p className="text-[11px] text-muted-foreground mt-2">Contact the office if you need bus service.</p>
+              </>
+            )}
+          </motion.button>
+
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            onClick={() => router.push('/student/dashboard/examinations')}
+            className="text-left glass-card soft-shadow rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors md:col-span-2 xl:col-span-1"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                <FileText className="text-violet-600" size={20} />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Examinations</span>
+            </div>
+            <p className="text-sm font-semibold text-foreground">{upcomingExamsCount} upcoming</p>
+            {upcomingExamPeek.length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground list-disc list-inside">
+                {upcomingExamPeek.map((name, i) => (
+                  <li key={`${i}-${name}`} className="truncate">{name}</li>
+                ))}
+              </ul>
+            )}
+            <p className="text-[11px] text-primary font-semibold mt-3 uppercase tracking-wide">Schedules &amp; published marks →</p>
+          </motion.button>
+
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            onClick={() => router.push('/student/dashboard/examinations')}
+            className="text-left glass-card soft-shadow rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <Award className="text-emerald-600" size={20} />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Published results</span>
+            </div>
+            <p className="text-2xl font-bold text-foreground">{publishedMarksCount}</p>
+            <p className="text-xs text-muted-foreground mt-1">Exams where marks are visible after admin lock</p>
+          </motion.button>
         </section>
 
         {/* Main Content Grid */}

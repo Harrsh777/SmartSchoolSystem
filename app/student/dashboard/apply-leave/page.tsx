@@ -7,32 +7,21 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import { 
-  ArrowLeft, 
+import {
+  ArrowLeft,
   CalendarX,
   Calendar,
   Send,
   CheckCircle2,
-  X
+  X,
 } from 'lucide-react';
-
-interface LeaveType {
-  id: string;
-  abbreviation: string;
-  name: string;
-  is_active: boolean;
-  max_days?: number;
-}
 
 export default function ApplyLeavePage() {
   const router = useRouter();
   const [student, setStudent] = useState<{ id: string; school_code: string } | null>(null);
-  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [formData, setFormData] = useState({
-    leave_type_id: '',
     leave_start_date: '',
     leave_end_date: '',
     reason: '',
@@ -43,32 +32,13 @@ export default function ApplyLeavePage() {
     if (storedStudent) {
       const studentData = JSON.parse(storedStudent);
       setStudent(studentData);
-      fetchLeaveTypes(studentData.school_code);
     }
   }, []);
-
-  const fetchLeaveTypes = async (schoolCode: string) => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/leave/types?school_code=${schoolCode}`);
-      const result = await response.json();
-
-      if (response.ok && result.data) {
-        // Filter only active leave types
-        const activeTypes = result.data.filter((type: LeaveType) => type.is_active);
-        setLeaveTypes(activeTypes);
-      }
-    } catch (err) {
-      console.error('Error fetching leave types:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.leave_type_id || !formData.leave_start_date || !formData.leave_end_date) {
+    if (!formData.leave_start_date || !formData.leave_end_date) {
       alert('Please fill in all required fields');
       return;
     }
@@ -80,16 +50,13 @@ export default function ApplyLeavePage() {
 
     try {
       setSubmitting(true);
-      const selectedLeaveType = leaveTypes.find(lt => lt.id === formData.leave_type_id);
-      
+
       const response = await fetch('/api/leave/student-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: student.school_code,
           student_id: student.id,
-          leave_type_id: formData.leave_type_id,
-          leave_title: selectedLeaveType?.name || '',
           leave_start_date: formData.leave_start_date,
           leave_end_date: formData.leave_end_date,
           reason: formData.reason,
@@ -101,19 +68,20 @@ export default function ApplyLeavePage() {
 
       if (response.ok) {
         setShowSuccess(true);
-        // Reset form
         setFormData({
-          leave_type_id: '',
           leave_start_date: '',
           leave_end_date: '',
           reason: '',
         });
-        // Hide success message after 3 seconds
         setTimeout(() => {
           setShowSuccess(false);
         }, 3000);
       } else {
-        alert(result.error || 'Failed to submit leave request');
+        const hint =
+          result.code === 'NOT_NULL_VIOLATION' || String(result.details || '').includes('leave_type_id')
+            ? ' Ask your school to run the database migration migrations/20250405_student_leave_type_nullable.sql if this persists.'
+            : '';
+        alert((result.error || 'Failed to submit leave request') + hint);
       }
     } catch (err) {
       console.error('Error submitting leave request:', err);
@@ -134,11 +102,8 @@ export default function ApplyLeavePage() {
     return 0;
   };
 
-  const selectedLeaveType = leaveTypes.find(lt => lt.id === formData.leave_type_id);
-
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
-      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -163,7 +128,6 @@ export default function ApplyLeavePage() {
         </Button>
       </motion.div>
 
-      {/* Success Message */}
       <AnimatePresence>
         {showSuccess && (
           <motion.div
@@ -178,6 +142,7 @@ export default function ApplyLeavePage() {
               <p className="text-sm">You will be notified once your request is reviewed.</p>
             </div>
             <button
+              type="button"
               onClick={() => setShowSuccess(false)}
               className="text-[#64748B] hover:text-[#1e3a8a]"
             >
@@ -189,50 +154,6 @@ export default function ApplyLeavePage() {
 
       <Card className="p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Leave Type Selection */}
-          <div>
-            <label className="block text-sm font-semibold text-[#1e3a8a] mb-2">
-              Leave Type <span className="text-red-500">*</span>
-            </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {loading ? (
-                <div className="col-span-2 text-center py-4 text-[#64748B]">Loading leave types...</div>
-              ) : leaveTypes.length === 0 ? (
-                <div className="col-span-2 text-center py-4 text-[#64748B]">No active leave types available</div>
-              ) : (
-                leaveTypes.map((leaveType) => (
-                  <label
-                    key={leaveType.id}
-                    className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                      formData.leave_type_id === leaveType.id
-                        ? 'border-[#2F6FED] bg-[#EAF1FF]'
-                        : 'border-[#E1E1DB] hover:border-[#2F6FED] hover:bg-[#F8FAFC]'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="leave_type"
-                      value={leaveType.id}
-                      checked={formData.leave_type_id === leaveType.id}
-                      onChange={(e) => setFormData({ ...formData, leave_type_id: e.target.value })}
-                      className="w-4 h-4 text-[#2F6FED] border-[#E1E1DB] focus:ring-[#60A5FA]"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-[#1e3a8a]">{leaveType.abbreviation}</span>
-                        <span className="font-semibold text-[#0F172A]">{leaveType.name}</span>
-                      </div>
-                      {leaveType.max_days && (
-                        <p className="text-xs text-[#64748B] mt-1">Max: {leaveType.max_days} days</p>
-                      )}
-                    </div>
-                  </label>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Date Selection */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-semibold text-[#1e3a8a] mb-2">
@@ -267,7 +188,6 @@ export default function ApplyLeavePage() {
             </div>
           </div>
 
-          {/* Total Days Display */}
           {formData.leave_start_date && formData.leave_end_date && (
             <div className="bg-[#EAF1FF] border border-[#DBEAFE] rounded-lg p-4">
               <div className="flex items-center justify-between">
@@ -276,15 +196,9 @@ export default function ApplyLeavePage() {
                   {calculateDays()} {calculateDays() === 1 ? 'Day' : 'Days'}
                 </span>
               </div>
-              {selectedLeaveType?.max_days && calculateDays() > selectedLeaveType.max_days && (
-                <p className="text-sm text-red-600 mt-2">
-                  ⚠️ This exceeds the maximum allowed days ({selectedLeaveType.max_days} days) for this leave type.
-                </p>
-              )}
             </div>
           )}
 
-          {/* Reason */}
           <div>
             <label className="block text-sm font-semibold text-[#1e3a8a] mb-2">
               Reason <span className="text-red-500">*</span>
@@ -299,7 +213,6 @@ export default function ApplyLeavePage() {
             />
           </div>
 
-          {/* Submit Button */}
           <div className="flex justify-end gap-3 pt-4 border-t border-[#E1E1DB]">
             <Button
               type="button"
@@ -311,7 +224,7 @@ export default function ApplyLeavePage() {
             </Button>
             <Button
               type="submit"
-              disabled={submitting || !formData.leave_type_id || !formData.leave_start_date || !formData.leave_end_date || !formData.reason}
+              disabled={submitting || !formData.leave_start_date || !formData.leave_end_date || !formData.reason}
               className="bg-[#2F6FED] hover:bg-[#1e3a8a] text-[#FFFFFF] disabled:opacity-50"
             >
               <Send size={18} className="mr-2" />
@@ -323,4 +236,3 @@ export default function ApplyLeavePage() {
     </div>
   );
 }
-

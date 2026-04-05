@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       rejected_reason: null;
       id: string;
       student_id: string;
-      leave_type_id: string;
+      leave_type_id: string | null;
       leave_start_date?: string | null;
       leave_end_date?: string | null;
       total_days?: number | null;
@@ -75,7 +75,9 @@ export async function GET(request: NextRequest) {
       comment?: string | null;
     }
     const studentIds = [...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.student_id).filter(Boolean))];
-    const leaveTypeIds = [...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.leave_type_id).filter(Boolean))];
+    const leaveTypeIds = [
+      ...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.leave_type_id).filter(Boolean)),
+    ] as string[];
 
     // Fetch student information (only if there are student IDs)
     let studentsData = null;
@@ -128,7 +130,7 @@ export async function GET(request: NextRequest) {
     // Transform the data to match the expected format
     const transformedData = leaveRequests.map((item: StudentLeaveRequest) => {
       const student = studentsMap.get(item.student_id);
-      const leaveType = leaveTypesMap.get(item.leave_type_id);
+      const leaveType = item.leave_type_id ? leaveTypesMap.get(item.leave_type_id) : undefined;
       
       // Calculate total_days if not present in database
       let totalDays = item.total_days;
@@ -175,7 +177,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { school_code, student_id, leave_type_id, leave_title, leave_start_date, leave_end_date, reason, absent_form_submitted } = body;
 
-    if (!school_code || !student_id || !leave_type_id || !leave_start_date || !leave_end_date) {
+    if (!school_code || !student_id || !leave_start_date || !leave_end_date) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -191,17 +193,19 @@ export async function POST(request: NextRequest) {
     const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
     const supabase = getServiceRoleClient();
-    // Validate max_days if leave type has a limit
-    const { data: leaveType, error: leaveTypeError } = await supabase
-      .from('leave_types')
-      .select('max_days')
-      .eq('id', leave_type_id)
-      .single();
 
-    if (!leaveTypeError && leaveType?.max_days && totalDays > leaveType.max_days) {
-      return NextResponse.json({ 
-        error: `Leave duration (${totalDays} days) exceeds maximum allowed (${leaveType.max_days} days) for this leave type` 
-      }, { status: 400 });
+    if (leave_type_id) {
+      const { data: leaveType, error: leaveTypeError } = await supabase
+        .from('leave_types')
+        .select('max_days')
+        .eq('id', leave_type_id)
+        .single();
+
+      if (!leaveTypeError && leaveType?.max_days && totalDays > leaveType.max_days) {
+        return NextResponse.json({
+          error: `Leave duration (${totalDays} days) exceeds maximum allowed (${leaveType.max_days} days) for this leave type`,
+        }, { status: 400 });
+      }
     }
 
     const { data, error } = await supabase
@@ -209,8 +213,8 @@ export async function POST(request: NextRequest) {
       .insert({
         school_code,
         student_id,
-        leave_type_id,
-        leave_title: leave_title || '',
+        leave_type_id: leave_type_id || null,
+        leave_title: typeof leave_title === 'string' && leave_title.trim() ? leave_title.trim() : 'Leave request',
         leave_start_date,
         leave_end_date,
         total_days: totalDays,
@@ -245,10 +249,14 @@ export async function POST(request: NextRequest) {
       }
       
       if (error.code === '23502') {
-        return NextResponse.json({ 
-          error: 'Missing required field',
-          details: error.message || 'One or more required fields are missing.',
-          code: 'NOT_NULL_VIOLATION'
+        const msg = error.message || '';
+        const isLeaveTypeNull = msg.includes('leave_type_id');
+        return NextResponse.json({
+          error: isLeaveTypeNull
+            ? 'Database requires an update: student leave type must be optional. Run migrations/20250405_student_leave_type_nullable.sql'
+            : 'Missing required field',
+          details: msg || 'One or more required fields are missing.',
+          code: 'NOT_NULL_VIOLATION',
         }, { status: 400 });
       }
       

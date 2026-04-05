@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -126,6 +126,30 @@ export default function StudentFeesPage() {
   const totalDue = fees.reduce((sum, fee) => sum + (fee.total_due > 0 ? fee.total_due : 0), 0);
   const totalPaid = fees.reduce((sum, fee) => sum + fee.paid_amount, 0);
 
+  const periodDue = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const startMonth = new Date(y, m, 1);
+    const endMonth = new Date(y, m + 1, 0, 23, 59, 59, 999);
+    const qStart = Math.floor(m / 3) * 3;
+    const startQ = new Date(y, qStart, 1);
+    const endQ = new Date(y, qStart + 3, 0, 23, 59, 59, 999);
+    const inRange = (d: Date, a: Date, b: Date) => d >= a && d <= b;
+    const withBal = fees.filter((f) => Math.max(0, Number(f.balance_due ?? 0)) > 0);
+    const monthList = withBal.filter((f) => {
+      const dd = new Date(f.due_date);
+      return !Number.isNaN(dd.getTime()) && inRange(dd, startMonth, endMonth);
+    });
+    const qList = withBal.filter((f) => {
+      const dd = new Date(f.due_date);
+      return !Number.isNaN(dd.getTime()) && inRange(dd, startQ, endQ);
+    });
+    const sumBal = (arr: StudentFee[]) =>
+      Math.round(arr.reduce((s, f) => s + Math.max(0, Number(f.balance_due ?? 0)), 0) * 100) / 100;
+    return { monthList, qList, sumMonth: sumBal(monthList), sumQ: sumBal(qList) };
+  }, [fees]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -193,6 +217,47 @@ export default function StudentFeesPage() {
           </div>
         </Card>
       </div>
+
+      {(periodDue.sumMonth > 0 || periodDue.sumQ > 0) && (
+        <Card className="border-indigo-200 bg-indigo-50/40">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Balance due by period (by due date)</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p className="text-sm font-medium text-indigo-800 mb-2">This calendar month</p>
+              <p className="text-2xl font-bold text-indigo-900 mb-3">{formatCurrency(periodDue.sumMonth)}</p>
+              <ul className="space-y-2 text-sm text-gray-700">
+                {periodDue.monthList.slice(0, 6).map((fee) => (
+                  <li key={fee.id} className="flex justify-between gap-2 border-b border-indigo-100 pb-2">
+                    <span className="truncate">{fee.fee_structure?.name ?? 'Fee'}</span>
+                    <span className="shrink-0 font-medium text-red-700">{formatCurrency(Math.max(0, fee.balance_due))}</span>
+                  </li>
+                ))}
+              </ul>
+              {periodDue.monthList.length > 6 && (
+                <p className="text-xs text-gray-500 mt-2">+{periodDue.monthList.length - 6} more in this month</p>
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-indigo-800 mb-2">This calendar quarter</p>
+              <p className="text-2xl font-bold text-indigo-900 mb-3">{formatCurrency(periodDue.sumQ)}</p>
+              <ul className="space-y-2 text-sm text-gray-700">
+                {periodDue.qList.slice(0, 6).map((fee) => (
+                  <li key={`q-${fee.id}`} className="flex justify-between gap-2 border-b border-indigo-100 pb-2">
+                    <span className="truncate">{fee.fee_structure?.name ?? 'Fee'}</span>
+                    <span className="shrink-0 font-medium text-red-700">{formatCurrency(Math.max(0, fee.balance_due))}</span>
+                  </li>
+                ))}
+              </ul>
+              {periodDue.qList.length > 6 && (
+                <p className="text-xs text-gray-500 mt-2">+{periodDue.qList.length - 6} more in this quarter</p>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-gray-600 mt-4">
+            Full statement below includes every installment. Use <strong>Payment History</strong> to download receipts.
+          </p>
+        </Card>
+      )}
 
       {/* Error Message */}
       {error && (

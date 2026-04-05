@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
     interface StudentLeaveRequest {
       id: string;
       student_id: string;
-      leave_type_id: string;
+      leave_type_id: string | null;
       leave_start_date?: string | null;
       leave_end_date?: string | null;
       total_days?: number | null;
@@ -134,7 +134,9 @@ export async function GET(request: NextRequest) {
     }
 
     const studentIds = [...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.student_id).filter(Boolean))];
-    const leaveTypeIds = [...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.leave_type_id).filter(Boolean))];
+    const leaveTypeIds = [
+      ...new Set(leaveRequests.map((lr: StudentLeaveRequest) => lr.leave_type_id).filter(Boolean)),
+    ] as string[];
 
     // Fetch student information
     let studentsData = null;
@@ -185,7 +187,7 @@ export async function GET(request: NextRequest) {
     // Transform the data
     const transformedData = leaveRequests.map((item: StudentLeaveRequest) => {
       const student = studentsMap.get(item.student_id);
-      const leaveType = leaveTypesMap.get(item.leave_type_id);
+      const leaveType = item.leave_type_id ? leaveTypesMap.get(item.leave_type_id) : undefined;
       
       // Calculate total_days if not present
       let totalDays = item.total_days;

@@ -21,8 +21,8 @@ type StatusFilter = 'all' | 'approved' | 'rejected' | 'pending';
 
 interface LeaveRequest {
   id: string;
-  leave_type: string;
-  leave_type_name: string;
+  leave_type?: string;
+  leave_type_name?: string;
   leave_title: string;
   leave_applied_date: string;
   leave_start_date: string;
@@ -103,6 +103,7 @@ export default function MyLeavesPage() {
       leave.leave_type_name?.toLowerCase().includes(query) ||
       leave.leave_type?.toLowerCase().includes(query) ||
       (leave.leave_title && leave.leave_title.toLowerCase().includes(query)) ||
+      (leave.reason && leave.reason.toLowerCase().includes(query)) ||
       leave.status?.toLowerCase().includes(query);
     return matchesStatus && matchesSearch;
   });
@@ -217,7 +218,7 @@ export default function MyLeavesPage() {
               />
               <input
                 type="text"
-                placeholder="Search by leave type or title..."
+                placeholder="Search by title, reason, or status..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-[#e2e8f0] bg-white text-[#0f172a] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:border-transparent"
@@ -360,12 +361,22 @@ function LeaveCard({
         <div className="flex flex-col gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#dbeafe] text-[#1e40af]">
-                {leave.leave_type}
-              </span>
-              <span className="font-semibold text-[#1e293b]">{leave.leave_type_name}</span>
+              {(leave.leave_type || leave.leave_type_name) && (
+                <>
+                  {leave.leave_type ? (
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#dbeafe] text-[#1e40af]">
+                      {leave.leave_type}
+                    </span>
+                  ) : null}
+                  {leave.leave_type_name ? (
+                    <span className="font-semibold text-[#1e293b]">{leave.leave_type_name}</span>
+                  ) : null}
+                </>
+              )}
               {leave.leave_title && (
-                <span className="text-sm text-[#64748B]">— {leave.leave_title}</span>
+                <span className={`text-sm text-[#64748B] ${leave.leave_type_name || leave.leave_type ? '' : 'font-semibold text-[#1e293b]'}`}>
+                  {leave.leave_title}
+                </span>
               )}
               <span
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
