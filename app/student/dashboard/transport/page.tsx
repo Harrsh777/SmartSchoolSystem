@@ -149,9 +149,9 @@ export default function StudentTransportPage() {
         <Card className="glass-card soft-shadow">
           <div className="text-center py-12">
             <AlertCircle className="mx-auto mb-4 text-muted-foreground" size={48} />
-            <p className="text-muted-foreground text-lg">No Transport Assigned</p>
+            <p className="text-muted-foreground text-lg font-medium">No transport used</p>
             <p className="text-sm text-muted-foreground mt-2">
-              You are not currently assigned to any transport route. Please contact the school administration for transport services.
+              You are not assigned to a school transport route. Contact the school office if you need transport services.
             </p>
           </div>
         </Card>
@@ -282,96 +282,120 @@ export default function StudentTransportPage() {
         </Card>
       )}
 
-      {/* Pickup and Dropoff Stops */}
-      {(transportInfo.pickup_stop || transportInfo.dropoff_stop) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {transportInfo.pickup_stop && (
-            <Card className="glass-card soft-shadow border-l-4 border-blue-500">
-              <div className="flex items-center gap-2 mb-4">
-                <CheckCircle2 className="text-blue-600" size={20} />
-                <h3 className="text-lg font-bold text-foreground">Pickup Stop</h3>
+      {/* Pickup and drop-off: always show both legs when on a route; unused leg is explicit */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card
+          className={`glass-card soft-shadow border-l-4 ${
+            transportInfo.pickup_stop ? 'border-blue-500' : 'border-muted'
+          }`}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            {transportInfo.pickup_stop ? (
+              <CheckCircle2 className="text-blue-600" size={20} />
+            ) : (
+              <AlertCircle className="text-muted-foreground" size={20} />
+            )}
+            <h3 className="text-lg font-bold text-foreground">Pickup stop</h3>
+          </div>
+          {transportInfo.pickup_stop ? (
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground mb-1">Stop name</p>
+                <p className="text-lg font-semibold text-foreground">{transportInfo.pickup_stop.stop_name}</p>
               </div>
-              <div className="space-y-3">
+              {transportInfo.pickup_stop.address && (
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Stop Name</p>
-                  <p className="text-lg font-semibold text-foreground">{transportInfo.pickup_stop.stop_name}</p>
+                  <p className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                    <MapPin size={14} />
+                    Address
+                  </p>
+                  <p className="text-foreground">{transportInfo.pickup_stop.address}</p>
                 </div>
-                {transportInfo.pickup_stop.address && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-1">
-                      <MapPin size={14} />
-                      Address
-                    </p>
-                    <p className="text-foreground">{transportInfo.pickup_stop.address}</p>
-                  </div>
-                )}
-                {transportInfo.pickup_stop.pickup_fare && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground mb-1">Pickup Fare</p>
-                    <p className="text-lg font-semibold text-foreground">₹{transportInfo.pickup_stop.pickup_fare}</p>
-                  </div>
-                )}
-                {transportInfo.pickup_stop.latitude && transportInfo.pickup_stop.longitude && (
-                  <button
-                    onClick={() => openInMaps(
-                      transportInfo.pickup_stop!.latitude!,
-                      transportInfo.pickup_stop!.longitude!,
-                      transportInfo.pickup_stop!.stop_name
-                    )}
-                    className="w-full mt-3 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                  >
-                    <Navigation size={16} />
-                    Open in Maps
-                  </button>
-                )}
-              </div>
-            </Card>
+              )}
+              {transportInfo.pickup_stop.pickup_fare != null && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Pickup fare</p>
+                  <p className="text-lg font-semibold text-foreground">₹{transportInfo.pickup_stop.pickup_fare}</p>
+                </div>
+              )}
+              {transportInfo.pickup_stop.latitude && transportInfo.pickup_stop.longitude && (
+                <button
+                  type="button"
+                  onClick={() => openInMaps(
+                    transportInfo.pickup_stop!.latitude!,
+                    transportInfo.pickup_stop!.longitude!,
+                    transportInfo.pickup_stop!.stop_name
+                  )}
+                  className="w-full mt-3 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                >
+                  <Navigation size={16} />
+                  Open in Maps
+                </button>
+              )}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Pickup stop not used — you are not using school bus pickup for this route.
+            </p>
           )}
+        </Card>
 
-          {transportInfo.dropoff_stop && (
-            <Card className="glass-card soft-shadow border-l-4 border-purple-500">
-              <div className="flex items-center gap-2 mb-4">
-                <CheckCircle2 className="text-purple-600" size={20} />
-                <h3 className="text-lg font-bold text-foreground">Dropoff Stop</h3>
+        <Card
+          className={`glass-card soft-shadow border-l-4 ${
+            transportInfo.dropoff_stop ? 'border-purple-500' : 'border-muted'
+          }`}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            {transportInfo.dropoff_stop ? (
+              <CheckCircle2 className="text-purple-600" size={20} />
+            ) : (
+              <AlertCircle className="text-muted-foreground" size={20} />
+            )}
+            <h3 className="text-lg font-bold text-foreground">Drop-off stop</h3>
+          </div>
+          {transportInfo.dropoff_stop ? (
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground mb-1">Stop name</p>
+                <p className="text-lg font-semibold text-foreground">{transportInfo.dropoff_stop.stop_name}</p>
               </div>
-              <div className="space-y-3">
+              {transportInfo.dropoff_stop.address && (
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Stop Name</p>
-                  <p className="text-lg font-semibold text-foreground">{transportInfo.dropoff_stop.stop_name}</p>
+                  <p className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                    <MapPin size={14} />
+                    Address
+                  </p>
+                  <p className="text-foreground">{transportInfo.dropoff_stop.address}</p>
                 </div>
-                {transportInfo.dropoff_stop.address && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-1">
-                      <MapPin size={14} />
-                      Address
-                    </p>
-                    <p className="text-foreground">{transportInfo.dropoff_stop.address}</p>
-                  </div>
-                )}
-                {transportInfo.dropoff_stop.drop_fare && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground mb-1">Dropoff Fare</p>
-                    <p className="text-lg font-semibold text-foreground">₹{transportInfo.dropoff_stop.drop_fare}</p>
-                  </div>
-                )}
-                {transportInfo.dropoff_stop.latitude && transportInfo.dropoff_stop.longitude && (
-                  <button
-                    onClick={() => openInMaps(
-                      transportInfo.dropoff_stop!.latitude!,
-                      transportInfo.dropoff_stop!.longitude!,
-                      transportInfo.dropoff_stop!.stop_name
-                    )}
-                    className="w-full mt-3 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                  >
-                    <Navigation size={16} />
-                    Open in Maps
-                  </button>
-                )}
-              </div>
-            </Card>
+              )}
+              {transportInfo.dropoff_stop.drop_fare != null && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Drop-off fare</p>
+                  <p className="text-lg font-semibold text-foreground">₹{transportInfo.dropoff_stop.drop_fare}</p>
+                </div>
+              )}
+              {transportInfo.dropoff_stop.latitude && transportInfo.dropoff_stop.longitude && (
+                <button
+                  type="button"
+                  onClick={() => openInMaps(
+                    transportInfo.dropoff_stop!.latitude!,
+                    transportInfo.dropoff_stop!.longitude!,
+                    transportInfo.dropoff_stop!.stop_name
+                  )}
+                  className="w-full mt-3 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                >
+                  <Navigation size={16} />
+                  Open in Maps
+                </button>
+              )}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Drop-off stop not used — you are not using school bus drop-off for this route.
+            </p>
           )}
-        </div>
-      )}
+        </Card>
+      </div>
 
       {/* All Route Stops */}
       {transportInfo.stops && transportInfo.stops.length > 0 && (

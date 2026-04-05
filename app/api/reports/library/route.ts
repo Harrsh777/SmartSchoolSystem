@@ -62,7 +62,6 @@ export async function GET(request: NextRequest) {
         *,
         book_copy:library_book_copies(
           accession_number,
-          barcode,
           book:library_books(
             title,
             author
@@ -109,7 +108,6 @@ export async function GET(request: NextRequest) {
       'Available Copies',
       'Issued Copies',
       'Accession Number',
-      'Barcode',
       'Copy Status',
       'Borrower Type',
       'Borrower Name',
@@ -150,7 +148,6 @@ export async function GET(request: NextRequest) {
         // Process copies with Promise.all for async operations
         await Promise.all(bookCopies.map(async (copy: {
           accession_number?: string;
-          barcode?: string;
           status?: string;
           created_at?: string;
           [key: string]: unknown;
@@ -206,7 +203,6 @@ export async function GET(request: NextRequest) {
               availableCopies,
               issuedCopies,
               copy.accession_number || '',
-              copy.barcode || '',
               copy.status || '',
               transaction.borrower_type || '',
               borrowerName,
@@ -231,7 +227,6 @@ export async function GET(request: NextRequest) {
               availableCopies,
               issuedCopies,
               copy.accession_number || '',
-              copy.barcode || '',
               copy.status || '',
               '',
               '',
@@ -257,8 +252,6 @@ export async function GET(request: NextRequest) {
           book.total_copies || 0,
           0,
           0,
-          '',
-          '',
           '',
           '',
           '',

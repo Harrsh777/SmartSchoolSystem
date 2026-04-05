@@ -292,31 +292,7 @@ export async function GET(request: NextRequest) {
     }
 
     const pickupStop = toStudentStopPayload(pickupId);
-    let dropoffStop = toStudentStopPayload(dropId);
-
-    // Many records only store pickup; infer evening drop-off as the last stop on the route (by order).
-    if (!dropoffStop && pickupId && sortedStops.length > 0) {
-      const toPayload = (s: SortedRouteStop) => ({
-        id: s.id,
-        stop_name: s.stop_name,
-        address: s.address,
-        latitude: s.latitude,
-        longitude: s.longitude,
-        pickup_fare: s.pickup_fare,
-        drop_fare: s.drop_fare,
-      });
-      let cand: SortedRouteStop = sortedStops[sortedStops.length - 1]!;
-      if (cand.id === pickupId && sortedStops.length > 1) {
-        for (let i = sortedStops.length - 2; i >= 0; i--) {
-          const s = sortedStops[i]!;
-          if (s.id !== pickupId) {
-            cand = s;
-            break;
-          }
-        }
-      }
-      dropoffStop = toPayload(cand);
-    }
+    const dropoffStop = toStudentStopPayload(dropId);
 
     const transport_fee_effective =
       student.transport_fee != null && student.transport_fee !== ''

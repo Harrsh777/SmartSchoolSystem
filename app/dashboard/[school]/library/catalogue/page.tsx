@@ -976,6 +976,7 @@ export default function LibraryCataloguePage({
               <span className="font-mono">isbn</span>, <span className="font-mono">edition</span>,{' '}
               <span className="font-mono">copies</span> (defaults to 1), <span className="font-mono">section</span>,{' '}
               <span className="font-mono">material_type</span> (matched or created by name).
+              Columns named <span className="font-mono">barcode</span> or <span className="font-mono">location</span> are not imported.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button

@@ -484,7 +484,7 @@ export default function StudentDashboardHome() {
               </>
             ) : (
               <>
-                <p className="text-sm text-muted-foreground">No transport assigned</p>
+                <p className="text-sm text-muted-foreground">No transport used</p>
                 <p className="text-[11px] text-muted-foreground mt-2">Contact the office if you need bus service.</p>
               </>
             )}
