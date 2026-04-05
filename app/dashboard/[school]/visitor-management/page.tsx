@@ -26,6 +26,7 @@ import {
   Car
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { getSessionStaffOrTeacherProfile } from '@/lib/teacher-portal-client';
 
 interface Visitor {
   id: string;
@@ -215,20 +216,9 @@ export default function VisitorManagementPage({
       }
     }
 
-    // Get current staff from session storage
-    const storedStaff = sessionStorage.getItem('staff');
-    let createdBy: string | null = null;
-    let staffId: string | null = null;
-    
-    if (storedStaff) {
-      try {
-        const staffData = JSON.parse(storedStaff);
-        createdBy = staffData.id || null;
-        staffId = staffData.id || null;
-      } catch {
-        // Ignore parse errors
-      }
-    }
+    const sessionProfile = getSessionStaffOrTeacherProfile();
+    let createdBy: string | null = sessionProfile?.id ?? null;
+    const staffId: string | null = sessionProfile?.id ?? null;
 
     // If accessed from staff dashboard, check permissions
     if (staffId) {

@@ -150,27 +150,31 @@ export default function ExpenseIncomePage({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+      <div className="flex items-center justify-center py-12 min-h-[40vh] bg-gray-50 dark:bg-gray-950">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-purple-600 border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 pb-20 min-h-screen bg-wh">
+    <div className="space-y-6 pb-20 min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-            <TrendingUp size={32} className="text-blue-300" />
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-md">
+              <TrendingUp size={22} />
+            </span>
             Expense/Income Management
           </h1>
-          <p className="text-blue-200/80">Manage school finances, income, expenses, and salaries</p>
+          <p className="text-gray-600 dark:text-gray-400">
+            Manage school finances, income, expenses, and salaries
+          </p>
         </div>
         <Button
           variant="outline"
           onClick={() => router.push(`/dashboard/${schoolCode}`)}
-          className="border-blue-500 text-blue-200 hover:bg-blue-500/20 hover:border-blue-400"
+          className="border-gray-300 text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
         >
           <ArrowLeft size={18} className="mr-2" />
           Back
@@ -182,10 +186,10 @@ export default function ExpenseIncomePage({
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-red-500/10 border border-red-400/50 text-red-200 px-4 py-3 rounded-lg flex items-center justify-between"
+          className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg flex items-center justify-between"
         >
           <span>{error}</span>
-          <button onClick={() => setError('')} className="text-red-300 hover:text-red-100">
+          <button type="button" onClick={() => setError('')} className="text-red-600 hover:text-red-800 dark:text-red-300 dark:hover:text-red-100">
             <X size={18} />
           </button>
         </motion.div>
@@ -194,27 +198,27 @@ export default function ExpenseIncomePage({
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-emerald-500/10 border border-emerald-400/50 text-emerald-200 px-4 py-3 rounded-lg flex items-center justify-between"
+          className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 px-4 py-3 rounded-lg flex items-center justify-between"
         >
           <span>{success}</span>
-          <button onClick={() => setSuccess('')} className="text-emerald-300 hover:text-emerald-100">
+          <button type="button" onClick={() => setSuccess('')} className="text-emerald-600 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-100">
             <X size={18} />
           </button>
         </motion.div>
       )}
 
       {/* Financial Year Selector */}
-      <Card className="p-4 bg-slate-800/60 border-blue-700/50 shadow-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-blue-200">Financial Year</label>
+      <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl p-4 shadow-md">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="text-sm font-medium text-white/95">Financial Year</label>
             <select
               value={selectedYear?.id || ''}
               onChange={(e) => {
                 const year = financialYears.find((y) => y.id === e.target.value);
                 setSelectedYear(year || null);
               }}
-              className="px-4 py-2 border border-blue-600 rounded-lg bg-slate-800 text-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-500 min-w-[200px]"
+              className="px-4 py-2 rounded-lg bg-white text-gray-900 shadow-sm border-0 min-w-[200px] focus:outline-none focus:ring-2 focus:ring-white/80"
               disabled={financialYears.length === 0}
             >
               {financialYears.length === 0 ? (
@@ -229,11 +233,11 @@ export default function ExpenseIncomePage({
             </select>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Tabs */}
-      <div className="border-b border-blue-700/50">
-        <nav className="flex space-x-8">
+      <div className="border-b border-gray-200 dark:border-gray-800">
+        <nav className="flex flex-wrap gap-x-6 gap-y-1">
           {[
             { id: 'overview', label: 'Overview', icon: TrendingUp },
             { id: 'income', label: 'Income', icon: IndianRupee },
@@ -245,11 +249,12 @@ export default function ExpenseIncomePage({
             return (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveTab(tab.id as Tab)}
                 className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === tab.id
-                    ? 'border-blue-400 text-blue-200'
-                    : 'border-transparent text-blue-300/70 hover:text-blue-200 hover:border-blue-600/50'
+                    ? 'border-purple-600 text-purple-600 dark:text-purple-400 dark:border-purple-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                 }`}
               >
                 <Icon size={18} />
@@ -342,91 +347,97 @@ function OverviewTab({
     <div className="space-y-6">
       {/* Download receipt */}
       <div className="flex justify-end">
-        <Button
-          variant="outline"
+        <button
+          type="button"
           onClick={handleDownloadReceipt}
-          className="flex items-center gap-2 border-blue-500 text-blue-200 hover:bg-blue-500/20"
+          className="inline-flex items-center gap-2 bg-purple-600 text-white hover:bg-purple-700 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950"
         >
           <Download size={18} />
           Download receipt
-        </Button>
+        </button>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-6 bg-slate-800/60 border-blue-600/50">
-          <div className="flex items-center justify-between">
+        <Card className="p-4 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all border-l-4 border-l-emerald-500">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm text-blue-200/80 mb-1">Total Income (Month)</p>
-              <p className="text-2xl font-bold text-white">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Income (Month)</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
                 {overviewData ? formatCurrency(overviewData.income.month) : '₹0'}
               </p>
             </div>
-            <IndianRupee className="text-emerald-400" size={32} />
+            <IndianRupee className="text-emerald-500 shrink-0" size={32} />
           </div>
         </Card>
 
-        <Card className="p-6 bg-slate-800/60 border-blue-600/50">
-          <div className="flex items-center justify-between">
+        <Card className="p-4 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all border-l-4 border-l-red-500">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm text-blue-200/80 mb-1">Total Expenses (Month)</p>
-              <p className="text-2xl font-bold text-white">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Expenses (Month)</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
                 {overviewData ? formatCurrency(overviewData.expense.month) : '₹0'}
               </p>
             </div>
-            <TrendingUp className="text-rose-400" size={32} />
+            <TrendingUp className="text-red-500 shrink-0" size={32} />
           </div>
         </Card>
 
-        <Card className="p-6 bg-slate-800/60 border-blue-600/50">
-          <div className="flex items-center justify-between">
+        <Card className="p-4 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all border-l-4 border-l-blue-500">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm text-blue-200/80 mb-1">Net Balance (Month)</p>
-              <p className={`text-2xl font-bold ${overviewData && overviewData.netBalance.month < 0 ? 'text-rose-400' : 'text-white'}`}>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Net Balance (Month)</p>
+              <p
+                className={`text-2xl font-bold ${
+                  overviewData && overviewData.netBalance.month < 0
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-gray-900 dark:text-white'
+                }`}
+              >
                 {overviewData ? formatCurrency(overviewData.netBalance.month) : '₹0'}
               </p>
             </div>
-            <TrendingUp className="text-blue-400" size={32} />
+            <TrendingUp className="text-blue-500 shrink-0" size={32} />
           </div>
         </Card>
 
-        <Card className="p-6 bg-slate-800/60 border-blue-600/50">
-          <div className="flex items-center justify-between">
+        <Card className="p-4 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all border-l-4 border-l-purple-500">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm text-blue-200/80 mb-1">Total Income (Year)</p>
-              <p className="text-2xl font-bold text-white">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Income (Year)</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
                 {overviewData ? formatCurrency(overviewData.income.year) : '₹0'}
               </p>
             </div>
-            <IndianRupee className="text-violet-400" size={32} />
+            <IndianRupee className="text-purple-600 dark:text-purple-400 shrink-0" size={32} />
           </div>
         </Card>
       </div>
 
       {/* Salary Summary */}
-      <Card className="p-6 bg-slate-800/60 border-blue-600/50">
-        <h2 className="text-xl font-bold text-white mb-4">Salary Summary</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 shadow-sm border border-gray-200 dark:border-gray-800">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Salary Summary</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-blue-900/40 rounded-lg border border-blue-600/40">
-            <p className="text-sm text-blue-200/80 mb-1">Paid</p>
-            <p className="text-2xl font-bold text-white">
+          <div className="bg-gray-50 dark:bg-gray-800/80 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Paid</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">
               {overviewData ? formatCurrency(overviewData.salary.paid) : '₹0'}
             </p>
           </div>
-          <div className="p-4 bg-blue-900/40 rounded-lg border border-blue-600/40">
-            <p className="text-sm text-blue-200/80 mb-1">Pending</p>
-            <p className="text-2xl font-bold text-white">
+          <div className="bg-gray-50 dark:bg-gray-800/80 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Pending</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">
               {overviewData ? formatCurrency(overviewData.salary.pending) : '₹0'}
             </p>
           </div>
-          <div className="p-4 bg-blue-900/40 rounded-lg border border-blue-600/40">
-            <p className="text-sm text-blue-200/80 mb-1">Total</p>
-            <p className="text-2xl font-bold text-white">
+          <div className="bg-gray-50 dark:bg-gray-800/80 rounded-xl p-3 border border-gray-100 dark:border-gray-700">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">
               {overviewData ? formatCurrency(overviewData.salary.total) : '₹0'}
             </p>
           </div>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
@@ -520,13 +531,13 @@ function IncomeTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">Income Entries</h2>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Income Entries</h2>
         <Button
           onClick={() => {
             setEditingEntry(null);
             setShowModal(true);
           }}
-          className="bg-blue-600 hover:bg-blue-500 text-white border-0"
+          className="!bg-purple-600 hover:!bg-purple-700 !text-white border-0"
         >
           <Plus size={18} className="mr-2" />
           Add Income
@@ -534,14 +545,14 @@ function IncomeTab({
       </div>
 
       {/* Filters */}
-      <Card className="p-4 bg-slate-800/60 border-blue-600/50">
+      <Card className="p-4 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm font-medium text-blue-200 mb-2">Source</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Source</label>
             <select
               value={filters.source}
               onChange={(e) => setFilters({ ...filters, source: e.target.value })}
-              className="w-full px-4 py-2 border border-blue-600 rounded-lg bg-slate-800 text-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="">All Sources</option>
               <option value="Fees">Fees</option>
@@ -551,28 +562,28 @@ function IncomeTab({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-blue-200 mb-2">Start Date</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Start Date</label>
             <Input
               type="date"
               value={filters.start_date}
               onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-              className="bg-slate-800 border-blue-600 text-blue-100"
+              className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-blue-200 mb-2">End Date</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">End Date</label>
             <Input
               type="date"
               value={filters.end_date}
               onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-              className="bg-slate-800 border-blue-600 text-blue-100"
+              className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
             />
           </div>
           <div className="flex items-end">
             <Button
               variant="outline"
               onClick={() => setFilters({ source: '', start_date: '', end_date: '' })}
-              className="w-full border-blue-500 text-blue-200 hover:bg-blue-500/20"
+              className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               <Filter size={18} className="mr-2" />
               Clear Filters
@@ -582,16 +593,16 @@ function IncomeTab({
       </Card>
 
       {/* Income Table */}
-      <Card className="p-6 bg-slate-800/60 border-blue-600/50">
+      <Card className="p-6 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-2 border-purple-600 border-t-transparent" />
           </div>
         ) : incomeEntries.length > 0 ? (
           <>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-blue-900 text-blue-100">
+                <thead className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white">
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Source</th>
@@ -601,29 +612,31 @@ function IncomeTab({
                     <th className="px-4 py-3 text-left text-sm font-semibold">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-blue-700/30">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {incomeEntries.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-blue-900/30">
-                      <td className="px-4 py-3 text-sm text-blue-100">{formatDate(entry.entry_date)}</td>
-                      <td className="px-4 py-3 text-sm text-blue-100">{entry.source}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-white">{formatCurrency(entry.amount)}</td>
-                      <td className="px-4 py-3 text-sm text-blue-100">{entry.reference_number || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-blue-100">{entry.notes || '-'}</td>
+                    <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatDate(entry.entry_date)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{entry.source}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(entry.amount)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{entry.reference_number || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{entry.notes || '-'}</td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex items-center gap-2">
                           <button
+                            type="button"
                             onClick={() => {
                               setEditingEntry(entry);
                               setShowModal(true);
                             }}
-                            className="p-2 text-blue-300 hover:bg-blue-500/30 rounded-lg transition-colors"
+                            className="p-2 text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-950/40 rounded-lg transition-colors"
                             title="Edit"
                           >
                             <Edit size={16} />
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDelete(entry.id)}
-                            className="p-2 text-rose-400 hover:bg-rose-500/20 rounded-lg transition-colors"
+                            className="p-2 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 rounded-lg transition-colors"
                             title="Delete"
                           >
                             <Trash2 size={16} />
@@ -637,21 +650,23 @@ function IncomeTab({
             </div>
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-blue-700/50">
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-4 py-2 border border-blue-600 rounded-lg text-blue-200 hover:bg-blue-500/20 disabled:opacity-50"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                 >
                   Previous
                 </button>
-                <span className="text-sm text-blue-200">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
                   Page {page} of {totalPages}
                 </span>
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-4 py-2 border border-blue-600 rounded-lg text-blue-200 hover:bg-blue-500/20 disabled:opacity-50"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                 >
                   Next
                 </button>
@@ -659,7 +674,7 @@ function IncomeTab({
             )}
           </>
         ) : (
-          <div className="text-center py-12 text-blue-200/80">
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
             No income entries found. Click &quot;Add Income&quot; to create one.
           </div>
         )}
@@ -819,7 +834,7 @@ function IncomeModal({
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving} className="bg-blue-600 hover:bg-blue-500 text-white">
+              <Button type="submit" disabled={saving} className="!bg-purple-600 hover:!bg-purple-700 !text-white">
                 {saving ? 'Saving...' : entry ? 'Update' : 'Create'}
               </Button>
             </div>
@@ -970,7 +985,7 @@ function ExpenseTab({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-bold text-white">Expense Entries</h2>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Expense Entries</h2>
         <div className="flex items-center gap-2">
           {expenseEntries.length > 0 && (
             <>
@@ -980,7 +995,7 @@ function ExpenseTab({
                 onClick={handleDownloadSelected}
                 disabled={selectedIds.size === 0}
                 title="Download selected expenses"
-                className="border-blue-500 text-blue-200 hover:bg-blue-500/20"
+                className="border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 <Download size={16} className="mr-1" />
                 Download ({selectedIds.size})
@@ -991,7 +1006,7 @@ function ExpenseTab({
                 onClick={handlePrintSelected}
                 disabled={selectedIds.size === 0}
                 title="Print selected expenses"
-                className="border-blue-500 text-blue-200 hover:bg-blue-500/20"
+                className="border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
               >
                 <Printer size={16} className="mr-1" />
                 Print ({selectedIds.size})
@@ -1003,7 +1018,7 @@ function ExpenseTab({
               setEditingEntry(null);
               setShowModal(true);
             }}
-            className="bg-blue-600 hover:bg-blue-500 text-white border-0"
+            className="!bg-purple-600 hover:!bg-purple-700 !text-white border-0"
           >
             <Plus size={18} className="mr-2" />
             Add Expense
@@ -1012,14 +1027,14 @@ function ExpenseTab({
       </div>
 
       {/* Filters */}
-      <Card className="p-4 bg-slate-800/60 border-blue-600/50">
+      <Card className="p-4 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm font-medium text-blue-200 mb-2">Category</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Category</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-              className="w-full px-4 py-2 border border-blue-600 rounded-lg bg-slate-800 text-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="">All Categories</option>
               <option value="Salary">Salary</option>
@@ -1030,28 +1045,28 @@ function ExpenseTab({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-blue-200 mb-2">Start Date</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Start Date</label>
             <Input
               type="date"
               value={filters.start_date}
               onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-              className="bg-slate-800 border-blue-600 text-blue-100"
+              className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-blue-200 mb-2">End Date</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">End Date</label>
             <Input
               type="date"
               value={filters.end_date}
               onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-              className="bg-slate-800 border-blue-600 text-blue-100"
+              className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
             />
           </div>
           <div className="flex items-end">
             <Button
               variant="outline"
               onClick={() => setFilters({ category: '', start_date: '', end_date: '' })}
-              className="w-full border-blue-500 text-blue-200 hover:bg-blue-500/20"
+              className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               <Filter size={18} className="mr-2" />
               Clear Filters
@@ -1061,23 +1076,23 @@ function ExpenseTab({
       </Card>
 
       {/* Expense Table */}
-      <Card className="p-6 bg-slate-800/60 border-blue-600/50">
+      <Card className="p-6 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-2 border-purple-600 border-t-transparent" />
           </div>
         ) : expenseEntries.length > 0 ? (
           <>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-blue-900 text-blue-100">
+                <thead className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white">
                   <tr>
                     <th className="px-2 py-3 text-left">
                       <input
                         type="checkbox"
                         checked={expenseEntries.length > 0 && selectedIds.size === expenseEntries.length}
                         onChange={toggleSelectAll}
-                        className="rounded border-gray-300"
+                        className="rounded border-white/40"
                       />
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
@@ -1088,39 +1103,41 @@ function ExpenseTab({
                     <th className="px-4 py-3 text-left text-sm font-semibold">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-blue-700/30">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {expenseEntries.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-blue-900/30">
+                    <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="px-2 py-3">
                         <input
                           type="checkbox"
                           checked={selectedIds.has(entry.id)}
                           onChange={() => toggleSelect(entry.id)}
-                          className="rounded border-blue-500 bg-slate-800"
+                          className="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-800"
                         />
                       </td>
-                      <td className="px-4 py-3 text-sm text-blue-100">{formatDate(entry.entry_date)}</td>
-                      <td className="px-4 py-3 text-sm text-blue-100">{entry.category}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-white">{formatCurrency(entry.amount)}</td>
-                      <td className="px-4 py-3 text-sm text-blue-100">{entry.paid_to}</td>
-                      <td className="px-4 py-3 text-sm text-blue-100">{entry.payment_mode}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatDate(entry.entry_date)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{entry.category}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(entry.amount)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{entry.paid_to}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{entry.payment_mode}</td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex items-center gap-2">
                           {!entry.is_finalized && (
                             <>
                               <button
+                                type="button"
                                 onClick={() => {
                                   setEditingEntry(entry);
                                   setShowModal(true);
                                 }}
-                                className="p-2 text-blue-300 hover:bg-blue-500/30 rounded-lg transition-colors"
+                                className="p-2 text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-950/40 rounded-lg transition-colors"
                                 title="Edit"
                               >
                                 <Edit size={16} />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => handleDelete(entry.id)}
-                                className="p-2 text-rose-400 hover:bg-rose-500/20 rounded-lg transition-colors"
+                                className="p-2 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 rounded-lg transition-colors"
                                 title="Delete"
                               >
                                 <Trash2 size={16} />
@@ -1128,7 +1145,7 @@ function ExpenseTab({
                             </>
                           )}
                           {entry.is_finalized && (
-                            <span className="text-xs text-blue-300/70">Finalized</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">Finalized</span>
                           )}
                         </div>
                       </td>
@@ -1139,21 +1156,23 @@ function ExpenseTab({
             </div>
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-blue-700/50">
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-4 py-2 border border-blue-600 rounded-lg text-blue-200 hover:bg-blue-500/20 disabled:opacity-50"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                 >
                   Previous
                 </button>
-                <span className="text-sm text-blue-200">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
                   Page {page} of {totalPages}
                 </span>
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-4 py-2 border border-blue-600 rounded-lg text-blue-200 hover:bg-blue-500/20 disabled:opacity-50"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                 >
                   Next
                 </button>
@@ -1161,7 +1180,7 @@ function ExpenseTab({
             )}
           </>
         ) : (
-          <div className="text-center py-12 text-blue-200/80">
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
             No expense entries found. Click &quot;Add Expense&quot; to create one.
           </div>
         )}
@@ -1363,7 +1382,7 @@ function ExpenseModal({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving} className="bg-blue-600 hover:bg-blue-500 text-white">
+            <Button type="submit" disabled={saving} className="!bg-purple-600 hover:!bg-purple-700 !text-white">
               {saving ? 'Saving...' : entry ? 'Update' : 'Create'}
             </Button>
           </div>
@@ -1467,13 +1486,13 @@ function SalaryTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">Salary Records</h2>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Salary Records</h2>
         <Button
           onClick={() => {
             setEditingRecord(null);
             setShowModal(true);
           }}
-          className="bg-blue-600 hover:bg-blue-500 text-white border-0"
+          className="!bg-purple-600 hover:!bg-purple-700 !text-white border-0"
         >
           <Plus size={18} className="mr-2" />
           Add Salary Record
@@ -1481,14 +1500,14 @@ function SalaryTab({
       </div>
 
       {/* Filters */}
-      <Card className="p-4 bg-slate-800/60 border-blue-600/50">
+      <Card className="p-4 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-blue-200 mb-2">Payment Status</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Payment Status</label>
             <select
               value={filters.payment_status}
               onChange={(e) => setFilters({ ...filters, payment_status: e.target.value })}
-              className="w-full px-4 py-2 border border-blue-600 rounded-lg bg-slate-800 text-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="">All Status</option>
               <option value="PAID">Paid</option>
@@ -1496,19 +1515,19 @@ function SalaryTab({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-blue-200 mb-2">Salary Month</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Salary Month</label>
             <Input
               type="month"
               value={filters.salary_month}
               onChange={(e) => setFilters({ ...filters, salary_month: e.target.value })}
-              className="bg-slate-800 border-blue-600 text-blue-100"
+              className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
             />
           </div>
           <div className="flex items-end">
             <Button
               variant="outline"
               onClick={() => setFilters({ staff_id: '', payment_status: '', salary_month: '' })}
-              className="w-full border-blue-500 text-blue-200 hover:bg-blue-500/20"
+              className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               <Filter size={18} className="mr-2" />
               Clear Filters
@@ -1518,15 +1537,15 @@ function SalaryTab({
       </Card>
 
       {/* Salary Table */}
-      <Card className="p-6 bg-slate-800/60 border-blue-600/50">
+      <Card className="p-6 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-2 border-purple-600 border-t-transparent" />
           </div>
         ) : salaryRecords.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-blue-900 text-blue-100">
+              <thead className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Staff</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold">Month</th>
@@ -1538,21 +1557,21 @@ function SalaryTab({
                   <th className="px-4 py-3 text-left text-sm font-semibold">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-blue-700/30">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {salaryRecords.map((record) => (
-                  <tr key={record.id} className="hover:bg-blue-900/30">
-                    <td className="px-4 py-3 text-sm text-blue-100">{record.staff?.full_name || 'N/A'}</td>
-                    <td className="px-4 py-3 text-sm text-blue-100">{formatDate(record.salary_month)}</td>
-                    <td className="px-4 py-3 text-sm text-blue-100">{formatCurrency(record.base_salary)}</td>
-                    <td className="px-4 py-3 text-sm text-blue-100">{formatCurrency(record.bonus)}</td>
-                    <td className="px-4 py-3 text-sm text-blue-100">{formatCurrency(record.deduction)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-white">{formatCurrency(record.net_salary)}</td>
+                  <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{record.staff?.full_name || 'N/A'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatDate(record.salary_month)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatCurrency(record.base_salary)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatCurrency(record.bonus)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatCurrency(record.deduction)}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(record.net_salary)}</td>
                     <td className="px-4 py-3 text-sm">
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
                           record.payment_status === 'PAID'
-                            ? 'bg-emerald-500/30 text-emerald-200'
-                            : 'bg-amber-500/30 text-amber-200'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
                         }`}
                       >
                         {record.payment_status}
@@ -1561,14 +1580,15 @@ function SalaryTab({
                     <td className="px-4 py-3 text-sm">
                       {record.payment_status === 'UNPAID' && (
                         <button
+                          type="button"
                           onClick={() => handleMarkAsPaid(record)}
-                          className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-500 text-sm"
+                          className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium transition-colors"
                         >
                           Mark Paid
                         </button>
                       )}
                       {record.payment_status === 'PAID' && (
-                        <span className="text-xs text-blue-300/70">Paid</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Paid</span>
                       )}
                     </td>
                   </tr>
@@ -1577,7 +1597,7 @@ function SalaryTab({
             </table>
           </div>
         ) : (
-          <div className="text-center py-12 text-blue-200/80">
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
             No salary records found. Click &quot;Add Salary Record&quot; to create one.
           </div>
         )}
@@ -1798,7 +1818,7 @@ function SalaryModal({
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving} className="bg-blue-600 hover:bg-blue-500 text-white">
+              <Button type="submit" disabled={saving} className="!bg-purple-600 hover:!bg-purple-700 !text-white">
                 {saving ? 'Saving...' : record ? 'Update' : 'Create'}
               </Button>
             </div>
@@ -1818,11 +1838,11 @@ function ReportsTab({
   financialYearId?: string | null;
 }) {
   return (
-    <Card className="p-6 bg-slate-800/60 border-blue-600/50">
-      <h2 className="text-xl font-bold text-white mb-4">Financial Reports</h2>
-      <div className="text-center py-12 text-blue-200/80">
+    <Card className="p-6 rounded-2xl !bg-white dark:!bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
+      <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Financial Reports</h2>
+      <div className="text-center py-12 text-gray-600 dark:text-gray-400">
         Reports feature coming soon. This will include:
-        <ul className="mt-4 text-left list-disc list-inside space-y-2 text-blue-100/90">
+        <ul className="mt-4 text-left list-disc list-inside space-y-2 text-gray-700 dark:text-gray-300 max-w-md mx-auto">
           <li>Monthly income vs expense reports</li>
           <li>Salary reports</li>
           <li>Export to CSV functionality</li>

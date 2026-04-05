@@ -1354,8 +1354,8 @@ export default function CreateExaminationPage({
 
             {/* Step 2: Map Classes */}
             {currentStep === 2 && (
-              <div className="space-y-3">
-                <div className="space-y-0.5">
+              <div className="flex flex-col gap-3 min-h-0">
+                <div className="space-y-0.5 shrink-0">
                   <h2 className="text-lg font-bold tracking-tight text-slate-900">
                     Select classes & sections
                   </h2>
@@ -1368,12 +1368,13 @@ export default function CreateExaminationPage({
                 </div>
 
                 {errors.class_selection && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 shrink-0">
                     <p className="text-xs text-red-700">{errors.class_selection}</p>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2">
+                <div className="min-h-0 max-h-[min(65vh,720px)] overflow-y-auto overscroll-y-contain pr-0.5 -mr-0.5 [scrollbar-gutter:stable]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2 pb-1">
                   {sortStructureClassNames(Array.from(new Set(structureClasses.map((c) => c.class)))).map(
                     (className) => {
                       const classItems = structureClasses.filter((c) => c.class === className);
@@ -1539,9 +1540,10 @@ export default function CreateExaminationPage({
                       );
                     }
                   )}
+                  </div>
                 </div>
 
-                <div className="sticky bottom-0 z-10 -mx-1 px-1 pt-1.5 pb-0.5 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
+                <div className="shrink-0 pt-3 border-t border-slate-200/90">
                   <div className="rounded-lg border border-slate-200 bg-white/95 backdrop-blur-sm shadow-md px-3 py-2.5 sm:px-3.5">
                     <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                       <div className="min-w-0 flex-1">
@@ -1586,7 +1588,7 @@ export default function CreateExaminationPage({
                   </div>
                 </div>
 
-                <div className="flex justify-start pt-1">
+                <div className="flex justify-start pt-1 shrink-0">
                   <Button variant="outline" size="sm" onClick={() => setCurrentStep(1)}>
                     <ArrowLeft size={16} className="mr-1.5" />
                     Previous

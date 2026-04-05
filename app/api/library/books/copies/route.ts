@@ -18,8 +18,6 @@ export async function POST(request: NextRequest) {
       school_code,
       book_id,
       accession_number,
-      barcode,
-      location,
       notes,
     } = body;
 
@@ -82,8 +80,6 @@ export async function POST(request: NextRequest) {
         school_id: schoolData.id,
         school_code,
         accession_number,
-        barcode: barcode || null,
-        location: location || null,
         notes: notes || null,
         status: 'available',
       }])

@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
           subject_id,
           subject:subjects (
             id,
-            name
+            name,
+            category
           ),
           max_marks,
           pass_marks

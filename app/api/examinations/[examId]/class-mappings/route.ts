@@ -48,7 +48,8 @@ export async function GET(
         weightage,
         subject:subjects (
           id,
-          name
+          name,
+          category
         )
       `
       )

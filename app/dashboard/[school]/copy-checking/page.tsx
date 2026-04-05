@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -18,6 +18,12 @@ import {
   BookOpen,
   TrendingUp
 } from 'lucide-react';
+import {
+  emptyCopyCheckingStats,
+  type CopyCheckingStatus,
+  type CopyCheckingStats,
+} from '@/lib/copy-checking-normalize';
+import { getSessionStaffOrTeacherProfile } from '@/lib/teacher-portal-client';
 
 interface Student {
   id: string;
@@ -28,7 +34,7 @@ interface Student {
   roll_number?: string | null;
   class: string;
   section?: string;
-  status: 'green' | 'yellow' | 'red' | 'not_marked' | 'absent';
+  status: CopyCheckingStatus;
   remarks: string;
   copy_checking?: {
     id?: string;
@@ -64,11 +70,24 @@ interface CopyCheckingPageProps {
   schoolCodeOverride?: string;
   /** When set (e.g. teacher dashboard), only these class IDs are shown in the class list */
   allowedClassIds?: string[];
-  /** When set (e.g. subject teacher), only these subject IDs are shown; empty/unset = all subjects for selected class */
+  /** When set (e.g. subject teacher), only these subject IDs are shown for every class (legacy; prefer teachingSubjectsByClassId) */
   allowedSubjectIds?: string[];
+  /** Class IDs where the staff is class teacher — full subject list for that class */
+  classTeacherClassIds?: string[];
+  /** Timetable: class_id → subject IDs the staff teaches (subject-teacher scope for non–class-teacher classes) */
+  teachingSubjectsByClassId?: Record<string, string[]>;
+  /** Teacher portal: enforce timetable / class-teacher scope on save */
+  teacherCopyScoped?: boolean;
 }
 
-export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, allowedSubjectIds }: CopyCheckingPageProps = {}) {
+export default function CopyCheckingPage({
+  schoolCodeOverride,
+  allowedClassIds,
+  allowedSubjectIds,
+  classTeacherClassIds,
+  teachingSubjectsByClassId,
+  teacherCopyScoped,
+}: CopyCheckingPageProps = {}) {
   const params = useParams();
   const schoolCode = schoolCodeOverride ?? (params?.school as string) ?? '';
   const router = useRouter();
@@ -79,9 +98,12 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [availableSections, setAvailableSections] = useState<string[]>([]);
-  const [stats, setStats] = useState({
-    class_work: { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
-    homework: { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
+  const [stats, setStats] = useState<{
+    classwork: CopyCheckingStats;
+    homework: CopyCheckingStats;
+  }>({
+    classwork: emptyCopyCheckingStats(),
+    homework: emptyCopyCheckingStats(),
   });
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -94,7 +116,7 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [workType, setWorkType] = useState<'class_work' | 'homework'>('class_work');
+  const [workType, setWorkType] = useState<'classwork' | 'homework'>('classwork');
   const [topic, setTopic] = useState('');
   const [isEditingTopic, setIsEditingTopic] = useState(false);
   
@@ -105,6 +127,29 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
     fetchClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode, allowedClassIds]);
+
+  const copyCheckInitialClassAuto = useRef(false);
+  useEffect(() => {
+    copyCheckInitialClassAuto.current = false;
+  }, [selectedAcademicYear]);
+
+  // Auto-select class when only one option exists (once per academic year load)
+  useEffect(() => {
+    if (!selectedAcademicYear || selectedClassName || copyCheckInitialClassAuto.current) return;
+    const yearClasses = classes.filter(
+      (c) => !selectedAcademicYear || c.academic_year === selectedAcademicYear
+    );
+    const names = [...new Set(yearClasses.map((c) => c.class).filter(Boolean))].sort();
+    if (names.length === 1) {
+      copyCheckInitialClassAuto.current = true;
+      setSelectedClassName(names[0] as string);
+    }
+  }, [classes, selectedAcademicYear, selectedClassName]);
+
+  useEffect(() => {
+    if (!selectedClassName || selectedSection || availableSections.length !== 1) return;
+    setSelectedSection(availableSections[0] as string);
+  }, [selectedClassName, availableSections, selectedSection]);
 
   // Academic years from Academic Year Management (`academic_years`); default = current year from same module
   useEffect(() => {
@@ -245,8 +290,8 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
       setStudents([]);
       setStudentRecords({});
       setStats({
-        class_work: { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
-        homework: { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
+        classwork: emptyCopyCheckingStats(),
+        homework: emptyCopyCheckingStats(),
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -294,11 +339,22 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
           id: subj.id,
           subject_name: subj.name || subj.subject_name,
         }));
-        if (allowedSubjectIds && allowedSubjectIds.length > 0) {
-          mappedSubjects = mappedSubjects.filter((s: { id: string }) => allowedSubjectIds.includes(s.id));
+
+        const ctSet = new Set((classTeacherClassIds || []).map((id) => String(id).trim()));
+        const isCtForClass = ctSet.has(String(selectedClassId).trim());
+        let subjectFilter: string[] | null = null;
+        if (!isCtForClass && teachingSubjectsByClassId && Object.keys(teachingSubjectsByClassId).length > 0) {
+          subjectFilter = teachingSubjectsByClassId[String(selectedClassId)] || [];
+        } else if (!isCtForClass && allowedSubjectIds && allowedSubjectIds.length > 0) {
+          subjectFilter = allowedSubjectIds;
         }
+
+        if (subjectFilter != null) {
+          const allow = new Set(subjectFilter.map(String));
+          mappedSubjects = mappedSubjects.filter((s: { id: string }) => allow.has(String(s.id)));
+        }
+
         setSubjects(mappedSubjects);
-        // Clear selected subject if it's not in the new list
         if (selectedSubjectId && !mappedSubjects.find((s: Subject) => s.id === selectedSubjectId)) {
           setSelectedSubjectId('');
         }
@@ -311,13 +367,20 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
       setSubjects([]);
       setSelectedSubjectId('');
     }
-  }, [schoolCode, selectedClassId, selectedSubjectId, allowedSubjectIds]);
+  }, [
+    schoolCode,
+    selectedClassId,
+    selectedSubjectId,
+    allowedSubjectIds,
+    classTeacherClassIds,
+    teachingSubjectsByClassId,
+  ]);
 
   const fetchStatsForOtherType = async () => {
     if (!selectedClassId || !selectedSubjectId || !selectedDate || !selectedAcademicYear) return;
     
     try {
-      const otherType = workType === 'class_work' ? 'homework' : 'class_work';
+      const otherType = workType === 'classwork' ? 'homework' : 'classwork';
       const params = new URLSearchParams({
         school_code: schoolCode,
         class_id: selectedClassId,
@@ -335,13 +398,13 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
       const result = await response.json();
 
       if (response.ok && result.statistics) {
-        if (otherType === 'class_work') {
-          setStats(prev => ({
+        if (otherType === 'classwork') {
+          setStats((prev) => ({
             ...prev,
-            class_work: result.statistics,
+            classwork: result.statistics,
           }));
         } else {
-          setStats(prev => ({
+          setStats((prev) => ({
             ...prev,
             homework: result.statistics,
           }));
@@ -395,16 +458,15 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
         });
         setStudentRecords(records);
         
-        // Update stats for current work type
-        if (workType === 'class_work') {
-          setStats(prev => ({
+        if (workType === 'classwork') {
+          setStats((prev) => ({
             ...prev,
-            class_work: result.statistics || { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
+            classwork: result.statistics || emptyCopyCheckingStats(),
           }));
         } else {
-          setStats(prev => ({
+          setStats((prev) => ({
             ...prev,
-            homework: result.statistics || { green: 0, yellow: 0, red: 0, not_marked: 0, absent: 0 },
+            homework: result.statistics || emptyCopyCheckingStats(),
           }));
         }
         
@@ -432,14 +494,13 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
     }
   };
 
-  const handleStatusChange = (studentId: string, status: 'green' | 'yellow' | 'red' | 'not_marked' | 'absent') => {
-    setStudentRecords(prev => ({
+  const handleStatusChange = (studentId: string, status: CopyCheckingStatus) => {
+    setStudentRecords((prev) => ({
       ...prev,
       [studentId]: {
         ...prev[studentId],
         status,
-        // Clear remarks if marking as absent
-        remarks: status === 'absent' ? '' : (prev[studentId]?.remarks || ''),
+        remarks: prev[studentId]?.remarks || '',
       },
     }));
   };
@@ -465,20 +526,9 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
       setErrorMessage('');
       setSuccessMessage('');
       
-      // Get current user (staff) from session
-      const storedStaff = sessionStorage.getItem('staff');
-      let markedBy = '';
-      
-      if (storedStaff) {
-        try {
-          const staffData = JSON.parse(storedStaff);
-          markedBy = staffData.id;
-        } catch {
-          // Ignore parse error
-        }
-      }
+      const sessionProfile = getSessionStaffOrTeacherProfile();
+      let markedBy = sessionProfile?.id || '';
 
-      // If no staff in session (accessing from main dashboard), fetch default admin/principal
       if (!markedBy) {
         try {
           const response = await fetch(`/api/staff?school_code=${schoolCode}`);
@@ -520,7 +570,7 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
 
       const records = Object.entries(studentRecords).map(([studentId, record]) => ({
         student_id: studentId,
-        status: record.status || 'not_marked',
+        status: record.status || 'not_checked',
         remarks: record.remarks || '',
       }));
 
@@ -539,6 +589,7 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
           topic: topic || null,
           records,
           marked_by: markedBy,
+          teacher_copy_scoped: Boolean(teacherCopyScoped),
         }),
       });
 
@@ -562,18 +613,28 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'green':
+      case 'checked':
         return 'bg-green-500 text-white ring-2 ring-green-300 shadow-lg';
-      case 'yellow':
-        return 'bg-yellow-500 text-white ring-2 ring-yellow-300 shadow-lg';
-      case 'red':
+      case 'late':
+        return 'bg-amber-500 text-white ring-2 ring-amber-300 shadow-lg';
+      case 'missing':
         return 'bg-red-500 text-white ring-2 ring-red-300 shadow-lg';
-      case 'absent':
-        return 'bg-orange-500 text-white ring-2 ring-orange-300 shadow-lg';
+      case 'not_checked':
+        return 'bg-gray-200 text-gray-500 hover:bg-gray-300';
       default:
         return 'bg-gray-200 text-gray-500 hover:bg-gray-300';
     }
   };
+
+  const ctSetForHint = new Set((classTeacherClassIds || []).map((id) => String(id).trim()));
+  const isCtForSelected =
+    Boolean(selectedClassId) && ctSetForHint.has(String(selectedClassId).trim());
+  const subjectScopeHint =
+    teacherCopyScoped && selectedClassId
+      ? isCtForSelected
+        ? 'Class teacher: you can mark all subjects for this class.'
+        : 'Subject teacher: only subjects on your timetable for this class are listed.'
+      : '';
 
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
@@ -590,7 +651,9 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
             </div>
             Copy Checking
           </h1>
-          <p className="text-[#64748B]">Mark student classwork and homework with color-coded status</p>
+          <p className="text-[#64748B]">
+            Classwork and homework — statuses: not reviewed, completed, missing, late
+          </p>
         </div>
         <Button
           variant="outline"
@@ -726,18 +789,23 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
                 </Button>
               </div>
             ) : (
-              <select
-                value={selectedSubjectId}
-                onChange={(e) => setSelectedSubjectId(e.target.value)}
-                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:border-transparent bg-white"
-              >
-                <option value="">Select Subject</option>
-                {subjects.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.subject_name}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-1">
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => setSelectedSubjectId(e.target.value)}
+                  className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:border-transparent bg-white"
+                >
+                  <option value="">Select Subject</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.subject_name}
+                    </option>
+                  ))}
+                </select>
+                {subjectScopeHint ? (
+                  <p className="text-xs text-[#64748B]">{subjectScopeHint}</p>
+                ) : null}
+              </div>
             )}
           </div>
 
@@ -764,30 +832,26 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-lg text-[#1e3a8a] flex items-center gap-2">
               <BookOpen size={20} />
-              CLASS WORK
+              CLASSWORK
             </h3>
             <TrendingUp className="text-[#3B82F6]" size={20} />
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="bg-green-100 rounded-lg p-3 text-center border border-green-200">
-              <div className="text-2xl font-bold text-green-700">{stats.class_work.green}</div>
-              <div className="text-xs text-green-600 font-medium mt-1">COPY CHECKED</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-gray-100 rounded-lg p-3 text-center border border-gray-200">
+              <div className="text-2xl font-bold text-gray-700">{stats.classwork.not_checked}</div>
+              <div className="text-xs text-gray-600 font-medium mt-1">NOT REVIEWED</div>
             </div>
-            <div className="bg-yellow-100 rounded-lg p-3 text-center border border-yellow-200">
-              <div className="text-2xl font-bold text-yellow-700">{stats.class_work.yellow}</div>
-              <div className="text-xs text-yellow-600 font-medium mt-1">HALF DONE</div>
+            <div className="bg-green-100 rounded-lg p-3 text-center border border-green-200">
+              <div className="text-2xl font-bold text-green-700">{stats.classwork.checked}</div>
+              <div className="text-xs text-green-600 font-medium mt-1">COMPLETED</div>
             </div>
             <div className="bg-red-100 rounded-lg p-3 text-center border border-red-200">
-              <div className="text-2xl font-bold text-red-700">{stats.class_work.red}</div>
-              <div className="text-xs text-red-600 font-medium mt-1">INCOMPLETE</div>
+              <div className="text-2xl font-bold text-red-700">{stats.classwork.missing}</div>
+              <div className="text-xs text-red-600 font-medium mt-1">MISSING</div>
             </div>
-            <div className="bg-orange-100 rounded-lg p-3 text-center border border-orange-200">
-              <div className="text-2xl font-bold text-orange-700">{stats.class_work.absent || 0}</div>
-              <div className="text-xs text-orange-600 font-medium mt-1">ABSENT</div>
-            </div>
-            <div className="bg-gray-100 rounded-lg p-3 text-center border border-gray-200">
-              <div className="text-2xl font-bold text-gray-700">{stats.class_work.not_marked}</div>
-              <div className="text-xs text-gray-600 font-medium mt-1">NOT MARKED</div>
+            <div className="bg-amber-100 rounded-lg p-3 text-center border border-amber-200">
+              <div className="text-2xl font-bold text-amber-800">{stats.classwork.late}</div>
+              <div className="text-xs text-amber-700 font-medium mt-1">LATE</div>
             </div>
           </div>
         </Card>
@@ -800,26 +864,22 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
             </h3>
             <TrendingUp className="text-purple-600" size={20} />
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="bg-green-100 rounded-lg p-3 text-center border border-green-200">
-              <div className="text-2xl font-bold text-green-700">{stats.homework.green}</div>
-              <div className="text-xs text-green-600 font-medium mt-1">COPY CHECKED</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-gray-100 rounded-lg p-3 text-center border border-gray-200">
+              <div className="text-2xl font-bold text-gray-700">{stats.homework.not_checked}</div>
+              <div className="text-xs text-gray-600 font-medium mt-1">NOT REVIEWED</div>
             </div>
-            <div className="bg-yellow-100 rounded-lg p-3 text-center border border-yellow-200">
-              <div className="text-2xl font-bold text-yellow-700">{stats.homework.yellow}</div>
-              <div className="text-xs text-yellow-600 font-medium mt-1">HALF DONE</div>
+            <div className="bg-green-100 rounded-lg p-3 text-center border border-green-200">
+              <div className="text-2xl font-bold text-green-700">{stats.homework.checked}</div>
+              <div className="text-xs text-green-600 font-medium mt-1">COMPLETED</div>
             </div>
             <div className="bg-red-100 rounded-lg p-3 text-center border border-red-200">
-              <div className="text-2xl font-bold text-red-700">{stats.homework.red}</div>
-              <div className="text-xs text-red-600 font-medium mt-1">INCOMPLETE</div>
+              <div className="text-2xl font-bold text-red-700">{stats.homework.missing}</div>
+              <div className="text-xs text-red-600 font-medium mt-1">MISSING</div>
             </div>
-            <div className="bg-orange-100 rounded-lg p-3 text-center border border-orange-200">
-              <div className="text-2xl font-bold text-orange-700">{stats.homework.absent || 0}</div>
-              <div className="text-xs text-orange-600 font-medium mt-1">ABSENT</div>
-            </div>
-            <div className="bg-gray-100 rounded-lg p-3 text-center border border-gray-200">
-              <div className="text-2xl font-bold text-gray-700">{stats.homework.not_marked}</div>
-              <div className="text-xs text-gray-600 font-medium mt-1">NOT MARKED</div>
+            <div className="bg-amber-100 rounded-lg p-3 text-center border border-amber-200">
+              <div className="text-2xl font-bold text-amber-800">{stats.homework.late}</div>
+              <div className="text-xs text-amber-700 font-medium mt-1">LATE</div>
             </div>
           </div>
         </Card>
@@ -832,16 +892,18 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
             {/* Work Type Toggle */}
             <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
               <button
-                onClick={() => setWorkType('class_work')}
+                type="button"
+                onClick={() => setWorkType('classwork')}
                 className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${
-                  workType === 'class_work'
+                  workType === 'classwork'
                     ? 'bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white shadow-lg'
                     : 'bg-transparent text-gray-600 hover:text-[#1e3a8a]'
                 }`}
               >
-                CLASS WORK
+                CLASSWORK
               </button>
               <button
+                type="button"
                 onClick={() => setWorkType('homework')}
                 className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${
                   workType === 'homework'
@@ -943,12 +1005,11 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Roll Number</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">
                     Status
-                    <div className="flex items-center justify-center gap-1 mt-1 text-[10px]">
-                      <span className="w-4 h-4 rounded-full bg-green-500" title="Green"></span>
-                      <span className="w-4 h-4 rounded-full bg-yellow-500" title="Yellow"></span>
-                      <span className="w-4 h-4 rounded-full bg-red-500" title="Red"></span>
-                      <span className="w-4 h-4 rounded-full bg-orange-500" title="Absent"></span>
-                      <span className="w-4 h-4 rounded-full bg-gray-400" title="Not Marked"></span>
+                    <div className="flex items-center justify-center gap-1 mt-1 text-[10px] text-[#64748B] font-normal normal-case">
+                      <span title="Not reviewed">—</span>
+                      <span className="w-3 h-3 rounded-full bg-green-500" title="Completed" />
+                      <span className="w-3 h-3 rounded-full bg-red-500" title="Missing" />
+                      <span className="w-3 h-3 rounded-full bg-amber-500" title="Late" />
                     </div>
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Remarks</th>
@@ -956,7 +1017,7 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {students.map((student, index) => {
-                  const record = studentRecords[student.id] || { status: 'not_marked', remarks: '' };
+                  const record = studentRecords[student.id] || { status: 'not_checked' as CopyCheckingStatus, remarks: '' };
                   return (
                     <motion.tr
                       key={student.id}
@@ -988,41 +1049,54 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
                         {student.roll_number || '-'}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-2 flex-wrap">
                           <button
-                            onClick={() => handleStatusChange(student.id, 'green')}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'green' ? 'green' : 'not_marked')}`}
-                            title="Copy Checked (Green)"
+                            type="button"
+                            onClick={() => handleStatusChange(student.id, 'not_checked')}
+                            className={
+                              record.status === 'not_checked'
+                                ? `${getStatusColor('not_checked')} min-w-[2.25rem] h-9 px-2 rounded-lg text-xs font-bold`
+                                : 'min-w-[2.25rem] h-9 px-2 rounded-lg text-xs font-bold bg-gray-100 text-gray-400 border border-gray-200'
+                            }
+                            title="Not reviewed"
                           >
-                            {record.status === 'green' ? 'G' : ''}
+                            —
                           </button>
                           <button
-                            onClick={() => handleStatusChange(student.id, 'yellow')}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'yellow' ? 'yellow' : 'not_marked')}`}
-                            title="Half Done (Yellow)"
+                            type="button"
+                            onClick={() => handleStatusChange(student.id, 'checked')}
+                            className={
+                              record.status === 'checked'
+                                ? `${getStatusColor('checked')} min-w-[2.25rem] h-9 px-2 rounded-lg text-xs font-bold`
+                                : 'min-w-[2.25rem] h-9 px-2 rounded-lg text-xs font-bold bg-gray-100 text-gray-400 border border-gray-200'
+                            }
+                            title="Completed (checked)"
                           >
-                            {record.status === 'yellow' ? 'Y' : ''}
+                            ✓
                           </button>
                           <button
-                            onClick={() => handleStatusChange(student.id, 'red')}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'red' ? 'red' : 'not_marked')}`}
-                            title="Incomplete (Red)"
+                            type="button"
+                            onClick={() => handleStatusChange(student.id, 'missing')}
+                            className={
+                              record.status === 'missing'
+                                ? `${getStatusColor('missing')} min-w-[2.25rem] h-9 px-2 rounded-lg text-xs font-bold`
+                                : 'min-w-[2.25rem] h-9 px-2 rounded-lg text-xs font-bold bg-gray-100 text-gray-400 border border-gray-200'
+                            }
+                            title="Not submitted (missing)"
                           >
-                            {record.status === 'red' ? 'R' : ''}
+                            ✗
                           </button>
                           <button
-                            onClick={() => handleStatusChange(student.id, 'absent')}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'absent' ? 'absent' : 'not_marked')}`}
-                            title="Absent"
+                            type="button"
+                            onClick={() => handleStatusChange(student.id, 'late')}
+                            className={
+                              record.status === 'late'
+                                ? `${getStatusColor('late')} min-w-[2.25rem] h-9 px-2 rounded-lg text-xs font-bold`
+                                : 'min-w-[2.25rem] h-9 px-2 rounded-lg text-xs font-bold bg-gray-100 text-gray-400 border border-gray-200'
+                            }
+                            title="Submitted late"
                           >
-                            {record.status === 'absent' ? 'A' : ''}
-                          </button>
-                          <button
-                            onClick={() => handleStatusChange(student.id, 'not_marked')}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all ${getStatusColor(record.status === 'not_marked' ? 'not_marked' : 'not_marked')}`}
-                            title="Not Marked"
-                          >
-                            {record.status === 'not_marked' ? 'N' : ''}
+                            L
                           </button>
                         </div>
                       </td>
@@ -1031,9 +1105,8 @@ export default function CopyCheckingPage({ schoolCodeOverride, allowedClassIds, 
                           type="text"
                           value={record.remarks}
                           onChange={(e) => handleRemarksChange(student.id, e.target.value)}
-                          placeholder={record.status === 'absent' ? 'Absent' : 'Add remarks...'}
-                          disabled={record.status === 'absent'}
-                          className={`w-full text-sm border-gray-300 focus:border-[#1e3a8a] focus:ring-[#1e3a8a] ${record.status === 'absent' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                          placeholder="Add remarks..."
+                          className="w-full text-sm border-gray-300 focus:border-[#1e3a8a] focus:ring-[#1e3a8a]"
                         />
                       </td>
                     </motion.tr>

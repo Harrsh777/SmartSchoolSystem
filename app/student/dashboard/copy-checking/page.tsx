@@ -28,8 +28,10 @@ export default function StudentCopyCheckingPage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [records, setRecords] = useState<CopyCheckingRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'green' | 'yellow' | 'red' | 'not_marked' | 'absent'>('all');
-  const [workTypeFilter, setWorkTypeFilter] = useState<'all' | 'class_work' | 'homework'>('all');
+  const [filter, setFilter] = useState<
+    'all' | 'not_checked' | 'checked' | 'missing' | 'late'
+  >('all');
+  const [workTypeFilter, setWorkTypeFilter] = useState<'all' | 'classwork' | 'homework'>('all');
 
   useEffect(() => {
     const storedStudent = sessionStorage.getItem('student');
@@ -73,14 +75,14 @@ export default function StudentCopyCheckingPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'green':
+      case 'checked':
         return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-      case 'yellow':
-        return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-      case 'red':
+      case 'late':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'missing':
         return 'bg-red-100 text-red-700 border-red-200';
-      case 'absent':
-        return 'bg-orange-100 text-orange-700 border-orange-200';
+      case 'not_checked':
+        return 'bg-gray-100 text-gray-700 border-gray-200';
       default:
         return 'bg-gray-100 text-gray-700 border-gray-200';
     }
@@ -88,14 +90,14 @@ export default function StudentCopyCheckingPage() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'green':
+      case 'checked':
         return <CheckCircle2 className="text-emerald-600" size={20} />;
-      case 'yellow':
-        return <AlertCircle className="text-yellow-600" size={20} />;
-      case 'red':
+      case 'late':
+        return <AlertCircle className="text-amber-600" size={20} />;
+      case 'missing':
         return <XCircle className="text-red-600" size={20} />;
-      case 'absent':
-        return <XCircle className="text-orange-600" size={20} />;
+      case 'not_checked':
+        return <Clock className="text-gray-600" size={20} />;
       default:
         return <Clock className="text-gray-600" size={20} />;
     }
@@ -103,16 +105,16 @@ export default function StudentCopyCheckingPage() {
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'green':
-        return 'Copy Checked';
-      case 'yellow':
-        return 'Half Done';
-      case 'red':
-        return 'Incomplete';
-      case 'absent':
-        return 'Absent';
+      case 'checked':
+        return 'Completed';
+      case 'late':
+        return 'Late';
+      case 'missing':
+        return 'Missing';
+      case 'not_checked':
+        return 'Not reviewed';
       default:
-        return 'Not Marked';
+        return 'Not reviewed';
     }
   };
 
@@ -124,11 +126,10 @@ export default function StudentCopyCheckingPage() {
 
   const stats = {
     total: records.length,
-    green: records.filter(r => r.status === 'green').length,
-    yellow: records.filter(r => r.status === 'yellow').length,
-    red: records.filter(r => r.status === 'red').length,
-    absent: records.filter(r => r.status === 'absent').length,
-    not_marked: records.filter(r => r.status === 'not_marked').length,
+    not_checked: records.filter((r) => r.status === 'not_checked').length,
+    checked: records.filter((r) => r.status === 'checked').length,
+    missing: records.filter((r) => r.status === 'missing').length,
+    late: records.filter((r) => r.status === 'late').length,
   };
 
   if (loading || !student) {
@@ -160,30 +161,26 @@ export default function StudentCopyCheckingPage() {
       </motion.div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="glass-card soft-shadow p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total</p>
           <p className="text-2xl font-bold text-foreground">{stats.total}</p>
         </Card>
-        <Card className="glass-card soft-shadow p-4 border-l-4 border-emerald-500">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Excellent</p>
-          <p className="text-2xl font-bold text-emerald-600">{stats.green}</p>
+        <Card className="glass-card soft-shadow p-4 border-l-4 border-gray-500">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Not reviewed</p>
+          <p className="text-2xl font-bold text-gray-600">{stats.not_checked}</p>
         </Card>
-        <Card className="glass-card soft-shadow p-4 border-l-4 border-yellow-500">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Needs Improvement</p>
-          <p className="text-2xl font-bold text-yellow-600">{stats.yellow}</p>
+        <Card className="glass-card soft-shadow p-4 border-l-4 border-emerald-500">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Completed</p>
+          <p className="text-2xl font-bold text-emerald-600">{stats.checked}</p>
         </Card>
         <Card className="glass-card soft-shadow p-4 border-l-4 border-red-500">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Poor</p>
-          <p className="text-2xl font-bold text-red-600">{stats.red}</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Missing</p>
+          <p className="text-2xl font-bold text-red-600">{stats.missing}</p>
         </Card>
-        <Card className="glass-card soft-shadow p-4 border-l-4 border-orange-500">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Absent</p>
-          <p className="text-2xl font-bold text-orange-600">{stats.absent}</p>
-        </Card>
-        <Card className="glass-card soft-shadow p-4 border-l-4 border-gray-500">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Not Marked</p>
-          <p className="text-2xl font-bold text-gray-600">{stats.not_marked}</p>
+        <Card className="glass-card soft-shadow p-4 border-l-4 border-amber-500">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Late</p>
+          <p className="text-2xl font-bold text-amber-700">{stats.late}</p>
         </Card>
       </div>
 
@@ -197,12 +194,11 @@ export default function StudentCopyCheckingPage() {
               onChange={(e) => setFilter(e.target.value as typeof filter)}
               className="px-3 py-2 bg-muted border border-input rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
             >
-              <option value="all">All Status</option>
-              <option value="green">Copy Checked</option>
-              <option value="yellow">Half Done</option>
-              <option value="red">Incomplete</option>
-              <option value="absent">Absent</option>
-              <option value="not_marked">Not Marked</option>
+              <option value="all">All status</option>
+              <option value="not_checked">Not reviewed</option>
+              <option value="checked">Completed</option>
+              <option value="missing">Missing</option>
+              <option value="late">Late</option>
             </select>
           </div>
           <div>
@@ -212,8 +208,8 @@ export default function StudentCopyCheckingPage() {
               onChange={(e) => setWorkTypeFilter(e.target.value as typeof workTypeFilter)}
               className="px-3 py-2 bg-muted border border-input rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
             >
-              <option value="all">All Types</option>
-              <option value="class_work">Class Work</option>
+              <option value="all">All types</option>
+              <option value="classwork">Classwork</option>
               <option value="homework">Homework</option>
             </select>
           </div>
@@ -250,12 +246,14 @@ export default function StudentCopyCheckingPage() {
                         style={{ backgroundColor: record.subject_color }}
                       ></div>
                       <h3 className="text-lg font-semibold text-foreground">{record.subject_name}</h3>
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${
-                        record.work_type === 'class_work' 
-                          ? 'bg-blue-100 text-blue-700' 
-                          : 'bg-purple-100 text-purple-700'
-                      }`}>
-                        {record.work_type === 'class_work' ? 'Class Work' : 'Homework'}
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${
+                          record.work_type === 'homework'
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {record.work_type === 'homework' ? 'Homework' : 'Classwork'}
                       </span>
                     </div>
                     
@@ -284,7 +282,7 @@ export default function StudentCopyCheckingPage() {
                           })}</span>
                         </div>
                       )}
-                      {record.marked_by && record.status !== 'not_marked' && (
+                      {record.marked_by && record.status !== 'not_checked' && (
                         <div className="flex items-center gap-1">
                           <User size={14} />
                           <span>By: {record.marked_by}</span>

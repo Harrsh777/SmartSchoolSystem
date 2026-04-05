@@ -6,10 +6,47 @@ import CopyCheckingPage from '@/app/dashboard/[school]/copy-checking/page';
 import Card from '@/components/ui/Card';
 import { ClipboardCheck } from 'lucide-react';
 
+function resolveSlotClassId(slot: {
+  class?: { id?: string } | null;
+  class_id?: string | null;
+  class_reference?: { class_id?: string } | null;
+}): string | null {
+  if (slot.class?.id) return String(slot.class.id).trim();
+  if (slot.class_id) return String(slot.class_id).trim();
+  const ref = slot.class_reference;
+  if (ref && typeof ref === 'object' && ref.class_id) return String(ref.class_id).trim();
+  return null;
+}
+
+function buildTeachingSubjectsByClassId(
+  slots: Array<{
+    class?: { id?: string } | null;
+    class_id?: string | null;
+    class_reference?: { class_id?: string } | null;
+    subject?: { id?: string } | null;
+    subject_id?: string | null;
+  }>
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const slot of slots) {
+    const cid = resolveSlotClassId(slot);
+    const sid = slot.subject?.id ?? slot.subject_id;
+    if (!cid || !sid) continue;
+    const k = String(cid).trim();
+    const sub = String(sid).trim();
+    if (!out[k]) out[k] = [];
+    if (!out[k].includes(sub)) out[k].push(sub);
+  }
+  return out;
+}
+
 export default function TeacherCopyCheckingWrapper() {
   const [schoolCode, setSchoolCode] = useState<string | null>(null);
   const [allowedClassIds, setAllowedClassIds] = useState<string[]>([]);
-  const [allowedSubjectIds, setAllowedSubjectIds] = useState<string[]>([]);
+  const [classTeacherClassIds, setClassTeacherClassIds] = useState<string[]>([]);
+  const [teachingSubjectsByClassId, setTeachingSubjectsByClassId] = useState<
+    Record<string, string[]>
+  >({});
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
@@ -37,34 +74,29 @@ export default function TeacherCopyCheckingWrapper() {
           );
           const ctJson = await ctRes.json();
           let ctData = ctJson?.data;
-          // Normalize: API may return single object when one class; ensure we always have an array
           if (ctData != null && !Array.isArray(ctData)) ctData = [ctData];
-          const isClassTeacher = Array.isArray(ctData) && ctData.length > 0;
+          const ctRows = Array.isArray(ctData) ? ctData : [];
+          const ctIds = ctRows
+            .map((c: { id?: string }) => c.id)
+            .filter((id): id is string => Boolean(id));
 
-          if (isClassTeacher) {
-            const ids = (ctData as { id?: string }[]).map((c) => c.id).filter((id): id is string => Boolean(id));
-            setAllowedClassIds(ids);
-            setAllowedSubjectIds([]);
-          } else {
-            const slotsRes = await fetch(
-              `/api/timetable/slots?school_code=${encodeURIComponent(code)}&teacher_id=${encodeURIComponent(teacherId)}`
-            );
-            const slotsJson = await slotsRes.json();
-            const slots = Array.isArray(slotsJson?.data) ? slotsJson.data : [];
-            const classIds = new Set<string>();
-            const subjectIds = new Set<string>();
-            for (const slot of slots) {
-              const cid = slot.class?.id ?? slot.class_id;
-              if (cid && String(cid).trim()) classIds.add(String(cid).trim());
-              const sid = slot.subject?.id ?? slot.subject_id;
-              if (sid && String(sid).trim()) subjectIds.add(String(sid).trim());
-            }
-            setAllowedClassIds(Array.from(classIds));
-            setAllowedSubjectIds(Array.from(subjectIds));
-          }
+          setClassTeacherClassIds(ctIds);
+
+          const slotsRes = await fetch(
+            `/api/timetable/slots?school_code=${encodeURIComponent(code)}&teacher_id=${encodeURIComponent(teacherId)}`
+          );
+          const slotsJson = await slotsRes.json();
+          const slots = Array.isArray(slotsJson?.data) ? slotsJson.data : [];
+          const teachingMap = buildTeachingSubjectsByClassId(slots);
+
+          setTeachingSubjectsByClassId(teachingMap);
+
+          const union = new Set<string>([...ctIds, ...Object.keys(teachingMap)]);
+          setAllowedClassIds(Array.from(union));
         } catch {
           setAllowedClassIds([]);
-          setAllowedSubjectIds([]);
+          setClassTeacherClassIds([]);
+          setTeachingSubjectsByClassId({});
         }
         setSchoolCode(code);
         setChecked(true);
@@ -102,7 +134,6 @@ export default function TeacherCopyCheckingWrapper() {
     );
   }
 
-  // Teacher is not assigned to any class (not class teacher, and no timetable slots)
   if (allowedClassIds.length === 0) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -111,7 +142,8 @@ export default function TeacherCopyCheckingWrapper() {
             <ClipboardCheck className="text-muted-foreground" size={40} />
             <h1 className="text-2xl font-bold text-gray-900">Copy Checking</h1>
             <p className="text-sm text-gray-600">
-              You are not assigned to any class. Copy checking is available only when you are a class teacher or are assigned to classes in the timetable.
+              You are not assigned as a class teacher and have no classes on your timetable. Copy
+              checking is available when you teach at least one class section or are a class teacher.
             </p>
           </div>
         </Card>
@@ -123,8 +155,9 @@ export default function TeacherCopyCheckingWrapper() {
     <CopyCheckingPage
       schoolCodeOverride={schoolCode}
       allowedClassIds={allowedClassIds}
-      allowedSubjectIds={allowedSubjectIds.length > 0 ? allowedSubjectIds : undefined}
+      classTeacherClassIds={classTeacherClassIds}
+      teachingSubjectsByClassId={teachingSubjectsByClassId}
+      teacherCopyScoped
     />
   );
 }
-

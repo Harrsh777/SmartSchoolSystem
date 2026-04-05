@@ -15,7 +15,6 @@ import {
   X,
   FileText,
   Image as ImageIcon,
-  Users,
   Calendar,
 } from 'lucide-react';
 
@@ -380,13 +379,6 @@ export default function TeacherDigitalDiaryPage() {
                     </span>
                   ))}
                 </div>
-              </div>
-
-              <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-                <Users size={16} />
-                <span>
-                  {diary.read_count} / {diary.total_targets} READ
-                </span>
               </div>
 
               {diary.diary_attachments && diary.diary_attachments.length > 0 && (

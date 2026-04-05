@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
+import { use, useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -49,9 +49,7 @@ interface Book {
 interface BookCopy {
   id: string;
   accession_number: string;
-  barcode: string | null;
   status: string;
-  location?: string | null;
 }
 
 export default function LibraryCataloguePage({
@@ -75,6 +73,9 @@ export default function LibraryCataloguePage({
   const [bookCopies, setBookCopies] = useState<BookCopy[]>([]);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   const [bookForm, setBookForm] = useState({
     title: '',
@@ -92,8 +93,6 @@ export default function LibraryCataloguePage({
 
   const [copyForm, setCopyForm] = useState({
     accession_number: '',
-    barcode: '',
-    location: '',
     notes: '',
   });
 
@@ -336,10 +335,198 @@ export default function LibraryCataloguePage({
   const handleAddCopy = () => {
     setCopyForm({
       accession_number: '',
-      barcode: '',
-      location: '',
       notes: '',
     });
+  };
+
+  const parseCsvRow = (line: string): string[] => {
+    const out: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (!inQuotes && c === ',') {
+        out.push(cur.trim());
+        cur = '';
+        continue;
+      }
+      cur += c;
+    }
+    out.push(cur.trim());
+    return out;
+  };
+
+  const normHeader = (h: string) =>
+    h
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/^["']|["']$/g, '');
+
+  const resolveOrCreateSection = async (
+    name: string,
+    sectionCache: Map<string, string>
+  ): Promise<string | null> => {
+    const key = name.toLowerCase();
+    if (sectionCache.has(key)) return sectionCache.get(key)!;
+    const existing = sections.find((s) => s.name.toLowerCase() === key);
+    if (existing) {
+      sectionCache.set(key, existing.id);
+      return existing.id;
+    }
+    const sectionRes = await fetch('/api/library/sections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        school_code: schoolCode,
+        name: name.trim(),
+        material_type: 'General',
+      }),
+    });
+    const sectionResult = await sectionRes.json();
+    if (sectionRes.ok && sectionResult.data?.id) {
+      sectionCache.set(key, sectionResult.data.id);
+      setSections((prev) => [...prev, { id: sectionResult.data.id, name: name.trim() }]);
+      return sectionResult.data.id;
+    }
+    return null;
+  };
+
+  const resolveOrCreateMaterialType = async (
+    name: string,
+    typeCache: Map<string, string>
+  ): Promise<string | null> => {
+    const key = name.toLowerCase();
+    if (typeCache.has(key)) return typeCache.get(key)!;
+    const existing = materialTypes.find((t) => t.name.toLowerCase() === key);
+    if (existing) {
+      typeCache.set(key, existing.id);
+      return existing.id;
+    }
+    const typeRes = await fetch('/api/library/material-types', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        school_code: schoolCode,
+        name: name.trim(),
+      }),
+    });
+    const typeResult = await typeRes.json();
+    if (typeRes.ok && typeResult.data?.id) {
+      typeCache.set(key, typeResult.data.id);
+      setMaterialTypes((prev) => [...prev, { id: typeResult.data.id, name: name.trim() }]);
+      return typeResult.data.id;
+    }
+    return null;
+  };
+
+  const handleBulkFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    try {
+      setBulkUploading(true);
+      setError('');
+      setSuccess('');
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      if (!lines.length) {
+        setError('The file is empty.');
+        return;
+      }
+
+      const headers = parseCsvRow(lines[0]).map(normHeader);
+      const titleIdx = headers.findIndex((h) => h === 'title');
+      if (titleIdx < 0) {
+        setError('The first row must be headers and include a column named "title".');
+        return;
+      }
+
+      const col = (names: string[]) => {
+        for (const n of names) {
+          const i = headers.indexOf(normHeader(n));
+          if (i >= 0) return i;
+        }
+        return -1;
+      };
+
+      const authorIdx = col(['author']);
+      const publisherIdx = col(['publisher']);
+      const isbnIdx = col(['isbn']);
+      const editionIdx = col(['edition']);
+      const copiesIdx = col(['copies', 'total_copies']);
+      const sectionIdx = col(['section', 'section_name']);
+      const typeIdx = col(['material_type', 'type', 'material_type_name']);
+
+      const sectionCache = new Map<string, string>();
+      const typeCache = new Map<string, string>();
+      let added = 0;
+      const rowErrors: string[] = [];
+
+      for (let r = 1; r < lines.length; r++) {
+        const cells = parseCsvRow(lines[r]);
+        const title = cells[titleIdx]?.trim();
+        if (!title) continue;
+
+        let sectionId: string | null = null;
+        let materialTypeId: string | null = null;
+        if (sectionIdx >= 0 && cells[sectionIdx]?.trim()) {
+          sectionId = await resolveOrCreateSection(cells[sectionIdx].trim(), sectionCache);
+        }
+        if (typeIdx >= 0 && cells[typeIdx]?.trim()) {
+          materialTypeId = await resolveOrCreateMaterialType(cells[typeIdx].trim(), typeCache);
+        }
+
+        const totalCopiesRaw = copiesIdx >= 0 ? cells[copiesIdx] : '';
+        const totalCopies = Math.max(1, Math.floor(Number(totalCopiesRaw)) || 1);
+
+        const res = await fetch('/api/library/books', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            school_code: schoolCode,
+            title,
+            author: authorIdx >= 0 && cells[authorIdx]?.trim() ? cells[authorIdx].trim() : undefined,
+            publisher: publisherIdx >= 0 && cells[publisherIdx]?.trim() ? cells[publisherIdx].trim() : undefined,
+            isbn: isbnIdx >= 0 && cells[isbnIdx]?.trim() ? cells[isbnIdx].trim() : undefined,
+            edition: editionIdx >= 0 && cells[editionIdx]?.trim() ? cells[editionIdx].trim() : undefined,
+            section_id: sectionId || undefined,
+            material_type_id: materialTypeId || undefined,
+            total_copies: totalCopies,
+          }),
+        });
+        const result = await res.json();
+        if (res.ok) {
+          added += 1;
+        } else {
+          rowErrors.push(`Row ${r + 1} (${title}): ${result.error || result.details || 'failed'}`);
+        }
+      }
+
+      if (added > 0) {
+        setSuccess(`Imported ${added} book(s).`);
+        setBulkModalOpen(false);
+        fetchBooks();
+        fetchSections();
+        fetchMaterialTypes();
+        setTimeout(() => setSuccess(''), 5000);
+      }
+      if (rowErrors.length) {
+        setError(rowErrors.slice(0, 5).join(' ') + (rowErrors.length > 5 ? ` …and ${rowErrors.length - 5} more` : ''));
+      } else if (added === 0) {
+        setError('No rows were imported. Check that each data row has a title.');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Failed to read or import the file.');
+    } finally {
+      setBulkUploading(false);
+    }
   };
 
   const handleSaveCopy = async () => {
@@ -362,8 +549,6 @@ export default function LibraryCataloguePage({
           school_code: schoolCode,
           book_id: selectedBook.id,
           accession_number: copyForm.accession_number,
-          barcode: copyForm.barcode || null,
-          location: copyForm.location || null,
           notes: copyForm.notes || null,
         }),
       });
@@ -374,8 +559,6 @@ export default function LibraryCataloguePage({
         setSuccess('Copy added successfully!');
         setCopyForm({
           accession_number: '',
-          barcode: '',
-          location: '',
           notes: '',
         });
         handleViewCopies(selectedBook); // Refresh copies
@@ -424,7 +607,18 @@ export default function LibraryCataloguePage({
               </div>
             </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => {}}>
+          <input
+            ref={bulkFileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleBulkFileSelected}
+          />
+          <Button
+            variant="outline"
+            onClick={() => setBulkModalOpen(true)}
+            disabled={bulkUploading}
+          >
             <Upload size={18} className="mr-2" />
             Bulk Upload
           </Button>
@@ -759,6 +953,56 @@ export default function LibraryCataloguePage({
         </div>
       )}
 
+      {bulkModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-[#1e293b] rounded-lg shadow-xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-700"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Bulk upload (CSV)</h2>
+              <button
+                type="button"
+                onClick={() => !bulkUploading && setBulkModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Use a UTF-8 CSV with a header row. Required column: <span className="font-mono">title</span>.
+              Optional: <span className="font-mono">author</span>, <span className="font-mono">publisher</span>,{' '}
+              <span className="font-mono">isbn</span>, <span className="font-mono">edition</span>,{' '}
+              <span className="font-mono">copies</span> (defaults to 1), <span className="font-mono">section</span>,{' '}
+              <span className="font-mono">material_type</span> (matched or created by name).
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                disabled={bulkUploading}
+                onClick={() => bulkFileInputRef.current?.click()}
+              >
+                {bulkUploading ? (
+                  <>
+                    <Loader2 size={18} className="mr-2 animate-spin" />
+                    Importing…
+                  </>
+                ) : (
+                  <>
+                    <Upload size={18} className="mr-2" />
+                    Choose CSV file
+                  </>
+                )}
+              </Button>
+              <Button type="button" variant="outline" disabled={bulkUploading} onClick={() => setBulkModalOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* View/Add Copies Modal */}
       {copyModalOpen && selectedBook && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -793,21 +1037,16 @@ export default function LibraryCataloguePage({
                 </Button>
               </div>
               <div className="border border-gray-200 rounded-lg p-4 space-y-3">
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
                   <Input
                     placeholder="Accession Number *"
                     value={copyForm.accession_number}
                     onChange={(e) => setCopyForm({ ...copyForm, accession_number: e.target.value })}
                   />
                   <Input
-                    placeholder="Barcode"
-                    value={copyForm.barcode}
-                    onChange={(e) => setCopyForm({ ...copyForm, barcode: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Location"
-                    value={copyForm.location}
-                    onChange={(e) => setCopyForm({ ...copyForm, location: e.target.value })}
+                    placeholder="Notes (optional)"
+                    value={copyForm.notes}
+                    onChange={(e) => setCopyForm({ ...copyForm, notes: e.target.value })}
                   />
                   <Button onClick={handleSaveCopy} disabled={saving || !copyForm.accession_number.trim()}>
                     {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -819,16 +1058,13 @@ export default function LibraryCataloguePage({
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Accession #</th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Barcode</th>
                       <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Status</th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">Location</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {bookCopies.map((copy) => (
                       <tr key={copy.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2 text-sm text-gray-900 font-mono">{copy.accession_number}</td>
-                        <td className="px-4 py-2 text-sm text-gray-600 font-mono">{copy.barcode || 'N/A'}</td>
                         <td className="px-4 py-2 text-sm">
                           <span
                             className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -842,7 +1078,6 @@ export default function LibraryCataloguePage({
                             {copy.status}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-600">{copy.location || 'N/A'}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -321,12 +321,6 @@ export default function StudentDashboardHome() {
               >
                 Resume Learning
               </button>
-              <button 
-                onClick={() => router.push('/student/dashboard/calendar')}
-                className="bg-card text-foreground border border-input px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-muted transition-all"
-              >
-                My Schedule
-              </button>
             </div>
           </div>
           <div className="lg:col-span-4 hidden lg:block">
@@ -667,14 +661,8 @@ export default function StudentDashboardHome() {
               className="bg-muted rounded-2xl border border-input overflow-hidden"
             >
               <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
+                <div className="mb-6">
                   <h3 className="text-sm font-semibold text-foreground">Upcoming</h3>
-                  <button 
-                    onClick={() => router.push('/student/dashboard/calendar')}
-                    className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest hover:text-foreground"
-                  >
-                    View All
-                  </button>
                 </div>
                 <div className="space-y-5">
                   {upcoming.length > 0 ? upcoming.map((item) => (

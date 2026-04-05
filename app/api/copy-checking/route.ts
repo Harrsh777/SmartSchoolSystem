@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseFetchOptions } from '@/lib/supabase-fetch';
+import {
+  normalizeStatusForDisplay,
+  normalizeStatusForStorage,
+  tallyCopyCheckingStatuses,
+  workTypeFromClient,
+  workTypeToDb,
+  workTypeToClient,
+} from '@/lib/copy-checking-normalize';
+import { assertCopyCheckingWriteAllowed } from '@/lib/copy-checking-write-scope';
 
 const getServiceRoleClient = () => {
   return createClient(
@@ -18,19 +27,20 @@ export async function GET(request: NextRequest) {
     const section = searchParams.get('section');
     const subjectId = searchParams.get('subject_id');
     const workDate = searchParams.get('work_date');
-    const workType = searchParams.get('work_type'); // 'class_work' or 'homework'
+    const workTypeRaw = searchParams.get('work_type');
     const academicYear = searchParams.get('academic_year');
 
-    if (!schoolCode || !classId || !subjectId || !workDate || !workType) {
+    if (!schoolCode || !classId || !subjectId || !workDate || !workTypeRaw) {
       return NextResponse.json(
         { error: 'School code, class ID, subject ID, work date, and work type are required' },
         { status: 400 }
       );
     }
 
+    const workTypeDb = workTypeFromClient(workTypeRaw);
+
     const supabase = getServiceRoleClient();
 
-    // Get class details to filter students properly
     const { data: classData, error: classError } = await supabase
       .from('classes')
       .select('class, section, academic_year')
@@ -53,7 +63,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build students query – use ilike so "CLASS-1" / "class-1" match; include students with null academic_year
     const sectionFilter = section || classData.section;
     const yearFilter = academicYear || classData.academic_year || '';
 
@@ -82,7 +91,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get existing copy checking records
     let recordsQuery = supabase
       .from('copy_checking')
       .select('*')
@@ -90,14 +98,12 @@ export async function GET(request: NextRequest) {
       .eq('class_id', classId)
       .eq('subject_id', subjectId)
       .eq('work_date', workDate)
-      .eq('work_type', workType);
+      .eq('work_type', workTypeDb);
 
-    // Filter by section if provided
     if (sectionFilter) {
       recordsQuery = recordsQuery.eq('section', sectionFilter);
     }
 
-    // Filter by academic year if provided
     if (academicYear) {
       recordsQuery = recordsQuery.eq('academic_year', academicYear);
     }
@@ -130,46 +136,35 @@ export async function GET(request: NextRequest) {
       section: string;
     }
 
-    // Map existing records by student_id
     const recordsMap = new Map<string, CopyCheckingRecord>();
     (existingRecords || []).forEach((record: CopyCheckingRecord) => {
       recordsMap.set(record.student_id, record);
     });
 
-    // Combine students with their copy checking records
     const studentsWithRecords = (students || []).map((student: Student) => {
       const record = recordsMap.get(student.id);
+      const rawStatus = record?.status;
+      const status = normalizeStatusForDisplay(rawStatus);
       return {
         ...student,
         copy_checking: record || null,
-        status: record?.status || 'not_marked',
+        status,
         remarks: record?.remarks || '',
         topic: record?.topic || null,
       };
     });
 
-    // Calculate statistics
-    const stats = {
-      green: 0,
-      yellow: 0,
-      red: 0,
-      not_marked: 0,
-      absent: 0,
-    };
+    const stats = tallyCopyCheckingStatuses(studentsWithRecords.map((s) => s.status));
 
-    studentsWithRecords.forEach((student) => {
-      if (student.status === 'green') stats.green++;
-      else if (student.status === 'yellow') stats.yellow++;
-      else if (student.status === 'red') stats.red++;
-      else if (student.status === 'absent') stats.absent++;
-      else stats.not_marked++;
-    });
-
-    return NextResponse.json({
-      data: studentsWithRecords,
-      statistics: stats,
-      topic: existingRecords?.[0]?.topic || null,
-    }, { status: 200 });
+    return NextResponse.json(
+      {
+        data: studentsWithRecords,
+        statistics: stats,
+        topic: existingRecords?.[0]?.topic || null,
+        work_type_client: workTypeToClient(workTypeDb),
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error fetching copy checking data:', error);
     return NextResponse.json(
@@ -192,8 +187,9 @@ export async function POST(request: NextRequest) {
       work_date,
       work_type,
       topic,
-      records, // Array of { student_id, status, remarks }
+      records,
       marked_by,
+      teacher_copy_scoped,
     } = body;
 
     if (!school_code || !class_id || !subject_id || !work_date || !work_type || !records || !marked_by) {
@@ -203,9 +199,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const scoped = Boolean(teacher_copy_scoped);
+    const scopeGate = await assertCopyCheckingWriteAllowed(
+      school_code,
+      String(marked_by),
+      String(class_id),
+      String(subject_id),
+      scoped
+    );
+    if (!scopeGate.ok) {
+      return NextResponse.json({ error: scopeGate.error }, { status: scopeGate.status });
+    }
+
+    const workTypeDb = workTypeToDb(work_type);
+
     const supabase = getServiceRoleClient();
 
-    // Get school_id
     const { data: school } = await supabase
       .from('accepted_schools')
       .select('id')
@@ -225,32 +234,35 @@ export async function POST(request: NextRequest) {
       remarks?: string;
     }
 
-    // Upsert records for each student
-    const upsertPromises = records.map((record: RecordInput) => {
+    const upsertPromises = (records as RecordInput[]).map((record: RecordInput) => {
+      const statusStored = normalizeStatusForStorage(record.status);
       return supabase
         .from('copy_checking')
-        .upsert({
-          school_id: school.id,
-          school_code,
-          academic_year: academic_year || new Date().getFullYear().toString(),
-          class_id,
-          section: section || null,
-          subject_id,
-          subject_name,
-          work_date,
-          work_type,
-          topic: topic || null,
-          student_id: record.student_id,
-          status: record.status || 'not_marked',
-          remarks: record.remarks || null,
-          marked_by,
-        }, {
-          onConflict: 'student_id,work_date,work_type,subject_id,class_id,school_code',
-        });
+        .upsert(
+          {
+            school_id: school.id,
+            school_code,
+            academic_year: academic_year || new Date().getFullYear().toString(),
+            class_id,
+            section: section || null,
+            subject_id,
+            subject_name,
+            work_date,
+            work_type: workTypeDb,
+            topic: topic || null,
+            student_id: record.student_id,
+            status: statusStored,
+            remarks: record.remarks || null,
+            marked_by,
+          },
+          {
+            onConflict: 'student_id,work_date,work_type,subject_id,class_id,school_code',
+          }
+        );
     });
 
     const results = await Promise.all(upsertPromises);
-    const errors = results.filter(r => r.error);
+    const errors = results.filter((r) => r.error);
 
     if (errors.length > 0) {
       console.error('Error saving copy checking records:', errors);
@@ -260,10 +272,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      message: 'Copy checking records saved successfully',
-      saved_count: records.length,
-    }, { status: 200 });
+    return NextResponse.json(
+      {
+        message: 'Copy checking records saved successfully',
+        saved_count: records.length,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error saving copy checking:', error);
     return NextResponse.json(
@@ -272,4 +287,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { isStaffClassTeacherForClass } from '@/lib/staff-class-teacher';
 
 function escapeIlike(value: string): string {
   return String(value ?? '')
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
     const schoolCode = sp.get('school_code');
     const classId = sp.get('class_id');
     const termId = sp.get('term_id');
+    /** When `non_scholastic_only`, only subjects with category non_scholastic (teacher portal). */
+    const scholasticScope = sp.get('scholastic_scope')?.trim();
 
     if (!schoolCode || !classId) {
       return NextResponse.json(
@@ -81,13 +84,19 @@ export async function GET(request: NextRequest) {
         | Array<{ id?: string; name?: string; category?: string | null; color?: string | null }>
         | null;
       const sub = Array.isArray(raw) ? raw[0] : raw;
-      if (sub?.id && isCoScholasticSubject(sub.category ?? null)) {
-        subjects.push({
-          id: String(sub.id),
-          name: String(sub.name || 'Subject'),
-          color: sub.color ? String(sub.color) : undefined,
-        });
+      if (!sub?.id) continue;
+      if (!isCoScholasticSubject(sub.category ?? null)) continue;
+      if (
+        scholasticScope === 'non_scholastic_only' &&
+        String(sub.category ?? '').toLowerCase() !== 'non_scholastic'
+      ) {
+        continue;
       }
+      subjects.push({
+        id: String(sub.id),
+        name: String(sub.name || 'Subject'),
+        color: sub.color ? String(sub.color) : undefined,
+      });
     }
     subjects.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -157,6 +166,7 @@ export async function POST(request: NextRequest) {
     const addedBy =
       rawAddedBy != null && String(rawAddedBy).trim() !== '' ? String(rawAddedBy).trim() : null;
     const entries = body.entries as Array<{ student_id: string; subject_id: string; grade?: string | null }>;
+    const teacherClassTeacherOnly = Boolean(body.teacher_class_teacher_only);
 
     if (!schoolCode || !classId || !termId) {
       return NextResponse.json(
@@ -169,6 +179,22 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getServiceRoleClient();
+
+    if (teacherClassTeacherOnly) {
+      if (!addedBy) {
+        return NextResponse.json(
+          { error: 'added_by is required for class teacher saves.' },
+          { status: 400 }
+        );
+      }
+      const allowed = await isStaffClassTeacherForClass(supabase, schoolCode, addedBy, classId);
+      if (!allowed) {
+        return NextResponse.json(
+          { error: 'Only the class teacher for this section can save non-scholastic marks here.' },
+          { status: 403 }
+        );
+      }
+    }
     const now = new Date().toISOString();
 
     const rows = entries.map((e) => ({

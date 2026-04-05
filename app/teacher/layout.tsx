@@ -34,7 +34,8 @@ import {
   HelpCircle,
   Languages,
   Zap,
-  ClipboardCheck
+  ClipboardCheck,
+  Palette
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Staff, AcceptedSchool } from '@/lib/supabase';
@@ -43,6 +44,45 @@ import { setupApiInterceptor, removeApiInterceptor, setLogoutHandler } from '@/l
 import RoleSessionSwitcher from '@/components/auth/RoleSessionSwitcher';
 import { logoutCurrentSessionAndGo } from '@/lib/client-logout';
 import { languages } from '@/lib/translations';
+import { isTeachingStaffRole } from '@/lib/staff-teaching-role';
+
+/** Menu IDs for staff who are not in a teaching role (office / non-teaching). */
+const NON_TEACHING_TEACHER_PORTAL_MENU_IDS: readonly string[] = [
+  'home',
+  'my-attendance',
+  'my-timetable',
+  'my-class',
+  'classes',
+  'calendar',
+  'apply-leave',
+  'my-leaves',
+  'students',
+  'library',
+  'gallery',
+  'staff-management',
+  'communication',
+  'institute-info',
+  'settings',
+  'change-password',
+];
+
+const NON_TEACHING_ALLOWED_PATH_PREFIXES: readonly string[] = [
+  '/teacher/dashboard/attendance-staff',
+  '/teacher/dashboard/my-timetable',
+  '/teacher/dashboard/my-class',
+  '/teacher/dashboard/classes',
+  '/teacher/dashboard/calendar',
+  '/teacher/dashboard/apply-leave',
+  '/teacher/dashboard/my-leaves',
+  '/teacher/dashboard/students',
+  '/teacher/dashboard/library',
+  '/teacher/dashboard/gallery',
+  '/teacher/dashboard/staff-management',
+  '/teacher/dashboard/communication',
+  '/teacher/dashboard/institute-info',
+  '/teacher/dashboard/settings',
+  '/teacher/dashboard/change-password',
+];
 
 interface TeacherLayoutProps {
   children: React.ReactNode;
@@ -68,6 +108,7 @@ const teacherBaseItems: TeacherMenuItem[] = [
   { id: 'my-attendance', label: 'My Attendance', icon: Calendar, path: '/teacher/dashboard/attendance-staff', permission: null, viewPermission: null },
   { id: 'my-timetable', label: 'My Timetable', icon: CalendarDays, path: '/teacher/dashboard/my-timetable', permission: null, viewPermission: null },
   { id: 'marks', label: 'Marks Entry', icon: FileText, path: '/teacher/dashboard/marks', requiresClassTeacher: true, allowsSubjectTeacher: true, permission: null, viewPermission: null },
+  { id: 'non-scholastic-marks', label: 'Non-Scholastic Marks', icon: Palette, path: '/teacher/dashboard/non-scholastic-marks', requiresClassTeacher: true, permission: null, viewPermission: null },
   { id: 'examinations', label: 'Examinations', icon: FileText, path: '/teacher/dashboard/examinations', permission: null, viewPermission: null },
   { id: 'my-class', label: 'My Class', icon: UserCheck, path: '/teacher/dashboard/my-class', requiresClassTeacher: true, permission: null, viewPermission: null },
   { id: 'classes', label: 'Classes', icon: UserCheck, path: '/teacher/dashboard/classes', permission: null, viewPermission: null },
@@ -255,6 +296,28 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, pathname]);
+
+  useEffect(() => {
+    if (pathname === '/staff/login' || pathname === '/teacher/login') return;
+    if (loading || !teacher) return;
+    if (
+      isTeachingStaffRole(
+        teacher.role,
+        (teacher as { designation?: string | null }).designation ?? null
+      )
+    ) {
+      return;
+    }
+    if (!pathname.startsWith('/teacher/dashboard')) return;
+    const home = '/teacher/dashboard';
+    if (pathname === home || pathname === `${home}/`) return;
+    const ok = NON_TEACHING_ALLOWED_PATH_PREFIXES.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`)
+    );
+    if (!ok) {
+      router.replace(home);
+    }
+  }, [loading, teacher, pathname, router]);
 
   const fetchStaffPermissions = async (staffId: string) => {
     try {
@@ -769,20 +832,30 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
     return hasPermission(item);
   });
 
-  // Combine teacher items with dynamic items and filtered dashboard items
-  const allMenuItems: MenuItem[] = [
-    ...filteredTeacherItems,
-    ...dynamicMenuItems,
-    ...filteredDashboardItems,
-  ];
+  const isRestrictedNonTeaching =
+    teacher != null &&
+    !isTeachingStaffRole(
+      teacher.role,
+      (teacher as { designation?: string | null }).designation ?? null
+    );
 
-  // Debug: log all menu items being rendered
-  console.log('=== SIDEBAR DEBUG ===');
-  console.log('Dynamic modules from API:', dynamicModules.length);
-  console.log('Dynamic menu items built:', dynamicMenuItems.length, dynamicMenuItems.map(d => d.id));
-  console.log('Filtered teacher items:', filteredTeacherItems.length);
-  console.log('Filtered dashboard items:', filteredDashboardItems.length);
-  console.log('Total allMenuItems:', allMenuItems.length, allMenuItems.map(m => m.id));
+  let allMenuItems: MenuItem[];
+  if (isRestrictedNonTeaching) {
+    const picked = NON_TEACHING_TEACHER_PORTAL_MENU_IDS.map((id) =>
+      teacherBaseItems.find((x) => x.id === id)
+    ).filter(Boolean) as MenuItem[];
+    allMenuItems = picked.filter((item) => {
+      if (item.requiresClassTeacher) {
+        if (item.allowsSubjectTeacher) {
+          return isClassTeacher || hasTimetableTeaching;
+        }
+        return isClassTeacher;
+      }
+      return true;
+    });
+  } else {
+    allMenuItems = [...filteredTeacherItems, ...dynamicMenuItems, ...filteredDashboardItems];
+  }
 
   const isActive = (path: string) => {
     if (path === '/teacher/dashboard' && pathname === '/teacher/dashboard') return true;
@@ -891,12 +964,16 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                 </button>
                 {quickDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-[#E1E1DB] z-50 p-2">
-                    <Link href="/teacher/dashboard/attendance" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
-                      Mark Attendance
-                    </Link>
-                    <Link href="/teacher/dashboard/marks" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
-                      Marks Entry
-                    </Link>
+                    {!isRestrictedNonTeaching ? (
+                      <>
+                        <Link href="/teacher/dashboard/attendance" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                          Mark Attendance
+                        </Link>
+                        <Link href="/teacher/dashboard/marks" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                          Marks Entry
+                        </Link>
+                      </>
+                    ) : null}
                     <Link href="/teacher/dashboard/communication" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
                       Send Notice
                     </Link>
@@ -945,7 +1022,14 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                     <Link href="/teacher/dashboard/settings" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
                       Profile Settings
                     </Link>
-                    <Link href="/teacher/dashboard/password" className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg">
+                    <Link
+                      href={
+                        isRestrictedNonTeaching
+                          ? '/teacher/dashboard/change-password'
+                          : '/teacher/dashboard/password'
+                      }
+                      className="block px-3 py-2 hover:bg-[#DBEAFE] rounded-lg"
+                    >
                       Change Password
                     </Link>
                   </div>
@@ -1047,14 +1131,65 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                 <nav className="p-5 space-y-1.5 overflow-visible">
                   {/* Grouped Menu Items */}
                   {(() => {
-                    const sections = [
-                      { id: 'core', label: 'Core', items: ['home'] },
-                      { id: 'academics', label: 'Academics', items: ['attendance', 'my-attendance', 'my-timetable', 'marks', 'examinations', 'my-class', 'classes', 'calendar', 'homework', 'copy-checking', 'timetable'] },
-                      { id: 'leave', label: 'Leave & Requests', items: ['apply-leave', 'my-leaves', 'student-leave-approvals', 'leave_management'] },
-                      { id: 'info', label: 'Information', items: ['students', 'student_management', 'library', 'certificates', 'gallery', 'communication', 'staff-management', 'transport', 'front_office'] },
-                      { id: 'finance', label: 'Finance', items: ['fee_management', 'expense_income'] },
-                      { id: 'account', label: 'Account', items: ['institute-info', 'settings', 'change-password'] },
-                    ];
+                    const sections = isRestrictedNonTeaching
+                      ? [
+                          { id: 'core', label: 'Core', items: ['home'] },
+                          {
+                            id: 'academics',
+                            label: 'Academics',
+                            items: ['my-attendance', 'my-timetable', 'my-class', 'classes', 'calendar'],
+                          },
+                          { id: 'leave', label: 'Leave & Requests', items: ['apply-leave', 'my-leaves'] },
+                          {
+                            id: 'info',
+                            label: 'Information',
+                            items: ['students', 'library', 'gallery', 'staff-management', 'communication'],
+                          },
+                          { id: 'account', label: 'Account', items: ['institute-info', 'settings', 'change-password'] },
+                        ]
+                      : [
+                          { id: 'core', label: 'Core', items: ['home'] },
+                          {
+                            id: 'academics',
+                            label: 'Academics',
+                            items: [
+                              'attendance',
+                              'my-attendance',
+                              'my-timetable',
+                              'marks',
+                              'non-scholastic-marks',
+                              'examinations',
+                              'my-class',
+                              'classes',
+                              'calendar',
+                              'homework',
+                              'copy-checking',
+                              'timetable',
+                            ],
+                          },
+                          {
+                            id: 'leave',
+                            label: 'Leave & Requests',
+                            items: ['apply-leave', 'my-leaves', 'student-leave-approvals', 'leave_management'],
+                          },
+                          {
+                            id: 'info',
+                            label: 'Information',
+                            items: [
+                              'students',
+                              'student_management',
+                              'library',
+                              'certificates',
+                              'gallery',
+                              'communication',
+                              'staff-management',
+                              'transport',
+                              'front_office',
+                            ],
+                          },
+                          { id: 'finance', label: 'Finance', items: ['fee_management', 'expense_income'] },
+                          { id: 'account', label: 'Account', items: ['institute-info', 'settings', 'change-password'] },
+                        ];
                     
                     // Get all item IDs that are in predefined sections
                     const allSectionItemIds = sections.flatMap(s => s.items);

@@ -29,6 +29,7 @@ import {
   Printer
 } from 'lucide-react';
 import { getGatePassSlipHtml, printHtml } from '@/lib/print-utils';
+import { getSessionStaffOrTeacherProfile } from '@/lib/teacher-portal-client';
 
 interface GatePass {
   id: string;
@@ -144,17 +145,12 @@ export default function FrontOfficeDashboardPage({
 
   // Helper function to get staff ID (from session or fetch default admin/principal)
   const getStaffId = async (): Promise<string | null> => {
-    const storedStaff = sessionStorage.getItem('staff');
-    if (storedStaff) {
-      try {
-        const staffData = JSON.parse(storedStaff);
-        return staffData.id || null;
-      } catch {
-        // Ignore parse error
-      }
+    const fromSession = getSessionStaffOrTeacherProfile();
+    if (fromSession?.id) {
+      return fromSession.id;
     }
 
-    // If no staff in session (accessing from main dashboard), fetch default admin/principal
+    // If no staff/teacher in session (e.g. admin tab not hydrated), fetch default admin/principal
     try {
       const response = await fetch(`/api/staff?school_code=${schoolCode}`);
       const result = await response.json();

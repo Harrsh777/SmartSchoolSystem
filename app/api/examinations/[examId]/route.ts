@@ -42,7 +42,8 @@ export async function GET(
           subject:subjects (
             id,
             name,
-            color
+            color,
+            category
           ),
           max_marks,
           pass_marks

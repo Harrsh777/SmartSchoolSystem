@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { normalizeStatusForDisplay, workTypeToClient } from '@/lib/copy-checking-normalize';
 
 /**
  * GET /api/student/copy-checking
@@ -69,11 +70,9 @@ export async function GET(request: NextRequest) {
       } | null;
     }
     const formattedRecords = (records || []).map((record: CopyCheckingRecord) => {
-      // Use updated_at as the checked date (when it was last marked/updated)
-      // If status is not_marked, there's no checked date
-      const checkedDate = record.status && record.status !== 'not_marked' 
-        ? (record.updated_at || record.created_at) 
-        : null;
+      const statusNorm = normalizeStatusForDisplay(record.status);
+      const checkedDate =
+        statusNorm !== 'not_checked' ? record.updated_at || record.created_at : null;
 
       return {
         id: record.id,
@@ -81,8 +80,8 @@ export async function GET(request: NextRequest) {
         subject_name: record.subject_name || record.subject?.name || 'Unknown Subject',
         subject_color: record.subject?.color || '#3B82F6',
         work_date: record.work_date,
-        work_type: record.work_type, // 'class_work' or 'homework'
-        status: record.status || 'not_marked', // 'green', 'yellow', 'red', 'not_marked'
+        work_type: workTypeToClient(record.work_type),
+        status: statusNorm,
         remarks: record.remarks || null,
         topic: record.topic || null,
         marked_by: record.marked_by_staff?.full_name || 'Unknown',

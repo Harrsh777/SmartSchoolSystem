@@ -106,9 +106,10 @@ export async function POST(request: NextRequest) {
       total_copies,
     } = body;
 
-    if (!school_code || !title || !total_copies || total_copies < 1) {
+    const copyCount = Math.max(1, Math.floor(Number(total_copies)) || 1);
+    if (!school_code || !title?.trim()) {
       return NextResponse.json(
-        { error: 'School code, title, and total copies are required' },
+        { error: 'School code and title are required' },
         { status: 400 }
       );
     }
@@ -138,7 +139,7 @@ export async function POST(request: NextRequest) {
       edition: edition || null,
       section_id: section_id || null,
       material_type_id: material_type_id || null,
-      total_copies: parseInt(total_copies),
+      total_copies: copyCount,
     };
     if (image_url != null && String(image_url).trim() !== '') {
       bookRow.image_url = String(image_url).trim();
@@ -156,20 +157,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate accession numbers and create copies
     const copies = [];
-    for (let i = 1; i <= parseInt(total_copies); i++) {
-      // Generate accession number: BOOK-{school_code}-{book_id_short}-{copy_number}
+    for (let i = 1; i <= copyCount; i++) {
       const bookIdShort = book.id.substring(0, 8).toUpperCase();
       const accessionNumber = `ACC-${school_code}-${bookIdShort}-${String(i).padStart(3, '0')}`;
-      const barcode = `${school_code}-${bookIdShort}-${String(i).padStart(3, '0')}`;
 
       copies.push({
         book_id: book.id,
         school_id: schoolData.id,
         school_code: school_code,
         accession_number: accessionNumber,
-        barcode: barcode,
         status: 'available',
       });
     }

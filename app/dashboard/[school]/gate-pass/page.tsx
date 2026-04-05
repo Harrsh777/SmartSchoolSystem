@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { DoorOpen, Plus, Search, Users, X, Calendar, FileText, Download, Printer } from 'lucide-react';
 import { getGatePassPrintHtml, getGatePassSlipHtml, printHtml } from '@/lib/print-utils';
+import { getSessionStaffOrTeacherProfile } from '@/lib/teacher-portal-client';
 
 
 interface GatePass {
@@ -577,20 +578,9 @@ function CreateGatePassModal({
       return;
     }
 
-    // Get current staff from session storage
-    const storedStaff = sessionStorage.getItem('staff');
-    let createdBy: string | null = null;
-    let approvedByName: string = '';
-    
-    if (storedStaff) {
-      try {
-        const staffData = JSON.parse(storedStaff);
-        createdBy = staffData.id || null;
-        approvedByName = staffData.full_name || '';
-      } catch {
-        // Ignore parse errors
-      }
-    }
+    const sessionProfile = getSessionStaffOrTeacherProfile();
+    let createdBy: string | null = sessionProfile?.id ?? null;
+    let approvedByName: string = sessionProfile?.full_name || '';
 
     // If no staff in session (accessing from main dashboard), fetch default admin/principal
     // Check if we have valid values (not null, not empty string)

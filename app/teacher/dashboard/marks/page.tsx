@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { FileText, Save, AlertCircle, GraduationCap } from 'lucide-react';
+import { FileText, Save, AlertCircle, GraduationCap, ArrowLeft } from 'lucide-react';
 import { dedupeExamSubjectMappings } from '@/lib/exam-subject-mappings';
 
 interface Student {
@@ -79,6 +80,34 @@ type TeachingAssignment = {
   section: string;
   subject_ids: string[];
 };
+
+function compareRollNumbers(a?: string | null, b?: string | null): number {
+  const sa = String(a ?? '').trim();
+  const sb = String(b ?? '').trim();
+  const na = parseInt(sa.replace(/\D/g, ''), 10);
+  const nb = parseInt(sb.replace(/\D/g, ''), 10);
+  if (!Number.isNaN(na) && !Number.isNaN(nb) && na !== nb) return na - nb;
+  return sa.localeCompare(sb, undefined, { numeric: true });
+}
+
+/** Drop non-scholastic exam mappings from scholastic marks entry (grades go in Non-Scholastic Marks). */
+function filterOutNonScholasticExamSubjects(
+  subjects: ExamSubject[],
+  mappingRows: Record<string, unknown>[]
+): ExamSubject[] {
+  if (!mappingRows.length) return subjects;
+  const catById = new Map<string, string>();
+  for (const sm of mappingRows) {
+    const sub = sm.subject as
+      | { id?: string; category?: string | null }
+      | Array<{ id?: string; category?: string | null }>
+      | undefined;
+    const s = Array.isArray(sub) ? sub[0] : sub;
+    if (s?.id) catById.set(String(s.id), String(s.category ?? '').toLowerCase());
+  }
+  if (catById.size === 0) return subjects;
+  return subjects.filter((es) => catById.get(es.subject_id) !== 'non_scholastic');
+}
 
 export default function MarksEntryPage() {
   const searchParams = useSearchParams();
@@ -345,9 +374,12 @@ export default function MarksEntryPage() {
         return;
       }
 
-      setStudents(studentsResult.data);
+      const studentList = [...studentsResult.data] as Student[];
+      studentList.sort((x, y) => compareRollNumbers(x.roll_number, y.roll_number));
+      setStudents(studentList);
 
       let examSubjects: ExamSubject[] = [];
+      let categorySourceRows: Record<string, unknown>[] = [];
 
       if (mode === 'class_teacher') {
         const mapParams = new URLSearchParams({
@@ -359,7 +391,8 @@ export default function MarksEntryPage() {
         );
         const classMapJson = await classMapRes.json();
         if (classMapRes.ok && Array.isArray(classMapJson.data) && classMapJson.data.length > 0) {
-          examSubjects = mapRowsToExamSubjects(classMapJson.data as Record<string, unknown>[]);
+          categorySourceRows = classMapJson.data as Record<string, unknown>[];
+          examSubjects = mapRowsToExamSubjects(categorySourceRows);
         }
         if (examSubjects.length === 0) {
           const detailRes = await fetch(
@@ -374,6 +407,7 @@ export default function MarksEntryPage() {
               return String(smClassId) === String(classId);
             });
             const pool = forThisClass.length > 0 ? forThisClass : raw;
+            categorySourceRows = pool;
             examSubjects = mapRowsToExamSubjects(pool);
           }
         }
@@ -387,8 +421,10 @@ export default function MarksEntryPage() {
           const mappingsToUse = dedupeExamSubjectMappings(
             (forThisClass.length > 0 ? forThisClass : allMappings) as Record<string, unknown>[]
           );
-          examSubjects = mapRowsToExamSubjects(mappingsToUse as Record<string, unknown>[]);
+          categorySourceRows = mappingsToUse as Record<string, unknown>[];
+          examSubjects = mapRowsToExamSubjects(categorySourceRows);
         }
+        examSubjects = filterOutNonScholasticExamSubjects(examSubjects, categorySourceRows);
       } else {
         const allMappings = exam.subject_mappings || [];
         const forThisClass = allMappings.filter((sm: Record<string, unknown>) => {
@@ -407,7 +443,10 @@ export default function MarksEntryPage() {
 
       setSubjects(examSubjects);
       setSelectedSubjectId(examSubjects.length === 1 ? examSubjects[0].subject_id : '');
-      await loadExistingMarks(exam.id, studentsResult.data.map((s: Student) => s.id));
+      await loadExistingMarks(
+        exam.id,
+        studentList.map((s: Student) => s.id)
+      );
     } catch (error) {
       console.error('Error fetching class data:', error);
       alert('Failed to load class data');
@@ -639,15 +678,33 @@ export default function MarksEntryPage() {
     }
   };
 
-  const filteredStudents = students.filter(student => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      student.student_name.toLowerCase().includes(query) ||
-      student.admission_no.toLowerCase().includes(query) ||
-      (student.roll_number || '').toLowerCase().includes(query)
-    );
-  });
+  const filteredStudents = useMemo(() => {
+    const q = students.filter((student) => {
+      if (!searchQuery) return true;
+      const query = searchQuery.toLowerCase();
+      return (
+        student.student_name.toLowerCase().includes(query) ||
+        student.admission_no.toLowerCase().includes(query) ||
+        (student.roll_number || '').toLowerCase().includes(query)
+      );
+    });
+    return [...q].sort((a, b) => compareRollNumbers(a.roll_number, b.roll_number));
+  }, [students, searchQuery]);
+
+  const backToClassSelection = () => {
+    if (!selectedExam) return;
+    setSelectedClass('');
+    setSelectedClassKey('');
+    setAccessMode(null);
+    setStudents([]);
+    setSubjects([]);
+    setStudentMarks([]);
+    setColumnLastEditor({});
+    setSelectedSubjectId('');
+    setMarksLastUpdatedBySubject({});
+    setSearchQuery('');
+    void handleExamSelect(selectedExam);
+  };
 
   if (loading) {
     return (
@@ -806,9 +863,19 @@ export default function MarksEntryPage() {
                       <span className="text-gray-600 dark:text-gray-400">Access:</span>
                       <span className="ml-2 font-medium text-emerald-800 dark:text-emerald-200">
                         {accessMode === 'class_teacher'
-                          ? 'Class teacher — all subjects for this section'
+                          ? 'Class teacher — scholastic subjects only (non-scholastic grades below)'
                           : 'Subject teacher — your assigned subjects only'}
                       </span>
+                    </div>
+                  )}
+                  {accessMode === 'class_teacher' && (
+                    <div className="sm:col-span-2 lg:col-span-4 pt-1 border-t border-emerald-200/60 dark:border-emerald-800/50">
+                      <Link
+                        href="/teacher/dashboard/non-scholastic-marks"
+                        className="text-sm font-medium text-emerald-800 dark:text-emerald-200 hover:underline"
+                      >
+                        Non-Scholastic Marks → enter grades for non-scholastic subjects (report card Part II)
+                      </Link>
                     </div>
                   )}
                   {selectedSubjectId ? (
@@ -907,7 +974,7 @@ export default function MarksEntryPage() {
                     : null;
                 return (
                   <>
-                    <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="mb-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                       <div>
                         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                           Students ({students.length}) — {subject.subject_name}
@@ -916,14 +983,28 @@ export default function MarksEntryPage() {
                           Max marks: {subject.max_marks}
                           {lastLine ? ` · ${lastLine}` : ''}
                         </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Sorted by roll number. Use Change class to pick another section without leaving this page.
+                        </p>
                       </div>
-                      <Input
-                        type="text"
-                        placeholder="Search students..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full sm:w-64"
-                      />
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={backToClassSelection}
+                          className="border-emerald-600 text-emerald-800 dark:text-emerald-200 dark:border-emerald-500 shrink-0"
+                        >
+                          <ArrowLeft size={16} className="mr-2" />
+                          Change class / exam
+                        </Button>
+                        <Input
+                          type="text"
+                          placeholder="Search students..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full sm:w-64"
+                        />
+                      </div>
                     </div>
 
                     <div className="overflow-x-auto">
@@ -931,7 +1012,10 @@ export default function MarksEntryPage() {
                         <thead>
                           <tr className="border-b border-gray-200 dark:border-gray-700">
                             <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">
-                              Student ID
+                              Admission No.
+                            </th>
+                            <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">
+                              Roll No.
                             </th>
                             <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">
                               Student Name
@@ -958,8 +1042,11 @@ export default function MarksEntryPage() {
                                 key={student.id}
                                 className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                               >
-                                <td className="py-3 px-4 text-gray-700 dark:text-gray-300">
+                                <td className="py-3 px-4 text-gray-700 dark:text-gray-300 font-mono text-sm">
                                   {student.admission_no}
+                                </td>
+                                <td className="py-3 px-4 text-gray-700 dark:text-gray-300 font-mono text-sm">
+                                  {student.roll_number?.toString().trim() || '—'}
                                 </td>
                                 <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">
                                   {student.student_name}
