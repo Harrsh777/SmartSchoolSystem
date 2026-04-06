@@ -185,6 +185,66 @@ export default function StudentWiseFeePage({
     setShowPaymentModal(false);
   };
 
+  const handleSavePaymentAndPrint = async () => {
+    // TODO: Replace with real payment API response based receipt
+    console.log('Saving payment (print):', paymentForm, selectedStudent);
+    if (!selectedStudent) return;
+
+    const amount = Number(paymentForm.amount || 0);
+    const receiptNo = paymentForm.receipt_no?.trim() || `TMP-${Date.now()}`;
+    const paidOn = paymentForm.payment_date || new Date().toISOString().slice(0, 10);
+
+    const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Fee Receipt ${receiptNo}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+      .card { max-width: 650px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; }
+      .muted { color: #6b7280; font-size: 12px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+      td { padding: 8px 0; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+      td:first-child { width: 42%; color: #6b7280; }
+      .amt { font-weight: 700; font-size: 20px; }
+      @media print { .no-print { display: none; } body { margin: 0; } .card { border: 0; } }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div>
+          <h2 style="margin:0 0 4px 0;">Fee Receipt</h2>
+          <div class="muted">${schoolCode.toUpperCase()}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="muted">Receipt No</div>
+          <div><strong>${receiptNo}</strong></div>
+        </div>
+      </div>
+      <table>
+        <tr><td>Student</td><td><strong>${selectedStudent.student_name}</strong></td></tr>
+        <tr><td>Admission No.</td><td>${selectedStudent.admission_no}</td></tr>
+        <tr><td>Class / Section</td><td>${selectedStudent.class}-${selectedStudent.section}</td></tr>
+        <tr><td>Payment Date</td><td>${paidOn}</td></tr>
+        <tr><td>Payment Mode</td><td>${paymentForm.payment_mode}</td></tr>
+        <tr><td>Amount Paid</td><td class="amt">₹${Number.isFinite(amount) ? amount.toLocaleString('en-IN') : '0'}</td></tr>
+        <tr><td>Remarks</td><td>${paymentForm.remarks || '-'}</td></tr>
+      </table>
+      <div style="margin-top:14px;" class="muted">Generated from Student-wise Fee payment screen.</div>
+      <button class="no-print" style="margin-top:14px;padding:8px 12px;cursor:pointer;" onclick="window.print()">Print</button>
+    </div>
+  </body>
+</html>`;
+
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+    }
+    setShowPaymentModal(false);
+  };
+
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
       {/* Header */}
@@ -606,6 +666,13 @@ export default function StudentWiseFeePage({
                 >
                   <CheckCircle2 size={18} className="mr-2" />
                   Mark Paid
+                </Button>
+                <Button
+                  onClick={handleSavePaymentAndPrint}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 text-white"
+                >
+                  <Receipt size={18} className="mr-2" />
+                  Mark Paid & Print
                 </Button>
               </div>
             </motion.div>

@@ -6,6 +6,7 @@ import {
   academicYearMatchesStructure,
   studentMatchesCollectPaymentFilters,
 } from '@/lib/fees/fee-structure-class-match';
+import { getTransportFeeMode, includeTransportStudentFeeRowForMainFeesUi } from '@/lib/fees/transport-fee-mode';
 
 function comparePendingStudentsByRoll(
   a: { roll_number: string; student_name: string },
@@ -165,6 +166,8 @@ export async function GET(request: NextRequest) {
       classLinesBySectionKey,
     });
 
+    const transportMode = await getTransportFeeMode(supabase, normalizedSchoolCode);
+
     const studentMap = new Map<
       string,
       {
@@ -196,6 +199,16 @@ export async function GET(request: NextRequest) {
 
       if (!student?.id) return;
       if (student.is_rte === true) return;
+
+      if (
+        !includeTransportStudentFeeRowForMainFeesUi(
+          transportMode,
+          String((fee as { fee_source?: string }).fee_source ?? ''),
+          Number((fee as { total_due?: number }).total_due || 0)
+        )
+      ) {
+        return;
+      }
 
       const totalDue = Number(fee.total_due || 0);
       if (totalDue <= DUE_EPS) return;

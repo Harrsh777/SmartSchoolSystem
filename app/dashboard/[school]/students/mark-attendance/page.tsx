@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Calendar, CheckCircle, AlertCircle, Save, Users, Filter, Edit3 } from 'lucide-react';
+import { Calendar, CheckCircle, AlertCircle, Save, Users, Filter, Edit3, ClipboardList } from 'lucide-react';
+import ManualAttendanceModal from '@/components/attendance/ManualAttendanceModal';
 
 type AttendanceStatus = 'present' | 'absent' | 'leave';
 type AttendanceState = 'NOT_MARKED' | 'IN_PROGRESS' | 'SAVED';
@@ -50,6 +51,10 @@ export default function MarkAttendancePage({
   const [currentAcademicYear, setCurrentAcademicYear] = useState<string>('');
   const [attendanceState, setAttendanceState] = useState<AttendanceState>('NOT_MARKED');
   const [lastMarkedInfo, setLastMarkedInfo] = useState<{ at: string; by: string } | null>(null);
+  const [manualModalOpen, setManualModalOpen] = useState(false);
+  /** School admin login has no `staff` in session; API still needs a staff UUID for marked_by / audit. */
+  const [fallbackStaffIdForManual, setFallbackStaffIdForManual] = useState<string | null>(null);
+  const [fallbackStaffIdLoading, setFallbackStaffIdLoading] = useState(false);
 
   useEffect(() => {
     const loadAcademicYear = async () => {
@@ -74,6 +79,52 @@ export default function MarkAttendancePage({
     fetchClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
+
+  useEffect(() => {
+    setFallbackStaffIdForManual(null);
+  }, [schoolCode]);
+
+  useEffect(() => {
+    if (!manualModalOpen || !isAdmin || currentStaffId) {
+      return;
+    }
+    let cancelled = false;
+    setFallbackStaffIdLoading(true);
+    (async () => {
+      try {
+        const response = await fetch(`/api/staff?school_code=${schoolCode}`);
+        const result = await response.json();
+        if (cancelled) return;
+        if (response.ok && result.data && Array.isArray(result.data) && result.data.length > 0) {
+          const privileged = result.data.find((s: { role?: string; designation?: string; id: string }) => {
+            const role = (s.role || '').toLowerCase();
+            const des = (s.designation || '').toLowerCase();
+            return (
+              role.includes('admin') ||
+              role.includes('principal') ||
+              des.includes('admin') ||
+              des.includes('principal')
+            );
+          });
+          const pick = privileged || result.data[0];
+          if (pick?.id) {
+            setFallbackStaffIdForManual(pick.id);
+          } else {
+            setFallbackStaffIdForManual(null);
+          }
+        } else {
+          setFallbackStaffIdForManual(null);
+        }
+      } catch {
+        if (!cancelled) setFallbackStaffIdForManual(null);
+      } finally {
+        if (!cancelled) setFallbackStaffIdLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [manualModalOpen, isAdmin, currentStaffId, schoolCode]);
 
   useEffect(() => {
     if (selectedClass && selectedSection && selectedDate) {
@@ -185,10 +236,12 @@ export default function MarkAttendancePage({
             return sy === currentAcademicYear || sy === '';
           });
         }
-        const sortedStudents = list.sort((a: Student, b: Student) => {
-          const aRoll = parseInt(a.roll_number || '999');
-          const bRoll = parseInt(b.roll_number || '999');
-          return aRoll - bRoll;
+        const sortedStudents = [...list].sort((a: Student, b: Student) => {
+          const ra = String(a.roll_number ?? '').trim();
+          const rb = String(b.roll_number ?? '').trim();
+          const byRoll = ra.localeCompare(rb, undefined, { numeric: true });
+          if (byRoll !== 0) return byRoll;
+          return (a.student_name || '').localeCompare(b.student_name || '');
         });
         setStudents(sortedStudents);
         // Attendance is set by fetchExistingAttendance (same effect); do not default to present
@@ -403,7 +456,7 @@ export default function MarkAttendancePage({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+        className="flex flex-wrap items-start justify-between gap-4"
       >
         <div>
           <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
@@ -414,7 +467,30 @@ export default function MarkAttendancePage({
             {isAdmin ? 'Mark attendance for any class' : 'Mark attendance for your assigned classes'}
           </p>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0 border-orange-500 text-orange-700 hover:bg-orange-50"
+          onClick={() => setManualModalOpen(true)}
+        >
+          <ClipboardList size={18} className="mr-2" />
+          Manual editing
+        </Button>
       </motion.div>
+
+      <ManualAttendanceModal
+        open={manualModalOpen}
+        onClose={() => setManualModalOpen(false)}
+        schoolCode={schoolCode}
+        staffId={currentStaffId ?? fallbackStaffIdForManual}
+        staffIdResolving={isAdmin && !currentStaffId && fallbackStaffIdLoading}
+        classes={classesForCurrentYear.map((c) => ({
+          id: c.id,
+          class: c.class,
+          section: c.section ?? '',
+          academic_year: c.academic_year,
+        }))}
+      />
 
       {/* Filters */}
       <Card>
@@ -600,14 +676,18 @@ export default function MarkAttendancePage({
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Admission No.</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Student Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Roll no.</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Admission no.</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Student name</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Status</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {students.map((student) => (
                   <tr key={student.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {student.roll_number ?? '—'}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
                       {student.admission_no}
                     </td>

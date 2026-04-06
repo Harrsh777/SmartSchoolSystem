@@ -129,7 +129,15 @@ export default function ReportCardGeneratePage({
 
         if (examsRes.ok && examsJson.data) setExams(examsJson.data);
         if (classesRes.ok && classesJson.data) setClasses(classesJson.data);
-        if (templatesRes.ok && templatesJson.data) setTemplates(templatesJson.data);
+        if (templatesRes.ok && Array.isArray(templatesJson.data)) {
+          setTemplates(
+            templatesJson.data.map((t: { id: unknown; name?: unknown; description?: unknown }) => ({
+              id: String(t.id ?? ''),
+              name: String(t.name ?? 'Template'),
+              description: t.description != null ? String(t.description) : undefined,
+            }))
+          );
+        }
         if (structuresRes.ok && structuresJson.data) setStructures(structuresJson.data);
       } catch {
         // ignore
@@ -529,21 +537,29 @@ export default function ReportCardGeneratePage({
 
         {step === 3 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4 pb-0">
-            <h2 className="text-xl font-bold text-gray-900">Step 3: Select Template</h2>
-            <p className="text-sm text-gray-600">Choose a report card template. Customize in Report Card → Customize Template.</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className={`block p-4 border-2 rounded-lg cursor-pointer ${selectedTemplateId === '' ? 'border-[#1e3a8a] bg-blue-50' : 'border-gray-200'}`}>
-                <input type="radio" name="template" checked={selectedTemplateId === ''} onChange={() => setSelectedTemplateId('')} className="sr-only" />
-                <div className="font-semibold">Default (School Template)</div>
-                <div className="text-sm text-gray-500">Uses school&apos;s configured template or Standard CBSE</div>
-              </label>
-              {templates.map((t) => (
-                <label key={t.id} className={`block p-4 border-2 rounded-lg cursor-pointer ${selectedTemplateId === t.id ? 'border-[#1e3a8a] bg-blue-50' : 'border-gray-200'}`}>
-                  <input type="radio" name="template" checked={selectedTemplateId === t.id} onChange={() => setSelectedTemplateId(t.id)} className="sr-only" />
-                  <div className="font-semibold">{t.name}</div>
-                  <div className="text-sm text-gray-500">{t.description || ''}</div>
-                </label>
-              ))}
+            <h2 className="text-xl font-bold text-gray-900">Step 3: Template</h2>
+            <p className="text-sm text-gray-600">
+              Choose which layout to use. Customize defaults under Report Card → Customize Template.
+            </p>
+            <div className="max-w-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Report card template</label>
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
+              >
+                <option value="">Default (latest school template)</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              {templates.length === 0 && (
+                <p className="mt-2 text-xs text-amber-700">
+                  No named templates in the list — generation will still use your school&apos;s default template from the database.
+                </p>
+              )}
             </div>
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setStep(2)}>Back</Button>

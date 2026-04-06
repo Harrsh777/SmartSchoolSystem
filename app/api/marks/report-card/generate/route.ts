@@ -54,20 +54,27 @@ export async function POST(request: NextRequest) {
       console.log(`Fetching template config for template_id: ${effectiveTemplateId}`);
       const { data: t, error: templateError } = await supabase
         .from('report_card_templates')
-        .select('id, name, config')
+        .select('id, name, config, school_code')
         .eq('id', effectiveTemplateId)
         .single();
       
       if (templateError) {
         console.error('Error fetching template:', templateError);
       } else if (t) {
-        console.log(`Found template: ${t.name}`);
-        console.log('Template config:', JSON.stringify(t.config));
-        if (t.config && typeof t.config === 'object' && Object.keys(t.config).length > 0) {
-          templateConfig = t.config as ReportCardTemplateConfig;
-          console.log('Template config applied successfully');
+        const tplSchool = (t as { school_code?: string | null }).school_code;
+        const allowedForSchool =
+          tplSchool == null || String(tplSchool).trim() === schoolCodeNorm;
+        if (!allowedForSchool) {
+          console.warn('Template school_code does not match request; ignoring template config');
         } else {
-          console.log('Template config is empty, using default styling');
+          console.log(`Found template: ${t.name}`);
+          console.log('Template config:', JSON.stringify(t.config));
+          if (t.config && typeof t.config === 'object' && Object.keys(t.config).length > 0) {
+            templateConfig = t.config as ReportCardTemplateConfig;
+            console.log('Template config applied successfully');
+          } else {
+            console.log('Template config is empty, using default styling');
+          }
         }
       }
     } else {

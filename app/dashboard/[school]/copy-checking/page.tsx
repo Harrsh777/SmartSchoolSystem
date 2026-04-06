@@ -515,6 +515,20 @@ export default function CopyCheckingPage({
     }));
   };
 
+  const handleBulkStatusChange = (status: CopyCheckingStatus) => {
+    if (students.length === 0) return;
+    setStudentRecords((prev) => {
+      const next = { ...prev };
+      students.forEach((student) => {
+        next[student.id] = {
+          status,
+          remarks: prev[student.id]?.remarks || '',
+        };
+      });
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     if (!selectedClassId || !selectedSubjectId || !selectedDate || !selectedAcademicYear) {
       setErrorMessage('Please select class, subject, and date (academic year is set automatically).');
@@ -941,6 +955,24 @@ export default function CopyCheckingPage({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleBulkStatusChange('not_checked')}
+              disabled={students.length === 0}
+              className="border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Uncheck All
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleBulkStatusChange('checked')}
+              disabled={students.length === 0}
+              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Check All
+            </Button>
             <Button
               variant="outline"
               onClick={() => {

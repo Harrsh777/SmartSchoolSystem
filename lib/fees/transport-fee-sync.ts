@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getTransportFeeMode, isSeparateTransportMode } from '@/lib/fees/transport-fee-mode';
 
 const TRANSPORT_CLASS = '__TRANSPORT__';
 const TRANSPORT_NAME = 'Transport (system)';
@@ -163,6 +164,25 @@ export async function deleteStudentTransportFeeRows(
   }
 }
 
+/** Remove only never-paid transport installments from main fees (SEPARATE mode). Keeps legacy partial/paid rows. */
+export async function deleteUnpaidMainTransportFeeRows(
+  supabase: SupabaseClient,
+  schoolCode: string,
+  studentId: string
+): Promise<void> {
+  const code = schoolCode.toUpperCase().trim();
+  const { error } = await supabase
+    .from('student_fees')
+    .delete()
+    .eq('school_code', code)
+    .eq('student_id', studentId)
+    .eq('fee_source', 'transport')
+    .lte('paid_amount', 0.009);
+  if (error && !String(error.message || '').includes('fee_source')) {
+    console.warn('[transport-fee-sync] delete unpaid transport rows:', error.message);
+  }
+}
+
 /**
  * Upsert the single transport student_fees row from students.* transport fields + stop names.
  */
@@ -172,6 +192,12 @@ export async function syncStudentTransportFeeRow(
   studentId: string
 ): Promise<{ ok: boolean; error?: string; student_fee_id?: string }> {
   const code = schoolCode.toUpperCase().trim();
+
+  const mode = await getTransportFeeMode(supabase, code);
+  if (isSeparateTransportMode(mode)) {
+    await deleteUnpaidMainTransportFeeRows(supabase, code, studentId);
+    return { ok: true };
+  }
 
   const { data: st, error: stErr } = await supabase
     .from('students')

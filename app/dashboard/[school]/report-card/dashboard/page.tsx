@@ -7,6 +7,9 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { ArrowLeft, FileText, Eye, Download, Printer, Plus, Search, Loader2, Trash2, Send, CheckSquare, Square } from 'lucide-react';
 
+/** Section dropdown value for rows where `section` is blank in DB. */
+const SECTION_NONE = '__none__';
+
 interface ReportCardItem {
   id: string;
   school_code: string;
@@ -78,33 +81,33 @@ export default function ReportCardDashboardPage({
     setSectionFilter('');
   }, [classFilter]);
 
-  const canShowResults = Boolean(classFilter && sectionFilter);
-
   const q = searchQuery.trim().toLowerCase();
-  const filteredCards = canShowResults
-    ? reportCards.filter((c) => {
-        if (classFilter && (c.class_name || '') !== classFilter) return false;
-        if (sectionFilter && (c.section || '') !== sectionFilter) return false;
-        if (!q) return true;
-        return (
-          (c.student_name || '').toLowerCase().includes(q) ||
-          (c.admission_no || '').toLowerCase().includes(q) ||
-          (c.roll_number || '').toLowerCase().includes(q)
-        );
-      })
-    : [];
+
+  const filteredCards = reportCards.filter((c) => {
+    if (classFilter && (c.class_name || '') !== classFilter) return false;
+    if (classFilter && sectionFilter) {
+      const sec = String(c.section ?? '').trim();
+      if (sectionFilter === SECTION_NONE) {
+        if (sec !== '') return false;
+      } else if (sec !== sectionFilter) return false;
+    }
+    if (!q) return true;
+    return (
+      (c.student_name || '').toLowerCase().includes(q) ||
+      (c.admission_no || '').toLowerCase().includes(q) ||
+      (c.roll_number || '').toLowerCase().includes(q)
+    );
+  });
 
   const classes = [...new Set(reportCards.map((c) => c.class_name).filter(Boolean))].sort();
-  const sections = classFilter
-    ? [
-        ...new Set(
-          reportCards
-            .filter((c) => (c.class_name || '') === classFilter)
-            .map((c) => c.section)
-            .filter(Boolean)
-        ),
-      ].sort()
+
+  const cardsForClass = classFilter
+    ? reportCards.filter((c) => (c.class_name || '') === classFilter)
     : [];
+  const hasBlankSection = cardsForClass.some((c) => !String(c.section ?? '').trim());
+  const nonEmptySections = [
+    ...new Set(cardsForClass.map((c) => String(c.section ?? '').trim()).filter(Boolean)),
+  ].sort();
 
   const handleView = (id: string) => {
     window.open(`/api/marks/report-card/${id}?_t=${Date.now()}`, '_blank', 'noopener,noreferrer');
@@ -250,8 +253,11 @@ export default function ReportCardDashboardPage({
               disabled={!classFilter}
               className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <option value="">{classFilter ? 'Select Section' : 'Select Class First'}</option>
-              {sections.map((s) => (
+              <option value="">{classFilter ? 'All sections' : 'Select Class First'}</option>
+              {classFilter && hasBlankSection ? (
+                <option value={SECTION_NONE}>(No section)</option>
+              ) : null}
+              {nonEmptySections.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -260,35 +266,16 @@ export default function ReportCardDashboardPage({
           </div>
         </div>
 
-        {!canShowResults && !loading ? (
-          <div className="py-12 text-center">
-            <FileText size={48} className="mx-auto text-gray-300" />
-            <p className="mt-4 text-gray-500 font-medium">Select Class and Section to view report cards</p>
-            <p className="text-sm text-gray-400 mt-1">Then you can search and manage the generated report cards.</p>
-            <Button
-              onClick={() => router.push(`/dashboard/${schoolCode}/report-card/generate`)}
-              className="mt-4 bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white"
-            >
-              <Plus size={18} className="mr-2" />
-              Generate Report Card
-            </Button>
-          </div>
-        ) : loading ? (
+        {loading ? (
           <div className="py-12 text-center">
             <Loader2 size={48} className="animate-spin mx-auto text-[#1e3a8a]" />
             <p className="mt-4 text-gray-500">Loading report cards...</p>
           </div>
-        ) : filteredCards.length === 0 ? (
+        ) : reportCards.length === 0 ? (
           <div className="py-12 text-center">
             <FileText size={48} className="mx-auto text-gray-300" />
-            <p className="mt-4 text-gray-500 font-medium">
-              No report cards found for selected Class and Section
-            </p>
-            <p className="text-sm text-gray-400 mt-1">
-              {reportCards.length > 0
-                ? 'Try generating report cards again or adjust your selection.'
-                : 'Generate report cards to see them here'}
-            </p>
+            <p className="mt-4 text-gray-500 font-medium">No report cards generated yet</p>
+            <p className="text-sm text-gray-400 mt-1">Generate report cards for a class and exam — they will appear here for this school.</p>
             <Button
               onClick={() => router.push(`/dashboard/${schoolCode}/report-card/generate`)}
               className="mt-4 bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white"
@@ -296,6 +283,14 @@ export default function ReportCardDashboardPage({
               <Plus size={18} className="mr-2" />
               Generate Report Card
             </Button>
+          </div>
+        ) : filteredCards.length === 0 ? (
+          <div className="py-12 text-center">
+            <FileText size={48} className="mx-auto text-gray-300" />
+            <p className="mt-4 text-gray-500 font-medium">No report cards match your filters</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Clear class/section filters or search — you have {reportCards.length} card(s) for this school.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -104,15 +104,24 @@ export async function POST(request: NextRequest) {
     // Upsert fee configuration
     const { data: existingConfig } = await supabase
       .from('fee_configuration')
-      .select('id')
+      .select('id, transport_fee_mode')
       .eq('school_code', school_code)
-      .single();
+      .maybeSingle();
 
-    const configData = {
+    const incomingMode = configuration?.transport_fee_mode as string | undefined;
+    const prevMode = (existingConfig as { transport_fee_mode?: string } | null)?.transport_fee_mode;
+    const modeChanged =
+      incomingMode != null &&
+      String(incomingMode).toUpperCase().trim() !== String(prevMode || 'MERGED').toUpperCase().trim();
+
+    const configData: Record<string, unknown> = {
       school_code,
       school_id: schoolData.id,
       ...configuration,
     };
+    if (modeChanged) {
+      configData.transport_fee_mode_changed_at = new Date().toISOString();
+    }
 
     let configResult;
     if (existingConfig) {

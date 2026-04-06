@@ -8,6 +8,7 @@ import {
   formatTransportFeeLabel,
   type TransportSnapshot,
 } from '@/lib/fees/transport-fee-sync';
+import { getTransportFeeMode, includeTransportStudentFeeRowForMainFeesUi } from '@/lib/fees/transport-fee-mode';
 
 /** Row after label pass: spread keeps DB/enrichment fields; TS needs this so fee_source etc. are not dropped. */
 type LabeledStudentFee = Record<string, unknown> & { installment_display_label: string };
@@ -144,7 +145,16 @@ export async function GET(
       feesToUse as never
     );
 
-    const labeled: LabeledStudentFee[] = (feesWithAdjustments as Array<Record<string, unknown>>).map(
+    const transportMode = await getTransportFeeMode(supabase, normalizedSchoolCode);
+    const feesForMainUi = (feesWithAdjustments as Array<Record<string, unknown>>).filter((fee) =>
+      includeTransportStudentFeeRowForMainFeesUi(
+        transportMode,
+        String(fee.fee_source ?? ''),
+        Number(fee.total_due ?? 0)
+      )
+    );
+
+    const labeled: LabeledStudentFee[] = feesForMainUi.map(
       (fee): LabeledStudentFee => {
         if (String(fee.fee_source || 'structure') === 'transport') {
           const snap = fee.transport_snapshot as TransportSnapshot | null | undefined;

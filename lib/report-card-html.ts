@@ -1,7 +1,3 @@
-/**
- * Generate HTML report card matching the reference design
- * All data fetched from DB - no hardcoded values
- */
 
 export interface ExamMarksData {
   exam_id: string;
@@ -29,6 +25,34 @@ export interface MultiExamSubjectMarks {
   overall_max_marks: number;
   overall_marks_obtained: number | null;
   overall_grade?: string;
+}
+
+/** e.g. Class 10-A (drops a leading "Grade-" from the class name; avoids "Class 10-10-A"). */
+export function formatReportClassLabel(classStr: string, section: string): string {
+  let c = String(classStr ?? '').trim();
+  c = c.replace(/^grade\s*-?\s*/i, '').trim();
+  const s = String(section ?? '').trim();
+  if (!c && !s) return '—';
+  const classNum = c.match(/^(\d+)/)?.[1];
+  if (classNum && s) {
+    const secNum = s.match(/^(\d+)/)?.[1];
+    if (secNum === classNum) {
+      return `Class ${s}`;
+    }
+  }
+  if (!s) return `Class ${c}`;
+  if (!c) return `Class ${s}`;
+  return `Class ${c}-${s}`;
+}
+
+/** Text beside a "Class" label — strips a leading "Class " so it does not read "Class: Class 10-A". */
+export function formatReportClassValueOnly(classStr: string, section: string, classDisplay?: string): string {
+  const full =
+    (classDisplay && String(classDisplay).trim()) ||
+    formatReportClassLabel(classStr, section);
+  const t = String(full ?? '').trim();
+  if (!t || t === '—') return '—';
+  return t.replace(/^class\s+/i, '').trim() || '—';
 }
 
 export interface ReportCardData {
@@ -59,6 +83,8 @@ export interface ReportCardData {
     date_of_birth?: string;
     roll_number?: string;
     photo_url?: string | null;
+    /** Full class line from `classes` row when resolved (e.g. "Grade-10 10-A"); else derived from class+section. */
+    class_display?: string;
   };
   exam: {
     exam_name: string;
@@ -113,7 +139,33 @@ export interface ReportCardTemplateConfig {
     show_grading_scale?: boolean;
     [key: string]: boolean | undefined;
   };
-  marks_table?: { header_bg_color?: string; show_sno?: boolean; show_percentage?: boolean; show_grade?: boolean; show_max_marks?: boolean; zebra_rows?: boolean; round_percentage?: boolean };
+  marks_table?: {
+    header_bg_color?: string;
+    show_sno?: boolean;
+    show_percentage?: boolean;
+    show_grade?: boolean;
+    show_max_marks?: boolean;
+    zebra_rows?: boolean;
+    round_percentage?: boolean;
+  };
+  /** Per-field visibility in the student profile block */
+  profile_fields?: {
+    show_dob?: boolean;
+    show_roll?: boolean;
+    show_contact?: boolean;
+    show_father?: boolean;
+    show_mother?: boolean;
+    show_address?: boolean;
+    show_admission?: boolean;
+  };
+  /** Footer / summary extras */
+  footer_fields?: {
+    show_promoted_to?: boolean;
+    show_rank?: boolean;
+    show_result_status?: boolean;
+    show_overall_grade?: boolean;
+    show_class_in_summary?: boolean;
+  };
   student_profile_fields?: string[];
   layout?: { header_layout?: string; orientation?: string; table_density?: string };
   class_term_info?: { show_exam_name?: boolean; show_academic_session?: boolean; show_result_date?: boolean };
@@ -121,6 +173,75 @@ export interface ReportCardTemplateConfig {
   result_summary?: { show_total?: boolean; show_percentage?: boolean; show_grade?: boolean; show_rank?: boolean; show_pass_fail?: boolean };
   signatures?: { show_class_teacher?: boolean; show_principal?: boolean };
   output?: { watermark?: string };
+}
+
+/** Default JSON config when a school has no report card template row yet (customize page + API seed). */
+export function getDefaultReportCardTemplateConfig(): ReportCardTemplateConfig {
+  return {
+    logos: { left_size: 100, right_size: 100, show_right_logo: true },
+    header: {
+      school_name_color: '#8B0000',
+      font_size: 18,
+      sub_title: 'SENIOR SECONDARY SCHOOL',
+    },
+    labels: {
+      father_name: "Father's Name",
+      mother_name: "Mother's Name",
+      attendance: 'Attendance',
+      report_title: 'REPORT CARD',
+      section_student_profile: 'Student Profile',
+      section_academic_performance: 'Academic Performance',
+      section_scholastic: 'Part I: Scholastic Areas',
+      section_co_scholastic: 'Part II: Co-Scholastic Areas',
+      section_remarks: 'Remarks',
+      section_grading_scale: 'Grading Scale',
+      section_instructions: 'Important Instructions',
+    },
+    branding: {
+      primary_color: '#1e3a8a',
+      accent_color: '#15803d',
+      font_family: 'Arial, sans-serif',
+    },
+    marks_table: { header_bg_color: '#e6f0e6', show_grade: true },
+    sections: {
+      show_student_profile: true,
+      show_marks_table: true,
+      show_attendance: true,
+      show_co_scholastic: true,
+      show_remarks: true,
+      show_instructions: true,
+      show_grading_scale: true,
+    },
+    profile_fields: {
+      show_admission: true,
+      show_roll: true,
+      show_father: true,
+      show_mother: true,
+      show_contact: true,
+      show_dob: true,
+      show_address: true,
+    },
+    footer_fields: {
+      show_promoted_to: true,
+      show_rank: true,
+      show_result_status: true,
+      show_class_in_summary: true,
+      show_overall_grade: false,
+    },
+    signatures: { show_class_teacher: true, show_principal: true },
+    watermark: { enabled: true, size: 500, opacity: 0.08 },
+    content: {
+      school_email: '',
+      school_phone: '',
+      school_address: '',
+      affiliation: '',
+      academic_year: '',
+      exam_name: '',
+      promoted_to: '',
+      remarks: '',
+      instructions: '',
+    },
+  } as unknown as ReportCardTemplateConfig;
 }
 
 export function generateReportCardHTML(data: ReportCardData, templateConfig?: ReportCardTemplateConfig): string {
@@ -160,7 +281,7 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
   const sectionAcademicPerformance = (labels.section_academic_performance as string) ?? 'Academic Performance';
   const sectionScholastic = (labels.section_scholastic as string) ?? 'Part I: Scholastic Areas';
   const sectionCoScholastic = (labels.section_co_scholastic as string) ?? 'Part II: Co-Scholastic Areas';
-  const sectionRemarks = (labels.section_remarks as string) ?? 'Class Teacher Remarks';
+  const sectionRemarks = (labels.section_remarks as string) ?? 'Remarks';
   const sectionGradingScale = (labels.section_grading_scale as string) ?? 'Grading Scale';
   const sectionInstructions = (labels.section_instructions as string) ?? 'Important Instructions';
 
@@ -822,11 +943,77 @@ function getGradeFromMarks(
   return scale?.grade ?? '-';
 }
 
+/** Demo payload so template preview uses the same HTML path as PDF/generate. */
+export function buildDemoReportCardData(): ReportCardData {
+  return {
+    school: {
+      school_name: 'Demo Public School',
+      school_code: 'DEMO',
+      affiliation: '1234567',
+      school_email: 'info@demo.edu',
+      school_phone: '9876543210',
+      school_address: '123 Education Street, New Delhi - 110001',
+      logo_url: null,
+      right_logo_url: null,
+      principal_name: 'Principal',
+      sub_title: 'SENIOR SECONDARY SCHOOL',
+    },
+    student: {
+      student_name: 'John Doe',
+      admission_no: 'ADM2024001',
+      class: '10',
+      section: 'A',
+      class_display: 'Class 10-A',
+      father_name: 'Robert Doe',
+      mother_name: 'Jane Doe',
+      address: 'Sample Address',
+      student_contact: '9876543210',
+      date_of_birth: '1 Jan 2010',
+      roll_number: '15',
+      photo_url: null,
+    },
+    exam: {
+      exam_name: 'Final Examination',
+      academic_year: '2024-25',
+      result_date: '15 Mar 2025',
+    },
+    marks: [
+      { subject: { name: 'English' }, max_marks: 100, marks_obtained: 85, grade: 'A' },
+      { subject: { name: 'Mathematics' }, max_marks: 100, marks_obtained: 92, grade: 'A+' },
+      { subject: { name: 'Science' }, max_marks: 100, marks_obtained: 78, grade: 'B+' },
+      { subject: { name: 'Social Studies' }, max_marks: 100, marks_obtained: 88, grade: 'A' },
+      { subject: { name: 'Hindi' }, max_marks: 100, marks_obtained: 75, grade: 'B+' },
+    ],
+    summary: {
+      total_marks: 418,
+      total_max_marks: 500,
+      percentage: 83.6,
+      grade: 'A',
+    },
+    attendance: { present: 180, total: 200, percentage: 90 },
+    coScholastic: [{ name: 'Art and Craft', term1_grade: 'A', term2_grade: 'A' }],
+    gradeScales: [
+      { grade: 'A1', min_percentage: 91, max_percentage: 100 },
+      { grade: 'A2', min_percentage: 81, max_percentage: 90 },
+      { grade: 'B1', min_percentage: 71, max_percentage: 80 },
+      { grade: 'B2', min_percentage: 61, max_percentage: 70 },
+      { grade: 'C1', min_percentage: 51, max_percentage: 60 },
+      { grade: 'C2', min_percentage: 41, max_percentage: 50 },
+      { grade: 'D', min_percentage: 33, max_percentage: 40 },
+      { grade: 'E', min_percentage: 0, max_percentage: 32 },
+    ],
+    remarks: undefined,
+    promoted_to: '',
+    rank: '—',
+    result: 'Pass',
+  };
+}
+
 function generateLandscapeReportCardHTML(
   data: ReportCardData,
   templateConfig?: ReportCardTemplateConfig
 ): string {
-  const { school, student, } = data;
+  const { school, student } = data;
   const cfg = templateConfig || {};
   const logos = (cfg.logos as Record<string, unknown>) || {};
   const header = (cfg.header as Record<string, unknown>) || {};
@@ -834,7 +1021,12 @@ function generateLandscapeReportCardHTML(
   const labels = (cfg.labels as Record<string, unknown>) || {};
   const branding = (cfg.branding as Record<string, unknown>) || {};
   const marksTable = (cfg.marks_table as Record<string, unknown>) || {};
+  const profileFields = (cfg.profile_fields as Record<string, unknown>) || {};
+  const footerFields = (cfg.footer_fields as Record<string, unknown>) || {};
   const content = (cfg as Record<string, unknown>).content as Record<string, unknown> || {};
+  const signaturesCfg = (cfg.signatures as Record<string, unknown>) || {};
+  const showClassTeacherSig = signaturesCfg.show_class_teacher !== false;
+  const showPrincipalSig = signaturesCfg.show_principal !== false;
 
   const leftLogoSize = (logos.left_size as number) ?? 100;
   const rightLogoSize = (logos.right_size as number) ?? 100;
@@ -848,13 +1040,13 @@ function generateLandscapeReportCardHTML(
   const reportTitle = (labels.report_title as string) ?? 'REPORT CARD';
 
   const primaryColor = (branding.primary_color as string) ?? '#1e3a8a';
+  const accentColor = (branding.accent_color as string) ?? '#15803d';
   const fontFamily = (branding.font_family as string) ?? 'Arial, sans-serif';
   // Section titles
   const sectionStudentProfile = (labels.section_student_profile as string) ?? 'Student Profile';
   const sectionAcademicPerformance = (labels.section_academic_performance as string) ?? 'Academic Performance';
   const sectionScholastic = (labels.section_scholastic as string) ?? 'Part I: Scholastic Areas';
   const sectionCoScholastic = (labels.section_co_scholastic as string) ?? 'Part II: Co-Scholastic Areas';
-  const sectionRemarks = (labels.section_remarks as string) ?? 'Class Teacher Remarks';
   const sectionInstructions = (labels.section_instructions as string) ?? 'Important Instructions';
   const sectionGradingScale = (labels.section_grading_scale as string) ?? 'Grading Scale';
 
@@ -874,12 +1066,36 @@ function generateLandscapeReportCardHTML(
   const affiliation = (content.affiliation as string) ?? data.school.affiliation ?? '';
   const academicYear = (content.academic_year as string) ?? data.exam.academic_year ?? 'N/A';
   const examName = (content.exam_name as string) ?? data.exam.exam_name ?? 'Examination';
-  const promotedTo = (content.promoted_to as string) ?? data.promoted_to ?? 'Class 11';
+  const promotedTo = String((content.promoted_to as string) ?? data.promoted_to ?? '').trim();
   const instructionsText =
     (content.instructions as string) ??
     data.school.instructions ??
     'Minimum Passing Marks in Each Subject is 33%.';
-  const customRemarks = (content.remarks as string) ?? data.remarks ?? '';
+  const preprintedRemarks = String((content.remarks as string) ?? '').trim();
+
+  const showPf = (k: string) => (profileFields as Record<string, boolean>)[k] !== false;
+  const showAdmission = showPf('show_admission');
+  const showRoll = showPf('show_roll');
+  const showFather = showPf('show_father');
+  const showMother = showPf('show_mother');
+  const showContact = showPf('show_contact');
+  const showDob = showPf('show_dob');
+  const showAddress = showPf('show_address');
+
+  const showOverallGrade = (footerFields as Record<string, boolean>).show_overall_grade === true;
+  const showClassInSummary = (footerFields as Record<string, boolean>).show_class_in_summary !== false;
+  const showRankInSummary = (footerFields as Record<string, boolean>).show_rank !== false;
+  const showPromotedFooter = (footerFields as Record<string, boolean>).show_promoted_to !== false;
+  const showResultStatusFooter =
+    (footerFields as Record<string, boolean>).show_result_status !== false;
+
+  const showSubjectGrade = marksTable.show_grade !== false;
+
+  const classValueOnly = formatReportClassValueOnly(
+    student.class || '',
+    student.section || '',
+    student.class_display
+  );
 
   // Watermark
   const watermark = (cfg.watermark as Record<string, unknown>) || {};
@@ -892,7 +1108,6 @@ function generateLandscapeReportCardHTML(
   const motherLabel = (labels.mother_name as string) ?? "Mother's Name";
 
   const marksSource = Array.isArray(data.marks) ? data.marks : [];
-  const subjects = marksSource.map((m) => m.subject?.name).filter(Boolean) as string[];
 
   const computeGrade = (m: ReportCardData['marks'][number]): string => {
     if (m.marks_entry_code) return '-';
@@ -942,10 +1157,16 @@ function generateLandscapeReportCardHTML(
                 })
                 .join('');
               const termTotal = (row.term_totals || []).find((x) => String(x.term_id) === String(t.term_id));
-              return `${examCells}<td class="td-num"><strong>${termTotal ? `${termTotal.total_obtained}` : '-'}</strong></td><td class="td-c"><strong>${termTotal?.grade || '-'}</strong></td>`;
+              const termGradeCell = showSubjectGrade
+                ? `<td class="td-c"><strong>${termTotal?.grade || '-'}</strong></td>`
+                : '';
+              return `${examCells}<td class="td-num"><strong>${termTotal ? `${termTotal.total_obtained}` : '-'}</strong></td>${termGradeCell}`;
             })
             .join('');
-          return `<tr><td class="td-subj">${row.subject?.name || '-'}</td>${termCells}<td class="td-num"><strong>${row.overall_marks_obtained == null ? '-' : row.overall_marks_obtained}</strong></td><td class="td-c"><strong>${row.overall_grade || '-'}</strong></td></tr>`;
+          const overallGradeCell = showSubjectGrade
+            ? `<td class="td-c"><strong>${row.overall_grade || '-'}</strong></td>`
+            : '';
+          return `<tr><td class="td-subj">${row.subject?.name || '-'}</td>${termCells}<td class="td-num"><strong>${row.overall_marks_obtained == null ? '-' : row.overall_marks_obtained}</strong></td>${overallGradeCell}</tr>`;
         })
         .join('')
     : marksSource
@@ -957,13 +1178,16 @@ function generateLandscapeReportCardHTML(
           const pct =
             !code && max > 0 && obtained != null ? (obtained / max) * 100 : 0;
           const grade = computeGrade(m);
+          const gradeCell = showSubjectGrade
+            ? `<td class="td-c"><strong>${grade}</strong></td>`
+            : '';
           return `
             <tr>
               <td class="td-subj">${m.subject?.name || '-'}</td>
               <td class="td-num">${max}</td>
               <td class="td-num">${displayObtained}</td>
               <td class="td-num">${code || obtained == null ? '-' : pct.toFixed(1) + '%'}</td>
-              <td class="td-c"><strong>${grade}</strong></td>
+              ${gradeCell}
             </tr>`;
         })
         .join('');
@@ -999,7 +1223,17 @@ function generateLandscapeReportCardHTML(
               return `${g.grade}(${min}%-${max}%)`;
             })
             .join(', ');
-          return `<tr class="scale-row"><td colspan="12"><strong>Grading Scale:</strong> ${scaleStr}</td></tr>`;
+          const multiScaleColspan = isMultiExamLandscape
+            ? 1 +
+              groupedTermMeta.reduce((sum, t) => {
+                const n = multiExams.filter((e) => String(e.term_id || 'unassigned') === t.term_id).length;
+                return sum + n + 1 + (showSubjectGrade ? 1 : 0);
+              }, 0) +
+              1 +
+              (showSubjectGrade ? 1 : 0)
+            : 0;
+          const scaleColspan = isMultiExamLandscape ? multiScaleColspan : 4 + (showSubjectGrade ? 1 : 0);
+          return `<tr class="scale-row"><td colspan="${scaleColspan}"><strong>Grading Scale:</strong> ${scaleStr}</td></tr>`;
         })()
       : '';
 
@@ -1014,19 +1248,16 @@ function generateLandscapeReportCardHTML(
   const overallGrade = data.summary?.grade ?? '-';
   const rank = data.rank ?? '—';
   const resultDate = data.exam?.result_date || new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  const autoRemark = (() => {
-    if (overallPct >= 91) return 'Outstanding performance. Keep up the exceptional consistency and leadership.';
-    if (overallPct >= 81) return 'Excellent result with strong subject understanding. Continue the good momentum.';
-    if (overallPct >= 71) return 'Very good performance. Focus on precision to move into top grade bands.';
-    if (overallPct >= 61) return 'Good performance overall. Regular revision can improve scores further.';
-    if (overallPct >= 51) return 'Satisfactory progress. Needs better consistency in core subjects.';
-    if (overallPct >= 41) return 'Average performance. More guided practice is recommended.';
-    if (overallPct >= 33) return 'Pass. Requires focused effort and structured study support.';
-    return 'Below passing benchmark. Immediate academic intervention is recommended.';
-  })();
+  const remarkHtml = preprintedRemarks
+    ? preprintedRemarks.replace(/\n/g, '<br/>')
+    : '<span style="color:#888;font-style:italic;font-size:9px;">No remarks</span>';
+
+  const summaryThirdLabel = showOverallGrade ? 'Grade' : 'Class';
+  const summaryThirdValue = showOverallGrade ? overallGrade || '-' : classValueOnly;
 
   const maxMarksRowMulti = isMultiExamLandscape
     ? (() => {
+        const emptyGradeTd = showSubjectGrade ? '<td class="td-c"></td>' : '';
         const termCells = groupedTermMeta
           .map((t) => {
             const termExams = multiExams.filter((e) => String(e.term_id || 'unassigned') === t.term_id);
@@ -1042,13 +1273,60 @@ function generateLandscapeReportCardHTML(
               const examData = sample?.exams?.find((ex) => ex.exam_id === e.id);
               return sum + Number(examData?.max_marks || 0);
             }, 0);
-            return `${examMaxCells}<td class="td-num"><strong>${termMax}</strong></td><td class="td-c"></td>`;
+            return `${examMaxCells}<td class="td-num"><strong>${termMax}</strong></td>${emptyGradeTd}`;
           })
           .join('');
         const grandMax = Number((data.multiExamMarks || [])[0]?.overall_max_marks || 0);
-        return `<tr class="tr-max"><td class="td-subj">Maximum Marks</td>${termCells}<td class="td-num"><strong>${grandMax}</strong></td><td class="td-c"></td></tr>`;
+        return `<tr class="tr-max"><td class="td-subj">Maximum Marks</td>${termCells}<td class="td-num"><strong>${grandMax}</strong></td>${emptyGradeTd}</tr>`;
       })()
     : '';
+
+  const remarksSectionTitle = (labels.section_remarks as string) ?? 'Remarks';
+
+  const profileKvs = [
+    showAdmission
+      ? `<div class="kv"><b>Admission No.</b><span>${student.admission_no || '-'}</span></div>`
+      : '',
+    showRoll ? `<div class="kv"><b>Roll No.</b><span>${student.roll_number || '-'}</span></div>` : '',
+    `<div class="kv"><b>Student Name</b><span>${student.student_name || '-'}</span></div>`,
+    `<div class="kv"><b>Class</b><span>${classValueOnly}</span></div>`,
+    showFather
+      ? `<div class="kv"><b>${fatherLabel}</b><span>${student.father_name || '-'}</span></div>`
+      : '',
+    showContact
+      ? `<div class="kv"><b>Contact No.</b><span>${student.student_contact || '—'}</span></div>`
+      : '',
+    showMother
+      ? `<div class="kv"><b>${motherLabel}</b><span>${student.mother_name || '-'}</span></div>`
+      : '',
+    showDob
+      ? `<div class="kv"><b>Date of Birth</b><span>${student.date_of_birth || '—'}</span></div>`
+      : '',
+    showAddress
+      ? `<div class="kv"><b>Address</b><span>${student.address || '—'}</span></div>`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('');
+
+  const singleExamHeaderGradeTh = showSubjectGrade ? '<th>Grade</th>' : '';
+
+  const summaryThirdCell =
+    showClassInSummary || showOverallGrade
+      ? `<div class="summary-cell"><span class="lbl">${summaryThirdLabel}</span>${summaryThirdValue}</div>`
+      : '';
+
+  const rankCell = showRankInSummary
+    ? `<div class="summary-cell"><span class="lbl">Rank</span>${rank}</div>`
+    : '';
+
+  const footerMetaLine = [
+    showResultStatusFooter ? `<strong>Result:</strong> ${overallPct >= 33 ? 'PASS' : 'FAIL'}` : '',
+    showPromotedFooter && promotedTo ? `<strong>Promoted To:</strong> ${promotedTo}` : '',
+    `<strong>Result date:</strong> ${resultDate}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1146,14 +1424,12 @@ function generateLandscapeReportCardHTML(
       font-size: 10px;
       line-height: 1.35;
       margin-top: 4px;
-      color: #fff;
-      opacity: 0.95;
+      color: ${schoolNameColor};
     }
     .strip-sub {
       font-size: 10px;
       margin-top: 2px;
-      color: #fff;
-      opacity: 0.9;
+      color: ${schoolNameColor};
     }
     .annual-line {
       text-align: center;
@@ -1171,7 +1447,7 @@ function generateLandscapeReportCardHTML(
       font-weight: 700;
       text-transform: uppercase;
       margin: 10px 0 6px;
-      border-bottom: 1px solid ${primaryColor};
+      border-bottom: 1px solid ${accentColor};
       padding-bottom: 2px;
       color: ${primaryColor};
     }
@@ -1259,36 +1535,46 @@ function generateLandscapeReportCardHTML(
     table.cos th { font-weight: 700; text-align: center; background: #fff; }
     .td-left { text-align: left; }
     .remark-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
       font-size: 10px;
       border: 1px solid #000;
       padding: 8px 10px;
       margin-bottom: 10px;
-      min-height: 48px;
+      min-height: 56px;
     }
-    .remark-main { flex: 1; }
-    .remark-sig { width: 200px; text-align: center; font-size: 9px; padding-top: 20px; border-left: 1px solid #ccc; padding-left: 12px; }
-    .sig-underline { border-bottom: 1px solid #000; min-height: 28px; margin-bottom: 4px; }
+    .remark-main { width: 100%; }
     .foot-sigs {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      align-items: end;
+      gap: 12px 20px;
       font-size: 10px;
-      margin-top: 8px;
-      padding-top: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
       border-top: 1px solid #000;
+      width: 100%;
     }
-    .foot-sigs .col { flex: 1; text-align: center; }
-    .foot-sigs .col.date { text-align: left; flex: 0.9; }
-    .foot-sigs .col.prin { text-align: right; flex: 0.9; }
-    .sig-line-f {
+    .foot-sigs .foot-date {
+      justify-self: start;
+      text-align: left;
+      align-self: end;
+      padding-bottom: 2px;
+    }
+    .foot-sigs .foot-teacher,
+    .foot-sigs .foot-prin {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      text-align: center;
+    }
+    .foot-sigs .foot-teacher { justify-self: center; }
+    .foot-sigs .foot-prin { justify-self: center; }
+    .foot-sigs .sig-line-f {
       border-bottom: 1px solid #000;
       min-height: 36px;
-      margin: 0 auto 4px;
-      max-width: 220px;
+      width: 200px;
+      max-width: 100%;
+      margin: 0 0 4px 0;
     }
     .inst-box {
       margin-top: 10px;
@@ -1327,14 +1613,7 @@ function generateLandscapeReportCardHTML(
         <div class="section-h">${sectionStudentProfile}</div>
         <div class="student-wrap">
           <div class="student-cols">
-            <div class="kv"><b>Admission No.</b><span>${student.admission_no || '-'}</span></div>
-            <div class="kv"><b>Roll No.</b><span>${student.roll_number || '-'}</span></div>
-            <div class="kv"><b>Student Name</b><span>${student.student_name || '-'}</span></div>
-            <div class="kv"><b>Class</b><span>Grade-${student.class} ${student.section || 'A'}</span></div>
-            <div class="kv"><b>${fatherLabel}</b><span>${student.father_name || '-'}</span></div>
-            <div class="kv"><b>Contact No.</b><span>${student.student_contact || '—'}</span></div>
-            <div class="kv"><b>${motherLabel}</b><span>${student.mother_name || '-'}</span></div>
-            <div class="kv"><b>Date of Birth</b><span>${student.date_of_birth || '—'}</span></div>
+            ${profileKvs}
           </div>
           <div class="photo-box">
             ${student.photo_url ? `<img src="${student.photo_url}" alt="Student Photo" style="width:72px;height:88px;object-fit:cover;border-radius:2px;" />` : 'Passport<br/>photo'}
@@ -1353,25 +1632,26 @@ function generateLandscapeReportCardHTML(
                       <th rowspan="2" style="min-width:88px;">Subject</th>
                       ${groupedTermMeta.map((t) => {
                         const termExams = multiExams.filter((e) => String(e.term_id || 'unassigned') === t.term_id);
-                        const span = termExams.length + 2;
+                        const span = termExams.length + 1 + (showSubjectGrade ? 1 : 0);
                         const label = `${t.term_serial ? `${t.term_serial}. ` : ''}${t.term_name}`;
                         return `<th colspan="${span}">${label}</th>`;
                       }).join('')}
-                      <th colspan="2">Grand Total</th>
+                      <th colspan="${1 + (showSubjectGrade ? 1 : 0)}">Grand Total</th>
                     </tr>
                     <tr>
                       ${groupedTermMeta.map((t) => {
                         const termExams = multiExams.filter((e) => String(e.term_id || 'unassigned') === t.term_id);
-                        return `${termExams.map((e) => `<th>${e.name}</th>`).join('')}<th>Total</th><th>Grade</th>`;
+                        const gradeTh = showSubjectGrade ? '<th>Grade</th>' : '';
+                        return `${termExams.map((e) => `<th>${e.name}</th>`).join('')}<th>Total</th>${gradeTh}`;
                       }).join('')}
-                      <th>Total</th><th>Grade</th>
+                      <th>Total</th>${showSubjectGrade ? '<th>Grade</th>' : ''}
                     </tr>`
                   : `<tr>
                       <th style="min-width:88px;">Subject</th>
                       <th>Max Marks</th>
                       <th>Marks Obtained</th>
                       <th>Percentage</th>
-                      <th>Grade</th>
+                      ${singleExamHeaderGradeTh}
                     </tr>`
               }
             </thead>
@@ -1390,8 +1670,8 @@ function generateLandscapeReportCardHTML(
         <div class="summary-row">
           <div class="summary-cell"><span class="lbl">Overall Marks</span>${totalObtained} / ${totalMax}</div>
           <div class="summary-cell"><span class="lbl">Percentage</span>${overallPct.toFixed(1)}%</div>
-          <div class="summary-cell"><span class="lbl">Grade</span>${overallGrade || '-'}</div>
-          <div class="summary-cell"><span class="lbl">Rank</span>${rank}</div>
+          ${summaryThirdCell}
+          ${rankCell}
         </div>
         ` : ''}
 
@@ -1412,32 +1692,30 @@ function generateLandscapeReportCardHTML(
         ${showRemarks ? `
         <div class="remark-row">
           <div class="remark-main">
-            <strong>Remark:</strong>
-            ${customRemarks || data.remarks || autoRemark}
-          </div>
-          <div class="remark-sig">
-            <div class="sig-underline"></div>
-            <span>${sectionRemarks}</span>
+            <strong>${remarksSectionTitle}:</strong>
+            <div style="margin-top:6px;line-height:1.4;">${remarkHtml}</div>
           </div>
         </div>
         ` : ''}
 
         <div class="foot-sigs">
-          <div class="col date">Date: _______________</div>
-          <div class="col">
+          <div class="foot-date">Date: _______________</div>
+          ${showClassTeacherSig
+            ? `<div class="foot-teacher">
             <div class="sig-line-f"></div>
             <div>Class Teacher&apos;s Signature</div>
-          </div>
-          <div class="col prin">
+          </div>`
+            : '<div class="foot-teacher" aria-hidden="true"></div>'}
+          ${showPrincipalSig
+            ? `<div class="foot-prin">
             <div class="sig-line-f"></div>
             <div>Principal&apos;s Signature</div>
-          </div>
+          </div>`
+            : '<div class="foot-prin" aria-hidden="true"></div>'}
         </div>
 
         <div style="font-size:9px;margin-top:8px;padding:4px 0;border-top:1px solid #000;">
-          <strong>Result:</strong> ${overallPct >= 33 ? 'PASS' : 'FAIL'} ·
-          <strong>Promoted To:</strong> ${promotedTo} ·
-          <strong>Result date (sample):</strong> ${resultDate}
+          ${footerMetaLine}
         </div>
 
         ${showInstructions ? `

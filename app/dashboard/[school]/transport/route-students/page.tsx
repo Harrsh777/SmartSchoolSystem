@@ -15,15 +15,14 @@ import {
   CheckCircle,
   Search,
   UserMinus,
-  ArrowLeft,
   UserPlus,
   MapPin,
   Bus,
   Pencil,
   IndianRupee,
   ArrowRight,
+  ChevronDown,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { computeTransportFeeFromStops } from '@/lib/transport/compute-student-transport-fee';
 
 interface RouteStop {
@@ -58,6 +57,13 @@ interface Route {
 
 type AssignMode = 'bulk' | { type: 'single'; student: Student };
 
+function studentInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 const emptyForm = () => ({
   pickup_stop_id: '' as string,
   drop_stop_id: '' as string,
@@ -70,7 +76,6 @@ export default function RouteStudentsPage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
-  const router = useRouter();
   const [routes, setRoutes] = useState<Route[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<string>('');
@@ -81,8 +86,8 @@ export default function RouteStudentsPage({
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterClass, setFilterClass] = useState<string>('');
-  const [filterSection, setFilterSection] = useState<string>('');
+  const [classFilter, setClassFilter] = useState('');
+  const [sectionFilter, setSectionFilter] = useState('');
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [assignMode, setAssignMode] = useState<AssignMode | null>(null);
@@ -150,10 +155,6 @@ export default function RouteStudentsPage({
       cancelled = true;
     };
   }, [selectedRoute, schoolCode]);
-
-  useEffect(() => {
-    setFilterSection('');
-  }, [filterClass]);
 
   const openAssignModal = (mode: AssignMode) => {
     if (!selectedRoute) {
@@ -318,35 +319,46 @@ export default function RouteStudentsPage({
     }
   };
 
-  const classOptions = Array.from(new Set(students.map((s) => s.class).filter(Boolean))).sort((a, b) =>
-    String(a).localeCompare(String(b), undefined, { numeric: true })
+  const uniqueClasses = useMemo(
+    () =>
+      Array.from(new Set(students.map((s) => String(s.class || '').trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+      ),
+    [students]
   );
-  const sectionOptions =
-    filterClass.length > 0
-      ? Array.from(
-          new Set(
-            students.filter((s) => s.class === filterClass).map((s) => s.section).filter((x) => x != null && x !== '')
-          )
-        ).sort((a, b) => String(a).localeCompare(String(b)))
-      : Array.from(new Set(students.map((s) => s.section).filter((x) => x != null && x !== ''))).sort((a, b) =>
-          String(a).localeCompare(String(b))
-        );
 
-  const filteredStudents = students.filter((student) => {
-    if (filterClass && student.class !== filterClass) return false;
-    if (filterSection && student.section !== filterSection) return false;
-    const matchesSearch =
-      !searchTerm ||
-      student.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.admission_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      `${student.class}-${student.section}`.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
+  const uniqueSections = useMemo(() => {
+    if (!classFilter) return [] as string[];
+    return Array.from(
+      new Set(
+        students
+          .filter((s) => String(s.class || '').trim() === classFilter)
+          .map((s) => String(s.section || '').trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  }, [students, classFilter]);
+
+  const scopedStudents = students.filter((student) => {
+    if (!classFilter) return false;
+    if (String(student.class || '').trim() !== classFilter) return false;
+    if (!sectionFilter) return false;
+    if (String(student.section || '').trim() !== sectionFilter) return false;
+    return true;
+  });
+
+  const filteredStudents = scopedStudents.filter((student) => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      student.student_name.toLowerCase().includes(q) ||
+      student.admission_no.toLowerCase().includes(q) ||
+      `${student.class}-${student.section}`.toLowerCase().includes(q)
+    );
   });
 
   const routeStudents = filteredStudents.filter((s) => s.transport_route_id === selectedRoute);
-  const availableStudents = filteredStudents.filter(
-    (s) => !s.transport_route_id || s.transport_route_id !== selectedRoute
-  );
+  const availableStudents = filteredStudents.filter((s) => !s.transport_route_id || s.transport_route_id !== selectedRoute);
 
   const selectedRouteData = routes.find((r) => r.id === selectedRoute);
   const currentCount = routeStudents.length;
@@ -391,21 +403,15 @@ export default function RouteStudentsPage({
         >
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <Button
-                variant="outline"
-                onClick={() => router.push(`/dashboard/${schoolCode}/transport`)}
-                className="border-[#5A7A95]/30 text-[#5A7A95] hover:bg-[#5A7A95]/10"
-              >
-                <ArrowLeft size={18} className="mr-2" />
-                Back
-              </Button>
               <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500 via-emerald-600 to-teal-600 flex items-center justify-center shadow-lg">
                 <Users className="text-white" size={28} />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Route Students</h1>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Assign students to transport routes for {schoolCode} — set pickup / drop stops and fares
+                  Assign students to transport routes for{' '}
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{schoolCode.toUpperCase()}</span>
+                  {' — '}pickup / drop stops and fares
                 </p>
               </div>
             </div>
@@ -440,68 +446,151 @@ export default function RouteStudentsPage({
         )}
 
         <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Route *</label>
-              <select
-                value={selectedRoute}
-                onChange={(e) => setSelectedRoute(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
-              >
-                <option value="">Select a route</option>
-                {routes.map((route) => (
-                  <option key={route.id} value={route.id}>
-                    {route.route_name}
-                    {route.vehicle && ` (${route.vehicle.vehicle_code} — ${route.vehicle.seats} seats)`}
-                  </option>
-                ))}
-              </select>
+              <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Route</label>
+              <div className="relative">
+                <Bus
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-[1]"
+                  size={18}
+                />
+                <ChevronDown
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                  size={18}
+                />
+                <select
+                  value={selectedRoute}
+                  onChange={(e) => setSelectedRoute(e.target.value)}
+                  className="w-full pl-11 pr-11 py-3.5 border border-gray-200 dark:border-gray-600 rounded-2xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-[15px] focus:outline-none focus:ring-2 focus:ring-[#5A7A95]/40 dark:focus:ring-[#6B9BB8]/40 focus:border-[#5A7A95] dark:focus:border-[#6B9BB8] appearance-none cursor-pointer shadow-sm"
+                >
+                  <option value="">Choose a route…</option>
+                  {routes.map((route) => (
+                    <option key={route.id} value={route.id}>
+                      {route.route_name}
+                      {route.vehicle && ` (${route.vehicle.vehicle_code} — ${route.vehicle.seats} seats)`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Class</label>
+                <select
+                  value={classFilter}
+                  onChange={(e) => {
+                    setClassFilter(e.target.value);
+                    setSectionFilter('');
+                  }}
+                  className="w-full px-3 py-3 border border-gray-200 dark:border-gray-600 rounded-2xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-[15px]"
+                >
+                  <option value="">Select class</option>
+                  {uniqueClasses.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Section</label>
+                <select
+                  value={sectionFilter}
+                  onChange={(e) => setSectionFilter(e.target.value)}
+                  disabled={!classFilter}
+                  className="w-full px-3 py-3 border border-gray-200 dark:border-gray-600 rounded-2xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-[15px] disabled:opacity-60"
+                >
+                  <option value="">{classFilter ? 'Select section' : 'Select class first'}</option>
+                  {uniqueSections.map((sec) => (
+                    <option key={sec} value={sec}>
+                      {sec}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {selectedRoute && selectedRouteData && (
-              <div className="bg-gradient-to-r from-[#5A7A95]/10 via-[#6B9BB8]/10 to-[#7DB5D3]/10 dark:from-[#5A7A95]/20 dark:via-[#6B9BB8]/20 dark:to-[#7DB5D3]/20 border-2 border-[#5A7A95]/30 dark:border-[#6B9BB8]/30 rounded-xl p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Bus className="text-[#5A7A95] dark:text-[#6B9BB8]" size={22} />
-                    <div>
-                      <p className="font-semibold text-[#5A7A95] dark:text-[#6B9BB8]">{selectedRouteData.route_name}</p>
-                      <p className="text-sm text-gray-700 dark:text-gray-300">
-                        Capacity: {currentCount} / {capacity} students
+              <div className="rounded-2xl border border-gray-200/80 dark:border-gray-600/60 bg-gradient-to-br from-white to-gray-50/80 dark:from-slate-800/50 dark:to-slate-900/40 p-5 space-y-4 shadow-inner">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">
+                      {selectedRouteData.route_name}
+                    </p>
+                    {selectedRouteData.vehicle && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                        {selectedRouteData.vehicle.vehicle_code} · {selectedRouteData.vehicle.seats} seats
                       </p>
-                    </div>
+                    )}
                   </div>
                   <div
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      currentCount >= capacity
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                        : currentCount >= capacity * 0.8
-                          ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                          : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wide ${
+                      capacity <= 0
+                        ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                        : currentCount >= capacity
+                          ? 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300'
+                          : currentCount >= capacity * 0.8
+                            ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
+                            : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
                     }`}
                   >
-                    {capacity > 0 ? `${Math.round((currentCount / capacity) * 100)}% full` : 'No capacity set'}
+                    {capacity > 0 ? `${Math.round((currentCount / capacity) * 100)}% full` : 'Capacity not set'}
                   </div>
                 </div>
+                {capacity > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                      <span>
+                        {currentCount} assigned
+                      </span>
+                      <span>
+                        {Math.max(0, capacity - currentCount)} free
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          currentCount >= capacity
+                            ? 'bg-red-500'
+                            : currentCount >= capacity * 0.8
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${Math.min(100, capacity ? (currentCount / capacity) * 100 : 0)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
                 {loadingRouteStops ? (
-                  <p className="text-xs text-gray-500 flex items-center gap-2">
-                    <Loader2 className="animate-spin" size={14} /> Loading stops…
+                  <p className="text-sm text-gray-500 flex items-center gap-2">
+                    <Loader2 className="animate-spin" size={16} /> Loading stops…
                   </p>
                 ) : routeStops.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {routeStops.map((s, i) => (
-                      <span
-                        key={s.id}
-                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-800/80 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-200"
-                      >
-                        <span className="text-gray-400 font-mono">{i + 1}</span>
-                        {s.name}
-                        <span className="text-emerald-600 dark:text-emerald-400">P ₹{s.pickup_fare}</span>
-                        <span className="text-sky-600 dark:text-sky-400">D ₹{s.drop_fare}</span>
-                      </span>
-                    ))}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                      Stop order & fares
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {routeStops.map((s, i) => (
+                        <span
+                          key={s.id}
+                          className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-200 shadow-sm"
+                        >
+                          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-gray-100 dark:bg-slate-700 text-[10px] font-bold text-gray-500 dark:text-gray-300">
+                            {i + 1}
+                          </span>
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-emerald-600 dark:text-emerald-400 tabular-nums">P ₹{s.pickup_fare}</span>
+                          <span className="text-sky-600 dark:text-sky-400 tabular-nums">D ₹{s.drop_fare}</span>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-amber-700 dark:text-amber-300">No stops on this route — add stops to the route first.</p>
+                  <p className="text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50 rounded-xl px-3 py-2">
+                    No stops on this route. Add stops under Transport, then link them here.
+                  </p>
                 )}
               </div>
             )}
@@ -510,174 +599,150 @@ export default function RouteStudentsPage({
 
         {selectedRoute && (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
-                <div className="relative flex-1 min-w-[200px] max-w-md">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                  <Input
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search students..."
-                    className="pl-10"
-                  />
-                </div>
-                <select
-                  value={filterClass}
-                  onChange={(e) => setFilterClass(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] min-w-[140px]"
-                >
-                  <option value="">All Classes</option>
-                  {classOptions.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filterSection}
-                  onChange={(e) => setFilterSection(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] min-w-[120px]"
-                >
-                  <option value="">All Sections</option>
-                  {sectionOptions.map((sec) => (
-                    <option key={sec} value={sec}>
-                      {sec}
-                    </option>
-                  ))}
-                </select>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:justify-between">
+              <div className="relative flex-1 min-w-0 max-w-2xl">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by name, admission no., or class-section…"
+                  className="pl-11 pr-10 py-3 rounded-2xl border-gray-200 dark:border-gray-600 shadow-sm"
+                  aria-label="Search students"
+                />
+                {searchTerm.trim() !== '' && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    aria-label="Clear search"
+                  >
+                    <X size={18} />
+                  </button>
+                )}
               </div>
               <Button
                 onClick={handleOpenBulkPicker}
                 disabled={currentCount >= capacity || loadingRouteStops || routeStops.length === 0}
-                className="bg-green-600 hover:bg-green-700 disabled:opacity-50 shrink-0"
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 shrink-0 rounded-xl px-5 py-3 h-auto shadow-md shadow-emerald-600/15"
               >
                 <Plus size={18} className="mr-2" />
                 Add students
               </Button>
             </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2 sm:-mt-1">
+              Showing {filteredStudents.length} of {scopedStudents.length} students in selected class-section
+            </p>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                  On this route ({routeStudents.length})
-                </h2>
-                <div className="space-y-2 max-h-[640px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 gap-5 lg:gap-6">
+              <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 overflow-hidden flex flex-col min-h-[420px] lg:min-h-[560px]">
+                <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700/80 bg-gray-50/80 dark:bg-slate-800/40">
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">On this route</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    {routeStudents.length} student{routeStudents.length !== 1 ? 's' : ''} · pickup, drop, and fee
+                  </p>
+                </div>
+                <div className="p-4 space-y-2 flex-1 overflow-y-auto max-h-[640px]">
                   {routeStudents.map((student) => {
                     const pu = describeStopLine(student, 'pickup');
                     const dr = describeStopLine(student, 'drop');
                     return (
                       <div
                         key={student.id}
-                        className="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-[#5A7A95]/50 transition-all space-y-2"
+                        className="group rounded-2xl border border-gray-200/90 dark:border-gray-600/60 bg-white dark:bg-slate-800/30 p-4 shadow-sm hover:shadow-md hover:border-[#5A7A95]/35 dark:hover:border-[#6B9BB8]/40 transition-all"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">{student.student_name}</p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              {student.admission_no} · {student.class}-{student.section}
-                            </p>
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] text-xs font-bold text-white shadow-inner">
+                            {studentInitials(student.student_name)}
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              type="button"
-                              onClick={() => openAssignModal({ type: 'single', student })}
-                              className="border-[#5A7A95]/40 text-[#5A7A95]"
-                            >
-                              <Pencil size={14} className="mr-1" />
-                              Edit
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              type="button"
-                              onClick={() => handleRemoveStudent(student.id)}
-                              className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400"
-                            >
-                              <UserMinus size={14} />
-                            </Button>
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-gray-900 dark:text-white leading-tight truncate">
+                                  {student.student_name}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 tabular-nums">
+                                  {student.admission_no}
+                                  <span className="text-gray-300 dark:text-gray-600 mx-1.5">·</span>
+                                  <span className="text-gray-600 dark:text-gray-300">
+                                    {student.class}-{student.section}
+                                  </span>
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0 opacity-90 group-hover:opacity-100">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  type="button"
+                                  onClick={() => openAssignModal({ type: 'single', student })}
+                                  className="border-[#5A7A95]/35 text-[#5A7A95] dark:text-[#6B9BB8] rounded-lg h-8 px-2.5"
+                                >
+                                  <Pencil size={14} className="mr-1" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  type="button"
+                                  onClick={() => handleRemoveStudent(student.id)}
+                                  className="border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 rounded-lg h-8 w-8 p-0"
+                                  title="Remove from route"
+                                >
+                                  <UserMinus size={14} />
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {pu && (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 text-xs border border-emerald-200/70 dark:border-emerald-800/60">
+                                  <MapPin size={11} className="shrink-0" />
+                                  <span className="truncate max-w-[200px]">
+                                    Pickup {pu.label}
+                                    {pu.fare != null && ` · ₹${pu.fare}`}
+                                  </span>
+                                </span>
+                              )}
+                              {dr && (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200 text-xs border border-sky-200/70 dark:border-sky-800/60">
+                                  <ArrowRight size={11} className="shrink-0" />
+                                  <span className="truncate max-w-[200px]">
+                                    Drop {dr.label}
+                                    {dr.fare != null && ` · ₹${dr.fare}`}
+                                  </span>
+                                </span>
+                              )}
+                              {!pu && !dr && student.transport_custom_fare != null && (
+                                <span className="px-2 py-1 rounded-lg bg-violet-50 dark:bg-violet-950/40 text-violet-900 dark:text-violet-200 text-xs border border-violet-200/70">
+                                  Custom fare only
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700/80">
+                              <span className="text-[11px] uppercase tracking-wide text-gray-400 font-medium">
+                                Stored fee
+                              </span>
+                              <span className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-0.5 tabular-nums">
+                                <IndianRupee size={14} />
+                                {student.transport_fee != null
+                                  ? Number(student.transport_fee).toLocaleString('en-IN')
+                                  : '—'}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          {pu && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 border border-emerald-200/60 dark:border-emerald-800">
-                              <MapPin size={12} />
-                              Pickup: {pu.label}
-                              {pu.fare != null && ` · ₹${pu.fare}`}
-                            </span>
-                          )}
-                          {dr && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-sky-50 dark:bg-sky-900/30 text-sky-900 dark:text-sky-200 border border-sky-200/60 dark:border-sky-800">
-                              <ArrowRight size={12} />
-                              Drop: {dr.label}
-                              {dr.fare != null && ` · ₹${dr.fare}`}
-                            </span>
-                          )}
-                          {!pu && !dr && student.transport_custom_fare != null && (
-                            <span className="px-2 py-1 rounded-md bg-violet-50 dark:bg-violet-900/30 text-violet-800 dark:text-violet-200 border border-violet-200/60">
-                              Custom fare only
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between pt-1 border-t border-gray-200/80 dark:border-gray-600/80">
-                          <span className="text-xs text-gray-500">Transport fee (stored)</span>
-                          <span className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-0.5">
-                            <IndianRupee size={14} />
-                            {student.transport_fee != null ? Number(student.transport_fee).toLocaleString('en-IN') : '—'}
-                          </span>
                         </div>
                       </div>
                     );
                   })}
                   {routeStudents.length === 0 && (
-                    <p className="text-center text-gray-500 dark:text-gray-400 py-10">No students on this route yet.</p>
-                  )}
-                </div>
-              </Card>
-
-              <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                  Available ({availableStudents.length})
-                </h2>
-                <div className="space-y-2 max-h-[640px] overflow-y-auto">
-                  {availableStudents.map((student) => {
-                    const isOtherRoute = !!student.transport_route_id && student.transport_route_id !== selectedRoute;
-                    const canAssign = !isOtherRoute && currentCount < capacity && routeStops.length > 0;
-                    return (
-                      <div
-                        key={student.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-[#5A7A95] dark:hover:border-[#6B9BB8] transition-all"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-white truncate">{student.student_name}</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            {student.admission_no} · {student.class}-{student.section}
-                          </p>
-                          {isOtherRoute && (
-                            <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                              On another route — remove there first to assign here
-                            </p>
-                          )}
-                        </div>
-                        {!isOtherRoute && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            type="button"
-                            onClick={() => openAssignModal({ type: 'single', student })}
-                            disabled={!canAssign || saving}
-                            className="border-green-300 text-green-600 hover:bg-green-50 dark:border-green-700 dark:text-green-400 shrink-0"
-                          >
-                            <UserPlus size={14} className="mr-1" />
-                            Assign
-                          </Button>
-                        )}
+                    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                      <div className="rounded-2xl bg-gray-100 dark:bg-slate-800/80 p-4 mb-3">
+                        <Users className="text-gray-400 dark:text-gray-500" size={36} />
                       </div>
-                    );
-                  })}
-                  {availableStudents.length === 0 && (
-                    <p className="text-center text-gray-500 dark:text-gray-400 py-8">No students in this filter.</p>
+                      <p className="font-medium text-gray-800 dark:text-gray-200">No one on this route yet</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-xs">
+                        Use <span className="font-medium text-emerald-700 dark:text-emerald-400">Add students</span> or assign
+                        from the list on the right.
+                      </p>
+                    </div>
                   )}
                 </div>
               </Card>
@@ -689,7 +754,7 @@ export default function RouteStudentsPage({
           <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-12 text-center">
             <Users className="mx-auto mb-4 text-gray-400" size={64} />
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Select a route</h3>
-            <p className="text-gray-600 dark:text-gray-400">Choose a route to map students, stops, and fares</p>
+            <p className="text-gray-600 dark:text-gray-400">Choose route, class and section to map students, stops, and fares</p>
           </Card>
         )}
 

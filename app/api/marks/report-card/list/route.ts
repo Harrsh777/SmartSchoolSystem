@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const schoolCodeRaw = searchParams.get('school_code');
+    /** Trim only; URL segment and DB should match. Use ilike so ARUSHI vs arushi still lists rows. */
     const schoolCode = schoolCodeRaw?.trim() || '';
     const classFilter = searchParams.get('class_name');
     const sectionFilter = searchParams.get('section');
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('report_cards')
       .select('id, school_code, student_id, exam_id, student_name, admission_no, class_name, section, academic_year, created_at, updated_at, sent_at')
-      .eq('school_code', schoolCode)
+      .ilike('school_code', schoolCode)
       .order('updated_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
 
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
       const { data: students } = await supabase
         .from('students')
         .select('id, roll_number')
-        .eq('school_code', schoolCode)
+        .ilike('school_code', schoolCode)
         .in('id', studentIds);
       rollByStudentId = new Map(
         (students || []).map((s) => [String(s.id), s.roll_number ? String(s.roll_number) : ''])

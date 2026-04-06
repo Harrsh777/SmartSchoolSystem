@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useCallback, useMemo } from 'react';
+import { use, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -187,6 +187,7 @@ export default function PaymentCollectionPage({
   /** Shown next to misc/discount actions (global banner is easy to miss when scrolled) */
   const [feeLineError, setFeeLineError] = useState('');
   const [partialAmount, setPartialAmount] = useState<string>('');
+  const lastActiveInstallmentDueRef = useRef<number>(0);
 
   const fetchAcademicYears = useCallback(async () => {
     if (!schoolCode) return;
@@ -595,7 +596,13 @@ export default function PaymentCollectionPage({
       return;
     }
 
-    const baseAmount = Number((studentFees.find((f) => f.id === feeId)?.base_amount ?? 0) || 0);
+    const feeRow = studentFees.find((f) => f.id === feeId);
+    const baseAmount = Number((feeRow?.base_amount ?? 0) || 0);
+    const miscSubtotal = (feeRow?.installment_manual_lines || [])
+      .filter((l) => l.kind === 'misc')
+      .reduce((s, l) => s + Number(l.amount || 0), 0);
+    const rulesDelta = Number((feeRow as { rules_adjustment_delta?: number })?.rules_adjustment_delta ?? 0);
+    const baseForDiscount = Math.max(0, baseAmount + rulesDelta + miscSubtotal);
     let discountAmount = 0;
 
     if (discountAddMode === 'percent') {
@@ -604,7 +611,7 @@ export default function PaymentCollectionPage({
         setFeeLineError('Discount % must be greater than 0');
         return;
       }
-      discountAmount = (baseAmount * p) / 100;
+      discountAmount = (baseForDiscount * p) / 100;
     } else {
       const flat = Number(discountAddFlat);
       if (!Number.isFinite(flat) || flat <= 0) {
@@ -839,6 +846,51 @@ export default function PaymentCollectionPage({
     if (!activeStructureGroup || !activeFeeId) return null;
     return activeStructureGroup.fees.find((f) => f.id === activeFeeId) ?? null;
   }, [activeStructureGroup, activeFeeId]);
+
+  useEffect(() => {
+    lastActiveInstallmentDueRef.current = 0;
+  }, [activeFeeId]);
+
+  /** After misc/discount reload, fix stale allocations (was full due, now lower) or raise when due increased from same “full pay” snapshot. */
+  useEffect(() => {
+    if (!activeFeeId) return;
+    const fee = studentFees.find((f) => f.id === activeFeeId);
+    if (!fee || isInstallmentSettled(fee)) return;
+    const due = Math.round(Math.max(0, Number(fee.total_due || 0)) * 100) / 100;
+    const prevDueSnap = lastActiveInstallmentDueRef.current;
+    lastActiveInstallmentDueRef.current = due;
+
+    setAllocations((prev) => {
+      const cur = prev[activeFeeId] ?? 0;
+      if (cur <= FEE_SETTLED_EPS) return prev;
+      if (cur > due + FEE_SETTLED_EPS) {
+        const capped = Math.round(due * 100) / 100;
+        return capped > FEE_SETTLED_EPS ? { [activeFeeId]: capped } : {};
+      }
+      if (
+        prevDueSnap > FEE_SETTLED_EPS &&
+        Math.abs(cur - prevDueSnap) <= FEE_SETTLED_EPS &&
+        due > cur + FEE_SETTLED_EPS
+      ) {
+        return { [activeFeeId]: Math.round(due * 100) / 100 };
+      }
+      return prev;
+    });
+
+    setPartialAmount((prev) => {
+      const n = parseFloat(prev);
+      if (!Number.isFinite(n) || n <= FEE_SETTLED_EPS) return prev;
+      if (n > due + FEE_SETTLED_EPS) return String(Math.round(due * 100) / 100);
+      if (
+        prevDueSnap > FEE_SETTLED_EPS &&
+        Math.abs(n - prevDueSnap) <= FEE_SETTLED_EPS &&
+        due > n + FEE_SETTLED_EPS
+      ) {
+        return String(Math.round(due * 100) / 100);
+      }
+      return prev;
+    });
+  }, [studentFees, activeFeeId]);
 
   // Keep the right-side detail view focused on one installment (the activeFeeId)
   useEffect(() => {

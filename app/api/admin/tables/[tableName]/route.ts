@@ -50,6 +50,8 @@ const VALID_TABLES = [
   'transport_routes',
   'transport_route_stops',
   'transport_stops',
+  'transport_fee_payment_entries',
+  'transport_receipt_counters',
   'timetable_slots',
   'timetable_period_groups',
   'notices',

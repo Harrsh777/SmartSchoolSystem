@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { getAppUrl } from '@/lib/env';
-import { generateReportCardHTML } from '@/lib/report-card-html';
-import type { ReportCardData } from '@/lib/report-card-html';
+import {
+  generateReportCardHTML,
+  formatReportClassLabel,
+  type ReportCardData,
+  type ReportCardTemplateConfig,
+} from '@/lib/report-card-html';
 import { fetchCoScholasticRowsForReportCard } from '@/lib/co-scholastic-report';
 
 /**
@@ -81,6 +85,101 @@ async function attachSubjectNamesToMarks(
   }
 }
 
+type ClassRow = { id: string; class?: string | null; section?: string | null; academic_year?: string | null };
+
+async function resolveClassRowForStudent(
+  supabase: ReturnType<typeof getServiceRoleClient>,
+  schoolCode: string,
+  studentClass: string,
+  studentSection: string,
+  academicYear: string
+): Promise<ClassRow | null> {
+  const sc = String(studentClass ?? '').trim();
+  const ss = String(studentSection ?? '').trim();
+  if (!sc) return null;
+  const { data: rows } = await supabase
+    .from('classes')
+    .select('id, class, section, academic_year')
+    .eq('school_code', schoolCode)
+    .eq('class', sc)
+    .eq('section', ss);
+  if (!rows?.length) return null;
+  const ay = String(academicYear ?? '').trim();
+  if (ay) {
+    const exact = rows.find((r) => String(r.academic_year ?? '').trim() === ay);
+    if (exact) return exact as ClassRow;
+    const loose = rows.find((r) => !r.academic_year);
+    if (loose) return loose as ClassRow;
+  }
+  return rows[0] as ClassRow;
+}
+
+async function fetchStudentAttendanceForReport(
+  supabase: ReturnType<typeof getServiceRoleClient>,
+  opts: {
+    schoolCode: string;
+    studentId: string;
+    classId: string | null;
+    academicYear: string;
+    startDate: string;
+    endDate: string;
+  }
+): Promise<{ present: number; total: number; percentage: number } | null> {
+  const { schoolCode, studentId, classId, academicYear, startDate, endDate } = opts;
+  const ay = String(academicYear ?? '').trim();
+
+  if (classId && ay) {
+    const { data: manual, error: manErr } = await supabase
+      .from('student_manual_attendance')
+      .select('attended_days, total_working_days, attendance_percentage')
+      .eq('school_code', schoolCode)
+      .eq('class_id', classId)
+      .eq('student_id', studentId)
+      .eq('academic_year', ay)
+      .maybeSingle();
+    const code = (manErr as { code?: string } | null)?.code;
+    if (!manErr && manual && Number(manual.total_working_days) > 0) {
+      return {
+        present: Number(manual.attended_days),
+        total: Number(manual.total_working_days),
+        percentage: Number(manual.attendance_percentage),
+      };
+    }
+    if (manErr && code && code !== 'PGRST116' && !String(manErr.message || '').includes('does not exist')) {
+      console.warn('Manual attendance lookup:', manErr.message);
+    }
+  }
+
+  const { data: attendanceRows, error: attErr } = await supabase
+    .from('student_attendance')
+    .select('status, attendance_date')
+    .eq('student_id', studentId)
+    .eq('school_code', schoolCode)
+    .gte('attendance_date', startDate)
+    .lte('attendance_date', endDate);
+
+  if (attErr) {
+    const { data: legacy } = await supabase
+      .from('student_attendance')
+      .select('status, date')
+      .eq('student_id', studentId)
+      .eq('school_code', schoolCode)
+      .gte('date', startDate)
+      .lte('date', endDate);
+    if (legacy?.length) {
+      const total = legacy.length;
+      const present = legacy.filter((r) => String(r.status || '').toLowerCase() === 'present').length;
+      return { present, total, percentage: total > 0 ? (present / total) * 100 : 0 };
+    }
+    return null;
+  }
+
+  if (!attendanceRows?.length) return null;
+  const total = attendanceRows.length;
+  const present = attendanceRows.filter((r) => String(r.status || '').toLowerCase() === 'present').length;
+  return { present, total, percentage: total > 0 ? (present / total) * 100 : 0 };
+}
+
 function resolveReportCardStudentPhotoUrl(
   student: Record<string, unknown>,
   schoolCode: string
@@ -131,7 +230,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Data not found' }, { status: 404 });
     }
 
-    const html = generateReportCardHTML(data);
+    const templateId = searchParams.get('template_id');
+    let templateConfig: ReportCardTemplateConfig | undefined;
+    if (templateId?.trim()) {
+      const supabase = getServiceRoleClient();
+      const { data: t } = await supabase
+        .from('report_card_templates')
+        .select('config, school_code')
+        .eq('id', templateId.trim())
+        .maybeSingle();
+      const tplSchool = (t as { school_code?: string | null } | null)?.school_code;
+      const allowed =
+        t &&
+        (tplSchool == null || String(tplSchool).trim() === String(schoolCode).trim());
+      if (
+        allowed &&
+        t.config &&
+        typeof t.config === 'object' &&
+        Object.keys(t.config as object).length > 0
+      ) {
+        templateConfig = t.config as ReportCardTemplateConfig;
+      }
+    }
+
+    const html = generateReportCardHTML(data, templateConfig);
 
     return new NextResponse(html, {
       status: 200,
@@ -228,24 +350,30 @@ export async function fetchReportCardData(
   const startDate = `${academicYearStart}-04-01`;
   const endDate = `${academicYearEnd}-03-31`;
 
-  const { data: attendanceRows } = await supabase
-    .from('student_attendance')
-    .select('status, date')
-    .eq('student_id', studentId)
-    .eq('school_code', schoolCode)
-    .gte('date', startDate)
-    .lte('date', endDate);
+  const yearForClass = String(
+    (student as { academic_year?: string }).academic_year || exam.academic_year || ''
+  ).trim();
 
-  let attendance: { present: number; total: number; percentage: number } | null = null;
-  if (attendanceRows?.length) {
-    const total = attendanceRows.length;
-    const present = attendanceRows.filter((r) => String(r.status || '').toLowerCase() === 'present').length;
-    attendance = {
-      present,
-      total,
-      percentage: total > 0 ? (present / total) * 100 : 0,
-    };
-  }
+  const classRow = await resolveClassRowForStudent(
+    supabase,
+    schoolCode,
+    String(student.class || ''),
+    String(student.section || ''),
+    yearForClass
+  );
+  const classDisplay =
+    classRow != null
+      ? formatReportClassLabel(String(classRow.class ?? student.class), String(classRow.section ?? student.section))
+      : formatReportClassLabel(String(student.class || ''), String(student.section || ''));
+
+  const attendance = await fetchStudentAttendanceForReport(supabase, {
+    schoolCode,
+    studentId,
+    classId: classRow?.id ?? null,
+    academicYear: yearForClass || String(exam.academic_year || ''),
+    startDate,
+    endDate,
+  });
 
   const examTermId = (exam as { term_id?: string | null }).term_id;
   let coScholastic: Array<{ name: string; term1_grade?: string; term2_grade?: string }> | null = null;
@@ -301,6 +429,7 @@ export async function fetchReportCardData(
       admission_no: student.admission_no || '',
       class: student.class || '',
       section: student.section || '',
+      class_display: classDisplay,
       father_name: student.father_name,
       mother_name: student.mother_name,
       address: student.address || student.school_address,
@@ -578,20 +707,32 @@ export async function fetchReportCardDataMultiExam(
   const startDate = `${academicYearStart}-04-01`;
   const endDate = `${academicYearStart + 1}-03-31`;
 
-  const { data: attendanceRows } = await supabase
-    .from('student_attendance')
-    .select('status, date')
-    .eq('student_id', studentId)
-    .eq('school_code', schoolCode)
-    .gte('date', startDate)
-    .lte('date', endDate);
+  const yearForClassMulti = String(
+    (student as { academic_year?: string }).academic_year || firstExam.academic_year || ''
+  ).trim();
+  const classRowMulti = await resolveClassRowForStudent(
+    supabase,
+    schoolCode,
+    String(student.class || ''),
+    String(student.section || ''),
+    yearForClassMulti
+  );
+  const classDisplayMulti =
+    classRowMulti != null
+      ? formatReportClassLabel(
+          String(classRowMulti.class ?? student.class),
+          String(classRowMulti.section ?? student.section)
+        )
+      : formatReportClassLabel(String(student.class || ''), String(student.section || ''));
 
-  let attendance: { present: number; total: number; percentage: number } | null = null;
-  if (attendanceRows?.length) {
-    const total = attendanceRows.length;
-    const present = attendanceRows.filter((r) => String(r.status || '').toLowerCase() === 'present').length;
-    attendance = { present, total, percentage: total > 0 ? (present / total) * 100 : 0 };
-  }
+  const attendance = await fetchStudentAttendanceForReport(supabase, {
+    schoolCode,
+    studentId,
+    classId: classRowMulti?.id ?? null,
+    academicYear: yearForClassMulti || String(firstExam.academic_year || ''),
+    startDate,
+    endDate,
+  });
 
   let coScholastic: Array<{ name: string; term1_grade?: string; term2_grade?: string }> | null = null;
 
@@ -648,6 +789,7 @@ export async function fetchReportCardDataMultiExam(
       admission_no: student.admission_no || '',
       class: student.class || '',
       section: student.section || '',
+      class_display: classDisplayMulti,
       father_name: student.father_name,
       mother_name: student.mother_name,
       address: student.address || student.school_address,

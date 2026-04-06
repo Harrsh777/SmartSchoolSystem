@@ -10,6 +10,7 @@ import {
   fetchStructureItemsMap,
 } from '@/lib/fees/load-adjustment-context';
 import { fetchLineAdjustmentsGroupedByFeeIds } from '@/lib/fees/student-fee-line-adjustments';
+import { getTransportFeeMode, includeTransportStudentFeeRowForMainFeesUi } from '@/lib/fees/transport-fee-mode';
 
 function escapeIlike(value: string): string {
   return String(value ?? '')
@@ -170,6 +171,8 @@ export async function GET(request: NextRequest) {
       structureItemsByStructureId,
     };
 
+    const transportMode = await getTransportFeeMode(supabase, code);
+
     const rows: Array<{
       student: (typeof studentList)[0];
       has_generated_fees: boolean;
@@ -224,6 +227,15 @@ export async function GET(request: NextRequest) {
       let due = 0;
 
       for (const ef of enriched) {
+        if (
+          !includeTransportStudentFeeRowForMainFeesUi(
+            transportMode,
+            String((ef as { fee_source?: string }).fee_source ?? ''),
+            Number((ef as { total_due?: number }).total_due || 0)
+          )
+        ) {
+          continue;
+        }
         const fs = ef.fee_structure as { name?: string } | null;
         if (fs?.name) names.add(String(fs.name));
         receivable += Number(ef.final_amount || 0);

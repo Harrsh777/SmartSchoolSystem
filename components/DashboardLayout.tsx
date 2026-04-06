@@ -1302,7 +1302,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Stops', path: '/transport/stops', category: 'Transport', icon: Bus, parent: 'Transport' },
     { label: 'Routes', path: '/transport/routes', category: 'Transport', icon: Bus, parent: 'Transport' },
     { label: 'Student Route Mapping', path: '/transport/route-students', category: 'Transport', icon: Bus, parent: 'Transport' },
-  
+    { label: 'Collect Transport Payment', path: '/transport/fees', category: 'Transport', icon: Bus, parent: 'Transport' },
     
     // Leave Management
     { label: 'Leave Management', path: '/leave', category: 'Leave Management', icon: CalendarDays },

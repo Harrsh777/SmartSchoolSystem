@@ -335,6 +335,25 @@ export default function FeesDashboardPage({
               aria-hidden
             />
           </button>
+          <button
+            type="button"
+            onClick={() => router.push(`/dashboard/${schoolCode}/fees/configuration`)}
+            className="group flex min-h-[5.25rem] items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:border-indigo-200 hover:bg-slate-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 group-hover:bg-indigo-100">
+              <Pencil className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-slate-900 leading-tight">Transport Payment Option</span>
+              <span className="mt-0.5 block text-xs text-slate-500 leading-snug">
+                Open fee configuration
+              </span>
+            </span>
+            <ArrowRight
+              className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-600"
+              aria-hidden
+            />
+          </button>
         </div>
       </Card>
 

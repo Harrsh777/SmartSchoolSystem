@@ -4,7 +4,7 @@ import { use } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import { Bus, Settings, Car, Route, Users } from 'lucide-react';
+import { Bus, Settings, Car, Route, Users, IndianRupee } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 export default function TransportPage({
@@ -55,6 +55,14 @@ export default function TransportPage({
       icon: Users,
       path: `/dashboard/${schoolCode}/transport/route-students`,
       color: 'from-[#5A7A95] to-[#6B9BB8]',
+    },
+    {
+      id: 'transport-fees',
+      title: 'Collect Transport Payment',
+      description: 'Filter by class/section, collect transport fees, and print separate TREC receipts',
+      icon: IndianRupee,
+      path: `/dashboard/${schoolCode}/transport/fees`,
+      color: 'from-[#2F6FED] to-[#5A7A95]',
     },
   ];
 
