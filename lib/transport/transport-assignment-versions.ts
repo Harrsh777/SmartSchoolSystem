@@ -22,6 +22,7 @@ export async function recordTransportAssignmentVersion(
     transportFee: number;
     billingFrequency: TransportBillingFrequency;
     effectiveFrom: string;
+    effectiveTo: string | null;
   }
 ): Promise<string | null> {
   const code = params.schoolCode.toUpperCase().trim();
@@ -69,7 +70,7 @@ export async function recordTransportAssignmentVersion(
       transport_fee: params.transportFee,
       billing_frequency: params.billingFrequency,
       effective_from: params.effectiveFrom,
-      effective_to: null,
+      effective_to: params.effectiveTo,
     })
     .select('id')
     .single();

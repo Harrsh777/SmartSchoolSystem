@@ -7,6 +7,156 @@ import {
   studentMatchesCollectPaymentFilters,
 } from '@/lib/fees/fee-structure-class-match';
 import { getTransportFeeMode, includeTransportStudentFeeRowForMainFeesUi } from '@/lib/fees/transport-fee-mode';
+import {
+  computeAcademicFeeColumnState,
+  feeRowYearMonth,
+  sumLateFeeForFees,
+} from '@/lib/fees/pending-student-academic-window';
+import {
+  formatPeriodLabel,
+  normalizeBillingFrequency,
+  periodStartForBilling,
+} from '@/lib/transport/transport-billing-period';
+
+const PAY_EPS = 0.02;
+
+async function attachSeparateTransportSummaries(
+  supabase: ReturnType<typeof getServiceRoleClient>,
+  schoolCode: string,
+  studentRows: Array<{
+    id: string;
+    class: string;
+    section: string;
+    admission_no: string;
+  }>
+): Promise<
+  Map<
+    string,
+    | { mode: 'NONE' }
+    | {
+        mode: 'SEPARATE';
+        period_label: string;
+        balance_due: number;
+        expected: number;
+        paid: boolean;
+      }
+  >
+> {
+  const out = new Map<
+    string,
+    | { mode: 'NONE' }
+    | { mode: 'SEPARATE'; period_label: string; balance_due: number; expected: number; paid: boolean }
+  >();
+  const ids = studentRows.map((r) => r.id);
+  if (ids.length === 0) return out;
+
+  const { data: stRows, error } = await supabase
+    .from('students')
+    .select('id, transport_route_id, transport_billing_frequency, transport_fee')
+    .eq('school_code', schoolCode)
+    .in('id', ids);
+
+  if (error || !stRows) {
+    for (const r of studentRows) out.set(r.id, { mode: 'NONE' });
+    return out;
+  }
+
+  const byId = new Map(
+    stRows.map((row) => [
+      String((row as { id: string }).id),
+      row as {
+        id: string;
+        transport_route_id: string | null;
+        transport_billing_frequency?: string | null;
+        transport_fee?: number | null;
+      },
+    ])
+  );
+
+  const withRoute = stRows
+    .filter((r) => (r as { transport_route_id?: string | null }).transport_route_id)
+    .map((r) => String((r as { id: string }).id));
+
+  const today = new Date();
+  const anchor = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+
+  const periodByStudent = new Map<string, string>();
+  const uniquePeriods = new Set<string>();
+  for (const sid of withRoute) {
+    const row = byId.get(sid);
+    if (!row?.transport_route_id) continue;
+    const freq = normalizeBillingFrequency(row.transport_billing_frequency);
+    const ps = periodStartForBilling(anchor, freq);
+    periodByStudent.set(sid, ps);
+    uniquePeriods.add(ps);
+  }
+
+  const periodList = [...uniquePeriods];
+  type OblRow = { student_id: string; period_start: string; amount_due: number };
+  let obligations: OblRow[] = [];
+  if (withRoute.length > 0 && periodList.length > 0) {
+    const obRes = await supabase
+      .from('transport_billing_obligations')
+      .select('student_id, period_start, amount_due')
+      .eq('school_code', schoolCode)
+      .in('student_id', withRoute)
+      .in('period_start', periodList);
+    if (!obRes.error && obRes.data) {
+      obligations = obRes.data as OblRow[];
+    }
+  }
+
+  const obligationMap = new Map<string, number>();
+  for (const o of obligations) {
+    obligationMap.set(`${o.student_id}:${String(o.period_start).slice(0, 10)}`, Number(o.amount_due || 0));
+  }
+
+  type PayRow = { student_id: string; period_month: string; amount: number };
+  let payments: PayRow[] = [];
+  if (withRoute.length > 0) {
+    const payRes = await supabase
+      .from('transport_fee_payment_entries')
+      .select('student_id, period_month, amount')
+      .eq('school_code', schoolCode)
+      .in('student_id', withRoute);
+    if (!payRes.error && payRes.data) {
+      payments = payRes.data as PayRow[];
+    }
+  }
+
+  const paidByKey = new Map<string, number>();
+  for (const p of payments) {
+    const pm = String(p.period_month || '').slice(0, 10);
+    const k = `${p.student_id}:${pm}`;
+    paidByKey.set(k, (paidByKey.get(k) || 0) + Number(p.amount || 0));
+  }
+
+  for (const sid of ids) {
+    const row = byId.get(sid);
+    if (!row?.transport_route_id) {
+      out.set(sid, { mode: 'NONE' });
+      continue;
+    }
+    const freq = normalizeBillingFrequency(row.transport_billing_frequency);
+    const ps = periodByStudent.get(sid) || periodStartForBilling(anchor, freq);
+    const fromOb = obligationMap.get(`${sid}:${ps}`);
+    const fromStudent = Math.round(Number(row.transport_fee || 0) * 100) / 100;
+    const expected =
+      fromOb != null && Number.isFinite(fromOb) ? Math.round(fromOb * 100) / 100 : fromStudent;
+    const paid = Math.round((paidByKey.get(`${sid}:${ps}`) || 0) * 100) / 100;
+    const balance = Math.max(0, Math.round((expected - paid) * 100) / 100);
+    const paidOk = expected <= PAY_EPS || balance <= PAY_EPS;
+    out.set(sid, {
+      mode: 'SEPARATE',
+      period_label: formatPeriodLabel(ps, freq),
+      expected,
+      paid: paidOk,
+      balance_due: paidOk ? 0 : balance,
+    });
+  }
+
+  return out;
+}
 
 function comparePendingStudentsByRoll(
   a: { roll_number: string; student_name: string },
@@ -168,22 +318,8 @@ export async function GET(request: NextRequest) {
 
     const transportMode = await getTransportFeeMode(supabase, normalizedSchoolCode);
 
-    const studentMap = new Map<
-      string,
-      {
-        id: string;
-        student_name: string;
-        admission_no: string;
-        roll_number: string;
-        class: string;
-        section: string;
-        pending_amount: number;
-        late_fee_amount: number;
-        due_date: string;
-        latest_due_date: string;
-      }
-    >();
-
+    type EnrichedRow = (typeof enriched)[number];
+    const feesByStudent = new Map<string, EnrichedRow[]>();
     const DUE_EPS = 0.01;
 
     enriched.forEach((fee) => {
@@ -213,35 +349,129 @@ export async function GET(request: NextRequest) {
       const totalDue = Number(fee.total_due || 0);
       if (totalDue <= DUE_EPS) return;
 
-      if (!studentMap.has(student.id)) {
-        studentMap.set(student.id, {
-          id: student.id,
-          student_name: student.student_name || 'Unknown',
-          admission_no: student.admission_no || '',
-          roll_number: student.roll_number != null ? String(student.roll_number) : '',
-          class: student.class || '',
-          section: student.section || '',
-          pending_amount: 0,
-          late_fee_amount: 0,
-          due_date: '',
-          latest_due_date: '',
-        });
-      }
-
-      const data = studentMap.get(student.id)!;
-      data.pending_amount += totalDue;
-      data.late_fee_amount += Number(fee.late_fee || 0);
-
-      const feeDueDate = String(fee.due_date || '').trim();
-      if (feeDueDate) {
-        if (!data.due_date || feeDueDate < data.due_date) {
-          data.due_date = feeDueDate;
-        }
-        if (!data.latest_due_date || feeDueDate > data.latest_due_date) {
-          data.latest_due_date = feeDueDate;
-        }
-      }
+      const sid = student.id;
+      if (!feesByStudent.has(sid)) feesByStudent.set(sid, []);
+      feesByStudent.get(sid)!.push(fee);
     });
+
+    const now = new Date();
+    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const studentMap = new Map<
+      string,
+      {
+        id: string;
+        student_name: string;
+        admission_no: string;
+        roll_number: string;
+        class: string;
+        section: string;
+        pending_amount: number;
+        late_fee_amount: number;
+        due_date: string;
+        latest_due_date: string;
+        academic_fee_status: 'NONE' | 'CURRENT_DUE' | 'CURRENT_CLEAR';
+        total_pending_amount: number;
+        transport:
+          | { mode: 'MERGED' }
+          | { mode: 'NONE' }
+          | {
+              mode: 'SEPARATE';
+              period_label: string;
+              balance_due: number;
+              expected: number;
+              paid: boolean;
+            };
+      }
+    >();
+
+    for (const [sid, fees] of feesByStudent) {
+      const student = fees[0].student as unknown as {
+        id: string;
+        student_name?: string;
+        admission_no?: string;
+        roll_number?: string | null;
+        class?: string;
+        section?: string;
+      };
+
+      const academicFees = fees.filter(
+        (f) =>
+          !(transportMode === 'SEPARATE' && String((f as { fee_source?: string }).fee_source) === 'transport')
+      );
+
+      const academicState = computeAcademicFeeColumnState(
+        academicFees.map((f) => ({
+          total_due: Number(f.total_due || 0),
+          late_fee: Number(f.late_fee || 0),
+          due_date: String(f.due_date || ''),
+          due_month: (f as { due_month?: string }).due_month,
+        })),
+        now
+      );
+
+      let pending_amount = 0;
+      let due_date = '';
+      let late_fee_amount = 0;
+      if (academicState.kind === 'CURRENT_DUE') {
+        pending_amount = academicState.amount;
+        due_date = academicState.due_date;
+        const inMonth = academicFees.filter(
+          (f) =>
+            Number(f.total_due || 0) > DUE_EPS && feeRowYearMonth(f as { due_month?: string; due_date: string }) === currentYm
+        );
+        late_fee_amount = sumLateFeeForFees(
+          inMonth.map((f) => ({
+            total_due: Number(f.total_due || 0),
+            late_fee: Number(f.late_fee || 0),
+            due_date: String(f.due_date || ''),
+            due_month: (f as { due_month?: string }).due_month,
+          }))
+        );
+      }
+
+      let latest_due_date = '';
+      for (const f of fees) {
+        const d = String(f.due_date || '').trim();
+        if (d && (!latest_due_date || d > latest_due_date)) latest_due_date = d;
+      }
+
+      const total_pending_amount =
+        Math.round(fees.reduce((s, f) => s + Number(f.total_due || 0), 0) * 100) / 100;
+
+      studentMap.set(sid, {
+        id: sid,
+        student_name: student.student_name || 'Unknown',
+        admission_no: student.admission_no || '',
+        roll_number: student.roll_number != null ? String(student.roll_number) : '',
+        class: student.class || '',
+        section: student.section || '',
+        pending_amount,
+        late_fee_amount,
+        due_date,
+        latest_due_date,
+        academic_fee_status: academicState.kind,
+        total_pending_amount,
+        transport: transportMode === 'MERGED' ? { mode: 'MERGED' } : { mode: 'NONE' },
+      });
+    }
+
+    if (transportMode === 'SEPARATE') {
+      const transportMap = await attachSeparateTransportSummaries(
+        supabase,
+        normalizedSchoolCode,
+        Array.from(studentMap.values()).map((r) => ({
+          id: r.id,
+          class: r.class,
+          section: r.section,
+          admission_no: r.admission_no,
+        }))
+      );
+      for (const [id, row] of studentMap) {
+        const t = transportMap.get(id);
+        if (t) row.transport = t;
+      }
+    }
 
     const pendingStudents = Array.from(studentMap.values())
       .sort(comparePendingStudentsByRoll)

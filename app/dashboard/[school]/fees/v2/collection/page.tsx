@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -92,6 +92,7 @@ interface StudentFee {
 
 /** Align with payment validation / pending list — float noise and rounding */
 const FEE_SETTLED_EPS = 0.02;
+const TRANSPORT_PAY_EPS = 0.02;
 
 function isInstallmentSettled(fee: Pick<StudentFee, 'total_due'>): boolean {
   return Number(fee.total_due || 0) <= FEE_SETTLED_EPS;
@@ -117,6 +118,29 @@ interface PendingStudent {
   pending_amount: number;
   late_fee_amount?: number;
   due_date: string;
+  /** Sum of all pending fee rows (academic + transport); list column uses `pending_amount` for current month academic only. */
+  total_pending_amount?: number;
+  academic_fee_status?: 'NONE' | 'CURRENT_DUE' | 'CURRENT_CLEAR';
+  transport?:
+    | { mode: 'MERGED' }
+    | { mode: 'NONE' }
+    | {
+        mode: 'SEPARATE';
+        period_label: string;
+        balance_due: number;
+        expected: number;
+        paid: boolean;
+      };
+}
+
+interface SiblingDueRow {
+  id: string;
+  student_name: string;
+  admission_no: string;
+  roll_number?: string;
+  class: string;
+  section: string;
+  due_for_selected_period: number;
 }
 
 interface PaymentRecord {
@@ -146,6 +170,7 @@ export default function PaymentCollectionPage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
@@ -173,6 +198,9 @@ export default function PaymentCollectionPage({
   const [activeFeeId, setActiveFeeId] = useState<string | null>(null);
   /** Receipt modal before final collect */
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [siblingRows, setSiblingRows] = useState<SiblingDueRow[]>([]);
+  const [siblingsLoading, setSiblingsLoading] = useState(false);
+  const [hasHydratedFromQuery, setHasHydratedFromQuery] = useState(false);
 
   const [latestPaymentId, setLatestPaymentId] = useState<string | null>(null);
   const [latestReceiptNo, setLatestReceiptNo] = useState<string | null>(null);
@@ -230,6 +258,17 @@ export default function PaymentCollectionPage({
   useEffect(() => {
     fetchClassRows();
   }, [fetchClassRows]);
+
+  useEffect(() => {
+    if (hasHydratedFromQuery) return;
+    const queryClass = String(searchParams.get('class') || '').trim();
+    const querySection = String(searchParams.get('section') || '').trim();
+    const queryAcademicYear = String(searchParams.get('academic_year') || '').trim();
+    if (queryClass) setClassFilter(queryClass);
+    if (querySection) setSectionFilter(querySection);
+    if (queryAcademicYear) setCurrentAcademicYear(queryAcademicYear);
+    setHasHydratedFromQuery(true);
+  }, [hasHydratedFromQuery, searchParams]);
 
   const fetchPendingStudents = useCallback(async (opts?: { quiet?: boolean }) => {
     try {
@@ -446,6 +485,18 @@ export default function PaymentCollectionPage({
       });
     return () => { cancelled = true; };
   }, [currentAcademicYear, schoolCode, selectedStudent?.id]);
+
+  useEffect(() => {
+    const preselectId = String(searchParams.get('student_id') || '').trim();
+    if (!preselectId || !classFilter || !sectionFilter || pendingStudents.length === 0) return;
+    if (selectedStudent?.id === preselectId) return;
+    const target = pendingStudents.find((s) => s.id === preselectId);
+    if (target) {
+      void handleStudentSelect(target);
+    }
+    // Deliberately avoid `handleStudentSelect` in deps to prevent repeated auto-select loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, classFilter, sectionFilter, pendingStudents, selectedStudent?.id]);
 
   const handleInstallmentSelect = (fee: StudentFee) => {
     const settled = isInstallmentSettled(fee);
@@ -848,6 +899,35 @@ export default function PaymentCollectionPage({
   }, [activeStructureGroup, activeFeeId]);
 
   useEffect(() => {
+    if (!selectedStudent) {
+      setSiblingRows([]);
+      setSiblingsLoading(false);
+      return;
+    }
+    const dueMonth = String(activeSelectedFee?.due_month || '').trim();
+    let cancelled = false;
+    setSiblingsLoading(true);
+    const q = new URLSearchParams({ school_code: schoolCode });
+    if (currentAcademicYear) q.set('academic_year', currentAcademicYear);
+    if (dueMonth) q.set('due_month', dueMonth);
+    fetch(`/api/v2/fees/students/${selectedStudent.id}/siblings?${q.toString()}`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setSiblingRows(Array.isArray(data.data) ? (data.data as SiblingDueRow[]) : []);
+      })
+      .catch(() => {
+        if (!cancelled) setSiblingRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSiblingsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStudent?.id, activeSelectedFee?.due_month, currentAcademicYear, schoolCode]);
+
+  useEffect(() => {
     lastActiveInstallmentDueRef.current = 0;
   }, [activeFeeId]);
 
@@ -1238,6 +1318,64 @@ export default function PaymentCollectionPage({
                     </p>
                   </Card>
                 </div>
+                <Card className="p-4">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                      Siblings (Father Mobile)
+                    </p>
+                    {activeSelectedFee?.due_month ? (
+                      <span className="text-xs text-gray-500 dark:text-slate-400">
+                        Period {activeSelectedFee.due_month}
+                      </span>
+                    ) : null}
+                  </div>
+                  {siblingsLoading ? (
+                    <p className="text-xs text-gray-500 dark:text-slate-400">Checking siblings...</p>
+                  ) : siblingRows.length === 0 ? (
+                    <p className="text-xs text-gray-500 dark:text-slate-400">no siblings</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {siblingRows.map((sib) => (
+                        <button
+                          key={sib.id}
+                          type="button"
+                          onClick={() => {
+                            const q = new URLSearchParams();
+                            q.set('class', sib.class);
+                            q.set('section', sib.section);
+                            q.set('student_id', sib.id);
+                            if (currentAcademicYear) q.set('academic_year', currentAcademicYear);
+                            router.push(`/dashboard/${schoolCode}/fees/v2/collection?${q.toString()}`);
+                          }}
+                          className="w-full rounded-lg border border-gray-200 dark:border-slate-700 px-3 py-2 text-left hover:border-blue-300 dark:hover:border-blue-600"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                                {sib.student_name}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-slate-400 font-mono">
+                                {sib.roll_number?.trim() ? `Roll ${sib.roll_number} • ` : ''}
+                                {sib.admission_no} • {sib.class}-{sib.section}
+                              </p>
+                            </div>
+                            <p
+                              className={`text-sm font-semibold tabular-nums ${
+                                sib.due_for_selected_period > 0
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-green-600 dark:text-green-400'
+                              }`}
+                            >
+                              {sib.due_for_selected_period > 0
+                                ? formatCurrency(sib.due_for_selected_period)
+                                : 'No due'}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </Card>
 
                 {/* Fee structures → receipt-style breakdown */}
                 <div>
@@ -2817,9 +2955,16 @@ export default function PaymentCollectionPage({
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between gap-3 mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Students with pending dues</h2>
-                  <span className="text-sm text-gray-500 dark:text-slate-400">{filteredStudents.length} student(s)</span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Students with pending dues</h2>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                      Fee Due shows this calendar month&apos;s school fees only. Transport (separate mode) is in the Transport column.
+                    </p>
+                  </div>
+                  <span className="text-sm text-gray-500 dark:text-slate-400 shrink-0">
+                    {filteredStudents.length} student(s)
+                  </span>
                 </div>
                 {loading ? (
                   <div className="flex justify-center py-12">
@@ -2836,7 +2981,7 @@ export default function PaymentCollectionPage({
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm min-w-[900px]">
+                    <table className="w-full text-sm min-w-[1040px]">
                       <thead>
                         <tr className="bg-[#003D4C] text-white">
                           <th className="px-3 py-3 text-left w-10">#</th>
@@ -2845,39 +2990,85 @@ export default function PaymentCollectionPage({
                           <th className="px-3 py-3 text-left">Admission Id</th>
                           <th className="px-3 py-3 text-left">Class</th>
                           <th className="px-3 py-3 text-right">Fee Due</th>
+                          <th className="px-3 py-3 text-center min-w-[140px]">Transport</th>
                           <th className="px-3 py-3 text-left">Due Date</th>
                           <th className="px-3 py-3 text-center w-28">Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredStudents.map((student, i) => (
-                          <tr key={student.id} className="border-t border-gray-200 dark:border-slate-800 hover:bg-gray-50/50">
-                            <td className="px-3 py-3 text-gray-600">{String(i + 1).padStart(2, '0')}</td>
-                            <td className="px-3 py-3 font-mono text-gray-800">{student.roll_number?.trim() || '—'}</td>
-                            <td className="px-3 py-3 font-medium text-gray-900">{student.student_name}</td>
-                            <td className="px-3 py-3 font-mono text-gray-800">{student.admission_no}</td>
-                            <td className="px-3 py-3 text-gray-800">
-                              {student.class}-{student.section}
-                            </td>
-                            <td className="px-3 py-3 text-right font-semibold text-red-600">
-                              {formatCurrency(student.pending_amount)}
-                            </td>
-                            <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
-                              {student.due_date ? new Date(student.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}
-                            </td>
-                            <td className="px-3 py-3 text-center">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-9 w-24"
-                                onClick={() => handleStudentSelect(student)}
-                              >
-                                Select
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
+                        {filteredStudents.map((student, i) => {
+                          const tr = student.transport;
+                          const transportHref = `/dashboard/${schoolCode}/transport/fees?class=${encodeURIComponent(student.class)}&section=${encodeURIComponent(student.section)}&search=${encodeURIComponent(student.admission_no)}`;
+                          return (
+                            <tr key={student.id} className="border-t border-gray-200 dark:border-slate-800 hover:bg-gray-50/50">
+                              <td className="px-3 py-3 text-gray-600">{String(i + 1).padStart(2, '0')}</td>
+                              <td className="px-3 py-3 font-mono text-gray-800">{student.roll_number?.trim() || '—'}</td>
+                              <td className="px-3 py-3 font-medium text-gray-900">{student.student_name}</td>
+                              <td className="px-3 py-3 font-mono text-gray-800">{student.admission_no}</td>
+                              <td className="px-3 py-3 text-gray-800">
+                                {student.class}-{student.section}
+                              </td>
+                              <td className="px-3 py-3 text-right font-semibold">
+                                {student.academic_fee_status === 'CURRENT_CLEAR' ? (
+                                  <span className="text-green-600 dark:text-green-400">Paid</span>
+                                ) : student.academic_fee_status === 'NONE' ? (
+                                  <span className="text-gray-400 dark:text-slate-500 font-normal">—</span>
+                                ) : (
+                                  <span className="text-red-600 dark:text-red-400">
+                                    {formatCurrency(student.pending_amount)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 text-gray-700 dark:text-slate-300 align-top text-center">
+                                <div className="flex flex-col items-center justify-center gap-0.5">
+                                  {!tr || tr.mode === 'NONE' ? (
+                                    <span className="text-gray-400 dark:text-slate-500">—</span>
+                                  ) : tr.mode === 'MERGED' ? (
+                                    <span className="text-xs text-slate-500 dark:text-slate-400 text-center">
+                                      In school fees
+                                    </span>
+                                  ) : tr.paid || tr.balance_due <= TRANSPORT_PAY_EPS ? (
+                                    <span className="text-green-600 dark:text-green-400 font-semibold">Paid</span>
+                                  ) : tr.expected > TRANSPORT_PAY_EPS && tr.balance_due > TRANSPORT_PAY_EPS ? (
+                                    <button
+                                      type="button"
+                                      className="text-center text-sm text-blue-700 dark:text-blue-400 hover:underline font-medium tabular-nums"
+                                      onClick={() => router.push(transportHref)}
+                                    >
+                                      {formatCurrency(tr.balance_due)}
+                                      <span className="block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                                        {tr.period_label}
+                                      </span>
+                                    </button>
+                                  ) : (
+                                    <span className="text-gray-400 dark:text-slate-500">—</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
+                                {student.academic_fee_status === 'CURRENT_CLEAR' ||
+                                student.academic_fee_status === 'NONE' ||
+                                !student.due_date
+                                  ? '—'
+                                  : new Date(student.due_date).toLocaleDateString('en-IN', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                    })}
+                              </td>
+                              <td className="px-3 py-3 text-center">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-9 w-24"
+                                  onClick={() => handleStudentSelect(student)}
+                                >
+                                  Select
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

@@ -36,12 +36,18 @@ let tripsInWindow = 0;
 
 let lastErrorLogAt = 0;
 const ERROR_LOG_THROTTLE_MS = 15_000;
+const REDIS_DEBUG = process.env.REDIS_DEBUG === 'true';
 
 function throttledWarn(message: string): void {
   const now = Date.now();
   if (now - lastErrorLogAt < ERROR_LOG_THROTTLE_MS) return;
   lastErrorLogAt = now;
   console.warn(message);
+}
+
+function debugLog(...args: unknown[]): void {
+  if (!REDIS_DEBUG) return;
+  console.log('[Redis Debug]', ...args);
 }
 
 function isRedisExplicitlyEnabled(): boolean {
@@ -166,6 +172,42 @@ export async function connectRedis(): Promise<boolean> {
 }
 
 /**
+ * Simple write/read/keys/ttl diagnostic.
+ * Logs expected values to help confirm Redis connectivity and key expiry behavior.
+ */
+export async function runRedisDiagnostics(): Promise<{
+  connected: boolean;
+  value: string | null;
+  ttl: number | null;
+  keys: string[];
+}> {
+  const redis = getRedis();
+  if (!redis) {
+    console.warn('[Redis Test] Redis client unavailable (disabled/circuit-open/misconfigured).');
+    return { connected: false, value: null, ttl: null, keys: [] };
+  }
+
+  try {
+    await redis.set('test_key', 'working', 'EX', 60);
+    const value = await redis.get('test_key');
+    console.log('Redis Test:', value);
+
+    const keys = await redis.keys('*');
+    console.log('All Redis Keys:', keys);
+
+    const ttl = await redis.ttl('test_key');
+    console.log('TTL:', ttl);
+
+    return { connected: true, value, ttl, keys };
+  } catch (e) {
+    const msg = (e as Error).message || String(e);
+    if (connectionLikeMessage(msg)) tripCircuit(msg);
+    console.error('[Redis Test] Diagnostics failed:', msg);
+    return { connected: false, value: null, ttl: null, keys: [] };
+  }
+}
+
+/**
  * Whether Redis is configured and the circuit allows attempts (does not create a client).
  */
 export function isRedisAvailable(): boolean {
@@ -181,6 +223,7 @@ export async function redisGet(key: string): Promise<string | null> {
   const redis = getRedis();
   if (!redis) return null;
   try {
+    debugLog('Getting from Redis:', key);
     return await redis.get(key);
   } catch (err) {
     const msg = (err as Error).message || String(err);
@@ -196,6 +239,7 @@ export async function redisSet(key: string, value: string, ttlSeconds: number): 
   const redis = getRedis();
   if (!redis) return false;
   try {
+    debugLog('Setting in Redis:', key, 'EX', ttlSeconds);
     await redis.setex(key, ttlSeconds, value);
     return true;
   } catch (err) {
@@ -212,6 +256,7 @@ export async function redisDel(key: string): Promise<boolean> {
   const redis = getRedis();
   if (!redis) return false;
   try {
+    debugLog('Deleting from Redis:', key);
     await redis.del(key);
     return true;
   } catch (err) {
@@ -228,6 +273,7 @@ export async function redisDelByPattern(pattern: string): Promise<number> {
   const redis = getRedis();
   if (!redis) return 0;
   try {
+    debugLog('Deleting by Redis pattern:', pattern);
     let cursor = '0';
     let deleted = 0;
     do {

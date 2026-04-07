@@ -15,7 +15,6 @@ import {
   CheckCircle,
   Search,
   UserMinus,
-  UserPlus,
   MapPin,
   Bus,
   Pencil,
@@ -76,6 +75,7 @@ const emptyForm = () => ({
   custom_fare: '' as string,
   billing_frequency: 'MONTHLY' as TransportBillingFrequency,
   effective_from: '' as string,
+  end_month: '' as string,
 });
 
 export default function RouteStudentsPage({
@@ -194,6 +194,7 @@ export default function RouteStudentsPage({
             : '',
         billing_frequency: bf === 'QUARTERLY' ? 'QUARTERLY' : 'MONTHLY',
         effective_from: '',
+        end_month: '',
       });
     }
   };
@@ -229,6 +230,15 @@ export default function RouteStudentsPage({
     if (!form.pickup_stop_id && !form.drop_stop_id && !hasCustom) {
       return 'Choose at least a pickup stop, a drop-off stop, or enter a custom fare.';
     }
+    if (!/^\d{4}-\d{2}$/.test(form.effective_from.trim())) {
+      return 'Effective From is mandatory.';
+    }
+    if (!/^\d{4}-\d{2}$/.test(form.end_month.trim())) {
+      return 'End Month is mandatory.';
+    }
+    if (form.end_month.trim() < form.effective_from.trim()) {
+      return 'End month cannot be before effective month';
+    }
     if (!hasCustom && farePreview.total <= 0 && (form.pickup_stop_id || form.drop_stop_id)) {
       return form.billing_frequency === 'QUARTERLY'
         ? 'Selected stop(s) have ₹0 for this quarter (set quarterly amounts or monthly amounts, or use custom fare).'
@@ -242,11 +252,13 @@ export default function RouteStudentsPage({
     const customRaw = form.custom_fare.trim();
     const hasCustom = customRaw !== '' && Number.isFinite(Number(customRaw)) && Number(customRaw) >= 0;
     const eff = form.effective_from.trim();
+    const end = form.end_month.trim();
     const payload = {
       school_code: schoolCode,
       route_id: selectedRoute,
       billing_frequency: form.billing_frequency,
-      ...(eff && /^\d{4}-\d{2}-\d{2}$/.test(eff) ? { effective_from: eff } : {}),
+      effective_from: /^\d{4}-\d{2}$/.test(eff) ? `${eff}-01` : '',
+      end_month: /^\d{4}-\d{2}$/.test(end) ? `${end}-01` : '',
       assignments: studentIds.map((student_id) => ({
         student_id,
         pickup_stop_id: form.pickup_stop_id || null,
@@ -384,7 +396,14 @@ export default function RouteStudentsPage({
   const availableStudents = filteredStudents.filter((s) => !s.transport_route_id || s.transport_route_id !== selectedRoute);
 
   const selectedRouteData = routes.find((r) => r.id === selectedRoute);
-  const currentCount = routeStudents.length;
+  /** Total seats in use on this route (all classes/sections) — capacity must not depend on class-section filter. */
+  const assignedOnRouteTotal = useMemo(
+    () =>
+      selectedRoute
+        ? students.filter((s) => String(s.transport_route_id || '') === String(selectedRoute)).length
+        : 0,
+    [students, selectedRoute]
+  );
   const capacity = selectedRouteData?.vehicle?.seats || 0;
 
   const describeStopLine = (student: Student, leg: 'pickup' | 'drop') => {
@@ -551,36 +570,42 @@ export default function RouteStudentsPage({
                     className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wide ${
                       capacity <= 0
                         ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                        : currentCount >= capacity
+                        : assignedOnRouteTotal >= capacity
                           ? 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300'
-                          : currentCount >= capacity * 0.8
+                          : assignedOnRouteTotal >= capacity * 0.8
                             ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
                             : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
                     }`}
                   >
-                    {capacity > 0 ? `${Math.round((currentCount / capacity) * 100)}% full` : 'Capacity not set'}
+                    {capacity > 0 ? `${Math.round((assignedOnRouteTotal / capacity) * 100)}% full` : 'Capacity not set'}
                   </div>
                 </div>
                 {capacity > 0 && (
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
                       <span>
-                        {currentCount} assigned
+                        {assignedOnRouteTotal} assigned
+                        {classFilter && sectionFilter && routeStudents.length !== assignedOnRouteTotal ? (
+                          <span className="text-gray-400 dark:text-gray-500 font-normal">
+                            {' '}
+                            ({routeStudents.length} in selected class-section)
+                          </span>
+                        ) : null}
                       </span>
                       <span>
-                        {Math.max(0, capacity - currentCount)} free
+                        {Math.max(0, capacity - assignedOnRouteTotal)} free
                       </span>
                     </div>
                     <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${
-                          currentCount >= capacity
+                          assignedOnRouteTotal >= capacity
                             ? 'bg-red-500'
-                            : currentCount >= capacity * 0.8
+                            : assignedOnRouteTotal >= capacity * 0.8
                               ? 'bg-amber-500'
                               : 'bg-emerald-500'
                         }`}
-                        style={{ width: `${Math.min(100, capacity ? (currentCount / capacity) * 100 : 0)}%` }}
+                        style={{ width: `${Math.min(100, capacity ? (assignedOnRouteTotal / capacity) * 100 : 0)}%` }}
                       />
                     </div>
                   </div>
@@ -645,7 +670,7 @@ export default function RouteStudentsPage({
               </div>
               <Button
                 onClick={handleOpenBulkPicker}
-                disabled={currentCount >= capacity || loadingRouteStops || routeStops.length === 0}
+                disabled={assignedOnRouteTotal >= capacity || loadingRouteStops || routeStops.length === 0}
                 className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 shrink-0 rounded-xl px-5 py-3 h-auto shadow-md shadow-emerald-600/15"
               >
                 <Plus size={18} className="mr-2" />
@@ -661,7 +686,22 @@ export default function RouteStudentsPage({
                 <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700/80 bg-gray-50/80 dark:bg-slate-800/40">
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white">On this route</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                    {routeStudents.length} student{routeStudents.length !== 1 ? 's' : ''} · pickup, drop, and fee
+                    {classFilter && sectionFilter ? (
+                      <>
+                        {routeStudents.length} student{routeStudents.length !== 1 ? 's' : ''} in this class-section
+                        {assignedOnRouteTotal !== routeStudents.length
+                          ? ` · ${assignedOnRouteTotal} total on route`
+                          : ''}
+                        {' '}
+                        · pickup, drop, and fee
+                      </>
+                    ) : (
+                      <>
+                        {assignedOnRouteTotal} student{assignedOnRouteTotal !== 1 ? 's' : ''} on this route (all classes)
+                        {' '}
+                        · select class and section to filter the list
+                      </>
+                    )}
                   </p>
                 </div>
                 <div className="p-4 space-y-2 flex-1 overflow-y-auto max-h-[640px]">
@@ -825,7 +865,7 @@ export default function RouteStudentsPage({
                             onChange={(e) => {
                               const next = new Set(selectedStudents);
                               if (e.target.checked) {
-                                const maxPick = Math.max(0, capacity - currentCount);
+                                const maxPick = Math.max(0, capacity - assignedOnRouteTotal);
                                 if (next.size < maxPick) next.add(student.id);
                               } else next.delete(student.id);
                               setSelectedStudents(next);
@@ -843,7 +883,9 @@ export default function RouteStudentsPage({
                     })}
                 </div>
                 <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center gap-3">
-                  <p className="text-xs text-gray-500">{selectedStudents.size} selected · {capacity - currentCount} seats free</p>
+                  <p className="text-xs text-gray-500">
+                    {selectedStudents.size} selected · {Math.max(0, capacity - assignedOnRouteTotal)} seats free
+                  </p>
                   <div className="flex gap-2">
                     <Button variant="outline" type="button" onClick={() => setBulkModalOpen(false)}>
                       Cancel
@@ -971,16 +1013,31 @@ export default function RouteStudentsPage({
 
                   <div className="grid gap-2">
                     <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                      Effective from (optional)
+                      Effective From
                     </label>
                     <Input
-                      type="date"
+                      type="month"
                       value={form.effective_from}
                       onChange={(e) => setForm((f) => ({ ...f, effective_from: e.target.value }))}
                       className="rounded-xl"
                     />
                     <p className="text-xs text-gray-500">
-                      When changing stops or route, set the date the new mapping applies. Previous assignment is closed the day before. Leave empty for today.
+                      Month from which transport service starts.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                      End Month
+                    </label>
+                    <Input
+                      type="month"
+                      value={form.end_month}
+                      onChange={(e) => setForm((f) => ({ ...f, end_month: e.target.value }))}
+                      className="rounded-xl"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Last month till which transport fees should be generated.
                     </p>
                   </div>
 

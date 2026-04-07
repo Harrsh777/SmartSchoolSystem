@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -38,6 +38,15 @@ interface RosterRow {
     calculated_total?: number;
     period_fee?: number;
   };
+  periods?: Array<{
+    period_month: string;
+    period_label: string;
+    expected: number;
+    paid: number;
+    balance: number;
+    status: string;
+    frequency: string;
+  }>;
 }
 
 interface CollectionRow {
@@ -60,14 +69,11 @@ export default function TransportFeesPage({
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dueRows, setDueRows] = useState<RosterRow[]>([]);
   const [collections, setCollections] = useState<CollectionRow[]>([]);
-  const [billingMonth, setBillingMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-  });
   const [search, setSearch] = useState('');
   const [classRows, setClassRows] = useState<Array<{ class?: string; section?: string }>>([]);
   const [classFilter, setClassFilter] = useState('');
@@ -124,6 +130,15 @@ export default function TransportFeesPage({
     void fetchClassRows();
   }, [fetchClassRows]);
 
+  useEffect(() => {
+    const c = searchParams.get('class')?.trim() ?? '';
+    const sec = searchParams.get('section')?.trim() ?? '';
+    const sq = searchParams.get('search')?.trim() ?? '';
+    if (c) setClassFilter(c);
+    if (sec) setSectionFilter(sec);
+    if (sq) setSearch(sq);
+  }, [searchParams]);
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -136,7 +151,6 @@ export default function TransportFeesPage({
       const q = new URLSearchParams({
         school_code: schoolCode,
         roster: '1',
-        billing_month: billingMonth,
         class: classFilter,
         section: sectionFilter,
       });
@@ -162,7 +176,7 @@ export default function TransportFeesPage({
     } finally {
       setLoading(false);
     }
-  }, [schoolCode, billingMonth, classFilter, sectionFilter]);
+  }, [schoolCode, classFilter, sectionFilter]);
 
   useEffect(() => {
     void load();
@@ -205,6 +219,10 @@ export default function TransportFeesPage({
 
   const submitCollection = async () => {
     if (!collectFor) return;
+    if (!collectFor.billing_month) {
+      setCollectError('Please select a billing period first.');
+      return;
+    }
     const sessionStaffId = resolveSessionStaffId();
     const staffId = selectedCollector || sessionStaffId;
     if (!staffId) {
@@ -328,13 +346,6 @@ export default function TransportFeesPage({
             ))}
           </select>
         </div>
-        <div>
-          <label className="text-xs font-medium text-gray-500 block mb-1">Billing period (calendar month)</label>
-          <Input type="month" value={billingMonth.slice(0, 7)} onChange={(e) => setBillingMonth(`${e.target.value}-01`)} />
-          <p className="text-[11px] text-gray-500 mt-1 max-w-xs">
-            Monthly students use that month. Quarterly students use the quarter that contains this month (collections match quarter start).
-          </p>
-        </div>
         <div className="flex-1 min-w-[200px]">
           <label className="text-xs font-medium text-gray-500 block mb-1">Search</label>
           <div className="relative">
@@ -367,9 +378,9 @@ export default function TransportFeesPage({
                   <th className="p-3">Class</th>
                   <th className="p-3">Route</th>
                   <th className="p-3">Freq</th>
-                  <th className="p-3 text-right">Period fee</th>
-                  <th className="p-3 text-right">Paid</th>
-                  <th className="p-3 text-right">Balance</th>
+                  <th className="p-3 text-right">Total fee</th>
+                  <th className="p-3 text-right">Total paid</th>
+                  <th className="p-3 text-right">Total balance</th>
                   <th className="p-3">Status</th>
                   <th className="p-3" />
                 </tr>
@@ -387,9 +398,7 @@ export default function TransportFeesPage({
                     <td className="p-3 text-gray-700">{r.route_name || '—'}</td>
                     <td className="p-3 text-gray-600 text-xs">
                       {r.billing_frequency === 'QUARTERLY' ? 'Quarterly' : 'Monthly'}
-                      {r.period_label && (
-                        <span className="block text-gray-400 mt-0.5">{r.period_label}</span>
-                      )}
+                      <span className="block text-gray-400 mt-0.5">{(r.periods || []).length} periods</span>
                     </td>
                     <td className="p-3 text-right tabular-nums">₹{r.monthly_transport_fee.toLocaleString('en-IN')}</td>
                     <td className="p-3 text-right tabular-nums">₹{r.paid_this_month.toLocaleString('en-IN')}</td>
@@ -411,15 +420,16 @@ export default function TransportFeesPage({
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={r.balance_due <= 0.02 || r.transport_fee_mode === 'MERGED'}
+                        disabled={r.transport_fee_mode === 'MERGED' || (r.periods || []).length === 0}
                         onClick={() => {
                           setCollectFor(r);
-                          setAmount(String(r.balance_due));
+                          const firstDue = (r.periods || []).find((p) => p.balance > 0.02);
+                          setAmount(String(firstDue?.balance ?? 0));
                           setCollectError('');
                           setCollectOk('');
                         }}
                       >
-                        Collect
+                        View fees
                       </Button>
                     </td>
                   </tr>
@@ -428,8 +438,8 @@ export default function TransportFeesPage({
                   <tr>
                     <td colSpan={9} className="p-8 text-center text-gray-500">
                       {!classFilter || !sectionFilter
-                        ? 'Select class and section to view mapped transport students with a balance for this billing period.'
-                        : 'No transport fee due for this class-section and billing period (all paid or zero fee).'}
+                        ? 'Select class and section to view mapped transport students.'
+                        : 'No mapped transport students for this class-section.'}
                     </td>
                   </tr>
                 )}
@@ -441,9 +451,9 @@ export default function TransportFeesPage({
 
       <Card className="overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-          <h2 className="text-sm font-semibold text-slate-800">Collections for this billing period</h2>
+          <h2 className="text-sm font-semibold text-slate-800">Collections</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Receipts recorded for the same period as above (month or quarter start).
+            Recent receipts for the selected class and section.
           </p>
         </div>
         {loading ? (
@@ -452,7 +462,7 @@ export default function TransportFeesPage({
           </div>
         ) : collections.length === 0 ? (
           <p className="p-6 text-center text-sm text-gray-500">
-            {!classFilter || !sectionFilter ? 'Select class and section.' : 'No collections for this period yet.'}
+            {!classFilter || !sectionFilter ? 'Select class and section.' : 'No collections yet.'}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -519,8 +529,7 @@ export default function TransportFeesPage({
           <Card className="w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-1">Collect transport fee</h3>
             <p className="text-sm text-gray-600 mb-4">
-              {collectFor.student_name} — balance ₹{collectFor.balance_due.toLocaleString('en-IN')} for{' '}
-              {collectFor.billing_month}
+              {collectFor.student_name} — select a month/quarter and collect payment
             </p>
             {collectError && <div className="text-sm text-red-600 mb-2">{collectError}</div>}
             {collectOk && <div className="text-sm text-green-700 mb-2">{collectOk}</div>}
@@ -561,6 +570,27 @@ export default function TransportFeesPage({
                     ₹{previewRemaining.toLocaleString('en-IN')}
                   </span>
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Billing period</label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  value={collectFor.billing_month || ''}
+                  onChange={(e) => {
+                    const pm = e.target.value;
+                    const picked = (collectFor.periods || []).find((p) => p.period_month === pm);
+                    if (!picked) return;
+                    setCollectFor({ ...collectFor, billing_month: picked.period_month, balance_due: picked.balance, paid_this_month: picked.paid, monthly_transport_fee: picked.expected });
+                    setAmount(String(picked.balance));
+                  }}
+                >
+                  <option value="">Select period</option>
+                  {(collectFor.periods || []).map((p) => (
+                    <option key={`${p.frequency}-${p.period_month}`} value={p.period_month}>
+                      {p.period_label} ({p.frequency}) — Due ₹{p.balance.toLocaleString('en-IN')}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-xs text-gray-500">Collected by (staff)</label>

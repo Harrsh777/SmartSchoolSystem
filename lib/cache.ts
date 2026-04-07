@@ -84,6 +84,9 @@ export const DASHBOARD_REDIS_TTL = {
   academicYearsList: 300,
   feesClassWiseReport: 120,
   studentPortalStats: 90,
+  studentsCounts: 75,
+  transportStudents: 120,
+  financeOverview: 90,
 } as const;
 
 export const cacheKeys = {
@@ -108,8 +111,19 @@ export const cacheKeys = {
     `dash:cal:v1:${schoolCode}:${academicYear ?? '_'}:e${includeEvents ? 1 : 0}`,
   studentsList: (schoolCode: string, fingerprint: string) =>
     `dash:students:v1:${schoolCode}:${fingerprint}`,
+  studentsCounts: (schoolCode: string, academicYear: string | null) =>
+    `students:counts:v1:${schoolCode}:${academicYear ?? '_'}`,
   /** Invalidate all cached student-directory pages for a school (after create/update). */
   studentsListPattern: (schoolCode: string) => `dash:students:v1:${schoolCode}:*`,
+  studentsCountsPattern: (schoolCode: string) => `students:counts:v1:${schoolCode}:*`,
+  transportStudents: (schoolCode: string, routeId: string | null) =>
+    `transport:students:v1:${schoolCode}:${routeId ?? '_'}`,
+  transportStudentsPattern: (schoolCode: string) => `transport:students:v1:${schoolCode}:*`,
+  financeOverview: (
+    schoolCode: string,
+    financialYearId: string | null,
+    month: string | null
+  ) => `finance:overview:v1:${schoolCode}:${financialYearId ?? '_'}:${month ?? '_'}`,
   feesV2Dashboard: (schoolCode: string, day: string) => `dash:fees2:v1:${schoolCode}:${day}`,
   /** Timetable slots: by class_id, teacher_id, or school-wide empty-class query. */
   timetableSlots: (schoolCode: string, classId: string | null, teacherId: string | null) =>

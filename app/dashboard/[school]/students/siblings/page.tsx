@@ -31,40 +31,45 @@ export default function StudentSiblingsPage({
   };
 
   useEffect(() => {
-    fetchStudents();
+    void fetchStudents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolCode]);
 
   useEffect(() => {
     if (students.length > 0) {
-      findSiblings();
+      findSiblings(students);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [students]);
 
-  const fetchStudents = async () => {
+  const fetchStudents = async (): Promise<Student[]> => {
     try {
       setLoading(true);
       // Fetch all students regardless of status for sibling matching
       const response = await fetch(`/api/students?school_code=${schoolCode}&status=all`);
       const result = await response.json();
       if (response.ok && result.data) {
-        setStudents(result.data);
+        const list = Array.isArray(result.data) ? (result.data as Student[]) : [];
+        setStudents(list);
+        return list;
       }
+      setStudents([]);
+      return [];
     } catch (err) {
       console.error('Error fetching students:', err);
+      setStudents([]);
+      return [];
     } finally {
       setLoading(false);
     }
   };
 
-  const findSiblings = () => {
+  const findSiblings = (sourceStudents: Student[] = students) => {
     setMatching(true);
 
     const normalizePhone = (value: string) => getString(value).replace(/\D/g, '').trim();
-    const normalizeEmail = (value: string) => getString(value).toLowerCase().trim();
 
-    // Collect for each student all parent contacts (father, mother, parent/guardian)
+    // Collect students only by shared father's mobile number
     const contactToStudentIds = new Map<string, Set<string>>();
 
     const addContact = (key: string, studentId: string) => {
@@ -74,17 +79,10 @@ export default function StudentSiblingsPage({
       contactToStudentIds.get(key)!.add(studentId);
     };
 
-    students.forEach((student) => {
+    sourceStudents.forEach((student) => {
       const id = student.id as string;
       const fatherPhone = normalizePhone(getString(student.father_contact));
-      const motherPhone = normalizePhone(getString(student.mother_contact));
-      const parentPhone = normalizePhone(getString(student.parent_phone));
-      const parentEmail = normalizeEmail(getString(student.parent_email));
-
       if (fatherPhone.length >= 8) addContact(`p_${fatherPhone}`, id);
-      if (motherPhone.length >= 8) addContact(`p_${motherPhone}`, id);
-      if (parentPhone.length >= 8) addContact(`p_${parentPhone}`, id);
-      if (parentEmail) addContact(`e_${parentEmail}`, id);
     });
 
     // Union-Find: merge students that share any contact
@@ -110,7 +108,7 @@ export default function StudentSiblingsPage({
 
     // Group students by root
     const rootToStudents = new Map<string, Student[]>();
-    students.forEach((s) => {
+    sourceStudents.forEach((s) => {
       const id = s.id as string;
       const r = root(id);
       if (!rootToStudents.has(r)) rootToStudents.set(r, []);
@@ -122,13 +120,7 @@ export default function StudentSiblingsPage({
       const id = s.id as string;
       const contacts: string[] = [];
       const fp = normalizePhone(getString(s.father_contact));
-      const mp = normalizePhone(getString(s.mother_contact));
-      const pp = normalizePhone(getString(s.parent_phone));
-      const pe = normalizeEmail(getString(s.parent_email));
       if (fp && fp.length >= 8) contacts.push('Father\'s contact');
-      if (mp && mp.length >= 8) contacts.push('Mother\'s contact');
-      if (pp && pp.length >= 8) contacts.push('Parent/Guardian phone');
-      if (pe) contacts.push('Parent/Guardian email');
       studentToContacts.set(id, [...new Set(contacts)]);
     });
 
@@ -164,11 +156,15 @@ export default function StudentSiblingsPage({
             <UsersRound size={32} />
             Student Siblings List
           </h1>
-          <p className="text-gray-600">Siblings are matched by shared Father&apos;s contact, Mother&apos;s contact, or Parent/Guardian phone or email</p>
+          <p className="text-gray-600">Siblings are matched by shared Father&apos;s mobile number</p>
         </div>
         <div className="flex gap-3">
           <Button
-            onClick={findSiblings}
+            onClick={async () => {
+              setMatching(true);
+              const latestStudents = await fetchStudents();
+              findSiblings(latestStudents);
+            }}
             disabled={matching}
             className="bg-orange-500 hover:bg-orange-600 text-white"
           >
@@ -190,7 +186,7 @@ export default function StudentSiblingsPage({
             <UsersRound className="mx-auto text-gray-400 mb-4" size={48} />
             <p className="text-gray-600 mb-2">No sibling groups found</p>
             <p className="text-sm text-gray-500 max-w-lg mx-auto">
-              Siblings are identified by <strong>shared parent contact</strong>: same Father&apos;s contact, Mother&apos;s contact, or Parent/Guardian phone/email. Students with the same number or email in any of these fields are grouped together. Click &quot;Find Siblings&quot; to run the match.
+              Siblings are identified by <strong>shared father&apos;s mobile number</strong>. Students with the same father contact are grouped together. Click &quot;Find Siblings&quot; to run the match.
             </p>
           </div>
         </Card>

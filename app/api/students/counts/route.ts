@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { cacheKeys, DASHBOARD_REDIS_TTL, getCached } from '@/lib/cache';
 
 /**
  * GET /api/students/counts?school_code=XXX&academic_year=YYY
@@ -26,25 +27,33 @@ export async function GET(request: NextRequest) {
       return q;
     };
 
-    const [
-      { count: active },
-      { count: deactivated },
-      { count: transferred },
-      { count: alumni },
-    ] = await Promise.all([
-      base().eq('status', 'active'),
-      base().in('status', ['deactivated', 'inactive']),
-      base().eq('status', 'transferred'),
-      base().in('status', ['alumni', 'graduated']),
-    ]);
+    const key = cacheKeys.studentsCounts(schoolCode, academicYearFilter || null);
+    const counts = await getCached(
+      key,
+      async () => {
+        const [
+          { count: active },
+          { count: deactivated },
+          { count: transferred },
+          { count: alumni },
+        ] = await Promise.all([
+          base().eq('status', 'active'),
+          base().in('status', ['deactivated', 'inactive']),
+          base().eq('status', 'transferred'),
+          base().in('status', ['alumni', 'graduated']),
+        ]);
+        return {
+          active: active ?? 0,
+          deactivated: deactivated ?? 0,
+          transferred: transferred ?? 0,
+          alumni: alumni ?? 0,
+        };
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.studentsCounts }
+    );
 
     return NextResponse.json({
-      data: {
-        active: active ?? 0,
-        deactivated: deactivated ?? 0,
-        transferred: transferred ?? 0,
-        alumni: alumni ?? 0,
-      },
+      data: counts,
     }, { status: 200 });
   } catch (error) {
     console.error('Error fetching student counts:', error);

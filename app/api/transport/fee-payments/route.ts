@@ -5,8 +5,11 @@ import { logAudit } from '@/lib/audit-logger';
 import { getTransportFeeMode, isSeparateTransportMode } from '@/lib/fees/transport-fee-mode';
 import { formatTransportFeeLabel, type TransportSnapshot } from '@/lib/fees/transport-fee-sync';
 import {
+  enumerateMonthlyPeriods,
+  enumerateQuarterStartsInRange,
   formatPeriodLabel,
   normalizeBillingFrequency,
+  parseMonthInputToMonthStart,
   periodStartForBilling,
 } from '@/lib/transport/transport-billing-period';
 import { fetchObligationAmount, upsertTransportBillingObligation } from '@/lib/transport/transport-billing-obligations';
@@ -145,32 +148,13 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const billingAnchor =
-        normalizeMonthStart(sp.get('billing_month') || new Date().toISOString()) || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
-
       const rows = await Promise.all(
         (students || []).map(async (st) => {
           const sid = String(st.id);
           const freq = normalizeBillingFrequency(
             (st as { transport_billing_frequency?: string }).transport_billing_frequency
           );
-          const periodStart = periodStartForBilling(billingAnchor, freq);
           const fromStudent = Math.round(Number(st.transport_fee || 0) * 100) / 100;
-          if (fromStudent > PAY_EPS) {
-            await upsertTransportBillingObligation(supabase, {
-              schoolCode: code,
-              studentId: sid,
-              billingMonthIso: billingAnchor,
-              billingFrequency: freq,
-              amountDue: fromStudent,
-              assignmentVersionId: null,
-            });
-          }
-          let expected =
-            (await fetchObligationAmount(supabase, code, sid, billingAnchor, freq)) ?? fromStudent;
-          expected = Math.round(expected * 100) / 100;
-          const paid = expected > 0 ? await sumPaidForMonth(supabase, code, sid, periodStart) : 0;
-          const paidR = Math.round(paid * 100) / 100;
           const pickupStop = st.transport_pickup_stop_id
             ? stopMetaById.get(String(st.transport_pickup_stop_id)) || null
             : null;
@@ -183,12 +167,63 @@ export async function GET(request: NextRequest) {
             frequency: freq,
             customFare: (st as { transport_custom_fare?: number | null }).transport_custom_fare ?? null,
           });
-          let status: 'PENDING' | 'PARTIAL' | 'PAID' | 'NOROUTE' = 'NOROUTE';
-          if (expected <= PAY_EPS) status = 'NOROUTE';
-          else if (paidR <= PAY_EPS) status = 'PENDING';
-          else if (paidR + PAY_EPS < expected) status = 'PARTIAL';
-          else status = 'PAID';
-          const balance = Math.max(0, Math.round((expected - paidR) * 100) / 100);
+          const { data: mappings } = await supabase
+            .from('transport_assignment_versions')
+            .select('effective_from, effective_to, billing_frequency, transport_fee')
+            .eq('school_code', code)
+            .eq('student_id', sid)
+            .order('effective_from', { ascending: true });
+          const periods = new Map<
+            string,
+            { period_month: string; period_label: string; expected: number; paid: number; balance: number; status: string; frequency: string }
+          >();
+          for (const m of mappings || []) {
+            const localFreq = normalizeBillingFrequency(
+              (m as { billing_frequency?: string }).billing_frequency ?? freq
+            );
+            const start = parseMonthInputToMonthStart(String((m as { effective_from: string }).effective_from || ''));
+            const endSrc = (m as { effective_to?: string | null }).effective_to;
+            const end = parseMonthInputToMonthStart(String(endSrc || '')) || start;
+            if (!start || !end || end < start) continue;
+            const months =
+              localFreq === 'QUARTERLY'
+                ? enumerateQuarterStartsInRange(start, end)
+                : enumerateMonthlyPeriods(start, end);
+            const dueAmount = Math.round(Number((m as { transport_fee?: number }).transport_fee ?? fromStudent) * 100) / 100;
+            for (const period of months) {
+              if (dueAmount > PAY_EPS) {
+                await upsertTransportBillingObligation(supabase, {
+                  schoolCode: code,
+                  studentId: sid,
+                  billingMonthIso: period,
+                  billingFrequency: localFreq,
+                  amountDue: dueAmount,
+                  assignmentVersionId: null,
+                });
+              }
+              const expected = Math.round(
+                ((await fetchObligationAmount(supabase, code, sid, period, localFreq)) ?? dueAmount) * 100
+              ) / 100;
+              const canonical = periodStartForBilling(period, localFreq);
+              const paidR = expected > 0 ? Math.round((await sumPaidForMonth(supabase, code, sid, canonical)) * 100) / 100 : 0;
+              const balance = Math.max(0, Math.round((expected - paidR) * 100) / 100);
+              const status = expected <= PAY_EPS ? 'NOROUTE' : paidR <= PAY_EPS ? 'PENDING' : paidR + PAY_EPS < expected ? 'PARTIAL' : 'PAID';
+              periods.set(`${localFreq}:${canonical}`, {
+                period_month: canonical,
+                period_label: formatPeriodLabel(canonical, localFreq),
+                expected,
+                paid: paidR,
+                balance,
+                status,
+                frequency: localFreq,
+              });
+            }
+          }
+          const orderedPeriods = [...periods.values()].sort((a, b) => a.period_month.localeCompare(b.period_month));
+          const totalDue = orderedPeriods.reduce((s, p) => s + p.expected, 0);
+          const totalPaid = orderedPeriods.reduce((s, p) => s + p.paid, 0);
+          const totalBalance = orderedPeriods.reduce((s, p) => s + p.balance, 0);
+          const status = totalBalance <= PAY_EPS ? 'PAID' : totalPaid > PAY_EPS ? 'PARTIAL' : 'PENDING';
           return {
             student_id: sid,
             admission_no: st.admission_no,
@@ -199,13 +234,14 @@ export async function GET(request: NextRequest) {
             route_name: st.transport_route_id
               ? routeNameById.get(String(st.transport_route_id)) || null
               : null,
-            monthly_transport_fee: expected,
-            billing_month: periodStart,
+            monthly_transport_fee: Math.round(totalDue * 100) / 100,
+            billing_month: null,
             billing_frequency: freq,
-            period_label: formatPeriodLabel(periodStart, freq),
-            paid_this_month: paidR,
-            balance_due: balance,
+            period_label: null,
+            paid_this_month: Math.round(totalPaid * 100) / 100,
+            balance_due: Math.round(totalBalance * 100) / 100,
             status,
+            periods: orderedPeriods,
             transport_fee_mode: mode,
             pickup_stop_name: pickupStop?.name || null,
             drop_stop_name: dropStop?.name || null,
@@ -214,13 +250,13 @@ export async function GET(request: NextRequest) {
               pickup_amount: fareCalc.pickupPortion,
               drop_amount: fareCalc.dropPortion,
               calculated_total: fareCalc.total,
-              period_fee: expected,
+              period_fee: fareCalc.total,
             },
           };
         })
       );
 
-      const withFee = rows.filter((r) => r.monthly_transport_fee > PAY_EPS);
+      const withFee = rows.filter((r) => Array.isArray((r as { periods?: unknown[] }).periods) && ((r as { periods?: unknown[] }).periods || []).length > 0);
       const due = withFee.filter((r) => r.balance_due > PAY_EPS);
 
       let collections: Record<string, unknown>[] = [];
@@ -255,12 +291,7 @@ export async function GET(request: NextRequest) {
           .limit(400);
 
         if (!payErr && payRows) {
-          collections = payRows.filter((p) => {
-            const f = freqById.get(String((p as { student_id: string }).student_id)) ?? 'MONTHLY';
-            const want = periodStartForBilling(billingAnchor, f);
-            const pm = String((p as { period_month?: string }).period_month || '').slice(0, 10);
-            return pm === want;
-          }) as Record<string, unknown>[];
+          collections = payRows as Record<string, unknown>[];
         }
       }
 
@@ -271,7 +302,6 @@ export async function GET(request: NextRequest) {
           page: 1,
           page_size: due.length,
           transport_fee_mode: mode,
-          billing_anchor: billingAnchor,
         },
       });
     }
@@ -403,6 +433,30 @@ export async function POST(request: NextRequest) {
       (student as { transport_billing_frequency?: string }).transport_billing_frequency
     );
     const canonicalPeriod = periodStartForBilling(rawBilling, freq);
+    const { data: mapRows, error: mapErr } = await supabase
+      .from('transport_assignment_versions')
+      .select('effective_from, effective_to, billing_frequency')
+      .eq('school_code', code)
+      .eq('student_id', sid);
+    if (mapErr && mapErr.code !== '42P01') {
+      return NextResponse.json({ error: 'Failed to validate student mapping period' }, { status: 500 });
+    }
+    if (Array.isArray(mapRows) && mapRows.length > 0) {
+      const inAnyRange = mapRows.some((r: { effective_from: string; effective_to: string | null; billing_frequency?: string }) => {
+        const localFreq = normalizeBillingFrequency(r.billing_frequency ?? freq);
+        const start = parseMonthInputToMonthStart(String(r.effective_from || ''));
+        const end = parseMonthInputToMonthStart(String(r.effective_to || '')) ?? '9999-12-01';
+        if (!start) return false;
+        const candidate = periodStartForBilling(canonicalPeriod, localFreq);
+        return candidate >= start && candidate <= end;
+      });
+      if (!inAnyRange) {
+        return NextResponse.json(
+          { error: 'Selected billing period is outside student mapping effective range' },
+          { status: 400 }
+        );
+      }
+    }
     const fromStudent = Math.round(Number(student.transport_fee || 0) * 100) / 100;
     const obligationAmt = await fetchObligationAmount(supabase, code, sid, rawBilling, freq);
     let expected = obligationAmt ?? fromStudent;

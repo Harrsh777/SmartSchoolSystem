@@ -436,6 +436,7 @@ export async function POST(request: NextRequest) {
     }
 
     void invalidateCachePattern(cacheKeys.studentsListPattern(school_code));
+    void invalidateCachePattern(cacheKeys.studentsCountsPattern(school_code));
 
     return NextResponse.json({ data: newStudent }, { status: 201 });
   } catch (error) {

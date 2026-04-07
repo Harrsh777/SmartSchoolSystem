@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import {
   computePeriodicTransportFeeFromStops,
-  computeTransportFeeFromStops,
 } from '@/lib/transport/compute-student-transport-fee';
 import {
   deleteStudentTransportFeeRows,
@@ -11,6 +10,13 @@ import {
 import { normalizeBillingFrequency } from '@/lib/transport/transport-billing-period';
 import { recordTransportAssignmentVersion, closeTransportAssignmentVersionsForStudent } from '@/lib/transport/transport-assignment-versions';
 import { upsertTransportBillingObligation } from '@/lib/transport/transport-billing-obligations';
+import {
+  enumerateMonthlyPeriods,
+  enumerateQuarterStartsInRange,
+  monthEndFromMonthStart,
+  parseMonthInputToMonthStart,
+} from '@/lib/transport/transport-billing-period';
+import { cacheKeys, DASHBOARD_REDIS_TTL, getCached, invalidateCachePattern } from '@/lib/cache';
 
 export type TransportAssignmentInput = {
   student_id: string;
@@ -116,24 +122,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'School code is required' }, { status: 400 });
     }
 
-    let query = supabase.from('students').select('*').eq('school_code', schoolCode);
+    const key = cacheKeys.transportStudents(schoolCode, routeId);
+    const students = await getCached(
+      key,
+      async () => {
+        let query = supabase.from('students').select('*').eq('school_code', schoolCode);
+        if (routeId) {
+          query = query.eq('transport_route_id', routeId);
+        } else {
+          query = query.not('transport_type', 'is', null);
+        }
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw new Error(error.message);
+        return data || [];
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.transportStudents }
+    );
 
-    if (routeId) {
-      query = query.eq('transport_route_id', routeId);
-    } else {
-      query = query.not('transport_type', 'is', null);
-    }
-
-    const { data: students, error } = await query.order('created_at', { ascending: false });
-
-    if (error) {
-      return NextResponse.json(
-        { error: 'Failed to fetch students', details: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ data: students || [] }, { status: 200 });
+    return NextResponse.json({ data: students }, { status: 200 });
   } catch (error) {
     console.error('Error fetching transport students:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -154,10 +160,9 @@ export async function POST(request: NextRequest) {
     const assignments = body.assignments as TransportAssignmentInput[] | undefined;
     const defaultBillingFrequency = normalizeBillingFrequency(body.billing_frequency as string | undefined);
     const effectiveFromRaw = body.effective_from as string | undefined;
-    const effectiveFrom =
-      effectiveFromRaw && /^\d{4}-\d{2}-\d{2}$/.test(String(effectiveFromRaw).trim())
-        ? String(effectiveFromRaw).trim()
-        : new Date().toISOString().slice(0, 10);
+    const endMonthRaw = body.end_month as string | undefined;
+    const effectiveFromMonth = parseMonthInputToMonthStart(String(effectiveFromRaw || ''));
+    const endMonth = parseMonthInputToMonthStart(String(endMonthRaw || ''));
 
     if (!school_code || !route_id || !assignments || !Array.isArray(assignments) || assignments.length === 0) {
       return NextResponse.json(
@@ -168,6 +173,17 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (!effectiveFromMonth) {
+      return NextResponse.json({ error: 'Effective From is required (month-year)' }, { status: 400 });
+    }
+    if (!endMonth) {
+      return NextResponse.json({ error: 'End Month is required (month-year)' }, { status: 400 });
+    }
+    if (endMonth < effectiveFromMonth) {
+      return NextResponse.json({ error: 'End month cannot be before effective month' }, { status: 400 });
+    }
+    const effectiveFrom = effectiveFromMonth;
+    const effectiveTo = monthEndFromMonthStart(endMonth);
 
     const byStudent = new Map<string, TransportAssignmentInput>();
     for (const a of assignments) {
@@ -222,11 +238,35 @@ export async function POST(request: NextRequest) {
       if (!row) {
         return NextResponse.json({ error: `Student not found: ${sid}` }, { status: 404 });
       }
-      if (row.transport_route_id && row.transport_route_id !== route_id) {
+    }
+
+    const overlapFrom = effectiveFrom;
+    const overlapTo = effectiveTo;
+    const { data: overlappingRows, error: overlapErr } = await supabase
+      .from('transport_assignment_versions')
+      .select('id, student_id, effective_from, effective_to')
+      .eq('school_code', school_code.toUpperCase().trim())
+      .in('student_id', studentIds);
+    if (overlapErr && overlapErr.code !== '42P01') {
+      return NextResponse.json(
+        { error: 'Failed to validate existing mapping overlap', details: overlapErr.message },
+        { status: 500 }
+      );
+    }
+    if (Array.isArray(overlappingRows) && overlappingRows.length > 0) {
+      const hasOverlap = overlappingRows.some((r: { student_id: string; effective_from: string; effective_to: string | null }) => {
+        const existingStart = String(r.effective_from).slice(0, 10);
+        const existingEnd = r.effective_to ? String(r.effective_to).slice(0, 10) : '9999-12-31';
+        if (!r.effective_to && existingStart < overlapFrom) {
+          return false;
+        }
+        return existingStart <= overlapTo && overlapFrom <= existingEnd;
+      });
+      if (hasOverlap) {
         return NextResponse.json(
           {
             error:
-              'One or more students are already assigned to a different route. Remove them from the other route first.',
+              'Duplicate mapping detected for overlapping months. Update existing mapping dates first.',
           },
           { status: 400 }
         );
@@ -414,22 +454,40 @@ export async function POST(request: NextRequest) {
         transportFee: fromCustom && customFareNum != null ? customFareNum : transportFee,
         billingFrequency,
         effectiveFrom,
+        effectiveTo,
       });
 
-      await upsertTransportBillingObligation(supabase, {
-        schoolCode: school_code,
-        studentId: String(a.student_id),
-        billingMonthIso: effectiveFrom,
-        billingFrequency,
-        amountDue: fromCustom && customFareNum != null ? customFareNum : transportFee,
-        assignmentVersionId: verId,
-      });
+      const monthlyPeriods =
+        billingFrequency === 'QUARTERLY'
+          ? enumerateQuarterStartsInRange(effectiveFrom, endMonth)
+          : enumerateMonthlyPeriods(effectiveFrom, endMonth);
+      if (monthlyPeriods.length > 0) {
+        await supabase
+          .from('transport_billing_obligations')
+          .delete()
+          .eq('school_code', school_code.toUpperCase().trim())
+          .eq('student_id', String(a.student_id))
+          .gte('period_start', monthlyPeriods[0])
+          .lte('period_start', monthlyPeriods[monthlyPeriods.length - 1]);
+      }
+      for (const period of monthlyPeriods) {
+        await upsertTransportBillingObligation(supabase, {
+          schoolCode: school_code,
+          studentId: String(a.student_id),
+          billingMonthIso: period,
+          billingFrequency,
+          amountDue: fromCustom && customFareNum != null ? customFareNum : transportFee,
+          assignmentVersionId: verId,
+        });
+      }
 
       const sync = await syncStudentTransportFeeRow(supabase, school_code, String(a.student_id));
       if (!sync.ok) {
         console.warn('[transport/students] transport fee sync:', sync.error);
       }
     }
+
+    void invalidateCachePattern(cacheKeys.transportStudentsPattern(school_code));
 
     return NextResponse.json(
       {
@@ -501,6 +559,7 @@ export async function DELETE(request: NextRequest) {
             { status: 500 }
           );
         }
+        void invalidateCachePattern(cacheKeys.transportStudentsPattern(schoolCode));
         return NextResponse.json(
           {
             data: fallback,
@@ -514,6 +573,8 @@ export async function DELETE(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    void invalidateCachePattern(cacheKeys.transportStudentsPattern(schoolCode));
 
     return NextResponse.json(
       {

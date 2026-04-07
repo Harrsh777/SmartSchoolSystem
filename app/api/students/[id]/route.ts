@@ -200,6 +200,7 @@ export async function PATCH(
     }
 
     void invalidateCachePattern(cacheKeys.studentsListPattern(schoolCode));
+    void invalidateCachePattern(cacheKeys.studentsCountsPattern(schoolCode));
 
     return NextResponse.json({ data: updatedStudent }, { status: 200 });
   } catch (error) {
