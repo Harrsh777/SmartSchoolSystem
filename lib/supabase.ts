@@ -74,6 +74,7 @@ export interface AcceptedSchool {
   established_year?: number;
   school_type?: string;
   affiliation?: string;
+  affiliation_number?: string;
   approved_at?: string;
   created_at?: string;
   is_hold?: boolean;

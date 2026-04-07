@@ -269,6 +269,104 @@ export function receiptSharedStyles(): string {
       color: #92400e;
       margin-bottom: 10px;
     }
+    .compact-receipt .receipt-card {
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+    .compact-receipt .copy-label-pill {
+      font-size: 9px;
+      padding: 4px 8px;
+      margin-bottom: 8px;
+    }
+    .compact-receipt .header-grid {
+      grid-template-columns: 56px 1fr minmax(110px, 150px);
+      gap: 8px;
+    }
+    .compact-receipt .logo-wrap {
+      width: 56px;
+      height: 56px;
+      border-radius: 8px;
+    }
+    .compact-receipt .school-center h1 {
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .compact-receipt .school-center .lines,
+    .compact-receipt .header-meta,
+    .compact-receipt .info-line,
+    .compact-receipt .amount-words,
+    .compact-receipt .footer-note {
+      font-size: 8px;
+      line-height: 1.35;
+    }
+    .compact-receipt .header-meta {
+      padding-left: 8px;
+    }
+    .compact-receipt .header-meta .doc-title {
+      font-size: 10px;
+      margin-bottom: 5px;
+    }
+    .compact-receipt .info-card-title {
+      font-size: 9px;
+      margin-bottom: 6px;
+      padding-bottom: 4px;
+    }
+    .compact-receipt .two-col-info {
+      gap: 8px;
+    }
+    .compact-receipt .fees-table-pro {
+      font-size: 7px;
+    }
+    .compact-receipt .fees-table-pro th,
+    .compact-receipt .fees-table-pro td {
+      padding: 4px 3px;
+    }
+    .compact-receipt .fees-table-pro tfoot td {
+      font-size: 8px;
+    }
+    .compact-receipt .total-paid-banner {
+      padding: 8px 10px;
+      border-radius: 8px;
+    }
+    .compact-receipt .total-paid-banner .lbl {
+      font-size: 8px;
+    }
+    .compact-receipt .total-paid-banner .amt {
+      font-size: 13px;
+    }
+    .compact-receipt .payment-mode-pill {
+      font-size: 8px;
+      padding: 3px 7px;
+      margin-top: 4px;
+    }
+    .compact-receipt .signature-grid {
+      margin-top: 8px;
+      padding-top: 6px;
+      gap: 10px;
+    }
+    .compact-receipt .signature-box {
+      min-height: 44px;
+      padding-top: 4px;
+    }
+    .compact-receipt .signature-line {
+      margin: 16px auto 4px;
+    }
+    .compact-receipt .signature-label,
+    .compact-receipt .stamp-placeholder {
+      font-size: 7px;
+    }
+    @media print {
+      .compact-receipt .receipt-card {
+        break-inside: avoid-page;
+      }
+      .compact-receipt .two-col-info {
+        break-inside: avoid-page;
+      }
+      .compact-receipt .fees-table-pro tr {
+        break-inside: avoid-page;
+      }
+    }
   `;
 }
 

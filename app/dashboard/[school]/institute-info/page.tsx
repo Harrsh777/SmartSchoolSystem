@@ -128,6 +128,7 @@ export default function InstituteInfoPage({
     established_year: undefined,
     school_type: '',
     affiliation: '',
+    affiliation_number: '',
     logo_url: '',
   });
 
@@ -801,6 +802,13 @@ export default function InstituteInfoPage({
               onChange={(e) => handleChange('affiliation', e.target.value)}
               disabled={!isEditing}
               placeholder="e.g., CBSE, ICSE, State Board"
+            />
+            <Input
+              label="Affiliation Number"
+              value={(formData.affiliation_number as string) || ''}
+              onChange={(e) => handleChange('affiliation_number', e.target.value)}
+              disabled={!isEditing}
+              placeholder="e.g., 1234567"
             />
             <Input
               label="Established Year"

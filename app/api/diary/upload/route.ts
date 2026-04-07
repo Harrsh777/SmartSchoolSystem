@@ -27,11 +27,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type
-    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
-    if (!allowedTypes.includes(file.type)) {
+    // Validate file type (check both MIME and extension for browser compatibility)
+    const fileName = file.name || '';
+    const extension = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : '';
+    const allowedMimeTypes = new Set([
+      'application/pdf',
+      'application/x-pdf',
+      'image/jpeg',
+      'image/png',
+      'image/jpg',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ]);
+    const allowedExtensions = new Set(['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx']);
+    const isAllowedMimeType = !!file.type && allowedMimeTypes.has(file.type.toLowerCase());
+    const isAllowedExtension = !!extension && allowedExtensions.has(extension);
+
+    if (!isAllowedMimeType && !isAllowedExtension) {
       return NextResponse.json(
-        { error: 'Invalid file type. Only PDF and images are allowed' },
+        { error: 'Invalid file type. Only PDF, DOC, DOCX, and images are allowed' },
         { status: 400 }
       );
     }
@@ -39,7 +53,7 @@ export async function POST(request: NextRequest) {
     // Generate unique filename
     const timestamp = Date.now();
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const fileName = `${schoolCode}/diary/${timestamp}_${sanitizedFileName}`;
+    const storageFileName = `${schoolCode}/diary/${timestamp}_${sanitizedFileName}`;
 
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer();
@@ -48,8 +62,8 @@ export async function POST(request: NextRequest) {
     // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('diary-attachments')
-      .upload(fileName, buffer, {
-        contentType: file.type,
+      .upload(storageFileName, buffer, {
+        contentType: file.type || undefined,
         upsert: false,
       });
 
@@ -63,7 +77,7 @@ export async function POST(request: NextRequest) {
     // Get public URL
     const { data: urlData } = supabase.storage
       .from('diary-attachments')
-      .getPublicUrl(fileName);
+      .getPublicUrl(storageFileName);
 
     // Determine file type category
     let fileTypeCategory = 'OTHER';

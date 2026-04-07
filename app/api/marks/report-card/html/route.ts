@@ -283,7 +283,7 @@ export async function fetchReportCardData(
     supabase.from('examinations').select('*').eq('id', examId).eq('school_code', schoolCode).single(),
     supabase
       .from('accepted_schools')
-      .select('school_name, school_code, school_address, school_email, school_phone, affiliation, logo_url, principal_name')
+      .select('school_name, school_code, school_address, school_email, school_phone, affiliation, affiliation_number, logo_url, right_logo_url, principal_name')
       .eq('school_code', schoolCode)
       .single(),
   ]);
@@ -416,6 +416,7 @@ export async function fetchReportCardData(
       school_name: school.school_name || '',
       school_code: school.school_code || '',
       affiliation: school.affiliation,
+      affiliation_number: (school as { affiliation_number?: string }).affiliation_number,
       school_email: school.school_email,
       school_phone: school.school_phone,
       school_address: school.school_address,
@@ -486,7 +487,7 @@ export async function fetchReportCardDataMultiExam(
     supabase.from('students').select('*').eq('id', studentId).eq('school_code', schoolCode).single(),
     supabase
       .from('accepted_schools')
-      .select('school_name, school_code, school_address, school_email, school_phone, affiliation, logo_url, principal_name')
+      .select('school_name, school_code, school_address, school_email, school_phone, affiliation, affiliation_number, logo_url, right_logo_url, principal_name')
       .eq('school_code', schoolCode)
       .single(),
   ]);
@@ -776,6 +777,7 @@ export async function fetchReportCardDataMultiExam(
       school_name: school.school_name || '',
       school_code: school.school_code || '',
       affiliation: school.affiliation,
+      affiliation_number: (school as { affiliation_number?: string }).affiliation_number,
       school_email: school.school_email,
       school_phone: school.school_phone,
       school_address: school.school_address,

@@ -9,6 +9,7 @@ import {
   buildDemoReportCardData,
   generateReportCardHTML,
   getDefaultReportCardTemplateConfig,
+  type ReportCardData,
   type ReportCardTemplateConfig,
 } from '@/lib/report-card-html';
 
@@ -37,6 +38,15 @@ export default function ReportCardTemplatesPage({
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [schoolPreviewData, setSchoolPreviewData] = useState<{
+    school_name?: string;
+    school_address?: string;
+    school_email?: string;
+    school_phone?: string;
+    affiliation?: string;
+    affiliation_number?: string;
+    logo_url?: string | null;
+  } | null>(null);
 
   const normSchool = useCallback((s: string) => String(s || '').trim().toUpperCase(), []);
   /** Prefer this school’s rows so the picker isn’t a long list of system duplicates. */
@@ -77,6 +87,35 @@ export default function ReportCardTemplatesPage({
       .catch(() => setLoadError('Failed to load templates'))
       .finally(() => setLoading(false));
   }, [loadTemplates]);
+
+  useEffect(() => {
+    const loadSchoolPreviewData = async () => {
+      try {
+        const res = await fetch('/api/schools/accepted');
+        const json = await res.json().catch(() => ({}));
+        const rows = Array.isArray(json.data) ? json.data : [];
+        const row = rows.find(
+          (x: Record<string, unknown>) =>
+            String(x.school_code ?? '').trim().toUpperCase() ===
+            String(schoolCode ?? '').trim().toUpperCase()
+        );
+        if (row) {
+          setSchoolPreviewData({
+            school_name: String(row.school_name ?? ''),
+            school_address: String(row.school_address ?? ''),
+            school_email: String(row.school_email ?? ''),
+            school_phone: String(row.school_phone ?? ''),
+            affiliation: String(row.affiliation ?? ''),
+            affiliation_number: String(row.affiliation_number ?? ''),
+            logo_url: row.logo_url ? String(row.logo_url) : null,
+          });
+        }
+      } catch {
+        setSchoolPreviewData(null);
+      }
+    };
+    loadSchoolPreviewData();
+  }, [schoolCode]);
 
   /** Keep select value in sync when the list loads (avoids blank HTML selects). */
   useEffect(() => {
@@ -234,10 +273,24 @@ export default function ReportCardTemplatesPage({
   };
 
   // Same HTML path as generate (landscape engine + saved config)
-  const previewHTML = useMemo(
-    () => generateReportCardHTML(buildDemoReportCardData(), config as ReportCardTemplateConfig),
-    [config]
-  );
+  const previewHTML = useMemo(() => {
+    const previewData: ReportCardData = buildDemoReportCardData();
+    if (schoolPreviewData) {
+      previewData.school = {
+        ...previewData.school,
+        school_name: schoolPreviewData.school_name || previewData.school.school_name,
+        school_address: schoolPreviewData.school_address || previewData.school.school_address,
+        school_email: schoolPreviewData.school_email || previewData.school.school_email,
+        school_phone: schoolPreviewData.school_phone || previewData.school.school_phone,
+        affiliation:
+          schoolPreviewData.affiliation_number ||
+          schoolPreviewData.affiliation ||
+          previewData.school.affiliation,
+        logo_url: schoolPreviewData.logo_url ?? previewData.school.logo_url,
+      };
+    }
+    return generateReportCardHTML(previewData, config as ReportCardTemplateConfig);
+  }, [config, schoolPreviewData]);
 
   if (loading) {
     return (

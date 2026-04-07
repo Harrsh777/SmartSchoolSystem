@@ -832,7 +832,7 @@ function DiaryModal({
               <div className="space-y-2">
                 <input
                   type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {

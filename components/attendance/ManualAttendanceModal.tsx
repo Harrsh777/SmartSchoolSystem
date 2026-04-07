@@ -93,6 +93,7 @@ export default function ManualAttendanceModal({
   );
 
   const academicYearLabel = (selectedMeta?.academic_year ?? '').trim() || '—';
+  const todayLabel = useMemo(() => new Date().toLocaleDateString(), []);
 
   const totalPages = Math.max(1, Math.ceil(students.length / PAGE_SIZE));
   const pageSlice = useMemo(() => {
@@ -341,7 +342,7 @@ export default function ManualAttendanceModal({
       aria-modal="true"
       aria-labelledby="manual-attendance-title"
     >
-      <Card className="w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl border border-gray-200">
+      <Card className="w-full max-w-5xl overflow-hidden flex flex-col shadow-xl border border-gray-200">
         <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center gap-2 min-w-0">
             <Table2 className="text-orange-600 shrink-0" size={22} />
@@ -359,7 +360,7 @@ export default function ManualAttendanceModal({
           </button>
         </div>
 
-        <div className="p-4 overflow-y-auto flex-1 space-y-4">
+        <div className="p-4 max-h-[80vh] overflow-y-auto space-y-4 pb-20">
           {staffIdResolving && (
             <p className="text-sm text-blue-900 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
               <Loader2 className="animate-spin shrink-0" size={18} />
@@ -453,7 +454,7 @@ export default function ManualAttendanceModal({
                 pagination. Draft is saved in this browser (localStorage).
               </p>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="overflow-x-auto max-h-[min(420px,50vh)] overflow-y-auto">
+                <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-100 sticky top-0 z-10">
                       <tr>
@@ -526,10 +527,18 @@ export default function ManualAttendanceModal({
           )}
         </div>
 
-        <div className="p-4 border-t border-gray-200 flex flex-wrap justify-end gap-2 bg-gray-50">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Close
-          </Button>
+        <div className="sticky bottom-0 z-10 bg-white border-t border-[#eee] p-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-gray-600">
+            <span className="font-medium text-gray-800">Date:</span> {todayLabel}
+            <span className="mx-2 text-gray-300">|</span>
+            <span className="font-medium text-gray-800">Academic year:</span> {academicYearLabel}
+            <span className="mx-2 text-gray-300">|</span>
+            <span className="font-medium text-gray-800">Total students:</span> {students.length}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 ml-auto">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Close
+            </Button>
           <Button
             type="button"
             onClick={handleSubmit}
@@ -542,9 +551,10 @@ export default function ManualAttendanceModal({
                 Saving…
               </>
             ) : (
-              'Final submit'
+              'Save Attendance'
             )}
           </Button>
+          </div>
         </div>
       </Card>
     </div>

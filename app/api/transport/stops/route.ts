@@ -47,9 +47,13 @@ export async function POST(request: NextRequest) {
       name,
       pickup_fare,
       drop_fare,
+      monthly_pickup_fee,
+      monthly_drop_fee,
+      quarterly_pickup_fee,
+      quarterly_drop_fee,
       expected_pickup_time,
       expected_drop_time,
-    } = body;
+    } = body as Record<string, unknown>;
 
     if (!school_code || !name || pickup_fare === undefined || drop_fare === undefined) {
       return NextResponse.json(
@@ -72,17 +76,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const num = (v: unknown, def: number) => {
+      if (v === undefined || v === null || v === '') return def;
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      return Number.isFinite(n) && n >= 0 ? n : def;
+    };
+
+    const insertPayload: Record<string, unknown> = {
+      school_id: schoolData.id,
+      school_code: school_code,
+      name: name,
+      pickup_fare: parseFloat(String(pickup_fare)),
+      drop_fare: parseFloat(String(drop_fare)),
+      expected_pickup_time: expected_pickup_time || null,
+      expected_drop_time: expected_drop_time || null,
+      monthly_pickup_fee: num(monthly_pickup_fee, 0),
+      monthly_drop_fee: num(monthly_drop_fee, 0),
+      quarterly_pickup_fee: num(quarterly_pickup_fee, 0),
+      quarterly_drop_fee: num(quarterly_drop_fee, 0),
+    };
+
     const { data: stop, error: stopError } = await supabase
       .from('transport_stops')
-      .insert([{
-        school_id: schoolData.id,
-        school_code: school_code,
-        name: name,
-        pickup_fare: parseFloat(pickup_fare),
-        drop_fare: parseFloat(drop_fare),
-        expected_pickup_time: expected_pickup_time || null,
-        expected_drop_time: expected_drop_time || null,
-      }])
+      .insert([insertPayload])
       .select()
       .single();
 

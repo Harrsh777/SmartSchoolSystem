@@ -11,8 +11,10 @@ import { MapPin, Plus, Edit, Trash2, Loader2, X, Save, AlertCircle, CheckCircle,
 interface Stop {
   id: string;
   name: string;
-  pickup_fare: number;
-  drop_fare: number;
+  monthly_pickup_fee?: number;
+  monthly_drop_fee?: number;
+  quarterly_pickup_fee?: number;
+  quarterly_drop_fee?: number;
   expected_pickup_time: string | null;
   expected_drop_time: string | null;
   is_active: boolean;
@@ -35,8 +37,10 @@ export default function StopsPage({
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     name: '',
-    pickup_fare: '',
-    drop_fare: '',
+    monthly_pickup_fee: '',
+    monthly_drop_fee: '',
+    quarterly_pickup_fee: '',
+    quarterly_drop_fee: '',
     expected_pickup_time: '',
     expected_drop_time: '',
   });
@@ -70,8 +74,10 @@ export default function StopsPage({
       setEditingStop(stop);
       setFormData({
         name: stop.name,
-        pickup_fare: stop.pickup_fare.toString(),
-        drop_fare: stop.drop_fare.toString(),
+        monthly_pickup_fee: String(stop.monthly_pickup_fee ?? 0),
+        monthly_drop_fee: String(stop.monthly_drop_fee ?? 0),
+        quarterly_pickup_fee: String(stop.quarterly_pickup_fee ?? 0),
+        quarterly_drop_fee: String(stop.quarterly_drop_fee ?? 0),
         expected_pickup_time: stop.expected_pickup_time || '',
         expected_drop_time: stop.expected_drop_time || '',
       });
@@ -79,8 +85,10 @@ export default function StopsPage({
       setEditingStop(null);
       setFormData({
         name: '',
-        pickup_fare: '',
-        drop_fare: '',
+        monthly_pickup_fee: '0',
+        monthly_drop_fee: '0',
+        quarterly_pickup_fee: '0',
+        quarterly_drop_fee: '0',
         expected_pickup_time: '',
         expected_drop_time: '',
       });
@@ -95,8 +103,10 @@ export default function StopsPage({
     setEditingStop(null);
     setFormData({
       name: '',
-      pickup_fare: '',
-      drop_fare: '',
+      monthly_pickup_fee: '0',
+      monthly_drop_fee: '0',
+      quarterly_pickup_fee: '0',
+      quarterly_drop_fee: '0',
       expected_pickup_time: '',
       expected_drop_time: '',
     });
@@ -114,14 +124,6 @@ export default function StopsPage({
       setError('Stop name is required.');
       return false;
     }
-    if (!formData.pickup_fare || parseFloat(formData.pickup_fare) < 0) {
-      setError('Pickup fare must be a valid number.');
-      return false;
-    }
-    if (!formData.drop_fare || parseFloat(formData.drop_fare) < 0) {
-      setError('Drop fare must be a valid number.');
-      return false;
-    }
     return true;
   };
 
@@ -135,11 +137,19 @@ export default function StopsPage({
       setError('');
       setSuccess('');
 
+      const nz = (v: string) => {
+        const n = parseFloat(v);
+        return Number.isFinite(n) && n >= 0 ? n : 0;
+      };
       const payload = {
         school_code: schoolCode,
         name: formData.name.trim(),
-        pickup_fare: parseFloat(formData.pickup_fare),
-        drop_fare: parseFloat(formData.drop_fare),
+        pickup_fare: 0,
+        drop_fare: 0,
+        monthly_pickup_fee: nz(formData.monthly_pickup_fee),
+        monthly_drop_fee: nz(formData.monthly_drop_fee),
+        quarterly_pickup_fee: nz(formData.quarterly_pickup_fee),
+        quarterly_drop_fee: nz(formData.quarterly_drop_fee),
         expected_pickup_time: formData.expected_pickup_time || null,
         expected_drop_time: formData.expected_drop_time || null,
       };
@@ -253,7 +263,9 @@ export default function StopsPage({
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Transport Stops</h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Manage pickup and drop locations</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Pickup/drop locations with monthly and quarterly billing amounts
+                </p>
               </div>
             </div>
             <Button
@@ -349,21 +361,36 @@ export default function StopsPage({
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <IndianRupee className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={16} />
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Pickup Fare</span>
-                      </div>
-                      <span className="text-lg font-bold text-[#6B9BB8] dark:text-[#7DB5D3]">₹{stop.pickup_fare}</span>
-                    </div>
 
-                    <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <IndianRupee className="text-[#6B9BB8] dark:text-[#7DB5D3]" size={16} />
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Drop Fare</span>
+                    {(stop.monthly_pickup_fee != null && stop.monthly_pickup_fee > 0) ||
+                    (stop.monthly_drop_fee != null && stop.monthly_drop_fee > 0) ? (
+                      <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 px-1">
+                        <div className="font-medium text-gray-700 dark:text-gray-300">Monthly billing</div>
+                        <div className="flex justify-between">
+                          <span>Pickup</span>
+                          <span className="tabular-nums">₹{stop.monthly_pickup_fee ?? 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Drop</span>
+                          <span className="tabular-nums">₹{stop.monthly_drop_fee ?? 0}</span>
+                        </div>
                       </div>
-                      <span className="text-lg font-bold text-[#6B9BB8] dark:text-[#7DB5D3]">₹{stop.drop_fare}</span>
-                    </div>
+                    ) : null}
+
+                    {(stop.quarterly_pickup_fee != null && stop.quarterly_pickup_fee > 0) ||
+                    (stop.quarterly_drop_fee != null && stop.quarterly_drop_fee > 0) ? (
+                      <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 px-1">
+                        <div className="font-medium text-gray-700 dark:text-gray-300">Quarterly billing</div>
+                        <div className="flex justify-between">
+                          <span>Pickup</span>
+                          <span className="tabular-nums">₹{stop.quarterly_pickup_fee ?? 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Drop</span>
+                          <span className="tabular-nums">₹{stop.quarterly_drop_fee ?? 0}</span>
+                        </div>
+                      </div>
+                    ) : null}
 
                     {stop.expected_pickup_time && (
                       <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -419,33 +446,69 @@ export default function StopsPage({
                   />
                 </div>
 
+                <p className="text-xs text-gray-500">
+                  Set monthly and quarterly amounts for each leg. Keep 0 only when that leg should not be charged.
+                </p>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Pickup Fare (₹) *
+                      Monthly pickup (₹)
                     </label>
                     <Input
-                      name="pickup_fare"
+                      name="monthly_pickup_fee"
                       type="number"
-                      value={formData.pickup_fare}
+                      value={formData.monthly_pickup_fee}
                       onChange={handleInputChange}
-                      placeholder="500"
+                      placeholder="0"
                       min="0"
                       step="0.01"
                       className="w-full"
                     />
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Drop Fare (₹) *
+                      Monthly drop (₹)
                     </label>
                     <Input
-                      name="drop_fare"
+                      name="monthly_drop_fee"
                       type="number"
-                      value={formData.drop_fare}
+                      value={formData.monthly_drop_fee}
                       onChange={handleInputChange}
-                      placeholder="500"
+                      placeholder="0"
+                      min="0"
+                      step="0.01"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Quarterly pickup (₹)
+                    </label>
+                    <Input
+                      name="quarterly_pickup_fee"
+                      type="number"
+                      value={formData.quarterly_pickup_fee}
+                      onChange={handleInputChange}
+                      placeholder="0"
+                      min="0"
+                      step="0.01"
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Quarterly drop (₹)
+                    </label>
+                    <Input
+                      name="quarterly_drop_fee"
+                      type="number"
+                      value={formData.quarterly_drop_fee}
+                      onChange={handleInputChange}
+                      placeholder="0"
                       min="0"
                       step="0.01"
                       className="w-full"

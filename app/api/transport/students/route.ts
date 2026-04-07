@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
-import { computeTransportFeeFromStops } from '@/lib/transport/compute-student-transport-fee';
+import {
+  computePeriodicTransportFeeFromStops,
+  computeTransportFeeFromStops,
+} from '@/lib/transport/compute-student-transport-fee';
 import {
   deleteStudentTransportFeeRows,
   syncStudentTransportFeeRow,
 } from '@/lib/fees/transport-fee-sync';
+import { normalizeBillingFrequency } from '@/lib/transport/transport-billing-period';
+import { recordTransportAssignmentVersion, closeTransportAssignmentVersionsForStudent } from '@/lib/transport/transport-assignment-versions';
+import { upsertTransportBillingObligation } from '@/lib/transport/transport-billing-obligations';
 
 export type TransportAssignmentInput = {
   student_id: string;
@@ -12,6 +18,8 @@ export type TransportAssignmentInput = {
   dropoff_stop_id?: string | null;
   /** JSON may send a number or numeric string; empty string means “no override”. */
   custom_fare?: number | string | null;
+  /** MONTHLY (default) or QUARTERLY — per-student or falls back to body default. */
+  billing_frequency?: string | null;
 };
 
 async function fetchRouteStopIds(
@@ -31,26 +39,64 @@ async function fetchStopsByIds(
   supabase: ReturnType<typeof getServiceRoleClient>,
   stopIds: string[],
   schoolCode: string
-): Promise<Map<string, { id: string; name: string; pickup_fare: number | null; drop_fare: number | null }>> {
+): Promise<
+  Map<
+    string,
+    {
+      id: string;
+      name: string;
+      pickup_fare: number | null;
+      drop_fare: number | null;
+      monthly_pickup_fee: number | null;
+      monthly_drop_fee: number | null;
+      quarterly_pickup_fee: number | null;
+      quarterly_drop_fee: number | null;
+    }
+  >
+> {
   if (stopIds.length === 0) return new Map();
   const unique = [...new Set(stopIds)];
-  const { data, error } = await supabase
-    .from('transport_stops')
-    .select('id, name, pickup_fare, drop_fare, school_code')
-    .in('id', unique)
-    .eq('school_code', schoolCode);
+  const sel =
+    'id, name, pickup_fare, drop_fare, monthly_pickup_fee, monthly_drop_fee, quarterly_pickup_fee, quarterly_drop_fee, school_code';
+  const res = await supabase.from('transport_stops').select(sel).in('id', unique).eq('school_code', schoolCode);
+  let data: unknown[] | null = res.data as unknown[] | null;
+  let error = res.error;
+
+  if (error?.code === '42703' || String(error?.message || '').includes('monthly_pickup_fee')) {
+    const res2 = await supabase
+      .from('transport_stops')
+      .select('id, name, pickup_fare, drop_fare, school_code')
+      .in('id', unique)
+      .eq('school_code', schoolCode);
+    data = res2.data as unknown[] | null;
+    error = res2.error;
+  }
 
   if (error) throw new Error(error.message);
   const map = new Map<
     string,
-    { id: string; name: string; pickup_fare: number | null; drop_fare: number | null }
+    {
+      id: string;
+      name: string;
+      pickup_fare: number | null;
+      drop_fare: number | null;
+      monthly_pickup_fee: number | null;
+      monthly_drop_fee: number | null;
+      quarterly_pickup_fee: number | null;
+      quarterly_drop_fee: number | null;
+    }
   >();
   for (const row of data || []) {
-    map.set(String(row.id), {
-      id: String(row.id),
-      name: String(row.name || 'Stop'),
-      pickup_fare: row.pickup_fare != null ? Number(row.pickup_fare) : null,
-      drop_fare: row.drop_fare != null ? Number(row.drop_fare) : null,
+    const r = row as Record<string, unknown>;
+    map.set(String(r.id), {
+      id: String(r.id),
+      name: String(r.name || 'Stop'),
+      pickup_fare: r.pickup_fare != null ? Number(r.pickup_fare) : null,
+      drop_fare: r.drop_fare != null ? Number(r.drop_fare) : null,
+      monthly_pickup_fee: r.monthly_pickup_fee != null ? Number(r.monthly_pickup_fee) : 0,
+      monthly_drop_fee: r.monthly_drop_fee != null ? Number(r.monthly_drop_fee) : 0,
+      quarterly_pickup_fee: r.quarterly_pickup_fee != null ? Number(r.quarterly_pickup_fee) : 0,
+      quarterly_drop_fee: r.quarterly_drop_fee != null ? Number(r.quarterly_drop_fee) : 0,
     });
   }
   return map;
@@ -106,6 +152,12 @@ export async function POST(request: NextRequest) {
     const school_code = body.school_code as string | undefined;
     const route_id = body.route_id as string | undefined;
     const assignments = body.assignments as TransportAssignmentInput[] | undefined;
+    const defaultBillingFrequency = normalizeBillingFrequency(body.billing_frequency as string | undefined);
+    const effectiveFromRaw = body.effective_from as string | undefined;
+    const effectiveFrom =
+      effectiveFromRaw && /^\d{4}-\d{2}-\d{2}$/.test(String(effectiveFromRaw).trim())
+        ? String(effectiveFromRaw).trim()
+        : new Date().toISOString().slice(0, 10);
 
     if (!school_code || !route_id || !assignments || !Array.isArray(assignments) || assignments.length === 0) {
       return NextResponse.json(
@@ -139,6 +191,7 @@ export async function POST(request: NextRequest) {
 
     const vehicle = route.vehicle as { seats?: number } | null;
     const capacity = vehicle?.seats || 0;
+    const enforceCapacity = capacity > 0;
 
     let validStopIds: Set<string>;
     try {
@@ -196,10 +249,10 @@ export async function POST(request: NextRequest) {
       if (!alreadyOnRouteIds.has(String(a.student_id))) newAssignments += 1;
     }
     const currentCount = alreadyOnRouteIds.size;
-    if (currentCount + newAssignments > capacity) {
+    if (enforceCapacity && currentCount + newAssignments > capacity) {
       return NextResponse.json(
         {
-          error: `Route capacity exceeded. Current: ${currentCount}, new seats needed: ${newAssignments}, capacity: ${capacity}`,
+          error: `Route capacity exceeded. Vehicle has ${capacity} seat(s). Currently ${currentCount} student(s) on this route; adding ${newAssignments} would exceed capacity.`,
         },
         { status: 400 }
       );
@@ -207,7 +260,7 @@ export async function POST(request: NextRequest) {
 
     const updated: Record<string, unknown>[] = [];
 
-    for (const a of assignments) {
+    for (const a of uniqueAssignments) {
       const pickupId = a.pickup_stop_id ? String(a.pickup_stop_id).trim() : '';
       const dropId = a.dropoff_stop_id ? String(a.dropoff_stop_id).trim() : '';
       const hasPickup = !!pickupId;
@@ -252,11 +305,31 @@ export async function POST(request: NextRequest) {
       }
 
       const stopIdsToLoad = [pickupId, dropId].filter(Boolean);
-      let stopMap: Map<string, { pickup_fare: number | null; drop_fare: number | null }>;
+      let stopMap: Map<
+        string,
+        {
+          pickup_fare: number | null;
+          drop_fare: number | null;
+          monthly_pickup_fee: number | null;
+          monthly_drop_fee: number | null;
+          quarterly_pickup_fee: number | null;
+          quarterly_drop_fee: number | null;
+        }
+      >;
       try {
         const full = await fetchStopsByIds(supabase, stopIdsToLoad, school_code);
         stopMap = new Map(
-          [...full.entries()].map(([k, v]) => [k, { pickup_fare: v.pickup_fare, drop_fare: v.drop_fare }])
+          [...full.entries()].map(([k, v]) => [
+            k,
+            {
+              pickup_fare: v.pickup_fare,
+              drop_fare: v.drop_fare,
+              monthly_pickup_fee: v.monthly_pickup_fee,
+              monthly_drop_fee: v.monthly_drop_fee,
+              quarterly_pickup_fee: v.quarterly_pickup_fee,
+              quarterly_drop_fee: v.quarterly_drop_fee,
+            },
+          ])
         );
       } catch (e) {
         return NextResponse.json({ error: (e as Error).message }, { status: 500 });
@@ -272,17 +345,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Drop-off stop not found for this school' }, { status: 400 });
       }
 
-      const { total: transportFee, fromCustom } = computeTransportFeeFromStops({
+      const billingFrequency = normalizeBillingFrequency(a.billing_frequency ?? defaultBillingFrequency);
+
+      const periodic = computePeriodicTransportFeeFromStops({
         pickupStop,
         dropStop,
+        frequency: billingFrequency,
         customFare: customFareNum,
       });
+      const transportFee = periodic.total;
+      const fromCustom = periodic.fromCustom;
 
       if (!hasCustom && transportFee <= 0 && (hasPickup || hasDrop)) {
         return NextResponse.json(
           {
             error:
-              'Selected stop(s) have no fare configured. Set pickup_fare / drop_fare on stops or use custom_fare.',
+              billingFrequency === 'QUARTERLY'
+                ? 'Selected stop(s) have no quarterly (or monthly / per-trip) fee for the chosen leg(s). Configure quarterly_* and monthly_* on stops, per-trip fares, or use custom_fare.'
+                : 'Selected stop(s) have no fare configured. Set monthly / per-trip pickup_fare & drop_fare on stops or use custom_fare.',
           },
           { status: 400 }
         );
@@ -295,6 +375,7 @@ export async function POST(request: NextRequest) {
         transport_dropoff_stop_id: hasDrop ? dropId : null,
         transport_custom_fare: customFareNum,
         transport_fee: fromCustom && customFareNum != null ? customFareNum : transportFee,
+        transport_billing_frequency: billingFrequency,
       };
 
       const { data: u, error: upErr } = await supabase
@@ -310,7 +391,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json(
             {
               error:
-                'Database missing transport columns. Apply migration: supabase/migrations/20260331100000_student_transport_pickup_drop.sql',
+                'Database missing transport columns. Apply migrations (transport pickup/drop + periodic billing): see supabase/migrations/',
               details: upErr.message,
             },
             { status: 500 }
@@ -322,6 +403,27 @@ export async function POST(request: NextRequest) {
         );
       }
       updated.push(u);
+
+      const verId = await recordTransportAssignmentVersion(supabase, {
+        schoolCode: school_code,
+        studentId: String(a.student_id),
+        routeId: route_id,
+        pickupStopId: hasPickup ? pickupId : null,
+        dropoffStopId: hasDrop ? dropId : null,
+        transportCustomFare: customFareNum,
+        transportFee: fromCustom && customFareNum != null ? customFareNum : transportFee,
+        billingFrequency,
+        effectiveFrom,
+      });
+
+      await upsertTransportBillingObligation(supabase, {
+        schoolCode: school_code,
+        studentId: String(a.student_id),
+        billingMonthIso: effectiveFrom,
+        billingFrequency,
+        amountDue: fromCustom && customFareNum != null ? customFareNum : transportFee,
+        assignmentVersionId: verId,
+      });
 
       const sync = await syncStudentTransportFeeRow(supabase, school_code, String(a.student_id));
       if (!sync.ok) {
@@ -362,8 +464,10 @@ export async function DELETE(request: NextRequest) {
 
     const studentIdsArray = studentIds.split(',').filter(Boolean);
 
+    const today = new Date().toISOString().slice(0, 10);
     for (const sid of studentIdsArray) {
       await deleteStudentTransportFeeRows(supabase, schoolCode, sid);
+      await closeTransportAssignmentVersionsForStudent(supabase, schoolCode, sid, today);
     }
 
     const clearPayload: Record<string, unknown> = {
@@ -373,6 +477,7 @@ export async function DELETE(request: NextRequest) {
       transport_dropoff_stop_id: null,
       transport_custom_fare: null,
       transport_fee: null,
+      transport_billing_frequency: 'MONTHLY',
     };
 
     const { data: updatedStudents, error: updateError } = await supabase

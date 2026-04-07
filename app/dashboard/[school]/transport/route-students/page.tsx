@@ -23,13 +23,18 @@ import {
   ArrowRight,
   ChevronDown,
 } from 'lucide-react';
-import { computeTransportFeeFromStops } from '@/lib/transport/compute-student-transport-fee';
+import { computePeriodicTransportFeeFromStops } from '@/lib/transport/compute-student-transport-fee';
+import type { TransportBillingFrequency } from '@/lib/transport/transport-billing-period';
 
 interface RouteStop {
   id: string;
   name: string;
   pickup_fare: number;
   drop_fare: number;
+  monthly_pickup_fee?: number;
+  monthly_drop_fee?: number;
+  quarterly_pickup_fee?: number;
+  quarterly_drop_fee?: number;
   is_active?: boolean;
 }
 
@@ -44,6 +49,7 @@ interface Student {
   transport_dropoff_stop_id?: string | null;
   transport_custom_fare?: number | null;
   transport_fee?: number | null;
+  transport_billing_frequency?: string | null;
 }
 
 interface Route {
@@ -68,6 +74,8 @@ const emptyForm = () => ({
   pickup_stop_id: '' as string,
   drop_stop_id: '' as string,
   custom_fare: '' as string,
+  billing_frequency: 'MONTHLY' as TransportBillingFrequency,
+  effective_from: '' as string,
 });
 
 export default function RouteStudentsPage({
@@ -140,6 +148,10 @@ export default function RouteStudentsPage({
               name: String(s.name ?? 'Stop'),
               pickup_fare: Number(s.pickup_fare ?? 0),
               drop_fare: Number(s.drop_fare ?? 0),
+              monthly_pickup_fee: Number(s.monthly_pickup_fee ?? 0),
+              monthly_drop_fee: Number(s.monthly_drop_fee ?? 0),
+              quarterly_pickup_fee: Number(s.quarterly_pickup_fee ?? 0),
+              quarterly_drop_fee: Number(s.quarterly_drop_fee ?? 0),
               is_active: s.is_active !== false,
             }))
           : [];
@@ -172,6 +184,7 @@ export default function RouteStudentsPage({
       setForm(emptyForm());
     } else {
       const s = mode.student;
+      const bf = String(s.transport_billing_frequency || 'MONTHLY').toUpperCase();
       setForm({
         pickup_stop_id: s.transport_pickup_stop_id ? String(s.transport_pickup_stop_id) : '',
         drop_stop_id: s.transport_dropoff_stop_id ? String(s.transport_dropoff_stop_id) : '',
@@ -179,6 +192,8 @@ export default function RouteStudentsPage({
           s.transport_custom_fare != null && Number.isFinite(Number(s.transport_custom_fare))
             ? String(s.transport_custom_fare)
             : '',
+        billing_frequency: bf === 'QUARTERLY' ? 'QUARTERLY' : 'MONTHLY',
+        effective_from: '',
       });
     }
   };
@@ -199,12 +214,14 @@ export default function RouteStudentsPage({
     const hasCustom = customRaw !== '' && Number.isFinite(Number(customRaw)) && Number(customRaw) >= 0;
     const p = form.pickup_stop_id ? stopById.get(form.pickup_stop_id) ?? null : null;
     const d = form.drop_stop_id ? stopById.get(form.drop_stop_id) ?? null : null;
-    return computeTransportFeeFromStops({
+    const freq = form.billing_frequency;
+    return computePeriodicTransportFeeFromStops({
       pickupStop: p,
       dropStop: d,
+      frequency: freq,
       customFare: hasCustom ? Number(customRaw) : null,
     });
-  }, [form.pickup_stop_id, form.drop_stop_id, form.custom_fare, stopById]);
+  }, [form.pickup_stop_id, form.drop_stop_id, form.custom_fare, form.billing_frequency, stopById]);
 
   const formValidationMessage = useMemo(() => {
     const customRaw = form.custom_fare.trim();
@@ -213,7 +230,9 @@ export default function RouteStudentsPage({
       return 'Choose at least a pickup stop, a drop-off stop, or enter a custom fare.';
     }
     if (!hasCustom && farePreview.total <= 0 && (form.pickup_stop_id || form.drop_stop_id)) {
-      return 'Selected stop(s) have ₹0 for the chosen leg(s). Set fares on the stop or use custom fare.';
+      return form.billing_frequency === 'QUARTERLY'
+        ? 'Selected stop(s) have ₹0 for this quarter (set quarterly amounts or monthly amounts, or use custom fare).'
+        : 'Selected stop(s) have ₹0 for the chosen leg(s). Set monthly amounts on the stop or use custom fare.';
     }
     return null;
   }, [form, farePreview.total]);
@@ -222,14 +241,18 @@ export default function RouteStudentsPage({
     if (!selectedRoute || studentIds.length === 0) return;
     const customRaw = form.custom_fare.trim();
     const hasCustom = customRaw !== '' && Number.isFinite(Number(customRaw)) && Number(customRaw) >= 0;
+    const eff = form.effective_from.trim();
     const payload = {
       school_code: schoolCode,
       route_id: selectedRoute,
+      billing_frequency: form.billing_frequency,
+      ...(eff && /^\d{4}-\d{2}-\d{2}$/.test(eff) ? { effective_from: eff } : {}),
       assignments: studentIds.map((student_id) => ({
         student_id,
         pickup_stop_id: form.pickup_stop_id || null,
         drop_stop_id: form.drop_stop_id || null,
         custom_fare: hasCustom ? Number(customRaw) : null,
+        billing_frequency: form.billing_frequency,
       })),
     };
 
@@ -718,7 +741,11 @@ export default function RouteStudentsPage({
                             </div>
                             <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700/80">
                               <span className="text-[11px] uppercase tracking-wide text-gray-400 font-medium">
-                                Stored fee
+                                Stored fee (
+                                {String(student.transport_billing_frequency || 'MONTHLY').toUpperCase() === 'QUARTERLY'
+                                  ? 'quarter'
+                                  : 'month'}
+                                )
                               </span>
                               <span className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-0.5 tabular-nums">
                                 <IndianRupee size={14} />
@@ -859,7 +886,7 @@ export default function RouteStudentsPage({
                     </button>
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
-                    Pickup-only and drop-off-only are supported. Different stops sum both fares. Custom fare overrides the calculated total.
+                    Pickup-only and drop-off-only are supported. Different stops sum both charges. Custom fare overrides the calculated total.
                   </p>
                 </div>
 
@@ -877,7 +904,9 @@ export default function RouteStudentsPage({
                       <option value="">Not using school pickup</option>
                       {routeStops.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name} — pickup ₹{s.pickup_fare}
+                          {s.name}
+                          {s.monthly_pickup_fee ? ` · M₹${s.monthly_pickup_fee}` : ''}
+                          {s.quarterly_pickup_fee ? ` · Q₹${s.quarterly_pickup_fee}` : ''}
                         </option>
                       ))}
                     </select>
@@ -896,7 +925,9 @@ export default function RouteStudentsPage({
                       <option value="">Not using school drop-off</option>
                       {routeStops.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name} — drop ₹{s.drop_fare}
+                          {s.name}
+                          {s.monthly_drop_fee ? ` · M₹${s.monthly_drop_fee}` : ''}
+                          {s.quarterly_drop_fee ? ` · Q₹${s.quarterly_drop_fee}` : ''}
                         </option>
                       ))}
                     </select>
@@ -915,6 +946,41 @@ export default function RouteStudentsPage({
                     />
                     <p className="text-xs text-violet-800/80 dark:text-violet-300/80">
                       When set, this amount is stored as the student&apos;s transport fee instead of summing pickup + drop from stops.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">Billing frequency</label>
+                    <select
+                      value={form.billing_frequency}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          billing_frequency: e.target.value === 'QUARTERLY' ? 'QUARTERLY' : 'MONTHLY',
+                        }))
+                      }
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    >
+                      <option value="MONTHLY">Monthly collection</option>
+                      <option value="QUARTERLY">Quarterly collection</option>
+                    </select>
+                    <p className="text-xs text-gray-500">
+                      Fee is taken from stop monthly or quarterly amounts (or 3× monthly when quarterly is 0).
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                      Effective from (optional)
+                    </label>
+                    <Input
+                      type="date"
+                      value={form.effective_from}
+                      onChange={(e) => setForm((f) => ({ ...f, effective_from: e.target.value }))}
+                      className="rounded-xl"
+                    />
+                    <p className="text-xs text-gray-500">
+                      When changing stops or route, set the date the new mapping applies. Previous assignment is closed the day before. Leave empty for today.
                     </p>
                   </div>
 
@@ -943,7 +1009,9 @@ export default function RouteStudentsPage({
                           )}
                         </div>
                         <div className="flex justify-between items-end pt-2 border-t border-slate-600">
-                          <span className="text-slate-400">Total transport fee</span>
+                          <span className="text-slate-400">
+                            Total ({form.billing_frequency === 'QUARTERLY' ? 'per quarter' : 'per month'})
+                          </span>
                           <span className="text-2xl font-bold flex items-center gap-0.5">
                             <IndianRupee size={22} />
                             {farePreview.total.toLocaleString('en-IN')}

@@ -66,6 +66,17 @@ export async function PATCH(
     if (updateData.drop_fare !== undefined) {
       updateData.drop_fare = parseFloat(updateData.drop_fare);
     }
+    for (const k of [
+      'monthly_pickup_fee',
+      'monthly_drop_fee',
+      'quarterly_pickup_fee',
+      'quarterly_drop_fee',
+    ] as const) {
+      if (updateData[k] !== undefined && updateData[k] !== null && updateData[k] !== '') {
+        const n = parseFloat(String(updateData[k]));
+        (updateData as Record<string, unknown>)[k] = Number.isFinite(n) && n >= 0 ? n : 0;
+      }
+    }
 
     const { data: stop, error: stopError } = await supabase
       .from('transport_stops')

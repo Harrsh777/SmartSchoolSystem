@@ -200,27 +200,31 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
   <title>Fee Receipt - ${schoolName}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { size: A4 portrait; margin: 12mm; }
+    @page { size: 15cm 20cm; margin: 6mm; }
     body {
       font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-      padding: 16px;
+      padding: 10px;
       background: #e2e8f0;
       color: #0f172a;
     }
     .page-shell {
-      max-width: 800px;
+      width: 15cm;
+      max-width: 15cm;
       margin: 0 auto;
       background: #f1f5f9;
-      padding: 16px;
-      border-radius: 16px;
+      padding: 8px;
+      border-radius: 10px;
     }
     .receipt-sheet {
       background: #fff;
-      border-radius: 14px;
-      padding: 16px 18px 20px;
+      width: 15cm;
+      min-height: 20cm;
+      border-radius: 10px;
+      padding: 8mm 8mm 9mm;
       border: 1px solid #cbd5e1;
       position: relative;
       overflow: hidden;
+      page-break-after: always;
     }
     .receipt-watermark {
       position: absolute;
@@ -243,19 +247,30 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
     @media print {
       body { background: #fff; padding: 0; }
       .page-shell { max-width: none; padding: 0; background: #fff; border-radius: 0; }
-      .receipt-sheet { border: none; border-radius: 0; box-shadow: none; page-break-after: always; }
+      .receipt-sheet {
+        width: auto;
+        min-height: auto;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        page-break-after: always;
+      }
+    }
+    * {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     ${shared}
   </style>
 </head>
-<body>
+<body class="compact-receipt">
   <div class="page-shell">
     ${receiptToolbarHtml('Fee receipt')}
     <div class="receipt-sheet">
       ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
       <div class="receipt-inner">${receiptContentSchool}</div>
     </div>
-    <div class="receipt-sheet" style="margin-top: 20px;">
+    <div class="receipt-sheet" style="margin-top: 8px;">
       ${logoUrl ? `<div class="receipt-watermark"><img src="${escapeHtml(logoUrl)}" alt=""/></div>` : ''}
       <div class="receipt-inner">${receiptContentStudent}</div>
     </div>

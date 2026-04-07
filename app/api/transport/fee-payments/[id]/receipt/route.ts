@@ -91,9 +91,10 @@ export async function GET(
       <tr><th>Payment mode</th><td>${escapeHtml(String(row.payment_mode))}</td></tr>
       <tr><th>Student</th><td>${escapeHtml(String(st?.student_name || ''))} (${escapeHtml(String(st?.admission_no || ''))})</td></tr>
       <tr><th>Class</th><td>${escapeHtml(String(st?.class || ''))} ${escapeHtml(String(st?.section || ''))}</td></tr>
-      <tr><th>Period</th><td>${escapeHtml(String(payload.period_month || row.period_month))}</td></tr>
+      <tr><th>Period</th><td>${escapeHtml(String(payload.period_label || payload.period_month || row.period_month))}</td></tr>
+      <tr><th>Billing</th><td>${escapeHtml(String(payload.billing_frequency || 'MONTHLY'))}</td></tr>
       <tr><th>Particulars</th><td>${title}</td></tr>
-      <tr><th>Monthly fee</th><td>₹${Number(payload.monthly_fee || 0).toLocaleString('en-IN')}</td></tr>
+      <tr><th>Period fee</th><td>₹${Number(payload.period_fee ?? payload.monthly_fee ?? 0).toLocaleString('en-IN')}</td></tr>
       <tr><th>Amount paid</th><td class="strong">₹${amount.toLocaleString('en-IN')}</td></tr>
       <tr><th>Balance</th><td>₹${Number(payload.balance_after ?? 0).toLocaleString('en-IN')}</td></tr>
       <tr><th>Status</th><td>${escapeHtml(String(payload.line_status || ''))}</td></tr>

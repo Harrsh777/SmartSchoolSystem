@@ -60,6 +60,7 @@ export interface ReportCardData {
     school_name: string;
     school_code: string;
     affiliation?: string;
+    affiliation_number?: string;
     school_email?: string;
     school_phone?: string;
     school_address?: string;
@@ -1060,10 +1061,17 @@ function generateLandscapeReportCardHTML(
   const showGradingScale = sectionsCfg.show_grading_scale !== false;
 
   // Editable content
-  const schoolEmail = (content.school_email as string) ?? data.school.school_email ?? '';
-  const schoolPhone = (content.school_phone as string) ?? data.school.school_phone ?? '';
-  const schoolAddress = (content.school_address as string) ?? data.school.school_address ?? '';
-  const affiliation = (content.affiliation as string) ?? data.school.affiliation ?? '';
+  const pickText = (...vals: unknown[]) => {
+    for (const v of vals) {
+      const t = v != null ? String(v).trim() : '';
+      if (t) return t;
+    }
+    return '';
+  };
+  const schoolEmail = pickText(content.school_email, data.school.school_email);
+  const schoolPhone = pickText(content.school_phone, data.school.school_phone);
+  const schoolAddress = pickText(content.school_address, data.school.school_address);
+  const affiliation = pickText(content.affiliation, data.school.affiliation_number, data.school.affiliation);
   const academicYear = (content.academic_year as string) ?? data.exam.academic_year ?? 'N/A';
   const examName = (content.exam_name as string) ?? data.exam.exam_name ?? 'Examination';
   const promotedTo = String((content.promoted_to as string) ?? data.promoted_to ?? '').trim();
@@ -1250,7 +1258,7 @@ function generateLandscapeReportCardHTML(
   const resultDate = data.exam?.result_date || new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   const remarkHtml = preprintedRemarks
     ? preprintedRemarks.replace(/\n/g, '<br/>')
-    : '<span style="color:#888;font-style:italic;font-size:9px;">No remarks</span>';
+    : '<span style="color:#888;font-style:italic;font-size:9px;"></span>';
 
   const summaryThirdLabel = showOverallGrade ? 'Grade' : 'Class';
   const summaryThirdValue = showOverallGrade ? overallGrade || '-' : classValueOnly;
@@ -1615,9 +1623,7 @@ function generateLandscapeReportCardHTML(
           <div class="student-cols">
             ${profileKvs}
           </div>
-          <div class="photo-box">
-            ${student.photo_url ? `<img src="${student.photo_url}" alt="Student Photo" style="width:72px;height:88px;object-fit:cover;border-radius:2px;" />` : 'Passport<br/>photo'}
-          </div>
+          ${student.photo_url ? `<div class="photo-box"><img src="${student.photo_url}" alt="Student Photo" style="width:72px;height:88px;object-fit:cover;border-radius:2px;" /></div>` : ''}
         </div>
         ` : ''}
 

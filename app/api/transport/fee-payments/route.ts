@@ -4,6 +4,13 @@ import { requirePermission } from '@/lib/api-permissions';
 import { logAudit } from '@/lib/audit-logger';
 import { getTransportFeeMode, isSeparateTransportMode } from '@/lib/fees/transport-fee-mode';
 import { formatTransportFeeLabel, type TransportSnapshot } from '@/lib/fees/transport-fee-sync';
+import {
+  formatPeriodLabel,
+  normalizeBillingFrequency,
+  periodStartForBilling,
+} from '@/lib/transport/transport-billing-period';
+import { fetchObligationAmount, upsertTransportBillingObligation } from '@/lib/transport/transport-billing-obligations';
+import { computePeriodicTransportFeeFromStops } from '@/lib/transport/compute-student-transport-fee';
 
 const PAY_EPS = 0.02;
 
@@ -63,7 +70,7 @@ export async function GET(request: NextRequest) {
       let q = supabase
         .from('students')
         .select(
-          'id, admission_no, student_name, class, section, transport_route_id, transport_fee, transport_pickup_stop_id, transport_dropoff_stop_id'
+          'id, admission_no, student_name, class, section, transport_route_id, transport_fee, transport_pickup_stop_id, transport_dropoff_stop_id, transport_custom_fare, transport_billing_frequency'
         )
         .eq('school_code', code)
         .not('transport_route_id', 'is', null);
@@ -76,7 +83,7 @@ export async function GET(request: NextRequest) {
         .order('class', { ascending: true })
         .order('section', { ascending: true })
         .order('student_name', { ascending: true })
-        .range((page - 1) * pageSize, page * pageSize - 1);
+        .limit(500);
 
       if (stErr) {
         return NextResponse.json({ error: stErr.message }, { status: 500 });
@@ -86,25 +93,96 @@ export async function GET(request: NextRequest) {
         ...new Set((students || []).map((s) => s.transport_route_id).filter(Boolean)),
       ] as string[];
       const routeNameById = new Map<string, string>();
+      const stopMetaById = new Map<
+        string,
+        {
+          name: string;
+          pickup_fare: number;
+          drop_fare: number;
+          monthly_pickup_fee: number;
+          monthly_drop_fee: number;
+          quarterly_pickup_fee: number;
+          quarterly_drop_fee: number;
+        }
+      >();
       if (routeIds.length > 0) {
         const { data: routes } = await supabase
           .from('transport_routes')
-          .select('id, name')
+          .select('id, route_name')
           .eq('school_code', code)
           .in('id', routeIds);
         for (const r of routes || []) {
-          routeNameById.set(String((r as { id: string }).id), String((r as { name?: string }).name || 'Route'));
+          const row = r as { id: string; route_name?: string };
+          routeNameById.set(String(row.id), String(row.route_name || 'Route'));
+        }
+      }
+      const stopIds = [
+        ...new Set(
+          (students || [])
+            .flatMap((s) => [s.transport_pickup_stop_id, s.transport_dropoff_stop_id])
+            .filter(Boolean)
+        ),
+      ] as string[];
+      if (stopIds.length > 0) {
+        const { data: stops } = await supabase
+          .from('transport_stops')
+          .select(
+            'id, name, monthly_pickup_fee, monthly_drop_fee, quarterly_pickup_fee, quarterly_drop_fee'
+          )
+          .eq('school_code', code)
+          .in('id', stopIds);
+        for (const s of stops || []) {
+          const row = s as Record<string, unknown>;
+          stopMetaById.set(String(row.id), {
+            name: String(row.name || 'Stop'),
+            pickup_fare: 0,
+            drop_fare: 0,
+            monthly_pickup_fee: Number(row.monthly_pickup_fee ?? 0),
+            monthly_drop_fee: Number(row.monthly_drop_fee ?? 0),
+            quarterly_pickup_fee: Number(row.quarterly_pickup_fee ?? 0),
+            quarterly_drop_fee: Number(row.quarterly_drop_fee ?? 0),
+          });
         }
       }
 
-      const month = normalizeMonthStart(sp.get('billing_month') || new Date().toISOString())!;
+      const billingAnchor =
+        normalizeMonthStart(sp.get('billing_month') || new Date().toISOString()) || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+
       const rows = await Promise.all(
         (students || []).map(async (st) => {
           const sid = String(st.id);
-          const monthly = Number(st.transport_fee || 0);
-          const paid = monthly > 0 ? await sumPaidForMonth(supabase, code, sid, month) : 0;
-          const expected = Math.round(monthly * 100) / 100;
+          const freq = normalizeBillingFrequency(
+            (st as { transport_billing_frequency?: string }).transport_billing_frequency
+          );
+          const periodStart = periodStartForBilling(billingAnchor, freq);
+          const fromStudent = Math.round(Number(st.transport_fee || 0) * 100) / 100;
+          if (fromStudent > PAY_EPS) {
+            await upsertTransportBillingObligation(supabase, {
+              schoolCode: code,
+              studentId: sid,
+              billingMonthIso: billingAnchor,
+              billingFrequency: freq,
+              amountDue: fromStudent,
+              assignmentVersionId: null,
+            });
+          }
+          let expected =
+            (await fetchObligationAmount(supabase, code, sid, billingAnchor, freq)) ?? fromStudent;
+          expected = Math.round(expected * 100) / 100;
+          const paid = expected > 0 ? await sumPaidForMonth(supabase, code, sid, periodStart) : 0;
           const paidR = Math.round(paid * 100) / 100;
+          const pickupStop = st.transport_pickup_stop_id
+            ? stopMetaById.get(String(st.transport_pickup_stop_id)) || null
+            : null;
+          const dropStop = st.transport_dropoff_stop_id
+            ? stopMetaById.get(String(st.transport_dropoff_stop_id)) || null
+            : null;
+          const fareCalc = computePeriodicTransportFeeFromStops({
+            pickupStop,
+            dropStop,
+            frequency: freq,
+            customFare: (st as { transport_custom_fare?: number | null }).transport_custom_fare ?? null,
+          });
           let status: 'PENDING' | 'PARTIAL' | 'PAID' | 'NOROUTE' = 'NOROUTE';
           if (expected <= PAY_EPS) status = 'NOROUTE';
           else if (paidR <= PAY_EPS) status = 'PENDING';
@@ -122,18 +200,79 @@ export async function GET(request: NextRequest) {
               ? routeNameById.get(String(st.transport_route_id)) || null
               : null,
             monthly_transport_fee: expected,
-            billing_month: month,
+            billing_month: periodStart,
+            billing_frequency: freq,
+            period_label: formatPeriodLabel(periodStart, freq),
             paid_this_month: paidR,
             balance_due: balance,
             status,
             transport_fee_mode: mode,
+            pickup_stop_name: pickupStop?.name || null,
+            drop_stop_name: dropStop?.name || null,
+            fare_breakdown: {
+              from_custom: fareCalc.fromCustom,
+              pickup_amount: fareCalc.pickupPortion,
+              drop_amount: fareCalc.dropPortion,
+              calculated_total: fareCalc.total,
+              period_fee: expected,
+            },
           };
         })
       );
 
+      const withFee = rows.filter((r) => r.monthly_transport_fee > PAY_EPS);
+      const due = withFee.filter((r) => r.balance_due > PAY_EPS);
+
+      let collections: Record<string, unknown>[] = [];
+      if (classFilter && sectionFilter && (students || []).length > 0) {
+        const freqById = new Map<string, ReturnType<typeof normalizeBillingFrequency>>();
+        for (const s of students || []) {
+          freqById.set(
+            String((s as { id: string }).id),
+            normalizeBillingFrequency((s as { transport_billing_frequency?: string }).transport_billing_frequency)
+          );
+        }
+        const ids = [...freqById.keys()];
+        const { data: payRows, error: payErr } = await supabase
+          .from('transport_fee_payment_entries')
+          .select(
+            `
+            id,
+            student_id,
+            amount,
+            period_month,
+            receipt_no,
+            payment_date,
+            payment_mode,
+            reference_no,
+            created_at,
+            student:student_id (student_name, admission_no, class, section)
+          `
+          )
+          .eq('school_code', code)
+          .in('student_id', ids)
+          .order('created_at', { ascending: false })
+          .limit(400);
+
+        if (!payErr && payRows) {
+          collections = payRows.filter((p) => {
+            const f = freqById.get(String((p as { student_id: string }).student_id)) ?? 'MONTHLY';
+            const want = periodStartForBilling(billingAnchor, f);
+            const pm = String((p as { period_month?: string }).period_month || '').slice(0, 10);
+            return pm === want;
+          }) as Record<string, unknown>[];
+        }
+      }
+
       return NextResponse.json({
-        data: rows.filter((r) => r.monthly_transport_fee > PAY_EPS),
-        meta: { page, page_size: pageSize, transport_fee_mode: mode },
+        due,
+        collections,
+        meta: {
+          page: 1,
+          page_size: due.length,
+          transport_fee_mode: mode,
+          billing_anchor: billingAnchor,
+        },
       });
     }
 
@@ -207,8 +346,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
     }
 
-    const month = normalizeMonthStart(String(period_month || ''));
-    if (!month) {
+    const rawBilling = normalizeMonthStart(String(period_month || ''));
+    if (!rawBilling) {
       return NextResponse.json({ error: 'period_month must be a valid date (billing month)' }, { status: 400 });
     }
 
@@ -246,7 +385,7 @@ export async function POST(request: NextRequest) {
     const { data: student, error: stErr } = await supabase
       .from('students')
       .select(
-        'id, school_code, transport_route_id, transport_fee, transport_pickup_stop_id, transport_dropoff_stop_id, transport_custom_fare, student_name, admission_no'
+        'id, school_code, transport_route_id, transport_fee, transport_pickup_stop_id, transport_dropoff_stop_id, transport_custom_fare, student_name, admission_no, transport_billing_frequency'
       )
       .eq('id', sid)
       .eq('school_code', code)
@@ -260,21 +399,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Student has no transport route assigned' }, { status: 400 });
     }
 
-    const monthly = Number(student.transport_fee || 0);
-    if (!Number.isFinite(monthly) || monthly <= PAY_EPS) {
-      return NextResponse.json({ error: 'Student monthly transport fee is not set or zero' }, { status: 400 });
+    const freq = normalizeBillingFrequency(
+      (student as { transport_billing_frequency?: string }).transport_billing_frequency
+    );
+    const canonicalPeriod = periodStartForBilling(rawBilling, freq);
+    const fromStudent = Math.round(Number(student.transport_fee || 0) * 100) / 100;
+    const obligationAmt = await fetchObligationAmount(supabase, code, sid, rawBilling, freq);
+    let expected = obligationAmt ?? fromStudent;
+    expected = Math.round(expected * 100) / 100;
+
+    if (!Number.isFinite(expected) || expected <= PAY_EPS) {
+      return NextResponse.json(
+        { error: 'Student transport fee for this billing period is not set or zero' },
+        { status: 400 }
+      );
     }
 
-    const expected = Math.round(monthly * 100) / 100;
-    const priorPaid = await sumPaidForMonth(supabase, code, sid, month);
+    const priorPaid = await sumPaidForMonth(supabase, code, sid, canonicalPeriod);
     const remainingBefore = Math.max(0, Math.round((expected - priorPaid) * 100) / 100);
     const payAmt = Math.round(amt * 100) / 100;
 
     if (payAmt > remainingBefore + PAY_EPS) {
       return NextResponse.json(
         {
-          error: `Amount exceeds balance for this month (${remainingBefore})`,
-          expected_monthly: expected,
+          error: `Amount exceeds balance for this billing period (${remainingBefore})`,
+          expected_period_fee: expected,
           already_paid: Math.round(priorPaid * 100) / 100,
           balance_due: remainingBefore,
         },
@@ -303,7 +452,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Collector information is required (x-staff-id)' }, { status: 400 });
     }
 
-    const y = new Date(month).getFullYear();
+    const y = new Date(`${canonicalPeriod}T12:00:00.000Z`).getUTCFullYear();
     let receiptNo: string | null = null;
     const { data: rpcNo, error: rpcErr } = await supabase.rpc('generate_transport_receipt_number', {
       p_school_code: code,
@@ -337,16 +486,19 @@ export async function POST(request: NextRequest) {
         : new Date().toISOString().slice(0, 10);
 
     const totalAfter = Math.round((priorPaid + payAmt) * 100) / 100;
-   const lineStatus: 'PARTIAL' | 'PAID' =
+    const lineStatus: 'PARTIAL' | 'PAID' =
       totalAfter + PAY_EPS < expected ? 'PARTIAL' : 'PAID';
 
     const receiptPayload = {
       type: 'TRANSPORT_RECEIPT',
       student_name: student.student_name,
       admission_no: student.admission_no,
-      period_month: month,
+      period_month: canonicalPeriod,
+      billing_frequency: freq,
+      period_label: formatPeriodLabel(canonicalPeriod, freq),
       amount_paid: payAmt,
       monthly_fee: expected,
+      period_fee: expected,
       paid_before: Math.round(priorPaid * 100) / 100,
       paid_after: totalAfter,
       balance_after: Math.max(0, Math.round((expected - totalAfter) * 100) / 100),
@@ -362,7 +514,7 @@ export async function POST(request: NextRequest) {
       school_code: code,
       student_id: sid,
       route_id: student.transport_route_id,
-      period_month: month,
+      period_month: canonicalPeriod,
       amount: payAmt,
       payment_date: payDate,
       payment_mode: String(payment_mode),
@@ -409,7 +561,7 @@ export async function POST(request: NextRequest) {
           amount: payAmt,
           entry_date: payDate,
           reference_number: receiptNo,
-          notes: `Transport fee — ${student.admission_no} — ${month}`,
+          notes: `Transport fee — ${student.admission_no} — ${canonicalPeriod}`,
           created_by: collectedBy,
           is_active: true,
         },
@@ -429,7 +581,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         amount: payAmt,
         receipt_no: receiptNo,
-        period_month: month,
+        period_month: canonicalPeriod,
         transport_fee_mode: mode,
         manual: Boolean(is_manual_entry),
       },
