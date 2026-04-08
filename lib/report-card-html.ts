@@ -1343,7 +1343,33 @@ function generateLandscapeReportCardHTML(
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @media print {
-      body { padding: 0; background: #fff; }
+      @page {
+        size: A4 landscape;
+        margin: 6mm;
+      }
+      html, body {
+        width: 297mm;
+        height: 210mm;
+      }
+      body {
+        padding: 0;
+        margin: 0;
+        background: #fff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .report-card {
+        width: 100%;
+        max-width: 285mm;
+        margin: 0 auto;
+        border: 1px solid #000;
+        page-break-inside: avoid;
+        break-inside: avoid-page;
+        overflow: hidden;
+      }
+      .body-pad {
+        padding: 10px 12px 12px;
+      }
       .sample-badge { border: 1px solid #000; }
     }
     body {

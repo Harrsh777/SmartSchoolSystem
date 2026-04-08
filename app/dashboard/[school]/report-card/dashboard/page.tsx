@@ -126,7 +126,7 @@ export default function ReportCardDashboardPage({
     a.click();
   };
 
-  const handlePrint = (id: string) => {
+  const handleDownloadPdf = (id: string) => {
     const w = window.open(`/api/marks/report-card/${id}?_t=${Date.now()}`, '_blank', 'noopener,noreferrer');
     if (w) {
       w.onload = () => { w.focus(); w.print(); };
@@ -365,8 +365,32 @@ export default function ReportCardDashboardPage({
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-2">
                         <button onClick={() => handleView(card.id)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="View"><Eye size={18} /></button>
-                        <button onClick={() => handleDownload(card.id, card.student_name, card.academic_year)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="Download HTML"><Download size={18} /></button>
-                        <button onClick={() => handlePrint(card.id)} className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg" title="Print"><Printer size={18} /></button>
+                        <div className="relative group/download">
+                          <button
+                            onClick={() => handleDownload(card.id, card.student_name, card.academic_year)}
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                            title="Download"
+                          >
+                            <Download size={18} />
+                          </button>
+                          <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-gray-200 bg-white shadow-lg opacity-0 translate-y-1 pointer-events-none transition-all duration-150 group-hover/download:opacity-100 group-hover/download:translate-y-0 group-hover/download:pointer-events-auto group-focus-within/download:opacity-100 group-focus-within/download:translate-y-0 group-focus-within/download:pointer-events-auto">
+                            <button
+                              type="button"
+                              onClick={() => handleDownload(card.id, card.student_name, card.academic_year)}
+                              className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-t-md"
+                            >
+                              Download as HTML
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadPdf(card.id)}
+                              className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-b-md border-t border-gray-100"
+                            >
+                              Download as PDF
+                            </button>
+                          </div>
+                        </div>
+                        <button onClick={() => handleDownloadPdf(card.id)} className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg" title="Print / PDF"><Printer size={18} /></button>
                         <button onClick={() => handleDelete(card)} disabled={deletingId === card.id} className="p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50" title="Delete">{deletingId === card.id ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}</button>
                       </div>
                     </td>
