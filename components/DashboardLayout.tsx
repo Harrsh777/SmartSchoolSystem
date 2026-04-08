@@ -948,12 +948,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
 
     // For staff, always show only default items + dynamic menu items
     // Default items that should always be visible to all staff
-    const alwaysVisible = menuItems.filter(item => 
-      item.path === '' || // Home
-      item.path === '/institute-info' || // Institute Info
-      item.path === '/gallery' || // Gallery (visible to all)
-      item.path === '/settings' // Settings (visible to all staff)
-    );
+    const alwaysVisible = menuItems.filter(item => item.path === ''); // Home only
     
     // If we have userInfo.id but menu is still loading, return only alwaysVisible
     // This prevents showing incomplete menu on first load
@@ -1282,9 +1277,9 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Fee Dashboard', path: '/fees/v2/dashboard', category: 'Fees', icon: BarChart3, parent: 'Fees' },
     { label: 'Fee Heads', path: '/fees/v2/fee-heads', category: 'Fees', icon: Tag, parent: 'Fees' },
     { label: 'Fee Structures', path: '/fees/v2/fee-structures', category: 'Fees', icon: FileText, parent: 'Fees' },
-    { label: 'Class-wise fees', path: '/fees/v2/class-wise', category: 'Fees', icon: SlidersHorizontal, parent: 'Fees' },
+    { label: 'Class-wise Fees', path: '/fees/v2/class-wise', category: 'Fees', icon: SlidersHorizontal, parent: 'Fees' },
     
-    { label: 'Student-wise fees', path: '/fees/v2/collection', category: 'Fees', icon: CreditCard, parent: 'Fees' },
+    { label: 'Collect Fees', path: '/fees/v2/collection', category: 'Fees', icon: CreditCard, parent: 'Fees' },
     { label: 'Student Fee Statements', path: '/fees/statements', category: 'Fees', icon: IndianRupee, parent: 'Fees' },
     { label: 'Fee Reports', path: '/fees/reports', category: 'Fees', icon: BarChart3, parent: 'Fees' },
     

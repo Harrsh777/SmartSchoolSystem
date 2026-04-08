@@ -153,6 +153,7 @@ type ViewMode =
   | 'system-settings'
   | 'analytics'
   | 'database-structure'
+  | 'redis'
   | 'users'
   | 'login-audit'
   | 'students'
@@ -202,6 +203,20 @@ interface DemoRequestRow {
   demo_date: string;
   demo_time: string;
   created_at: string | null;
+}
+
+interface RedisInfo {
+  enabled: boolean;
+  configured: boolean;
+  url: string | null;
+  circuitMs: number;
+  checkedAt: string;
+  diagnostics: {
+    connected: boolean;
+    value: string | null;
+    ttl: number | null;
+    keys: string[];
+  };
 }
 
 interface EventData {
@@ -813,6 +828,8 @@ export default function AdminDashboard() {
   const [expandedSchoolCardId, setExpandedSchoolCardId] = useState<string | null>(null);
   const [demoRequests, setDemoRequests] = useState<DemoRequestRow[]>([]);
   const [demoRequestsLoading, setDemoRequestsLoading] = useState(false);
+  const [redisInfo, setRedisInfo] = useState<RedisInfo | null>(null);
+  const [redisLoading, setRedisLoading] = useState(false);
 
   // Edit credentials modal state
   const [showEditCredentialsModal, setShowEditCredentialsModal] = useState(false);
@@ -1075,6 +1092,8 @@ export default function AdminDashboard() {
       fetchActionAudit();
     } else if (viewMode === 'demo-query') {
       fetchDemoRequests();
+    } else if (viewMode === 'redis') {
+      fetchRedisInfo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, securityAuditTab]);
@@ -1404,6 +1423,24 @@ export default function AdminDashboard() {
       setDemoRequests([]);
     } finally {
       setDemoRequestsLoading(false);
+    }
+  };
+
+  const fetchRedisInfo = async () => {
+    try {
+      setRedisLoading(true);
+      const response = await fetch('/api/admin/redis');
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setRedisInfo(result.data as RedisInfo);
+      } else {
+        setRedisInfo(null);
+      }
+    } catch (error) {
+      console.error('Error fetching Redis info:', error);
+      setRedisInfo(null);
+    } finally {
+      setRedisLoading(false);
     }
   };
 
@@ -2389,6 +2426,7 @@ export default function AdminDashboard() {
                           { id: 'system-settings', label: 'System Settings', icon: Settings, color: 'from-slate-500 to-gray-500' },
                           { id: 'analytics', label: 'Analytics', icon: Activity, color: 'from-purple-500 to-pink-500' },
                           { id: 'database-structure', label: 'Database Structure', icon: Database, color: 'from-cyan-500 to-teal-500' },
+                          { id: 'redis', label: 'Redis', icon: Database, color: 'from-rose-500 to-orange-500' },
                           { id: 'users', label: 'Users', icon: UserCheck, color: 'from-indigo-500 to-blue-500' },
                           { id: 'demo-query', label: 'Demo Query', icon: ClipboardList, color: 'from-amber-500 to-orange-500' },
                           { id: 'login-audit', label: 'Security & Audit', icon: LogIn, color: 'from-rose-500 to-red-500' },
@@ -3397,6 +3435,113 @@ export default function AdminDashboard() {
                   </div>
                 )}
               </Card>
+            </motion.div>
+          )}
+
+          {viewMode === 'redis' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="space-y-6"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Redis</h2>
+                  <p className="text-gray-600 dark:text-gray-400">Cache connection and quick diagnostics for the Redis layer.</p>
+                </div>
+                <Button
+                  onClick={fetchRedisInfo}
+                  variant="secondary"
+                  className="inline-flex items-center gap-2"
+                  disabled={redisLoading}
+                >
+                  {redisLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                  Refresh
+                </Button>
+              </div>
+
+              {redisLoading ? (
+                <Card className="p-6">
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#5A7A95] dark:text-[#6B9BB8]" />
+                  </div>
+                </Card>
+              ) : !redisInfo ? (
+                <Card className="p-6">
+                  <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+                    <AlertCircle className="mx-auto mb-4 h-10 w-10 text-amber-500" />
+                    <p>Unable to load Redis information.</p>
+                  </div>
+                </Card>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="p-4">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Enabled</p>
+                      <p className={`mt-1 text-lg font-semibold ${redisInfo.enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {redisInfo.enabled ? 'Yes' : 'No'}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Configured</p>
+                      <p className={`mt-1 text-lg font-semibold ${redisInfo.configured ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {redisInfo.configured ? 'Yes' : 'No'}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Connection</p>
+                      <p className={`mt-1 text-lg font-semibold ${redisInfo.diagnostics.connected ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {redisInfo.diagnostics.connected ? 'Connected' : 'Unavailable'}
+                      </p>
+                    </Card>
+                    <Card className="p-4">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Circuit (ms)</p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{redisInfo.circuitMs}</p>
+                    </Card>
+                  </div>
+
+                  <Card className="p-6 space-y-4">
+                    <div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Redis URL (masked)</p>
+                      <p className="mt-1 font-mono text-sm text-gray-800 dark:text-gray-200 break-all">
+                        {redisInfo.url || 'Not configured'}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Diagnostic value</p>
+                        <p className="mt-1 font-mono text-sm text-gray-800 dark:text-gray-200">{redisInfo.diagnostics.value ?? 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Diagnostic TTL</p>
+                        <p className="mt-1 font-mono text-sm text-gray-800 dark:text-gray-200">{redisInfo.diagnostics.ttl ?? 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Checked at</p>
+                      <p className="mt-1 text-sm text-gray-800 dark:text-gray-200">{new Date(redisInfo.checkedAt).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Sample keys</p>
+                      <div className="flex flex-wrap gap-2">
+                        {redisInfo.diagnostics.keys.length > 0 ? (
+                          redisInfo.diagnostics.keys.slice(0, 20).map((key) => (
+                            <span
+                              key={key}
+                              className="inline-flex items-center px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-xs font-mono"
+                            >
+                              {key}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-sm text-gray-500 dark:text-gray-400">No keys found</span>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                </>
+              )}
             </motion.div>
           )}
 

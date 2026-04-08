@@ -64,17 +64,21 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const file = formData.get('file') as File;
     const schoolCode = formData.get('school_code') as string;
     const title = formData.get('title') as string;
     const description = formData.get('description') as string;
     const category = formData.get('category') as string;
     const uploadedBy = formData.get('uploaded_by') as string;
     const staffIdHeader = request.headers.get('x-staff-id');
+    const filesFromArrayField = formData.getAll('files').filter((entry): entry is File => entry instanceof File);
+    const singleFile = formData.get('file');
+    const files: File[] = filesFromArrayField.length
+      ? filesFromArrayField
+      : (singleFile instanceof File ? [singleFile] : []);
 
-    if (!file || !schoolCode || !title) {
+    if (!files.length || !schoolCode) {
       return NextResponse.json(
-        { error: 'File, school code, and title are required' },
+        { error: 'At least one image file and school code are required' },
         { status: 400 }
       );
     }
@@ -97,20 +101,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      return NextResponse.json(
-        { error: 'File must be an image' },
-        { status: 400 }
-      );
-    }
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        return NextResponse.json(
+          { error: `File "${file.name}" must be an image` },
+          { status: 400 }
+        );
+      }
 
-    // Validate file size (max 10MB for gallery)
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json(
-        { error: 'File size must be less than 10MB' },
-        { status: 400 }
-      );
+      if (file.size > 10 * 1024 * 1024) {
+        return NextResponse.json(
+          { error: `File "${file.name}" must be less than 10MB` },
+          { status: 400 }
+        );
+      }
     }
 
     // Get school data
@@ -127,66 +131,76 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert file to buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const createdEntries: unknown[] = [];
+    const uploadedPaths: string[] = [];
 
-    // Generate unique filename
-    const fileExt = file.name.split('.').pop();
-    const fileName = `gallery-${schoolCode}-${Date.now()}.${fileExt}`;
-    const filePath = `${schoolCode}/gallery/${fileName}`;
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `gallery-${schoolCode}-${Date.now()}-${index}.${fileExt}`;
+      const filePath = `${schoolCode}/gallery/${fileName}`;
 
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from('school-media')
-      .upload(filePath, buffer, {
-        contentType: file.type,
-        upsert: false,
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('school-media')
+        .upload(filePath, buffer, {
+          contentType: file.type,
+          upsert: false,
+        });
 
-    if (uploadError) {
-      console.error('Error uploading to storage:', uploadError);
-      return NextResponse.json(
-        { error: 'Failed to upload image', details: uploadError.message },
-        { status: 500 }
-      );
-    }
+      if (uploadError) {
+        console.error('Error uploading to storage:', uploadError);
+        await supabase.storage.from('school-media').remove(uploadedPaths);
+        return NextResponse.json(
+          { error: `Failed to upload "${file.name}"`, details: uploadError.message },
+          { status: 500 }
+        );
+      }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('school-media')
-      .getPublicUrl(filePath);
+      uploadedPaths.push(filePath);
 
-    const imageUrl = urlData.publicUrl;
+      const { data: urlData } = supabase.storage
+        .from('school-media')
+        .getPublicUrl(filePath);
 
-    // Save gallery entry
-    const { data: galleryEntry, error: insertError } = await supabase
-      .from('gallery')
-      .insert([{
-        school_id: schoolData.id,
-        school_code: schoolCode,
-        title: title,
-        description: description || null,
-        category: category || 'General',
-        image_url: imageUrl,
-        uploaded_by: staffId,
-      }])
-      .select()
-      .single();
+      const imageUrl = urlData.publicUrl;
+      const cleanedName = file.name.replace(/\.[^/.]+$/, '').trim();
+      const fallbackTitle = cleanedName || `Gallery Image ${index + 1}`;
+      const derivedTitle = title?.trim()
+        ? (files.length === 1 ? title.trim() : `${title.trim()} (${index + 1})`)
+        : fallbackTitle;
 
-    if (insertError) {
-      console.error('Error saving gallery entry:', insertError);
-      // Try to delete uploaded file if insert fails
-      await supabase.storage.from('school-media').remove([filePath]);
-      return NextResponse.json(
-        { error: 'Failed to save gallery entry', details: insertError.message },
-        { status: 500 }
-      );
+      const { data: galleryEntry, error: insertError } = await supabase
+        .from('gallery')
+        .insert([{
+          school_id: schoolData.id,
+          school_code: schoolCode,
+          title: derivedTitle,
+          description: description || null,
+          category: category || 'General',
+          image_url: imageUrl,
+          uploaded_by: staffId,
+        }])
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error saving gallery entry:', insertError);
+        await supabase.storage.from('school-media').remove(uploadedPaths);
+        return NextResponse.json(
+          { error: `Failed to save "${file.name}"`, details: insertError.message },
+          { status: 500 }
+        );
+      }
+
+      createdEntries.push(galleryEntry);
     }
 
     return NextResponse.json({
-      message: 'Image uploaded successfully',
-      data: galleryEntry,
+      message: files.length > 1 ? 'Images uploaded successfully' : 'Image uploaded successfully',
+      data: files.length > 1 ? createdEntries : createdEntries[0],
+      count: createdEntries.length,
     }, { status: 201 });
   } catch (error) {
     console.error('Error uploading gallery image:', error);

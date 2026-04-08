@@ -78,6 +78,8 @@ export default function TransportFeesPage({
   const [classRows, setClassRows] = useState<Array<{ class?: string; section?: string }>>([]);
   const [classFilter, setClassFilter] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
+  const [periodMode, setPeriodMode] = useState<'MONTHLY' | 'QUARTERLY'>('MONTHLY');
+  const [periodFilter, setPeriodFilter] = useState('');
 
   const [collectFor, setCollectFor] = useState<RosterRow | null>(null);
   const [amount, setAmount] = useState('');
@@ -134,9 +136,13 @@ export default function TransportFeesPage({
     const c = searchParams.get('class')?.trim() ?? '';
     const sec = searchParams.get('section')?.trim() ?? '';
     const sq = searchParams.get('search')?.trim() ?? '';
+    const mode = searchParams.get('period_mode')?.trim().toUpperCase() ?? '';
+    const period = searchParams.get('period')?.trim() ?? '';
     if (c) setClassFilter(c);
     if (sec) setSectionFilter(sec);
     if (sq) setSearch(sq);
+    if (mode === 'MONTHLY' || mode === 'QUARTERLY') setPeriodMode(mode);
+    if (period) setPeriodFilter(period);
   }, [searchParams]);
 
   const load = useCallback(async () => {
@@ -182,17 +188,6 @@ export default function TransportFeesPage({
     void load();
   }, [load]);
 
-  const filtered = dueRows.filter((r) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      r.student_name.toLowerCase().includes(q) ||
-      String(r.admission_no || '')
-        .toLowerCase()
-        .includes(q)
-    );
-  });
-
   const uniqueClasses = Array.from(
     new Set(classRows.map((r) => String(r.class ?? '').trim()).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
@@ -205,6 +200,45 @@ export default function TransportFeesPage({
         .filter(Boolean)
     )
   ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+  const periodOptions = Array.from(
+    new Map(
+      dueRows
+        .flatMap((r) => r.periods || [])
+        .filter((p) => p.frequency === periodMode)
+        .map((p) => [p.period_month, { value: p.period_month, label: p.period_label }])
+    ).values()
+  ).sort((a, b) => a.value.localeCompare(b.value));
+
+  useEffect(() => {
+    if (!periodFilter) return;
+    const hasSelectedPeriod = periodOptions.some((p) => p.value === periodFilter);
+    if (!hasSelectedPeriod) {
+      setPeriodFilter('');
+    }
+  }, [periodFilter, periodOptions]);
+
+  const dueRowsByPeriod = dueRows.filter((r) => {
+    if (!periodFilter) return true;
+    return (r.periods || []).some(
+      (p) => p.period_month === periodFilter && p.frequency === periodMode && p.balance > 0.02
+    );
+  });
+
+  const filtered = dueRowsByPeriod.filter((r) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      r.student_name.toLowerCase().includes(q) ||
+      String(r.admission_no || '')
+        .toLowerCase()
+        .includes(q)
+    );
+  });
+
+  const filteredCollections = periodFilter
+    ? collections.filter((c) => c.period_month === periodFilter)
+    : collections;
 
   const resolveSessionStaffId = (): string => {
     try {
@@ -346,6 +380,44 @@ export default function TransportFeesPage({
             ))}
           </select>
         </div>
+        <div className="min-w-[180px]">
+          <label className="text-xs font-medium text-gray-500 block mb-1">Billing type</label>
+          <select
+            className="w-full border rounded-md px-3 py-2 text-sm"
+            value={periodMode}
+            onChange={(e) => {
+              const mode = e.target.value === 'QUARTERLY' ? 'QUARTERLY' : 'MONTHLY';
+              setPeriodMode(mode);
+              setPeriodFilter('');
+            }}
+            disabled={!classFilter || !sectionFilter}
+          >
+            <option value="MONTHLY">Month</option>
+            <option value="QUARTERLY">Quarter</option>
+          </select>
+        </div>
+        <div className="min-w-[220px]">
+          <label className="text-xs font-medium text-gray-500 block mb-1">
+            {periodMode === 'QUARTERLY' ? 'Quarter' : 'Month'}
+          </label>
+          <select
+            className="w-full border rounded-md px-3 py-2 text-sm"
+            value={periodFilter}
+            onChange={(e) => setPeriodFilter(e.target.value)}
+            disabled={!classFilter || !sectionFilter}
+          >
+            <option value="">
+              {classFilter && sectionFilter
+                ? `All ${periodMode === 'QUARTERLY' ? 'quarters' : 'months'}`
+                : 'Select class and section first'}
+            </option>
+            {periodOptions.map((p) => (
+              <option key={`${periodMode}-${p.value}`} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex-1 min-w-[200px]">
           <label className="text-xs font-medium text-gray-500 block mb-1">Search</label>
           <div className="relative">
@@ -422,9 +494,28 @@ export default function TransportFeesPage({
                         variant="outline"
                         disabled={r.transport_fee_mode === 'MERGED' || (r.periods || []).length === 0}
                         onClick={() => {
-                          setCollectFor(r);
-                          const firstDue = (r.periods || []).find((p) => p.balance > 0.02);
-                          setAmount(String(firstDue?.balance ?? 0));
+                          const selectedPeriodDue = periodFilter
+                            ? (r.periods || []).find(
+                                (p) =>
+                                  p.period_month === periodFilter &&
+                                  p.frequency === periodMode &&
+                                  p.balance > 0.02
+                              )
+                            : null;
+                          const firstDue = selectedPeriodDue || (r.periods || []).find((p) => p.balance > 0.02);
+                          if (firstDue) {
+                            setCollectFor({
+                              ...r,
+                              billing_month: firstDue.period_month,
+                              balance_due: firstDue.balance,
+                              paid_this_month: firstDue.paid,
+                              monthly_transport_fee: firstDue.expected,
+                            });
+                            setAmount(String(firstDue.balance));
+                          } else {
+                            setCollectFor(r);
+                            setAmount('0');
+                          }
                           setCollectError('');
                           setCollectOk('');
                         }}
@@ -439,7 +530,9 @@ export default function TransportFeesPage({
                     <td colSpan={9} className="p-8 text-center text-gray-500">
                       {!classFilter || !sectionFilter
                         ? 'Select class and section to view mapped transport students.'
-                        : 'No mapped transport students for this class-section.'}
+                        : periodFilter
+                          ? `No students with due in selected ${periodMode === 'QUARTERLY' ? 'quarter' : 'month'}.`
+                          : 'No mapped transport students for this class-section.'}
                     </td>
                   </tr>
                 )}
@@ -460,9 +553,13 @@ export default function TransportFeesPage({
           <div className="flex items-center justify-center py-10 text-gray-500 gap-2">
             <Loader2 className="animate-spin" size={18} />
           </div>
-        ) : collections.length === 0 ? (
+        ) : filteredCollections.length === 0 ? (
           <p className="p-6 text-center text-sm text-gray-500">
-            {!classFilter || !sectionFilter ? 'Select class and section.' : 'No collections yet.'}
+            {!classFilter || !sectionFilter
+              ? 'Select class and section.'
+              : periodFilter
+                ? `No collections for selected ${periodMode === 'QUARTERLY' ? 'quarter' : 'month'}.`
+                : 'No collections yet.'}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -478,7 +575,7 @@ export default function TransportFeesPage({
                 </tr>
               </thead>
               <tbody>
-                {collections.map((c) => {
+                {filteredCollections.map((c) => {
                   const st = c.student;
                   const name = st?.student_name || '—';
                   const adm = st?.admission_no || '';

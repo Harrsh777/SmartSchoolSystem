@@ -111,9 +111,7 @@ export async function GET(
             category_type
           )
         `)
-        .in('role_id', roleIds)
-        .eq('view_access', true)
-        .eq('permission_categories.category_type', 'view');
+        .in('role_id', roleIds);
 
       if (rpError) {
         console.error('Error fetching role permissions:', rpError);
@@ -138,7 +136,7 @@ export async function GET(
       console.error('Error fetching raw staff permissions:', rawSpError);
     }
 
-    // Query ALL staff permissions with view_access = true
+    // Query all staff permissions so view/edit can be aggregated per sub-module
     const { data: staffPermissions, error: spError } = await supabase
       .from('staff_permissions')
       .select(`
@@ -167,8 +165,7 @@ export async function GET(
           category_type
         )
       `)
-      .eq('staff_id', id)
-      .eq('view_access', true);
+      .eq('staff_id', id);
 
     console.log('Staff permissions with joins found:', staffPermissions?.length || 0, 'for staff:', id);
     if (staffPermissions && staffPermissions.length > 0) {
@@ -219,7 +216,6 @@ export async function GET(
 
         // Enrich raw permissions with sub_module data
         enrichedStaffPermissions = rawStaffPermissions
-          .filter((p: { view_access: boolean }) => p.view_access)
           .map((p: Record<string, unknown>) => ({
             ...p,
             sub_modules: subModulesMap.get(p.sub_module_id as string) || null,
@@ -236,74 +232,6 @@ export async function GET(
     // Use enrichedStaffPermissions for the rest of the processing
     const finalStaffPermissions = enrichedStaffPermissions;
 
-    // Base default sub-modules for ALL staff (Normal Teachers minimum)
-    const BASE_DEFAULT_SUB_MODULE_KEYS = [
-      'attendance_staff',          // My Attendance (Staff Attendance)
-      'staff_leave',               // Apply for Leave (Staff Leave)
-      'student_directory',         // Student Management (view only)
-      'gallery_main',              // Gallery (view only)
-      'staff_directory',          // Staff Information (view only)
-    ];
-
-    // Additional modules for Class Teachers
-    const CLASS_TEACHER_SUB_MODULE_KEYS = [
-      'mark_attendance',           // Mark Attendance (for assigned class)
-      'marks_entry',               // Marks Entry (for assigned class)
-      'classes_overview',          // Classes (full access to assigned class)
-    ];
-
-    // Additional modules for Subject Teachers (when subjects are assigned)
-    const SUBJECT_TEACHER_SUB_MODULE_KEYS = [
-      'marks_entry',               // Marks Entry (for assigned subjects)
-      // Note: These are added via role permissions, not defaults
-      // 'examinations',            // Examinations (for assigned subjects)
-      // 'digital_diary',           // Digital Diary (for assigned subjects)
-      // 'copy_checking',           // Copy Checking (for assigned subjects)
-      // 'reports',                 // Reports (subject-wise)
-    ];
-
-    // Determine default modules based on role and assignments
-    let DEFAULT_SUB_MODULE_KEYS = [...BASE_DEFAULT_SUB_MODULE_KEYS];
-
-    // If staff is a class teacher, add class teacher modules
-    if (isClassTeacher) {
-      DEFAULT_SUB_MODULE_KEYS = [...DEFAULT_SUB_MODULE_KEYS, ...CLASS_TEACHER_SUB_MODULE_KEYS];
-    }
-
-    // If staff has assigned subjects (but not class teacher), add subject teacher modules
-    // Note: Mark attendance is NOT added here - only class teachers can mark attendance
-    if (hasAssignedSubjects && !isClassTeacher) {
-      DEFAULT_SUB_MODULE_KEYS = [...DEFAULT_SUB_MODULE_KEYS, ...SUBJECT_TEACHER_SUB_MODULE_KEYS];
-    }
-
-    // Vice Principal and Principal get NO default modules (must be assigned via Roles & Management)
-    if (isVicePrincipal || isPrincipal) {
-      DEFAULT_SUB_MODULE_KEYS = [];
-    }
-
-    // Fetch default sub-modules that should always be visible
-    const { data: defaultSubModules, error: defaultError } = await supabase
-      .from('sub_modules')
-      .select(`
-        id,
-        sub_module_name,
-        sub_module_key,
-        route_path,
-        display_order,
-        modules!inner(
-          id,
-          module_name,
-          module_key,
-          display_order
-        )
-      `)
-      .in('sub_module_key', DEFAULT_SUB_MODULE_KEYS)
-      .eq('is_active', true);
-
-    if (defaultError) {
-      console.error('Error fetching default sub-modules:', defaultError);
-    }
-
     // Merge permissions (staff_permissions override role_permissions)
     const permissionsMap = new Map<string, {
       module_name: string;
@@ -317,36 +245,8 @@ export async function GET(
       has_edit_access: boolean;
       source: string;
     }>();
-
-    // First, add default sub-modules (always visible to all staff)
-    ((defaultSubModules || []) as Record<string, unknown>[]).forEach((subModule: Record<string, unknown>) => {
-      const modules = subModule.modules as Array<{
-        module_name: string;
-        module_key: string;
-        display_order: number;
-      }> | null | undefined;
-      const moduleData = modules && modules.length > 0 ? modules[0] : null;
-      
-      if (!moduleData) return; // Skip if no module data
-      
-      const key = String(subModule.sub_module_key || '');
-      if (!permissionsMap.has(key)) {
-        permissionsMap.set(key, {
-          module_name: moduleData.module_name,
-          module_key: moduleData.module_key,
-          module_display_order: moduleData.display_order,
-          sub_module_name: String(subModule.sub_module_name || ''),
-          sub_module_key: key,
-          route_path: String(subModule.route_path || ''),
-          sub_module_display_order: Number(subModule.display_order || 0),
-          has_view_access: true, // Always visible
-          has_edit_access: false, // Default to view only, can be overridden by permissions
-          source: 'default',
-        });
-      }
-    });
-
-    // Then, add role permissions (these can override defaults or add new ones)
+    
+    // First, aggregate role permissions by sub-module
     rolePermissions.forEach((rp: Record<string, unknown>) => {
       const subModule = rp.sub_modules as {
         sub_module_key: string;
@@ -359,13 +259,15 @@ export async function GET(
           display_order: number;
         };
       };
+      const permissionCategory = rp.permission_categories as {
+        category_key?: string;
+      } | null;
       const key = subModule.sub_module_key;
-      const isDefaultModule = DEFAULT_SUB_MODULE_KEYS.includes(key);
-      const viewAccess = (rp.view_access as boolean) || false;
-      
-      // For default modules, always keep view_access true (they're always visible)
-      // For other modules, use the permission value
-      // Always set/override with role permissions (even for defaults, to allow edit access)
+      const categoryKey = permissionCategory?.category_key || '';
+      const roleViewAccess = Boolean(rp.view_access) || (categoryKey === 'edit' && Boolean(rp.edit_access));
+      const roleEditAccess = Boolean(rp.edit_access) && categoryKey === 'edit';
+
+      const existing = permissionsMap.get(key);
       permissionsMap.set(key, {
         module_name: subModule.modules.module_name,
         module_key: subModule.modules.module_key,
@@ -374,13 +276,13 @@ export async function GET(
         sub_module_key: subModule.sub_module_key,
         route_path: subModule.route_path,
         sub_module_display_order: subModule.display_order,
-        has_view_access: isDefaultModule ? true : viewAccess, // Default modules always visible
-        has_edit_access: (rp.edit_access as boolean) || false,
+        has_view_access: Boolean(existing?.has_view_access) || roleViewAccess,
+        has_edit_access: Boolean(existing?.has_edit_access) || roleEditAccess,
         source: 'role',
       });
     });
 
-    // Then, override with staff permissions
+    // Then, override with staff permissions (highest precedence)
     (finalStaffPermissions || []).forEach((sp: Record<string, unknown>) => {
       const subModuleRaw = sp.sub_modules;
       // Handle both array and object formats
@@ -399,38 +301,35 @@ export async function GET(
           display_order: number;
         }>;
       };
+      const permissionCategory = sp.permission_categories as {
+        category_key?: string;
+      } | null;
       
       if (!subModule || !subModule.sub_module_key) return;
       
       const key = subModule.sub_module_key;
+      const categoryKey = permissionCategory?.category_key || '';
       
       // Handle modules being either object or array
       const moduleData = Array.isArray(subModule.modules) ? subModule.modules[0] : subModule.modules;
       if (!moduleData) return;
       
-      // Only override if view_access is true (if false, it removes access)
-      // BUT: Don't remove default modules even if view_access is false
-      const viewAccess = (sp.view_access as boolean) || false;
-      const isDefaultModule = DEFAULT_SUB_MODULE_KEYS.includes(key);
-      
-      if (viewAccess) {
-        permissionsMap.set(key, {
-          module_name: moduleData.module_name,
-          module_key: moduleData.module_key,
-          module_display_order: moduleData.display_order,
-          sub_module_name: subModule.sub_module_name,
-          sub_module_key: subModule.sub_module_key,
-          route_path: subModule.route_path,
-          sub_module_display_order: subModule.display_order,
-          has_view_access: viewAccess,
-          has_edit_access: (sp.edit_access as boolean) || false,
-          source: 'staff',
-        });
-      } else if (!isDefaultModule) {
-        // Remove access if view_access is false, but only for non-default modules
-        permissionsMap.delete(key);
-      }
-      // If it's a default module and view_access is false, keep it visible (default behavior)
+      const staffViewAccess = Boolean(sp.view_access) || (categoryKey === 'edit' && Boolean(sp.edit_access));
+      const staffEditAccess = Boolean(sp.edit_access) && categoryKey === 'edit';
+      const existing = permissionsMap.get(key);
+
+      permissionsMap.set(key, {
+        module_name: moduleData.module_name,
+        module_key: moduleData.module_key,
+        module_display_order: moduleData.display_order,
+        sub_module_name: subModule.sub_module_name,
+        sub_module_key: subModule.sub_module_key,
+        route_path: subModule.route_path,
+        sub_module_display_order: subModule.display_order,
+        has_view_access: Boolean(existing?.has_view_access) || staffViewAccess,
+        has_edit_access: Boolean(existing?.has_edit_access) || staffEditAccess,
+        source: 'staff',
+      });
     });
 
     // Group by module
@@ -459,31 +358,14 @@ export async function GET(
 
       const modRecord = modulesMap.get(perm.module_key)!;
       
-      // Transform route path for teacher dashboard
-      // If route_path is an admin dashboard path, convert it to teacher dashboard path
-      let transformedRoute = perm.route_path;
-      
-      // If route starts with /dashboard/[school]/, convert to /teacher/dashboard/
-      if (transformedRoute.startsWith('/dashboard/')) {
-        // Extract the path after /dashboard/[school]/
-        const pathMatch = transformedRoute.match(/^\/dashboard\/\[school\](\/.+)?$/);
-        if (pathMatch) {
-          const subPath = pathMatch[1] || '';
-          transformedRoute = `/teacher/dashboard${subPath}`;
-        } else {
-          // Handle /dashboard/[school]/path format
-          const pathAfterSchool = transformedRoute.replace(/^\/dashboard\/\[school\]/, '');
-          transformedRoute = `/teacher/dashboard${pathAfterSchool || ''}`;
-        }
-      } else if (transformedRoute.startsWith('/') && !transformedRoute.startsWith('/teacher/')) {
-        // If it's a root path like /institute-info, convert to /teacher/dashboard/institute-info
-        transformedRoute = `/teacher/dashboard${transformedRoute}`;
+      if (!perm.has_view_access) {
+        return;
       }
-      
+
       modRecord.sub_modules.push({
         name: perm.sub_module_name,
         key: perm.sub_module_key,
-        route: transformedRoute,
+        route: perm.route_path,
         has_view_access: perm.has_view_access,
         has_edit_access: perm.has_edit_access,
       });
@@ -491,11 +373,15 @@ export async function GET(
 
     // Convert to array and sort
     const menuItems = Array.from(modulesMap.values())
-      .sort((a, b) => a.display_order - b.display_order)
       .map(module => ({
         ...module,
-        sub_modules: module.sub_modules.sort((a, b) => a.name.localeCompare(b.name)),
-      }));
+        sub_modules: module.sub_modules
+          .filter(sm => sm.has_view_access)
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      .filter(module => module.sub_modules.length > 0)
+      .sort((a, b) => a.display_order - b.display_order)
+      ;
 
     // Final debug log
     console.log('=== MENU API FINAL RESULT for staff:', id, '===');

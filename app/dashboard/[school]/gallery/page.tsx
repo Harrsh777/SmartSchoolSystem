@@ -45,9 +45,9 @@ export default function GalleryPage({
     title: '',
     description: '',
     category: 'General',
-    file: null as File | null,
+    files: [] as File[],
   });
-  const [preview, setPreview] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const categories = CATEGORIES;
@@ -80,6 +80,16 @@ export default function GalleryPage({
       setIsAdmin(true);
     }
   }, []);
+
+  useEffect(() => {
+    return () => {
+      previews.forEach((previewUrl) => {
+        if (previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(previewUrl);
+        }
+      });
+    };
+  }, [previews]);
 
   const fetchImages = async () => {
     try {
@@ -115,16 +125,30 @@ export default function GalleryPage({
   };
 
   const handleDownload = (image: GalleryImage) => {
-    try {
-      const link = document.createElement('a');
-      link.href = image.image_url;
-      link.download = `${image.title.replace(/[^a-z0-9]/gi, '_')}.jpg` || 'gallery-image.jpg';
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.click();
-    } catch {
-      window.open(image.image_url, '_blank');
-    }
+    const fetchAndDownload = async () => {
+      try {
+        const response = await fetch(image.image_url);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const extension = blob.type.split('/')[1] || 'jpg';
+        const safeTitle = image.title.replace(/[^a-z0-9]/gi, '_') || 'gallery-image';
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = `${safeTitle}.${extension}`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+      } catch {
+        window.open(image.image_url, '_blank', 'noopener,noreferrer');
+      }
+    };
+
+    void fetchAndDownload();
   };
 
   const handleOpenModal = (image?: GalleryImage) => {
@@ -134,18 +158,18 @@ export default function GalleryPage({
         title: image.title,
         description: image.description || '',
         category: image.category,
-        file: null,
+        files: [],
       });
-      setPreview(image.image_url);
+      setPreviews([image.image_url]);
     } else {
       setEditingImage(null);
       setFormData({
         title: '',
         description: '',
         category: 'General',
-        file: null,
+        files: [],
       });
-      setPreview(null);
+      setPreviews([]);
     }
     setModalOpen(true);
     setError('');
@@ -153,8 +177,14 @@ export default function GalleryPage({
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+    const selectedFiles = Array.from(e.target.files || []);
+
+    if (!selectedFiles.length) {
+      return;
+    }
+
+    const validFiles: File[] = [];
+    for (const file of selectedFiles) {
       if (!file.type.startsWith('image/')) {
         setError('Please select an image file');
         return;
@@ -163,17 +193,27 @@ export default function GalleryPage({
         setError('Image size should be less than 10MB');
         return;
       }
-      setFormData({ ...formData, file });
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      validFiles.push(file);
     }
+
+    previews.forEach((previewUrl) => {
+      if (previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    });
+
+    setError('');
+    setFormData({ ...formData, files: validFiles });
+    setPreviews(validFiles.map((file) => URL.createObjectURL(file)));
+  };
+
+  const openFullSizeInNewTab = () => {
+    if (!viewerImage) return;
+    window.open(viewerImage.image_url, '_blank', 'noopener,noreferrer');
   };
 
   const handleSave = async () => {
-    if (!formData.title.trim()) {
+    if (editingImage && !formData.title.trim()) {
       setError('Title is required');
       return;
     }
@@ -214,8 +254,8 @@ export default function GalleryPage({
       }
     } else {
       // Upload new image
-      if (!formData.file) {
-        setError('Please select an image file');
+      if (!formData.files.length) {
+        setError('Please select at least one image file');
         return;
       }
 
@@ -225,9 +265,9 @@ export default function GalleryPage({
         setSuccess('');
 
         const uploadFormData = new FormData();
-        uploadFormData.append('file', formData.file);
+        formData.files.forEach((file) => uploadFormData.append('files', file));
         uploadFormData.append('school_code', schoolCode);
-        uploadFormData.append('title', formData.title);
+        uploadFormData.append('title', formData.title.trim());
         uploadFormData.append('description', formData.description);
         uploadFormData.append('category', formData.category);
 
@@ -252,7 +292,8 @@ export default function GalleryPage({
         const result = await response.json();
 
         if (response.ok) {
-          setSuccess('Image uploaded successfully!');
+          const uploadedCount = typeof result.count === 'number' ? result.count : formData.files.length;
+          setSuccess(uploadedCount > 1 ? `${uploadedCount} images uploaded successfully!` : 'Image uploaded successfully!');
           setModalOpen(false);
           fetchImages();
           setTimeout(() => setSuccess(''), 3000);
@@ -545,6 +586,10 @@ export default function GalleryPage({
                   />
                 </div>
                 <div className="w-full sm:w-72 p-4 border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-gray-700 flex flex-col gap-3 overflow-y-auto">
+                  <Button variant="outline" size="sm" onClick={openFullSizeInNewTab}>
+                    <ZoomIn size={16} className="mr-1" />
+                    Open Full Size
+                  </Button>
                   {viewerImage.description && (
                     <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{viewerImage.description}</p>
                   )}
@@ -594,29 +639,39 @@ export default function GalleryPage({
               {!editingImage && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Image File *
+                    Image File(s) *
                   </label>
                   <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 text-center">
-                    {preview ? (
+                    {previews.length > 0 ? (
                       <div className="space-y-4">
-                        <div className="relative max-h-64 mx-auto rounded-lg aspect-video">
-                          <Image
-                            src={preview}
-                            alt="Preview"
-                            fill
-                            className="object-contain rounded-lg"
-                            unoptimized
-                          />
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {previews.map((preview, index) => (
+                            <div key={preview} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                              <Image
+                                src={preview}
+                                alt={`Preview ${index + 1}`}
+                                fill
+                                className="object-cover"
+                                unoptimized
+                              />
+                            </div>
+                          ))}
                         </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{formData.files.length} image(s) selected</p>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            setFormData({ ...formData, file: null });
-                            setPreview(null);
+                            previews.forEach((previewUrl) => {
+                              if (previewUrl.startsWith('blob:')) {
+                                URL.revokeObjectURL(previewUrl);
+                              }
+                            });
+                            setFormData({ ...formData, files: [] });
+                            setPreviews([]);
                           }}
                         >
-                          Change Image
+                          Change Images
                         </Button>
                       </div>
                     ) : (
@@ -624,6 +679,7 @@ export default function GalleryPage({
                         <input
                           type="file"
                           accept="image/*"
+                          multiple
                           onChange={handleFileChange}
                           className="hidden"
                           id="file-upload"
@@ -637,7 +693,7 @@ export default function GalleryPage({
                             Click to upload or drag and drop
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                            PNG, JPG, GIF up to 10MB
+                            PNG, JPG, GIF - single or multiple (max 10MB each)
                           </p>
                         </label>
                       </div>
@@ -647,7 +703,7 @@ export default function GalleryPage({
               )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Title *
+                  Title {editingImage ? '*' : '(optional for multi-upload)'}
                 </label>
                 <Input
                   value={formData.title}
@@ -691,7 +747,7 @@ export default function GalleryPage({
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={uploading || saving || !formData.title.trim()}
+                disabled={uploading || saving || (!editingImage && formData.files.length === 0) || (!!editingImage && !formData.title.trim())}
               >
                 {uploading || saving ? (
                   <>
