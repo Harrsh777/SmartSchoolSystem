@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 import {
@@ -223,6 +225,21 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    const actor = await resolveStaffForAudit(supabase, school_code, marked_by);
+    logAudit(request, {
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
+      actionType: 'ATTENDANCE_MARKED',
+      entityType: 'ATTENDANCE',
+      entityId: normalizedClassId,
+      severity: 'CRITICAL',
+      metadata: {
+        attendance_date,
+        count: insertedRecords?.length ?? 0,
+      },
+    });
 
     return NextResponse.json({
       message: 'Attendance marked successfully',

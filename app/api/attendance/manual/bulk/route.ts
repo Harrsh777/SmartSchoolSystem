@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 import { verifyManualAttendanceOrSchoolSession } from '@/lib/manual-attendance-access';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
@@ -305,6 +307,22 @@ export async function POST(request: NextRequest) {
       }
       saved += chunk.length;
     }
+
+    const actor = await resolveStaffForAudit(supabase, school_code, marked_by);
+    logAudit(request, {
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
+      actionType: 'MANUAL_ATTENDANCE_SAVED',
+      entityType: 'ATTENDANCE',
+      entityId: class_id,
+      severity: 'CRITICAL',
+      metadata: {
+        academic_year,
+        total_working_days,
+        updated_count: saved,
+      },
+    });
 
     return NextResponse.json(
       {

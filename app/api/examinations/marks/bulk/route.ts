@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 import { normalizeMarksEntryCode } from '@/lib/marks-entry-codes';
 import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
 import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
@@ -345,6 +347,23 @@ export async function POST(request: NextRequest) {
     console.log('Marks saved successfully:', {
       savedCount: savedMarks?.length || 0,
       totalStudents: uniqueStudentIds.length,
+    });
+
+    const auditStaffId = entered_by || finalEnteredBy;
+    const actor = await resolveStaffForAudit(supabase, school_code, auditStaffId);
+    logAudit(request, {
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
+      actionType: 'MARKS_UPDATED',
+      entityType: 'MARKS',
+      entityId: exam_id,
+      severity: 'CRITICAL',
+      metadata: {
+        class_id,
+        student_count: uniqueStudentIds.length,
+        marks_rows: savedMarks?.length ?? 0,
+      },
     });
     
     // Fetch updated summaries (triggers should have calculated them)

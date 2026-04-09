@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
@@ -232,6 +234,17 @@ export async function POST(request: NextRequest) {
             { status: 500 }
           );
         }
+        const actor2 = await resolveStaffForAudit(supabase, school_code, entered_by);
+        logAudit(request, {
+          userId: actor2.userId,
+          userName: actor2.userName,
+          role: actor2.role,
+          actionType: 'MARKS_UPDATED',
+          entityType: 'MARKS',
+          entityId: exam_id,
+          severity: 'CRITICAL',
+          metadata: { class_id, student_id },
+        });
         return NextResponse.json({ data: mark2 }, { status: 201 });
       }
 
@@ -240,6 +253,18 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    const actor = await resolveStaffForAudit(supabase, school_code, entered_by);
+    logAudit(request, {
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
+      actionType: 'MARKS_UPDATED',
+      entityType: 'MARKS',
+      entityId: exam_id,
+      severity: 'CRITICAL',
+      metadata: { class_id, student_id },
+    });
 
     return NextResponse.json({ data: mark }, { status: 201 });
   } catch (error) {

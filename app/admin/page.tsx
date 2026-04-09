@@ -77,6 +77,14 @@ async function safeParseJson(response: Response): Promise<Record<string, unknown
   }
 }
 
+/** `YYYY-MM-DD` in the browser's local timezone (for `<input type="date" />`). */
+function getLocalDateInputValue(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 interface AcceptedSchool {
   id: string;
   school_name: string;
@@ -968,8 +976,8 @@ export default function AdminDashboard() {
   const [loginAuditPage, setLoginAuditPage] = useState(1);
   const [loginAuditRole, setLoginAuditRole] = useState('all');
   const [loginAuditStatus, setLoginAuditStatus] = useState('all');
-  const [loginAuditDateFrom, setLoginAuditDateFrom] = useState('');
-  const [loginAuditDateTo, setLoginAuditDateTo] = useState('');
+  const [loginAuditDateFrom, setLoginAuditDateFrom] = useState(() => getLocalDateInputValue());
+  const [loginAuditDateTo, setLoginAuditDateTo] = useState(() => getLocalDateInputValue());
   const [loginAuditIp, setLoginAuditIp] = useState('');
   const [loginAuditTableMissing, setLoginAuditTableMissing] = useState(false);
   const [loginAuditCollapseDuplicates, setLoginAuditCollapseDuplicates] = useState(true);
@@ -984,8 +992,8 @@ export default function AdminDashboard() {
   const [loadingActionAudit, setLoadingActionAudit] = useState(false);
   const [actionAuditTableMissing, setActionAuditTableMissing] = useState(false);
   const [actionAuditPage, setActionAuditPage] = useState(1);
-  const [actionAuditDateFrom, setActionAuditDateFrom] = useState('');
-  const [actionAuditDateTo, setActionAuditDateTo] = useState('');
+  const [actionAuditDateFrom, setActionAuditDateFrom] = useState(() => getLocalDateInputValue());
+  const [actionAuditDateTo, setActionAuditDateTo] = useState(() => getLocalDateInputValue());
   const [actionAuditRole, setActionAuditRole] = useState('all');
   const [actionAuditModule, setActionAuditModule] = useState('all');
   const [actionAuditActionType, setActionAuditActionType] = useState('all');

@@ -267,10 +267,17 @@ export default function ExaminationDashboardPage({
     }
     try {
       setDeletingExamId(exam.id);
-      const res = await fetch(
-        `/api/examinations/${exam.id}?school_code=${encodeURIComponent(schoolCode)}`,
-        { method: 'DELETE' }
-      );
+      let performedBy = '';
+      try {
+        const raw = typeof window !== 'undefined' ? sessionStorage.getItem('staff') : null;
+        const staff = raw ? (JSON.parse(raw) as { id?: string }) : null;
+        if (staff?.id) performedBy = String(staff.id);
+      } catch {
+        /* ignore */
+      }
+      const qs = new URLSearchParams({ school_code: schoolCode });
+      if (performedBy) qs.set('performed_by_staff_id', performedBy);
+      const res = await fetch(`/api/examinations/${exam.id}?${qs.toString()}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         alert(typeof data.error === 'string' ? data.error : 'Failed to delete examination');

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -70,6 +72,23 @@ export async function PATCH(request: NextRequest) {
       } else {
         updates.push(record.student_id);
       }
+    }
+
+    if (updates.length > 0) {
+      const actor = await resolveStaffForAudit(supabase, school_code, marked_by);
+      logAudit(request, {
+        userId: actor.userId,
+        userName: actor.userName,
+        role: actor.role,
+        actionType: 'ATTENDANCE_EDITED',
+        entityType: 'ATTENDANCE',
+        entityId: normalizedClassId,
+        severity: 'CRITICAL',
+        metadata: {
+          attendance_date,
+          updated_count: updates.length,
+        },
+      });
     }
 
     return NextResponse.json({

@@ -202,16 +202,19 @@ export async function POST(request: NextRequest) {
     let collectedByStaffId: string | null = null;
     let collectorName = 'Staff';
 
+    let collectorRole = 'Accountant';
     if (staffId) {
       const { data: staff } = await supabase
         .from('staff')
-        .select('id, staff_id, full_name')
+        .select('id, staff_id, full_name, role, designation')
         .eq('school_code', normalizedSchoolCode)
         .eq('staff_id', staffId)
         .single();
       collectedBy = staff?.id || null;
       collectedByStaffId = (staff as { staff_id?: string } | null)?.staff_id || null;
       collectorName = (staff as { full_name?: string } | null)?.full_name || collectedByStaffId || 'Staff';
+      const sr = staff as { role?: string; designation?: string } | null;
+      collectorRole = sr?.role?.trim() || sr?.designation?.trim() || 'Accountant';
     }
 
     if (!collectedBy) {
@@ -601,7 +604,7 @@ export async function POST(request: NextRequest) {
     logAudit(request, {
       userId: collectedBy,
       userName: collectorName,
-      role: 'Accountant',
+      role: collectorRole,
       actionType: 'FEE_PAID',
       entityType: 'PAYMENT',
       entityId: payment.id,

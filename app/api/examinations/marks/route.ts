@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 import { normalizeMarksEntryCode } from '@/lib/marks-entry-codes';
 import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
 import { isStaffClassTeacherForClass } from '@/lib/staff-class-teacher';
@@ -312,6 +314,22 @@ export async function POST(request: NextRequest) {
     } catch {
       // audit table optional until migration applied
     }
+
+    const actor = await resolveStaffForAudit(supabase, school_code, entered_by);
+    logAudit(request, {
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
+      actionType: 'MARKS_UPDATED',
+      entityType: 'MARKS',
+      entityId: exam_id,
+      severity: 'CRITICAL',
+      metadata: {
+        class_id,
+        student_id,
+        subject_count: (marks as MarkInput[]).length,
+      },
+    });
 
     return NextResponse.json({
       data: insertedMarks,

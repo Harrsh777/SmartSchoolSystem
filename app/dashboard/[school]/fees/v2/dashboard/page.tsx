@@ -20,7 +20,6 @@ import {
   FileText,
   Tags,
   Layers,
-  Plus,
   Pencil,
 } from 'lucide-react';
 
@@ -92,7 +91,7 @@ export default function FeesDashboardPage({
   const [recentPayments, setRecentPayments] = useState<RecentPayment[]>([]);
   const [pendingStudents, setPendingStudents] = useState<PendingStudent[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructureSummary[]>([]);
-  const [feeSchedules, setFeeSchedules] = useState<FeeScheduleRow[]>([]);
+  const [, setFeeSchedules] = useState<FeeScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 

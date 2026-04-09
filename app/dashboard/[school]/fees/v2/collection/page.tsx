@@ -14,7 +14,6 @@ import {
   Receipt,
   Users,
   FileText,
-  UserCheck,
   Clock,
   Wallet,
   User,

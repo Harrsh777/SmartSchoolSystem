@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 
 export async function GET(
   request: NextRequest,
@@ -89,7 +91,7 @@ export async function PATCH(
   try {
     const { examId } = await params;
     const body = await request.json();
-    const { school_code, ...updateData } = body;
+    const { school_code, performed_by_staff_id, ...updateData } = body;
 
     if (!school_code) {
       return NextResponse.json(
@@ -129,6 +131,20 @@ export async function PATCH(
       );
     }
 
+    const actor = await resolveStaffForAudit(supabase, school_code, performed_by_staff_id);
+    logAudit(request, {
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
+      actionType: 'EXAM_UPDATED',
+      entityType: 'EXAM',
+      entityId: examId,
+      severity: 'CRITICAL',
+      metadata: {
+        field_keys: Object.keys(updateData).filter((k) => k !== 'school_code').slice(0, 40),
+      },
+    });
+
     return NextResponse.json({ data: updatedExam }, { status: 200 });
   } catch (error) {
     console.error('Error updating examination:', error);
@@ -156,9 +172,11 @@ export async function DELETE(
     }
 
     // Verify examination belongs to this school
+    const performedByStaffId = searchParams.get('performed_by_staff_id');
+
     const { data: existingExam, error: fetchError } = await supabase
       .from('examinations')
-      .select('id, school_code')
+      .select('id, school_code, exam_name, name')
       .eq('id', examId)
       .eq('school_code', schoolCode)
       .single();
@@ -169,6 +187,11 @@ export async function DELETE(
         { status: 404 }
       );
     }
+
+    const examLabel =
+      String((existingExam as { exam_name?: string; name?: string }).exam_name || '').trim() ||
+      String((existingExam as { exam_name?: string; name?: string }).name || '').trim() ||
+      '';
 
     // Delete dependent rows (v1 + v2 schema; ignore individual errors for optional tables)
     await supabase.from('report_cards').delete().eq('exam_id', examId);
@@ -192,6 +215,18 @@ export async function DELETE(
         { status: 500 }
       );
     }
+
+    const actor = await resolveStaffForAudit(supabase, schoolCode, performedByStaffId);
+    logAudit(request, {
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
+      actionType: 'EXAM_DELETED',
+      entityType: 'EXAM',
+      entityId: examId,
+      severity: 'CRITICAL',
+      metadata: examLabel ? { target: examLabel } : {},
+    });
 
     return NextResponse.json(
       { success: true, message: 'Examination deleted successfully' },

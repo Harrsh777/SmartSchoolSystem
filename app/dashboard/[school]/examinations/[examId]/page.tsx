@@ -76,7 +76,17 @@ export default function ExaminationDetailPage({
 
     try {
       setDeleting(true);
-      const response = await fetch(`/api/examinations/${examId}?school_code=${schoolCode}`, {
+      let performedBy = '';
+      try {
+        const raw = typeof window !== 'undefined' ? sessionStorage.getItem('staff') : null;
+        const staff = raw ? (JSON.parse(raw) as { id?: string }) : null;
+        if (staff?.id) performedBy = String(staff.id);
+      } catch {
+        /* ignore */
+      }
+      const qs = new URLSearchParams({ school_code: schoolCode });
+      if (performedBy) qs.set('performed_by_staff_id', performedBy);
+      const response = await fetch(`/api/examinations/${examId}?${qs.toString()}`, {
         method: 'DELETE',
       });
 

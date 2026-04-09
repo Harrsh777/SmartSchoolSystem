@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getCached, cacheKeys, DASHBOARD_REDIS_TTL } from '@/lib/cache';
+import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 
 // Get examinations
 export async function GET(request: NextRequest) {
@@ -211,6 +213,18 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    const actor = await resolveStaffForAudit(supabase, school_code, created_by);
+    logAudit(request, {
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
+      actionType: 'EXAM_CREATED',
+      entityType: 'EXAM',
+      entityId: examination.id,
+      severity: 'CRITICAL',
+      metadata: { target: name.trim() },
+    });
 
     return NextResponse.json({
       data: {

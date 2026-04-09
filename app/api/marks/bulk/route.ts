@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 
 /**
@@ -141,6 +142,17 @@ export async function POST(request: NextRequest) {
             { status: 500 }
           );
         }
+        const actorRetry = await resolveStaffForAudit(supabase, school_code, entered_by);
+        logAudit(request, {
+          userId: actorRetry.userId,
+          userName: actorRetry.userName,
+          role: actorRetry.role,
+          actionType: 'MARKS_UPDATED',
+          entityType: 'MARKS',
+          entityId: exam_id,
+          severity: 'CRITICAL',
+          metadata: { class_id, count: validMarks.length },
+        });
         return NextResponse.json({
           data: savedMarks2,
           summary: {
@@ -158,15 +170,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const actor = await resolveStaffForAudit(supabase, school_code, entered_by);
     logAudit(request, {
-      userId: entered_by,
-      userName: 'Staff',
-      role: 'Teacher',
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
       actionType: 'MARKS_UPDATED',
-      entityType: 'EXAM',
+      entityType: 'MARKS',
       entityId: exam_id,
       severity: 'CRITICAL',
-      metadata: { exam_id, class_id, count: validMarks.length },
+      metadata: { class_id, count: validMarks.length },
     });
 
     return NextResponse.json({

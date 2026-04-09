@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { logAudit } from '@/lib/audit-logger';
+import { resolveStaffForAudit } from '@/lib/audit-staff';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
@@ -402,6 +404,18 @@ export async function POST(request: NextRequest) {
       class_mappings: classMappingInserts.length,
       subject_mappings: subjectMappingInserts.length,
       schedules: scheduleInserts.length,
+    });
+
+    const actor = await resolveStaffForAudit(supabase, school_code, created_by);
+    logAudit(request, {
+      userId: actor.userId,
+      userName: actor.userName,
+      role: actor.role,
+      actionType: 'EXAM_CREATED',
+      entityType: 'EXAM',
+      entityId: examination.id,
+      severity: 'CRITICAL',
+      metadata: { target: exam_name.trim(), term_id: termIdStr },
     });
 
     return NextResponse.json({
