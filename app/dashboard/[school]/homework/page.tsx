@@ -15,7 +15,6 @@ import {
   X,
   FileText,
   Image,
-  Users,
   Calendar,
 } from 'lucide-react';
 
@@ -327,14 +326,6 @@ export default function DigitalDiaryPage({
                     </span>
                   ))}
                 </div>
-              </div>
-
-              {/* Read Count */}
-              <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-                <Users size={16} />
-                <span>
-                  {diary.read_count} / {diary.total_targets} READ
-                </span>
               </div>
 
               {/* Attachments */}

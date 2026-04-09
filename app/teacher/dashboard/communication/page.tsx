@@ -6,7 +6,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import CreateNoticeModal from '@/components/communication/CreateNoticeModal';
 import { Bell, Plus, Paperclip } from 'lucide-react';
-import type { Staff, Notice } from '@/lib/supabase';
+import { parseNoticeAttachmentUrls, type Staff, type Notice } from '@/lib/supabase';
 
 export default function CommunicationPage() {
   const [teacher, setTeacher] = useState<Staff | null>(null);
@@ -87,7 +87,10 @@ export default function CommunicationPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Communication</h1>
-              <p className="text-gray-600">Notices and announcements from your school</p>
+              <p className="text-gray-600">
+                Notices and announcements from your school. Creating a notice supports optional PDF and image
+                attachments.
+              </p>
             </div>
           </div>
           {teacher?.school_code ? (
@@ -129,17 +132,26 @@ export default function CommunicationPage() {
                   )}
                 </div>
               </div>
-              {notice.attachment_url ? (
-                <a
-                  href={String(notice.attachment_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900 mb-3"
-                >
-                  <Paperclip size={16} />
-                  View attachment
-                </a>
-              ) : null}
+              {(() => {
+                const attachmentUrls = parseNoticeAttachmentUrls(notice.attachment_url);
+                if (attachmentUrls.length === 0) return null;
+                return (
+                  <div className="flex flex-wrap gap-3 mb-3">
+                    {attachmentUrls.map((url, idx) => (
+                      <a
+                        key={`${url}-${idx}`}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900"
+                      >
+                        <Paperclip size={16} />
+                        {attachmentUrls.length > 1 ? `Attachment ${idx + 1}` : 'View attachment'}
+                      </a>
+                    ))}
+                  </div>
+                );
+              })()}
               <p className="text-gray-700 whitespace-pre-wrap mb-3">{notice.content}</p>
               <p className="text-xs text-gray-500">
                 Posted on {new Date(notice.created_at || '').toLocaleDateString('en-US', {

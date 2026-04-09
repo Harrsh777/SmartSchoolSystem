@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Card from '@/components/ui/Card';
 import { Edit2, Archive, Calendar, Paperclip } from 'lucide-react';
-import type { Notice } from '@/lib/supabase';
+import { parseNoticeAttachmentUrls, type Notice } from '@/lib/supabase';
 
 interface NoticeCardProps {
   notice: Notice;
@@ -94,17 +94,26 @@ export default function NoticeCard({ notice, onEdit, onArchive }: NoticeCardProp
           </div>
         </div>
 
-        {notice.attachment_url ? (
-          <a
-            href={String(notice.attachment_url)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900"
-          >
-            <Paperclip size={16} />
-            View attachment
-          </a>
-        ) : null}
+        {(() => {
+          const attachmentUrls = parseNoticeAttachmentUrls(notice.attachment_url);
+          if (attachmentUrls.length === 0) return null;
+          return (
+            <div className="flex flex-wrap gap-3">
+              {attachmentUrls.map((url, idx) => (
+                <a
+                  key={`${url}-${idx}`}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900"
+                >
+                  <Paperclip size={16} />
+                  {attachmentUrls.length > 1 ? `Attachment ${idx + 1}` : 'View attachment'}
+                </a>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Content */}
         <div className="text-gray-700 whitespace-pre-wrap">

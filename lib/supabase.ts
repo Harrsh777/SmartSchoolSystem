@@ -146,8 +146,18 @@ export interface Notice {
   publish_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  /** One or more public URLs, newline-separated when multiple files were uploaded. */
   attachment_url?: string | null;
   [key: string]: unknown;
+}
+
+/** Parses `attachment_url` (single URL or newline-separated list from notice uploads). */
+export function parseNoticeAttachmentUrls(raw: string | null | undefined): string[] {
+  if (raw == null || typeof raw !== 'string') return [];
+  return raw
+    .split(/\r?\n/)
+    .map((u) => u.trim())
+    .filter((u) => u.length > 0);
 }
 
 export interface Examination {

@@ -29,8 +29,10 @@ export default function CreateNoticeModal({
     scheduleForLater: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const MAX_ATTACHMENTS = 10;
 
   const handleChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -51,13 +53,12 @@ export default function CreateNoticeModal({
     }
 
     const trimmed = formData.content.trim();
-    if (!attachmentFile && trimmed.length < 10) {
+    if (attachmentFiles.length === 0 && trimmed.length < 10) {
       newErrors.content = 'Content must be at least 10 characters (or attach a PDF/image)';
     }
-    if (attachmentFile && trimmed.length < 5) {
+    if (attachmentFiles.length > 0 && trimmed.length < 5) {
       newErrors.content = 'Add at least 5 characters describing the notice or attachment.';
     }
-
     if (formData.scheduleForLater && !formData.publish_at) {
       newErrors.publish_at = 'Please select a publish date and time';
     }
@@ -66,20 +67,24 @@ export default function CreateNoticeModal({
     return Object.keys(newErrors).length === 0;
   };
 
-  const uploadAttachmentIfNeeded = async (): Promise<string | null> => {
-    if (!attachmentFile) return null;
-    const fd = new FormData();
-    fd.append('file', attachmentFile);
-    fd.append('school_code', schoolCode);
-    const res = await fetch('/api/communication/notices/attachment', {
-      method: 'POST',
-      body: fd,
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      throw new Error(typeof json.error === 'string' ? json.error : 'Upload failed');
+  const uploadAttachmentsIfNeeded = async (): Promise<string | null> => {
+    if (attachmentFiles.length === 0) return null;
+    const urls: string[] = [];
+    for (const file of attachmentFiles) {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('school_code', schoolCode);
+      const res = await fetch('/api/communication/notices/attachment', {
+        method: 'POST',
+        body: fd,
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof json.error === 'string' ? json.error : 'Upload failed');
+      }
+      if (typeof json.url === 'string') urls.push(json.url);
     }
-    return typeof json.url === 'string' ? json.url : null;
+    return urls.length > 0 ? urls.join('\n') : null;
   };
 
   const handleSaveDraft = async () => {
@@ -88,8 +93,8 @@ export default function CreateNoticeModal({
     setSaving(true);
     try {
       let attachment_url: string | null = null;
-      if (attachmentFile) {
-        attachment_url = await uploadAttachmentIfNeeded();
+      if (attachmentFiles.length > 0) {
+        attachment_url = await uploadAttachmentsIfNeeded();
       }
 
       const response = await fetch('/api/communication/notices', {
@@ -128,8 +133,8 @@ export default function CreateNoticeModal({
     setSaving(true);
     try {
       let attachment_url: string | null = null;
-      if (attachmentFile) {
-        attachment_url = await uploadAttachmentIfNeeded();
+      if (attachmentFiles.length > 0) {
+        attachment_url = await uploadAttachmentsIfNeeded();
       }
 
       const publishDate = formData.scheduleForLater && formData.publish_at
@@ -272,51 +277,76 @@ export default function CreateNoticeModal({
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Attachment (optional)
+                  Attachments (optional)
                 </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Files upload to Supabase Storage bucket <span className="font-mono">school-media</span>.
+                </p>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,image/jpeg,image/png,image/jpg,image/webp"
+                  multiple
+                  accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif"
                   className="hidden"
                   onChange={(e) => {
-                    const f = e.target.files?.[0] ?? null;
-                    setAttachmentFile(f);
-                    if (errors.content) {
+                    const picked = e.target.files ? Array.from(e.target.files) : [];
+                    if (picked.length > MAX_ATTACHMENTS) {
+                      setAttachmentFiles([]);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                      setErrors((prev) => ({
+                        ...prev,
+                        attachments: `Select at most ${MAX_ATTACHMENTS} files (10MB each).`,
+                      }));
+                      return;
+                    }
+                    setAttachmentFiles(picked);
+                    if (errors.content || errors.attachments) {
                       setErrors((prev) => {
                         const next = { ...prev };
                         delete next.content;
+                        delete next.attachments;
                         return next;
                       });
                     }
                   }}
                 />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    Choose file
-                  </Button>
-                  {attachmentFile ? (
-                    <span className="text-sm text-gray-700 truncate max-w-[220px]">
-                      {attachmentFile.name}
-                    </span>
-                  ) : (
-                    <span className="text-sm text-gray-500">PDF or image, max 10MB</span>
-                  )}
-                  {attachmentFile ? (
-                    <button
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
                       type="button"
-                      className="text-sm text-red-600 hover:underline"
-                      onClick={() => {
-                        setAttachmentFile(null);
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                      }}
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
                     >
-                      Remove
-                    </button>
+                      Choose files
+                    </Button>
+                    {attachmentFiles.length === 0 ? (
+                      <span className="text-sm text-gray-500">
+                        PDF or images (e.g. JPEG, PNG, WebP, GIF). Up to {MAX_ATTACHMENTS} files, 10MB each.
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-sm text-red-600 hover:underline"
+                        onClick={() => {
+                          setAttachmentFiles([]);
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                        }}
+                      >
+                        Remove all
+                      </button>
+                    )}
+                  </div>
+                  {errors.attachments ? (
+                    <p className="text-red-600 text-sm">{errors.attachments}</p>
+                  ) : null}
+                  {attachmentFiles.length > 0 ? (
+                    <ul className="text-sm text-gray-700 list-disc pl-5 space-y-0.5 max-h-28 overflow-y-auto">
+                      {attachmentFiles.map((f) => (
+                        <li key={`${f.name}-${f.size}`} className="truncate">
+                          {f.name}
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
                 </div>
               </div>

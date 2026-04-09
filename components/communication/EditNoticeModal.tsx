@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { X } from 'lucide-react';
-import type { Notice } from '@/lib/supabase';
+import { X, Paperclip, ExternalLink } from 'lucide-react';
+import { parseNoticeAttachmentUrls, type Notice } from '@/lib/supabase';
 
 interface EditNoticeModalProps {
   schoolCode: string;
@@ -32,6 +32,17 @@ export default function EditNoticeModal({
     scheduleForLater: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [keptAttachmentUrls, setKeptAttachmentUrls] = useState<string[]>(() =>
+    parseNoticeAttachmentUrls(notice.attachment_url)
+  );
+  const [newAttachmentFiles, setNewAttachmentFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const MAX_ATTACHMENTS = 10;
+
+  useEffect(() => {
+    setKeptAttachmentUrls(parseNoticeAttachmentUrls(notice.attachment_url));
+    setNewAttachmentFiles([]);
+  }, [notice.id, notice.attachment_url]);
 
   useEffect(() => {
     if (notice.publish_at) {
@@ -41,7 +52,7 @@ export default function EditNoticeModal({
         scheduleForLater: notice.status === 'Draft',
       }));
     }
-  }, [notice]);
+  }, [notice.publish_at, notice.status]);
 
   const handleChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -61,12 +72,18 @@ export default function EditNoticeModal({
       newErrors.title = 'Title is required';
     }
 
-    if (!formData.content.trim()) {
+    const trimmed = formData.content.trim();
+    const attachmentCount = keptAttachmentUrls.length + newAttachmentFiles.length;
+    if (!trimmed) {
       newErrors.content = 'Content is required';
+    } else if (attachmentCount === 0 && trimmed.length < 10) {
+      newErrors.content = 'Content must be at least 10 characters (or keep/add a PDF/image attachment)';
+    } else if (attachmentCount > 0 && trimmed.length < 5) {
+      newErrors.content = 'Add at least 5 characters describing the notice or attachment.';
     }
 
-    if (formData.content.length < 10) {
-      newErrors.content = 'Content must be at least 10 characters';
+    if (keptAttachmentUrls.length + newAttachmentFiles.length > MAX_ATTACHMENTS) {
+      newErrors.attachments = `At most ${MAX_ATTACHMENTS} attachments per notice`;
     }
 
     if (formData.scheduleForLater && !formData.publish_at) {
@@ -77,11 +94,34 @@ export default function EditNoticeModal({
     return Object.keys(newErrors).length === 0;
   };
 
+  const uploadNewAttachments = async (): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const file of newAttachmentFiles) {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('school_code', schoolCode);
+      const res = await fetch('/api/communication/notices/attachment', {
+        method: 'POST',
+        body: fd,
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof json.error === 'string' ? json.error : 'Upload failed');
+      }
+      if (typeof json.url === 'string') urls.push(json.url);
+    }
+    return urls;
+  };
+
   const handleSave = async () => {
     if (!validate()) return;
 
     setSaving(true);
     try {
+      const uploadedUrls = newAttachmentFiles.length > 0 ? await uploadNewAttachments() : [];
+      const allUrls = [...keptAttachmentUrls, ...uploadedUrls];
+      const attachment_url = allUrls.length > 0 ? allUrls.join('\n') : null;
+
       interface UpdateData {
         title: string;
         content: string;
@@ -89,6 +129,7 @@ export default function EditNoticeModal({
         priority: string;
         status?: string;
         publish_at?: string | null;
+        attachment_url?: string | null;
         [key: string]: unknown;
       }
       const updateData: UpdateData = {
@@ -97,6 +138,7 @@ export default function EditNoticeModal({
         category: formData.category,
         priority: formData.priority,
         status: formData.status,
+        attachment_url,
       };
 
       if (formData.status === 'Active' && !notice.publish_at) {
@@ -256,6 +298,113 @@ export default function EditNoticeModal({
                   </p>
                 </div>
               </div>
+
+              {notice.status !== 'Archived' && (
+                <div className="mt-6">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Attachments
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    PDF and images (JPEG, PNG, WebP, GIF, HEIC). Stored in Supabase bucket{' '}
+                    <span className="font-mono">school-media</span>. Up to {MAX_ATTACHMENTS} files total, 10MB each.
+                  </p>
+                  {keptAttachmentUrls.length > 0 ? (
+                    <ul className="space-y-2 mb-4">
+                      {keptAttachmentUrls.map((url) => (
+                        <li
+                          key={url}
+                          className="flex flex-wrap items-center gap-2 text-sm border border-gray-200 rounded-lg px-3 py-2"
+                        >
+                          <Paperclip size={14} className="text-gray-500 shrink-0" />
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-700 hover:underline truncate flex-1 min-w-0 inline-flex items-center gap-1"
+                          >
+                            {url.split('/').pop() || 'File'}
+                            <ExternalLink size={12} className="shrink-0" />
+                          </a>
+                          <button
+                            type="button"
+                            className="text-red-600 hover:underline shrink-0"
+                            onClick={() =>
+                              setKeptAttachmentUrls((prev) => prev.filter((u) => u !== url))
+                            }
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-gray-500 mb-3">No attachments on this notice yet.</p>
+                  )}
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const picked = e.target.files ? Array.from(e.target.files) : [];
+                      const room = MAX_ATTACHMENTS - keptAttachmentUrls.length;
+                      if (picked.length > room) {
+                        setNewAttachmentFiles([]);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                        setErrors((prev) => ({
+                          ...prev,
+                          attachments:
+                            room <= 0
+                              ? `This notice already has ${MAX_ATTACHMENTS} attachments. Remove one to add more.`
+                              : `You can add at most ${room} more file(s) (${MAX_ATTACHMENTS} total per notice).`,
+                        }));
+                        return;
+                      }
+                      setNewAttachmentFiles(picked);
+                      if (errors.attachments) {
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.attachments;
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                        Add files
+                      </Button>
+                      {newAttachmentFiles.length > 0 ? (
+                        <button
+                          type="button"
+                          className="text-sm text-red-600 hover:underline"
+                          onClick={() => {
+                            setNewAttachmentFiles([]);
+                            if (fileInputRef.current) fileInputRef.current.value = '';
+                          }}
+                        >
+                          Clear new files
+                        </button>
+                      ) : null}
+                    </div>
+                    {errors.attachments ? (
+                      <p className="text-red-600 text-sm">{errors.attachments}</p>
+                    ) : null}
+                    {newAttachmentFiles.length > 0 ? (
+                      <ul className="text-sm text-gray-700 list-disc pl-5 space-y-0.5 max-h-28 overflow-y-auto">
+                        {newAttachmentFiles.map((f) => (
+                          <li key={`${f.name}-${f.size}`} className="truncate">
+                            New: {f.name}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Section 3: Publishing */}

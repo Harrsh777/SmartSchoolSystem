@@ -84,6 +84,18 @@ const NON_TEACHING_ALLOWED_PATH_PREFIXES: readonly string[] = [
   '/teacher/dashboard/change-password',
 ];
 
+/** Module API returns template paths; Next.js App Router <Link> cannot use dynamic segments like `[school]`. */
+function teacherHrefFromModuleRoute(route: string): string {
+  const prefix = '/dashboard/[school]/';
+  if (route.startsWith(prefix)) {
+    return `/teacher/dashboard/${route.slice(prefix.length)}`;
+  }
+  if (route === '/dashboard/[school]') {
+    return '/teacher/dashboard';
+  }
+  return route;
+}
+
 interface TeacherLayoutProps {
   children: React.ReactNode;
 }
@@ -789,7 +801,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
         id: module.module_key,
         label: module.module_name,
         icon: icon,
-        path: firstAccessibleSubModule.route,
+        path: teacherHrefFromModuleRoute(firstAccessibleSubModule.route),
         permission: null,
         viewPermission: null,
       });

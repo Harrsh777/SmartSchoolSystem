@@ -97,7 +97,7 @@ export default function ClassWiseFeesPage({
   const [plans, setPlans] = useState<FrequencyPlan[]>([]);
   const [studentPlans, setStudentPlans] = useState<StudentPlanRow[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
-  const [savingPlans, setSavingPlans] = useState(false);
+  const [,setSavingPlans] = useState(false);
   const [savingRte, setSavingRte] = useState(false);
   const [showRteSelection, setShowRteSelection] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -392,9 +392,7 @@ export default function ClassWiseFeesPage({
     );
   };
 
-  const canSaveAssignments =
-    !!structureId &&
-    (frequencyMode === 'single' || (studentPlans.length > 0 && studentPlans.every((s) => !!s.fee_plan_id)));
+  
   const allFrequenciesSelected =
     frequencyMode === 'single' || (studentPlans.length > 0 && studentPlans.every((s) => !!s.fee_plan_id));
 

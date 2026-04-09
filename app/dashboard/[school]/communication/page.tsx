@@ -117,11 +117,14 @@ export default function CommunicationPage({
             </div>
             Communication Hub
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">Manage notices, announcements, and messages</p>
+          <p className="text-gray-600 dark:text-gray-400">
+            Manage notices and announcements. Creating or editing a notice supports optional PDF and image
+            attachments.
+          </p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
           <Plus size={18} className="mr-2" />
-          New Notice
+          New notice / upload
         </Button>
       </motion.div>
 

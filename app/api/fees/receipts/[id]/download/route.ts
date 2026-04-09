@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import { escapeHtml } from '@/lib/fees/receipt-html-escape';
 import { rupeesToWords } from '@/lib/fees/receipt-amount-words';
-import { receiptSharedStyles, receiptToolbarHtml } from '@/lib/fees/receipt-html-shared';
+import { receiptA5PageStyles, receiptSharedStyles, receiptToolbarHtml } from '@/lib/fees/receipt-html-shared';
 
 /** PostgREST often returns `receipts` as a single-element array for reverse FK embeds. */
 function normalizePaymentReceiptJoin(payment: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -199,67 +199,7 @@ function generatePaymentReceiptHTML(school: Record<string, unknown>, payment: Re
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fee Receipt - ${schoolName}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { size: 15cm 20cm; margin: 6mm; }
-    body {
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-      padding: 10px;
-      background: #e2e8f0;
-      color: #0f172a;
-    }
-    .page-shell {
-      width: 15cm;
-      max-width: 15cm;
-      margin: 0 auto;
-      background: #f1f5f9;
-      padding: 8px;
-      border-radius: 10px;
-    }
-    .receipt-sheet {
-      background: #fff;
-      width: 15cm;
-      min-height: 20cm;
-      border-radius: 10px;
-      padding: 8mm 8mm 9mm;
-      border: 1px solid #cbd5e1;
-      position: relative;
-      overflow: hidden;
-      page-break-after: always;
-    }
-    .receipt-watermark {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-      z-index: 0;
-    }
-    .receipt-watermark img {
-      max-width: 70%;
-      max-height: 55%;
-      object-fit: contain;
-      opacity: 0.05;
-      filter: grayscale(1);
-      transform: rotate(-12deg);
-    }
-    .receipt-inner { position: relative; z-index: 1; }
-    @media print {
-      body { background: #fff; padding: 0; }
-      .page-shell { max-width: none; padding: 0; background: #fff; border-radius: 0; }
-      .receipt-sheet {
-        width: auto;
-        min-height: auto;
-        border: none;
-        border-radius: 0;
-        box-shadow: none;
-        page-break-after: always;
-      }
-    }
-    * {
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
+    ${receiptA5PageStyles()}
     ${shared}
   </style>
 </head>
@@ -420,13 +360,13 @@ function generatePaymentReceiptContent(
   return `
     <div class="copy-label-pill">${escapeHtml(copyLabel)}</div>
 
-    <div class="receipt-card" style="margin-bottom:14px;">
+    <div class="receipt-card">
       <div class="header-grid">
         <div class="logo-wrap">
           ${
             logoUrl
               ? `<img src="${escapeHtml(logoUrl)}" alt="Logo"/>`
-              : `<span style="font-size:9px;color:#94a3b8;">Logo</span>`
+              : `<span style="font-size:7px;color:#94a3b8;">Logo</span>`
           }
         </div>
         <div class="school-center">
@@ -483,12 +423,12 @@ function generatePaymentReceiptContent(
         <div><span class="payment-mode-pill">${escapeHtml(paymentMode)}</span></div>
         ${
           payment.reference_no
-            ? `<div class="info-line" style="margin-top:8px;"><span class="lab">Reference</span><span class="val">${escapeHtml(String(payment.reference_no))}</span></div>`
+            ? `<div class="info-line info-line-tight"><span class="lab">Reference</span><span class="val">${escapeHtml(String(payment.reference_no))}</span></div>`
             : ''
         }
         ${
           collectorLine
-            ? `<div class="info-line" style="margin-top:8px;"><span class="lab">Collected by</span><span class="val">${escapeHtml(collectorLine)}</span></div>`
+            ? `<div class="info-line info-line-tight"><span class="lab">Collected by</span><span class="val">${escapeHtml(collectorLine)}</span></div>`
             : ''
         }
       </div>
@@ -503,17 +443,17 @@ function generatePaymentReceiptContent(
     ${
       tableRows
         ? `
-    <div class="receipt-card" style="padding:12px;">
-      <div class="info-card-title" style="margin-bottom:10px;">Fee breakdown</div>
+    <div class="receipt-card receipt-fee-breakdown">
+      <div class="info-card-title" style="margin-bottom:6px;">Fee breakdown</div>
       <table class="fees-table-pro">
         <thead>
           <tr>
-            <th>Head name</th>
-            <th class="text-right">Actual amount</th>
-            <th class="text-right">Concession</th>
-            <th class="text-right">Last paid</th>
-            <th class="text-right">Paid amount</th>
-            <th>Fee type</th>
+            <th>Head</th>
+            <th class="text-right">Actual</th>
+            <th class="text-right">Conc.</th>
+            <th class="text-right">Prior</th>
+            <th class="text-right">Paid</th>
+            <th>Type</th>
           </tr>
         </thead>
         <tbody>${tableRows}</tbody>
@@ -537,11 +477,11 @@ function generatePaymentReceiptContent(
       <span class="amt">₹${totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>
 
-    <div class="receipt-card amount-words" style="margin-top:12px;">
+    <div class="receipt-card amount-words">
       <strong>Amount in words:</strong> ${escapeHtml(amountWords)}
     </div>
 
-    ${payment.remarks ? `<div class="receipt-card" style="font-size:10px;"><strong>Remarks:</strong> ${escapeHtml(String(payment.remarks))}</div>` : ''}
+    ${payment.remarks ? `<div class="receipt-card receipt-remarks"><strong>Remarks:</strong> ${escapeHtml(String(payment.remarks))}</div>` : ''}
 
     <div class="signature-grid">
       <div class="signature-box">

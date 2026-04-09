@@ -6,7 +6,7 @@ import {
 } from '@/lib/fees/enrich-student-fees';
 import { escapeHtml } from '@/lib/fees/receipt-html-escape';
 import { rupeesToWords } from '@/lib/fees/receipt-amount-words';
-import { receiptSharedStyles, receiptToolbarHtml } from '@/lib/fees/receipt-html-shared';
+import { receiptA5PageStyles, receiptSharedStyles, receiptToolbarHtml } from '@/lib/fees/receipt-html-shared';
 
 /**
  * POST /api/fees/receipts/download
@@ -240,66 +240,7 @@ function generateReceiptHTML(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fee Receipt - ${schoolNameEsc}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { size: 15cm 20cm; margin: 6mm; }
-    body {
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-      padding: 10px;
-      background: #e2e8f0;
-      color: #0f172a;
-    }
-    .page-shell {
-      width: 15cm;
-      max-width: 15cm;
-      margin: 0 auto;
-      background: #f1f5f9;
-      padding: 8px;
-      border-radius: 10px;
-    }
-    .receipt-sheet {
-      background: #fff;
-      width: 15cm;
-      min-height: 20cm;
-      border-radius: 10px;
-      padding: 8mm 8mm 9mm;
-      border: 1px solid #cbd5e1;
-      position: relative;
-      overflow: hidden;
-      page-break-after: always;
-    }
-    .receipt-watermark {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-      z-index: 0;
-    }
-    .receipt-watermark img {
-      max-width: 70%;
-      max-height: 55%;
-      object-fit: contain;
-      opacity: 0.05;
-      filter: grayscale(1);
-      transform: rotate(-12deg);
-    }
-    .receipt-inner { position: relative; z-index: 1; }
-    @media print {
-      body { background: #fff; padding: 0; }
-      .page-shell { max-width: none; padding: 0; background: #fff; border-radius: 0; }
-      .receipt-sheet {
-        width: auto;
-        min-height: auto;
-        border: none;
-        border-radius: 0;
-        page-break-after: always;
-      }
-    }
-    * {
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
+    ${receiptA5PageStyles()}
     ${shared}
   </style>
 </head>
@@ -452,9 +393,9 @@ function generateReceiptContent(
             return `
               <tr>
                 <td>
-                  <div style="font-weight:700;font-size:9px;">${nm}</div>
-                  ${desc ? `<div style="font-size:8px;color:#64748b;margin-top:2px;">${desc}</div>` : ''}
-                  ${isOptional ? `<span style="font-size:8px;color:#2563eb;">(Optional)</span>` : ''}
+                  <div class="rf-line1" style="font-weight:700;font-size:9px;">${nm}</div>
+                  ${desc ? `<div class="rf-line2" style="font-size:8px;color:#64748b;margin-top:2px;">${desc}</div>` : ''}
+                  ${isOptional ? `<span class="rf-opt" style="font-size:8px;color:#2563eb;">(Optional)</span>` : ''}
                 </td>
                 <td class="text-right">₹${headAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td class="text-right">₹0.00</td>
@@ -472,8 +413,8 @@ function generateReceiptContent(
         bodyRows += `
               <tr>
                 <td>
-                  <div style="font-weight:700;font-size:9px;">${escapeHtml(line.label)}</div>
-                  <div style="font-size:8px;color:#64748b;margin-top:2px;">${line.kind === 'discount' ? 'Discount' : 'Misc'}${line.source ? ` · ${escapeHtml(line.source)}` : ''}</div>
+                  <div class="rf-line1" style="font-weight:700;font-size:9px;">${escapeHtml(line.label)}</div>
+                  <div class="rf-line2" style="font-size:8px;color:#64748b;margin-top:2px;">${line.kind === 'discount' ? 'Discount' : 'Misc'}${line.source ? ` · ${escapeHtml(line.source)}` : ''}</div>
                 </td>
                 <td class="text-right">${isDisc ? '₹0.00' : `₹${amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</td>
                 <td class="text-right">${isDisc ? `₹${Math.abs(amt).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}</td>
@@ -488,33 +429,33 @@ function generateReceiptContent(
       }
 
       return `
-      <div class="receipt-card" style="margin-bottom:12px;padding:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <div class="receipt-card receipt-fee-section">
+        <div class="rfs-top" style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
           <div>
-            <div style="font-size:12px;font-weight:800;color:#0f172a;">${escapeHtml(String(feeStructure?.name || 'Fee'))}</div>
-            <div style="font-size:9px;color:#64748b;margin-top:4px;">Due: ${escapeHtml(dueMonth)} · Due date: ${escapeHtml(dueDate)}</div>
+            <div class="rfs-head" style="font-size:12px;font-weight:800;color:#0f172a;">${escapeHtml(String(feeStructure?.name || 'Fee'))}</div>
+            <div class="rfs-sub" style="font-size:9px;color:#64748b;margin-top:3px;">Due: ${escapeHtml(dueMonth)} · Due date: ${escapeHtml(dueDate)}</div>
           </div>
-          <div style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:999px;background:${balance <= 0 ? '#ecfdf5' : '#fff7ed'};color:${balance <= 0 ? '#047857' : '#c2410c'};border:1px solid ${balance <= 0 ? '#6ee7b7' : '#fdba74'};">${escapeHtml(status)}</div>
+          <div class="rfs-badge" style="font-size:10px;font-weight:800;padding:4px 10px;border-radius:999px;background:${balance <= 0 ? '#ecfdf5' : '#fff7ed'};color:${balance <= 0 ? '#047857' : '#c2410c'};border:1px solid ${balance <= 0 ? '#6ee7b7' : '#fdba74'};">${escapeHtml(status)}</div>
         </div>
         <table class="fees-table-pro">
           <thead>
             <tr>
-              <th>Head name</th>
-              <th class="text-right">Actual amount</th>
-              <th class="text-right">Concession</th>
-              <th class="text-right">Last paid</th>
-              <th class="text-right">Paid amount</th>
-              <th>Fee type</th>
+              <th>Head</th>
+              <th class="text-right">Actual</th>
+              <th class="text-right">Conc.</th>
+              <th class="text-right">Prior</th>
+              <th class="text-right">Paid</th>
+              <th>Type</th>
             </tr>
           </thead>
           <tbody>${bodyRows}</tbody>
         </table>
-        <div style="margin-top:10px;padding:10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;font-size:9px;">
-            <div><div style="color:#64748b;margin-bottom:2px;">Base</div><div style="font-weight:800;">₹${Number(fee.base_amount || 0).toLocaleString('en-IN')}</div></div>
-            <div><div style="color:#64748b;margin-bottom:2px;">Adjustments</div><div style="font-weight:800;color:${effectiveAdj < 0 ? '#dc2626' : effectiveAdj > 0 ? '#059669' : '#0f172a'};">${effectiveAdj !== 0 ? `${effectiveAdj > 0 ? '+' : ''}₹${effectiveAdj.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0'}</div></div>
-            <div><div style="color:#64748b;margin-bottom:2px;">Paid</div><div style="font-weight:800;color:#059669;">₹${Number(fee.paid_amount || 0).toLocaleString('en-IN')}</div></div>
-            <div><div style="color:#64748b;margin-bottom:2px;">Balance</div><div style="font-weight:800;color:${balance > 0 ? '#dc2626' : '#059669'};">₹${balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>${lateFee > 0 ? `<div style="font-size:7px;color:#94a3b8;margin-top:2px;">incl. late ₹${lateFee.toLocaleString('en-IN')}</div>` : ''}</div>
+        <div class="rfs-grid-wrap" style="margin-top:6px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
+          <div class="rfs-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center;font-size:9px;">
+            <div><div style="color:#64748b;margin-bottom:1px;">Base</div><div style="font-weight:800;">₹${Number(fee.base_amount || 0).toLocaleString('en-IN')}</div></div>
+            <div><div style="color:#64748b;margin-bottom:1px;">Adj.</div><div style="font-weight:800;color:${effectiveAdj < 0 ? '#dc2626' : effectiveAdj > 0 ? '#059669' : '#0f172a'};">${effectiveAdj !== 0 ? `${effectiveAdj > 0 ? '+' : ''}₹${effectiveAdj.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0'}</div></div>
+            <div><div style="color:#64748b;margin-bottom:1px;">Paid</div><div style="font-weight:800;color:#059669;">₹${Number(fee.paid_amount || 0).toLocaleString('en-IN')}</div></div>
+            <div><div style="color:#64748b;margin-bottom:1px;">Bal.</div><div style="font-weight:800;color:${balance > 0 ? '#dc2626' : '#059669'};">₹${balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>${lateFee > 0 ? `<div style="font-size:7px;color:#94a3b8;margin-top:1px;">late ₹${lateFee.toLocaleString('en-IN')}</div>` : ''}</div>
           </div>
         </div>
       </div>`;
@@ -523,7 +464,7 @@ function generateReceiptContent(
 
   const payHistory =
     relevantPayments.length > 0
-      ? `<div class="receipt-card" style="font-size:10px;">
+      ? `<div class="receipt-card receipt-pay-history">
           <div class="info-card-title">Payment history (linked)</div>
           ${relevantPayments
             .map((payment: Record<string, unknown>) => {
@@ -543,13 +484,13 @@ function generateReceiptContent(
   return `
     <div class="copy-label-pill">${escapeHtml(copyLabel)}</div>
 
-    <div class="receipt-card" style="margin-bottom:14px;">
+    <div class="receipt-card">
       <div class="header-grid">
         <div class="logo-wrap">
           ${
             logoUrl
               ? `<img src="${escapeHtml(logoUrl)}" alt="Logo"/>`
-              : `<span style="font-size:9px;color:#94a3b8;">Logo</span>`
+              : `<span style="font-size:7px;color:#94a3b8;">Logo</span>`
           }
         </div>
         <div class="school-center">
@@ -607,13 +548,13 @@ function generateReceiptContent(
         <div class="info-card-title">Receipt summary</div>
         <div class="info-line"><span class="lab">Payment mode(s)</span><span class="val">${escapeHtml(modesLabel)}</span></div>
         <div><span class="payment-mode-pill">${escapeHtml(modesLabel)}</span></div>
-        <div class="info-line" style="margin-top:10px;"><span class="lab">Total billable (selected)</span><span class="val">₹${totalAmount.toLocaleString('en-IN')}</span></div>
+        <div class="info-line info-line-tight"><span class="lab">Total billable (selected)</span><span class="val">₹${totalAmount.toLocaleString('en-IN')}</span></div>
         <div class="info-line"><span class="lab">Total paid (selected)</span><span class="val" style="color:#059669;">₹${totalPaid.toLocaleString('en-IN')}</span></div>
         <div class="info-line"><span class="lab">Balance due</span><span class="val" style="color:${totalDue > 0 ? '#dc2626' : '#059669'};">₹${totalDue.toLocaleString('en-IN')}</span></div>
       </div>
     </div>
 
-    <div class="info-card-title" style="margin:4px 0 8px 2px;">Fee breakdown</div>
+    <div class="info-card-title" style="margin:2px 0 4px 1px;">Fee breakdown</div>
     ${feeSectionsHtml}
 
     <div class="total-paid-banner">
@@ -621,7 +562,7 @@ function generateReceiptContent(
       <span class="amt">₹${totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
     </div>
 
-    <div class="receipt-card amount-words" style="margin-top:12px;">
+    <div class="receipt-card amount-words">
       <strong>Amount in words:</strong> ${escapeHtml(amountWords)}
     </div>
 

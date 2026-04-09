@@ -4,7 +4,7 @@ import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, Calendar, BookOpen, Users, FileText, Clock, Trash2, BarChart3 } from 'lucide-react';
+import {Calendar, BookOpen, Users, FileText, Clock, Trash2, BarChart3 } from 'lucide-react';
 
 interface Exam {
   id: string;
@@ -143,13 +143,6 @@ export default function ExaminationDetailPage({
   const classesCount = exam.class_mappings?.length || 0;
   const subjectsCount = exam.subject_mappings?.length || 0;
   const totalMaxMarks = exam.subject_mappings?.reduce((sum, sm) => sum + (sm.max_marks || 0), 0) || 0;
-  const showSubjectClassCol = exam.subject_mappings?.some((sm) => sm.class_id) ?? false;
-  const subjectClassLabelById = new Map(
-    (exam.class_mappings || []).map((cm) => [
-      cm.class_id,
-      cm.class ? `Class ${cm.class.class} · Sec ${cm.class.section}` : cm.class_id,
-    ])
-  );
 
   return (
     <div className="space-y-6">

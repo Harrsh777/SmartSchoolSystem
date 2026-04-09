@@ -6,6 +6,8 @@ import Card from '@/components/ui/Card';
 import { Bell } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 import { getString } from '@/lib/type-utils';
+import { parseNoticeAttachmentUrls } from '@/lib/supabase';
+import { Paperclip } from 'lucide-react';
 
 interface NoticeData {
   publish_at?: string | null;
@@ -92,6 +94,9 @@ export default function CommunicationPage() {
             const category = getString(notice.category);
             const content = getString(notice.content);
             const createdAt = getString(notice.created_at);
+            const attachmentUrls = parseNoticeAttachmentUrls(
+              typeof notice.attachment_url === 'string' ? notice.attachment_url : undefined
+            );
             return (
               <Card key={noticeId} hover>
                 <div className="flex items-start justify-between mb-3">
@@ -111,6 +116,22 @@ export default function CommunicationPage() {
                     ) : null}
                   </div>
                 </div>
+                {attachmentUrls.length > 0 ? (
+                  <div className="flex flex-wrap gap-3 mb-3">
+                    {attachmentUrls.map((url, idx) => (
+                      <a
+                        key={`${url}-${idx}`}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900"
+                      >
+                        <Paperclip size={16} />
+                        {attachmentUrls.length > 1 ? `Attachment ${idx + 1}` : 'View attachment'}
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
                 <p className="text-gray-700 whitespace-pre-wrap mb-3">{content || 'No content'}</p>
                 {createdAt ? (
                   <p className="text-xs text-gray-500">
