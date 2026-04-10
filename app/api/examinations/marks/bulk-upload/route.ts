@@ -4,12 +4,14 @@ import { assertBulkMarksEntryAllowed } from '@/lib/marks-bulk-upload-scope';
 import { getSchoolAdminSessionForSchool, pickAuditStaffIdForSchool } from '@/lib/bulk-marks-school-admin';
 import {
   assertIdentityColumnsMatchRoster,
+  bulkMarksSubjectNamesMatch,
   buildParsedRowFromMarks,
+  findBulkMarksHeaderRowIndex,
   isBulkMarksCellEmpty,
+  parseBulkMarksSheetMeta,
   parseMarksCell,
   readBulkMarksSheet,
   resolveStudentForBulkRow,
-  validateBulkMarksHeaderRow,
   type BulkMarksRosterStudent,
   type BulkMarksRowError,
 } from '@/lib/bulk-marks-excel';
@@ -157,22 +159,24 @@ export async function POST(request: NextRequest) {
     }
 
     const rows = sheet.rows;
-    if (rows.length < 2) {
-      return NextResponse.json({ error: 'The file has no data rows below the header.' }, { status: 400 });
-    }
-
-    const headerCheck = validateBulkMarksHeaderRow(rows[0] as unknown[]);
-    if (!headerCheck.ok) {
+    const headerIdx = findBulkMarksHeaderRowIndex(rows);
+    if (headerIdx < 0) {
       return NextResponse.json(
         {
-          error: headerCheck.error,
+          error:
+            'Could not find the template header row (Student ID, Admission No, …). Re-download the template and do not delete or move that header row.',
           code: 'INVALID_TEMPLATE_HEADERS',
         },
         { status: 400 }
       );
     }
 
-    if (rows.length - 1 > MAX_DATA_ROWS) {
+    if (rows.length <= headerIdx + 1) {
+      return NextResponse.json({ error: 'The file has no data rows below the header.' }, { status: 400 });
+    }
+
+    const dataRowCount = rows.length - headerIdx - 1;
+    if (dataRowCount > MAX_DATA_ROWS) {
       return NextResponse.json(
         { error: `Too many rows (max ${MAX_DATA_ROWS}). Split the file or contact admin.` },
         { status: 400 }
@@ -246,6 +250,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid max_marks in exam mapping.' }, { status: 400 });
     }
 
+    const { data: subjectRow } = await supabase
+      .from('subjects')
+      .select('name')
+      .eq('id', subject_id)
+      .eq('school_code', school_code)
+      .maybeSingle();
+
+    const expectedSubjectName = subjectRow?.name != null ? String(subjectRow.name).trim() : '';
+
+    const metaParse = parseBulkMarksSheetMeta(rows, headerIdx);
+    if (metaParse.kind === 'bad') {
+      return NextResponse.json(
+        { error: metaParse.error, code: 'INVALID_TEMPLATE_META' },
+        { status: 400 }
+      );
+    }
+    if (metaParse.kind === 'ok') {
+      if (!expectedSubjectName) {
+        return NextResponse.json({ error: 'Subject not found for this school.', code: 'SUBJECT_NOT_FOUND' }, { status: 400 });
+      }
+      if (!bulkMarksSubjectNamesMatch(metaParse.subjectName, expectedSubjectName)) {
+        return NextResponse.json(
+          {
+            error: `This Excel file is for "${metaParse.subjectName}" (max ${metaParse.maxMarks}) but you selected "${expectedSubjectName}" (max ${maxMarks}). Download the template for the subject you are uploading, or change the subject in Step 1.`,
+            code: 'EXCEL_SUBJECT_MISMATCH',
+          },
+          { status: 400 }
+        );
+      }
+      if (Math.abs(metaParse.maxMarks - maxMarks) > 1e-6) {
+        return NextResponse.json(
+          {
+            error: `Maximum marks in the file (${metaParse.maxMarks}) do not match the exam mapping for "${expectedSubjectName}" (${maxMarks}). Re-download the template.`,
+            code: 'EXCEL_MAX_MARKS_MISMATCH',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const { data: classRow, error: classErr } = await supabase
       .from('classes')
       .select('id, class, section')
@@ -312,10 +356,9 @@ export async function POST(request: NextRequest) {
     const seenInFile = new Set<string>();
     const toSave: MarkRecord[] = [];
 
-    const excelRowBase = 2;
-    for (let i = 1; i < rows.length; i++) {
+    for (let i = headerIdx + 1; i < rows.length; i++) {
       const row = rows[i] as unknown[];
-      const excel_row = excelRowBase + i - 1;
+      const excel_row = i + 1;
 
       if (!row || row.every((c) => String(c ?? '').trim() === '')) {
         continue;

@@ -5,10 +5,32 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, FileText, Eye, Download, Printer, Plus, Search, Loader2, Trash2, Send, CheckSquare, Square } from 'lucide-react';
+import { ArrowLeft, FileText, Eye, Download, Printer, Plus, Search, Loader2, Trash2, Send, CheckSquare, Square, FileArchive } from 'lucide-react';
 
 /** Section dropdown value for rows where `section` is blank in DB. */
 const SECTION_NONE = '__none__';
+
+/** Merge full HTML report card documents for one print / Save-as-PDF dialog. */
+function mergeReportCardHtmlForPrint(htmlParts: string[]): string {
+  if (htmlParts.length === 0) {
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body></body></html>';
+  }
+  const first = htmlParts[0];
+  const headMatch = first.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+  const headInner = headMatch ? headMatch[1] : '';
+  const extraCss = `<style>
+    .bulk-rc-page { page-break-after: always; break-after: page; }
+    .bulk-rc-page:last-child { page-break-after: auto; break-after: auto; }
+  </style>`;
+  const bodies = htmlParts.map((html) => {
+    const m = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    return m ? m[1].trim() : html.trim();
+  });
+  const bodyInner = bodies.map((b) => `<div class="bulk-rc-page">${b}</div>`).join('\n');
+  const openHtml = first.match(/<html[^>]*>/i);
+  const htmlOpen = openHtml ? openHtml[0] : '<html>';
+  return `<!DOCTYPE html>${htmlOpen}<head><meta charset="utf-8"/>${headInner}${extraCss}</head><body>${bodyInner}</body></html>`;
+}
 
 interface ReportCardItem {
   id: string;
@@ -42,6 +64,7 @@ export default function ReportCardDashboardPage({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState<'zip' | 'print' | null>(null);
 
   const fetchReportCards = async () => {
     setLoading(true);
@@ -188,6 +211,76 @@ export default function ReportCardDashboardPage({
     }
   };
 
+  const handleBulkDownloadZip = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDownloading('zip');
+    try {
+      const res = await fetch('/api/marks/report-card/bulk-download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          report_card_ids: Array.from(selectedIds),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || 'Download failed');
+      }
+      const countHdr = res.headers.get('X-Report-Card-Count');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `report_cards_${schoolCode}_${new Date().toISOString().split('T')[0]}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      const n = countHdr ? Number(countHdr) : selectedIds.size;
+      if (!Number.isNaN(n) && n < selectedIds.size) {
+        alert(`Downloaded ${n} of ${selectedIds.size} report cards in the ZIP. Some selections were missing or empty.`);
+      }
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setBulkDownloading(null);
+    }
+  };
+
+  const handleBulkPrintPdf = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDownloading('print');
+    try {
+      const ids = Array.from(selectedIds);
+      const htmlParts: string[] = [];
+      for (const id of ids) {
+        const res = await fetch(`/api/marks/report-card/${id}?_t=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error || `Failed to load report card`);
+        }
+        htmlParts.push(await res.text());
+      }
+      const merged = mergeReportCardHtmlForPrint(htmlParts);
+      const blob = new Blob([merged], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!w) {
+        URL.revokeObjectURL(url);
+        throw new Error('Pop-up blocked. Allow pop-ups to print or save all report cards as PDF.');
+      }
+      const cleanup = () => URL.revokeObjectURL(url);
+      w.onload = () => {
+        w.focus();
+        w.print();
+        setTimeout(cleanup, 60_000);
+      };
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setBulkDownloading(null);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
@@ -209,14 +302,39 @@ export default function ReportCardDashboardPage({
             <Send size={18} className="mr-2" />
             Send Report Card {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
           </Button>
+          <Button
+            variant="outline"
+            onClick={handleBulkDownloadZip}
+            disabled={selectedIds.size === 0 || bulkDownloading !== null}
+            className="border-green-600 text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:pointer-events-none"
+            title="Download selected report cards as HTML files in a ZIP"
+          >
+            {bulkDownloading === 'zip' ? (
+              <Loader2 size={18} className="mr-2 animate-spin" />
+            ) : (
+              <FileArchive size={18} className="mr-2" />
+            )}
+            Bulk HTML (ZIP) {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleBulkPrintPdf}
+            disabled={selectedIds.size === 0 || bulkDownloading !== null}
+            className="border-purple-600 text-purple-700 hover:bg-purple-50 disabled:opacity-50 disabled:pointer-events-none"
+            title="Open all selected in one window — use Print → Save as PDF"
+          >
+            {bulkDownloading === 'print' ? (
+              <Loader2 size={18} className="mr-2 animate-spin" />
+            ) : (
+              <Printer size={18} className="mr-2" />
+            )}
+            Bulk print / PDF {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+          </Button>
           <Button onClick={() => router.push(`/dashboard/${schoolCode}/report-card/generate`)} className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
             <Plus size={18} className="mr-2" />
             Generate Report Card
           </Button>
-          <Button variant="outline" onClick={() => router.push(`/dashboard/${schoolCode}/report-card`)} className="border-[#1e3a8a] text-[#1e3a8a]">
-            <ArrowLeft size={18} className="mr-2" />
-            Back
-          </Button>
+        
         </div>
       </motion.div>
 

@@ -106,15 +106,7 @@ export async function PUT(
     if (terms.length > 0 && mappings.length === 0) {
       return NextResponse.json({ error: 'Map at least one class-section before adding terms' }, { status: 400 });
     }
-    const totalWeightage = terms.reduce(
-      (acc, t) =>
-        acc +
-        (t.exams || []).reduce(
-          (sum, ex) => sum + (String(ex.exam_name || '').trim() ? Number(ex.weightage || 0) : 0),
-          0
-        ),
-      0
-    );
+  
     // Weightage is optional: allow sums other than 100.
 
     // Replace mappings

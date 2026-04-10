@@ -1,10 +1,8 @@
 'use client';
 
 import { use, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import {
   Award,
@@ -13,7 +11,6 @@ import {
   Download,
   Printer,
   Share2,
-  ArrowLeft,
   BookOpen,
   Calendar,
 } from 'lucide-react';
@@ -39,7 +36,6 @@ export default function ManageCertificatesPage({
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
-  const router = useRouter();
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

@@ -98,6 +98,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const maxMarksNum = Number((mapping as { max_marks?: unknown }).max_marks) || 0;
+
+    const { data: subjectRow } = await supabase
+      .from('subjects')
+      .select('name')
+      .eq('id', subject_id)
+      .eq('school_code', school_code)
+      .maybeSingle();
+
+    const subjectDisplayName = subjectRow?.name
+      ? String(subjectRow.name)
+      : `Subject (${subject_id.slice(0, 8)})`;
+
     const { data: classRow, error: classErr } = await supabase
       .from('classes')
       .select('id, class, section')
@@ -167,10 +180,18 @@ export async function GET(request: NextRequest) {
       ];
     });
 
-    const buf = buildBulkMarksTemplateBuffer(rows);
+    const buf = buildBulkMarksTemplateBuffer(rows, {
+      subjectName: subjectDisplayName,
+      maxMarks: maxMarksNum,
+    });
     const safeName = String((exam as { exam_name?: string }).exam_name || 'exam')
       .replace(/[^\w\- ]+/g, '')
       .slice(0, 60)
+      .trim()
+      .replace(/\s+/g, '_');
+    const safeSubject = subjectDisplayName
+      .replace(/[^\w\- ]+/g, '')
+      .slice(0, 48)
       .trim()
       .replace(/\s+/g, '_');
 
@@ -178,7 +199,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="marks_${safeName}_${subject_id.slice(0, 8)}.xlsx"`,
+        'Content-Disposition': `attachment; filename="marks_${safeName}_${safeSubject || 'subject'}.xlsx"`,
         'Cache-Control': 'no-store',
       },
     });

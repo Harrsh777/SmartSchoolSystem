@@ -10,7 +10,6 @@ import {
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MIN_PERIOD = 1;
 const MAX_PERIOD = 20;
-const PERIODS = Array.from({ length: MAX_PERIOD - MIN_PERIOD + 1 }, (_, i) => i + MIN_PERIOD);
 
 // Get timetable slots
 export async function GET(request: NextRequest) {

@@ -1,7 +1,6 @@
 'use client';
 
 import { use, useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -226,7 +225,7 @@ export default function PromotionEnginePage({ params }: { params: Promise<{ scho
     }
   };
 
-  const base = schoolCode ? `/dashboard/${schoolCode}/academic-year-management` : '';
+
   const defaultToYear = newAcademicYear || years[0]?.year_name || '';
 
   return (

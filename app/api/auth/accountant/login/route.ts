@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Create server-side session (stored in public.sessions)
-    const { sessionToken, expiresAt } = await createSession({
+    const { sessionToken} = await createSession({
       role: 'accountant',
       schoolCode: normalizedSchoolCode,
       userId: staffData.id,

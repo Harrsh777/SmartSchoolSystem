@@ -267,6 +267,7 @@ export default function ReportCardTemplatesPage({
         show_result_status: on,
         show_class_in_summary: on,
         show_overall_grade: on,
+        show_result_date: on,
       };
       return next;
     });
@@ -397,8 +398,30 @@ export default function ReportCardTemplatesPage({
                 </div>
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">School details color (email, affiliation, phone, address, subtitle)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="color"
+                    value={
+                      (header.school_details_color as string)?.trim() ||
+                      (header.school_name_color as string) ||
+                      '#ffffff'
+                    }
+                    onChange={(e) => updateConfig(['header', 'school_details_color'], e.target.value)}
+                    className="w-12 h-10 border rounded-lg cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={(header.school_details_color as string) ?? ''}
+                    onChange={(e) => updateConfig(['header', 'school_details_color'], e.target.value)}
+                    className="flex-1 px-3 py-2 border rounded-lg"
+                    placeholder="Leave blank to match school name color"
+                  />
+                </div>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">School Name Font Size</label>
-                <input type="number" min={12} max={28} value={Number(header.font_size) || 18} onChange={(e) => updateConfig(['header', 'font_size'], parseInt(e.target.value) || 18)} className="w-full px-3 py-2 border rounded-lg" />
+                <input type="number" min={14} max={36} value={Number(header.font_size) || 22} onChange={(e) => updateConfig(['header', 'font_size'], parseInt(e.target.value) || 22)} className="w-full px-3 py-2 border rounded-lg" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Sub-title</label>
@@ -407,6 +430,35 @@ export default function ReportCardTemplatesPage({
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="showRightLogo" checked={logos.show_right_logo !== false} onChange={(e) => updateConfig(['logos', 'show_right_logo'], e.target.checked)} />
                 <label htmlFor="showRightLogo" className="text-sm font-medium">Show Right Logo</label>
+              </div>
+              <div className="md:col-span-2 lg:col-span-3 pt-2 border-t border-gray-100 mt-1">
+                <p className="text-sm font-medium text-gray-700 mb-2">Header contact line (first line under school name)</p>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={header.show_email !== false}
+                      onChange={(e) => updateConfig(['header', 'show_email'], e.target.checked)}
+                    />
+                    <span className="text-sm">Show school email</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={header.show_affiliation !== false}
+                      onChange={(e) => updateConfig(['header', 'show_affiliation'], e.target.checked)}
+                    />
+                    <span className="text-sm">Show affiliation number</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={header.show_contact !== false}
+                      onChange={(e) => updateConfig(['header', 'show_contact'], e.target.checked)}
+                    />
+                    <span className="text-sm">Show phone number</span>
+                  </label>
+                </div>
               </div>
             </div>
           </section>
@@ -493,6 +545,7 @@ export default function ReportCardTemplatesPage({
                   ['show_rank', 'Show rank in summary'],
                   ['show_promoted_to', 'Show promoted to (footer)'],
                   ['show_result_status', 'Show pass/fail (footer)'],
+                  ['show_result_date', 'Show result date (footer)'],
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2">
@@ -641,6 +694,16 @@ export default function ReportCardTemplatesPage({
                 <label className="block text-sm font-medium text-gray-700 mb-1">Promoted To (Next Class)</label>
                 <input type="text" value={(content.promoted_to as string) ?? ''} onChange={(e) => updateConfig(['content', 'promoted_to'], e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Class 11" />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Result date (printed as “Result date: …” in footer)</label>
+                <input
+                  type="text"
+                  value={(content.result_date as string) ?? ''}
+                  onChange={(e) => updateConfig(['content', 'result_date'], e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="e.g. 15 Apr 2026 (leave blank to use exam date or today)"
+                />
+              </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Default remarks (pre-printed, optional)</label>
                 <textarea 
@@ -681,7 +744,7 @@ export default function ReportCardTemplatesPage({
                 <input 
                   type="number" 
                   min={100} 
-                  max={600} 
+                  max={900} 
                   value={Number((config.watermark as Record<string, unknown>)?.size) || 500} 
                   onChange={(e) => updateConfig(['watermark', 'size'], parseInt(e.target.value) || 500)} 
                   className="w-full px-3 py-2 border rounded-lg" 
@@ -692,13 +755,13 @@ export default function ReportCardTemplatesPage({
                 <input 
                   type="range" 
                   min="0.02" 
-                  max="0.2" 
+                  max="0.5" 
                   step="0.01"
-                  value={String(Number((config.watermark as Record<string, unknown>)?.opacity) || 0.08)} 
+                  value={String(Number((config.watermark as Record<string, unknown>)?.opacity) || 0.14)} 
                   onChange={(e) => updateConfig(['watermark', 'opacity'], parseFloat(e.target.value))} 
                   className="w-full" 
                 />
-                <span className="text-xs text-gray-500">{Math.round((Number((config.watermark as Record<string, unknown>)?.opacity) || 0.08) * 100)}%</span>
+                <span className="text-xs text-gray-500">{Math.round((Number((config.watermark as Record<string, unknown>)?.opacity) || 0.14) * 100)}%</span>
               </div>
             </div>
           </section>

@@ -45,7 +45,6 @@ export async function GET(
       .eq('staff_id', id)
       .limit(1);
 
-    const hasAssignedSubjects = assignedSubjects && assignedSubjects.length > 0;
 
     // Check if staff has Vice Principal or Principal role
     const roleName = (staffData.role || '').toLowerCase();

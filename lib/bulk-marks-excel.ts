@@ -48,7 +48,7 @@ export function validateBulkMarksHeaderRow(row: unknown[]): { ok: true } | { ok:
   if (!row || row.length !== BULK_MARKS_TEMPLATE_HEADERS.length) {
     return {
       ok: false,
-      error: `Template must have exactly ${BULK_MARKS_TEMPLATE_HEADERS.length} columns in row 1: ${BULK_MARKS_TEMPLATE_HEADERS.join(' | ')}.`,
+      error: `Template must have exactly ${BULK_MARKS_TEMPLATE_HEADERS.length} columns in the header row: ${BULK_MARKS_TEMPLATE_HEADERS.join(' | ')}.`,
     };
   }
   for (let i = 0; i < BULK_MARKS_TEMPLATE_HEADERS.length; i++) {
@@ -60,6 +60,109 @@ export function validateBulkMarksHeaderRow(row: unknown[]): { ok: true } | { ok:
     }
   }
   return { ok: true };
+}
+
+/** Scans from the top of the sheet for the fixed header row (supports optional metadata rows above). */
+export function findBulkMarksHeaderRowIndex(rows: unknown[][]): number {
+  const maxScan = Math.min(rows.length, 80);
+  for (let i = 0; i < maxScan; i++) {
+    const check = validateBulkMarksHeaderRow(rows[i] as unknown[]);
+    if (check.ok) return i;
+  }
+  return -1;
+}
+
+export type BulkMarksSheetMetaParse =
+  | { kind: 'none' }
+  | { kind: 'ok'; subjectName: string; maxMarks: number }
+  | { kind: 'bad'; error: string };
+
+function isBulkMarksRowEmpty(row: unknown[] | undefined): boolean {
+  if (!row?.length) return true;
+  return row.every((c) => isBulkMarksCellEmpty(c));
+}
+
+/**
+ * Reads Subject / Maximum marks rows placed directly above the header (portal template).
+ * `none` = legacy file with no metadata (header is the first row of the sheet).
+ * `bad` = metadata area looks wrong (do not process rows).
+ */
+export function parseBulkMarksSheetMeta(rows: unknown[][], headerIdx: number): BulkMarksSheetMetaParse {
+  if (headerIdx <= 0) {
+    return { kind: 'none' };
+  }
+
+  let i = headerIdx - 1;
+  while (i >= 0 && isBulkMarksRowEmpty(rows[i])) i--;
+
+  if (i < 0) {
+    if (headerIdx >= 3) {
+      return {
+        kind: 'bad',
+        error:
+          'Missing Subject and Maximum marks rows above the student table. Re-download the template from the portal and do not delete those rows.',
+      };
+    }
+    return { kind: 'none' };
+  }
+
+  const maxRow = rows[i] as unknown[];
+  const maxLabel = normHeader(maxRow[0]);
+  if (maxLabel !== 'maximum marks') {
+    if (headerIdx >= 3) {
+      return {
+        kind: 'bad',
+        error:
+          'The row directly above the student table must be "Maximum marks" with a number. Re-download the template — do not remove or change the Subject / Maximum marks rows.',
+      };
+    }
+    return { kind: 'none' };
+  }
+
+  const maxMarks = Number(String(maxRow[1] ?? '').trim().replace(/,/g, ''));
+  if (!Number.isFinite(maxMarks) || maxMarks <= 0) {
+    return {
+      kind: 'bad',
+      error: 'Invalid "Maximum marks" value in the spreadsheet. Re-download the template.',
+    };
+  }
+
+  const subjIdx = i - 1;
+  if (subjIdx < 0) {
+    return {
+      kind: 'bad',
+      error: 'Missing Subject row above Maximum marks. Re-download the template.',
+    };
+  }
+
+  const subjRow = rows[subjIdx] as unknown[];
+  if (normHeader(subjRow[0]) !== 'subject') {
+    return {
+      kind: 'bad',
+      error: 'Missing Subject row above Maximum marks. Re-download the template.',
+    };
+  }
+
+  const subjectName = String(subjRow[1] ?? '').trim();
+  if (!subjectName) {
+    return {
+      kind: 'bad',
+      error: 'Subject name is empty in the spreadsheet. Re-download the template.',
+    };
+  }
+
+  return { kind: 'ok', subjectName, maxMarks };
+}
+
+/** Case- and whitespace-insensitive subject title compare (Latin-friendly; trims Unicode). */
+export function bulkMarksSubjectNamesMatch(a: string, b: string): boolean {
+  const norm = (s: string) =>
+    s
+      .trim()
+      .replace(/\s+/g, ' ')
+      .normalize('NFKC')
+      .toLowerCase();
+  return norm(a) === norm(b);
 }
 
 export function isBulkMarksCellEmpty(raw: unknown): boolean {
@@ -201,13 +304,28 @@ export function readBulkMarksSheet(buffer: Buffer): { ok: true; rows: unknown[][
   return { ok: true, rows };
 }
 
-export function buildBulkMarksTemplateBuffer(rows: string[][]): Buffer {
-  const aoa: string[][] = [[...BULK_MARKS_TEMPLATE_HEADERS], ...rows];
+export type BulkMarksTemplateMeta = {
+  subjectName: string;
+  maxMarks: number;
+};
+
+export function buildBulkMarksTemplateBuffer(rows: string[][], meta?: BulkMarksTemplateMeta): Buffer {
+  const headerRow = [...BULK_MARKS_TEMPLATE_HEADERS];
+  const top: string[][] = meta
+    ? [
+        ['Subject', meta.subjectName],
+        ['Maximum marks', String(meta.maxMarks)],
+        [],
+        headerRow,
+      ]
+    : [headerRow];
+  const aoa: string[][] = [...top, ...rows];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Marks');
   const second = XLSX.utils.aoa_to_sheet([
     ['Instructions'],
+    ['The Marks sheet lists Subject and Maximum marks above the table — leave those rows as-is.'],
     ['Only edit the Marks column. Use numbers, or AB / NA / ML / EXEMPT.'],
     ['Student ID and Admission No must match enrolled students.'],
     ['Re-uploading the same file updates marks (no duplicate rows).'],

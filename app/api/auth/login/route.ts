@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     const { password: _, ...schoolData } = school;
 
     // Create server-side session (stored in public.sessions)
-    const { sessionToken, expiresAt } = await createSession({
+    const { sessionToken} = await createSession({
       role: 'school',
       schoolCode: normalizedSchoolCode,
       userId: (school as { id?: string }).id ?? null,

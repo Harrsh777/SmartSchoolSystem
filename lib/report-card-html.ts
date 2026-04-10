@@ -126,7 +126,16 @@ export interface ReportCardData {
 
 export interface ReportCardTemplateConfig {
   logos?: { left_size?: number; right_size?: number; show_right_logo?: boolean; left_shape?: string; right_shape?: string };
-  header?: { school_name_color?: string; font_size?: number; sub_title?: string; show_affiliation?: boolean; show_email?: boolean; show_contact?: boolean };
+  header?: {
+    school_name_color?: string;
+    /** Contact lines under school name (email / affiliation / phone). Defaults to school_name_color if unset. */
+    school_details_color?: string;
+    font_size?: number;
+    sub_title?: string;
+    show_affiliation?: boolean;
+    show_email?: boolean;
+    show_contact?: boolean;
+  };
   labels?: Record<string, string>;
   branding?: { primary_color?: string; accent_color?: string; font_family?: string };
   watermark?: { enabled?: boolean; size?: number; opacity?: number };
@@ -166,6 +175,8 @@ export interface ReportCardTemplateConfig {
     show_result_status?: boolean;
     show_overall_grade?: boolean;
     show_class_in_summary?: boolean;
+    /** When false, omits the “Result date:” line in the footer. */
+    show_result_date?: boolean;
   };
   student_profile_fields?: string[];
   layout?: { header_layout?: string; orientation?: string; table_density?: string };
@@ -182,8 +193,12 @@ export function getDefaultReportCardTemplateConfig(): ReportCardTemplateConfig {
     logos: { left_size: 100, right_size: 100, show_right_logo: true },
     header: {
       school_name_color: '#8B0000',
-      font_size: 18,
+      school_details_color: '#ffffff',
+      font_size: 22,
       sub_title: 'SENIOR SECONDARY SCHOOL',
+      show_email: true,
+      show_affiliation: true,
+      show_contact: true,
     },
     labels: {
       father_name: "Father's Name",
@@ -228,9 +243,10 @@ export function getDefaultReportCardTemplateConfig(): ReportCardTemplateConfig {
       show_result_status: true,
       show_class_in_summary: true,
       show_overall_grade: false,
+      show_result_date: true,
     },
     signatures: { show_class_teacher: true, show_principal: true },
-    watermark: { enabled: true, size: 500, opacity: 0.08 },
+    watermark: { enabled: true, size: 500, opacity: 0.14 },
     content: {
       school_email: '',
       school_phone: '',
@@ -241,6 +257,8 @@ export function getDefaultReportCardTemplateConfig(): ReportCardTemplateConfig {
       promoted_to: '',
       remarks: '',
       instructions: '',
+      /** Printed after “Result date:” when set; otherwise exam/today fallback. */
+      result_date: '',
     },
   } as unknown as ReportCardTemplateConfig;
 }
@@ -275,7 +293,7 @@ export function generateReportCardHTML(data: ReportCardData, templateConfig?: Re
   const watermark = (cfg as Record<string, unknown>).watermark as Record<string, unknown> || {};
   const showWatermark = watermark.enabled !== false && Boolean(leftLogo);
   const watermarkSize = Math.min(Math.max((watermark.size as number) || 500, 100), 900);
-  const watermarkOpacity = Math.min(Math.max((watermark.opacity as number) ?? 0.08, 0.02), 0.35);
+  const watermarkOpacity = Math.min(Math.max((watermark.opacity as number) ?? 0.12, 0.02), 0.5);
 
   // Section titles (customizable)
   const sectionStudentProfile = (labels.section_student_profile as string) ?? 'Student Profile';
@@ -1036,9 +1054,14 @@ function generateLandscapeReportCardHTML(
   const rightLogo = showRightLogo ? (school.right_logo_url || school.logo_url || '') : '';
 
   const schoolNameColor = (header.school_name_color as string) ?? '#8B0000';
-  const schoolNameFontSize = (header.font_size as number) ?? 18;
+  const schoolDetailsColor =
+    (header.school_details_color as string)?.trim() || schoolNameColor;
+  const schoolNameFontSize = (header.font_size as number) ?? 22;
   const subTitle = (header.sub_title as string) ?? (data.school.sub_title || 'SENIOR SECONDARY SCHOOL');
   const reportTitle = (labels.report_title as string) ?? 'REPORT CARD';
+  const showHeaderEmail = header.show_email !== false;
+  const showHeaderAffiliation = header.show_affiliation !== false;
+  const showHeaderPhone = header.show_contact !== false;
 
   const primaryColor = (branding.primary_color as string) ?? '#1e3a8a';
   const accentColor = (branding.accent_color as string) ?? '#15803d';
@@ -1072,6 +1095,11 @@ function generateLandscapeReportCardHTML(
   const schoolPhone = pickText(content.school_phone, data.school.school_phone);
   const schoolAddress = pickText(content.school_address, data.school.school_address);
   const affiliation = pickText(content.affiliation, data.school.affiliation_number, data.school.affiliation);
+  const headerMetaParts: string[] = [];
+  if (showHeaderEmail && schoolEmail) headerMetaParts.push(`Email: ${schoolEmail}`);
+  if (showHeaderAffiliation && affiliation) headerMetaParts.push(`Affiliation No: ${affiliation}`);
+  if (showHeaderPhone && schoolPhone) headerMetaParts.push(`Phone: ${schoolPhone}`);
+  const headerMetaLine = headerMetaParts.join(' | ');
   const academicYear = (content.academic_year as string) ?? data.exam.academic_year ?? 'N/A';
   const examName = (content.exam_name as string) ?? data.exam.exam_name ?? 'Examination';
   const promotedTo = String((content.promoted_to as string) ?? data.promoted_to ?? '').trim();
@@ -1096,6 +1124,7 @@ function generateLandscapeReportCardHTML(
   const showPromotedFooter = (footerFields as Record<string, boolean>).show_promoted_to !== false;
   const showResultStatusFooter =
     (footerFields as Record<string, boolean>).show_result_status !== false;
+  const showResultDateFooter = (footerFields as Record<string, boolean>).show_result_date !== false;
 
   const showSubjectGrade = marksTable.show_grade !== false;
 
@@ -1109,7 +1138,7 @@ function generateLandscapeReportCardHTML(
   const watermark = (cfg.watermark as Record<string, unknown>) || {};
   const showWatermark = watermark.enabled !== false;
   const watermarkSize = Math.min(Math.max((watermark.size as number) || 500, 100), 900);
-  const watermarkOpacity = Math.min(Math.max((watermark.opacity as number) ?? 0.08, 0.02), 0.35);
+  const watermarkOpacity = Math.min(Math.max((watermark.opacity as number) ?? 0.12, 0.02), 0.5);
 
   const attendanceLabel = (labels.attendance as string) ?? 'Attendance';
   const fatherLabel = (labels.father_name as string) ?? "Father's Name";
@@ -1255,7 +1284,11 @@ function generateLandscapeReportCardHTML(
   const overallPct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
   const overallGrade = data.summary?.grade ?? '-';
   const rank = data.rank ?? '—';
-  const resultDate = data.exam?.result_date || new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const hardcodedResultDate = String(content.result_date ?? '').trim();
+  const resultDate =
+    hardcodedResultDate ||
+    data.exam?.result_date ||
+    new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   const remarkHtml = preprintedRemarks
     ? preprintedRemarks.replace(/\n/g, '<br/>')
     : '<span style="color:#888;font-style:italic;font-size:9px;"></span>';
@@ -1331,7 +1364,7 @@ function generateLandscapeReportCardHTML(
   const footerMetaLine = [
     showResultStatusFooter ? `<strong>Result:</strong> ${overallPct >= 33 ? 'PASS' : 'FAIL'}` : '',
     showPromotedFooter && promotedTo ? `<strong>Promoted To:</strong> ${promotedTo}` : '',
-    `<strong>Result date:</strong> ${resultDate}`,
+    showResultDateFooter ? `<strong>Result date:</strong> ${resultDate}` : '',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -1447,7 +1480,7 @@ function generateLandscapeReportCardHTML(
       padding: 0 12px;
     }
     .strip-school {
-      font-size: ${Math.min(26, Math.max(16, schoolNameFontSize))}px;
+      font-size: ${Math.min(36, Math.max(17, schoolNameFontSize))}px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.04em;
@@ -1458,12 +1491,12 @@ function generateLandscapeReportCardHTML(
       font-size: 10px;
       line-height: 1.35;
       margin-top: 4px;
-      color: ${schoolNameColor};
+      color: ${schoolDetailsColor};
     }
     .strip-sub {
       font-size: 10px;
       margin-top: 2px;
-      color: ${schoolNameColor};
+      color: ${schoolDetailsColor};
     }
     .annual-line {
       text-align: center;
@@ -1605,10 +1638,10 @@ function generateLandscapeReportCardHTML(
     .foot-sigs .foot-prin { justify-self: center; }
     .foot-sigs .sig-line-f {
       border-bottom: 1px solid #000;
-      min-height: 36px;
-      width: 200px;
+      min-height: 56px;
+      width: 240px;
       max-width: 100%;
-      margin: 0 0 4px 0;
+      margin: 0 0 6px 0;
     }
     .inst-box {
       margin-top: 10px;
@@ -1630,8 +1663,8 @@ function generateLandscapeReportCardHTML(
         </div>
         <div class="strip-center">
           <div class="strip-school">${(data.school.school_name || '').toString() || 'DEMO PUBLIC SCHOOL'}</div>
-          <div class="strip-line">Email: ${schoolEmail} | Affiliation No: ${affiliation} | Phone: ${schoolPhone}</div>
-          <div class="strip-line">${schoolAddress}</div>
+          ${headerMetaLine ? `<div class="strip-line">${headerMetaLine}</div>` : ''}
+          ${schoolAddress ? `<div class="strip-line">${schoolAddress}</div>` : ''}
           <div class="strip-sub">${subTitle} · ${reportTitle}</div>
         </div>
         ${showRightLogo

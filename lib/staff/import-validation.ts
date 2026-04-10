@@ -99,7 +99,7 @@ export function validateStaffImportCore(
   const role = String(data.role ?? '').trim();
   if (!role) setErr(fieldErrors, errors, 'role', 'Role is required');
 
-  const department = String(data.department ?? '').trim();
+ 
   // Department is optional — many spreadsheets omit it; it can be added later in the directory.
 
   const designation = String(data.designation ?? '').trim();

@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
     const { password_hash, ...teacherProfile } = teacher as TeacherWithPassword;
 
     // Create server-side session (stored in DB; token in HttpOnly cookie)
-    const { sessionToken, expiresAt } = await createSession({
+    const { sessionToken} = await createSession({
       role: 'teacher',
       schoolCode: normalizedSchoolCode,
       userId: (teacher as { id: string }).id,
