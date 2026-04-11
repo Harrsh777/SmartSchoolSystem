@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { Calendar, Clock, BookOpen, Users, FileText, Search, Trash2 } from 'lucide-react';
+import { Calendar, Clock, BookOpen, Users, FileText, Search, Trash2, Pencil } from 'lucide-react';
 
 interface Exam {
   id: string;
@@ -521,17 +521,32 @@ export default function ExaminationDashboardPage({
                     </div>
 
                     <div className="pt-4 border-t border-gray-200">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1"
+                          className="flex-1 min-w-[7rem]"
                           onClick={(e) => {
                             e.stopPropagation();
                             router.push(`/dashboard/${schoolCode}/examinations/${exam.id}`);
                           }}
                         >
                           View Details
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 min-w-[7rem] border-slate-200 text-slate-800 hover:bg-slate-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(
+                              `/dashboard/${schoolCode}/examinations/create?edit=${encodeURIComponent(exam.id)}`
+                            );
+                          }}
+                          title="Edit examination (all steps)"
+                        >
+                          <Pencil size={14} className="mr-1 inline" aria-hidden />
+                          Edit
                         </Button>
                         <Button
                           variant="outline"

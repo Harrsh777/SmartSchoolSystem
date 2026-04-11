@@ -1,7 +1,7 @@
 'use client';
 
-import { use, useState, useEffect, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, use, useState, useEffect, useMemo, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -326,13 +326,31 @@ function sortStructureClassNames(names: string[]): string[] {
   );
 }
 
-export default function CreateExaminationPage({
+function sliceISODate(d: string | null | undefined): string {
+  if (!d) return '';
+  return String(d).slice(0, 10);
+}
+
+function normalizeScheduleTime(t: string | null | undefined): string {
+  if (!t) return '';
+  const s = String(t);
+  const m = s.match(/^(\d{2}:\d{2})/);
+  return m ? m[1] : s.slice(0, 5);
+}
+
+function CreateExaminationPageContent({
   params,
 }: {
   params: Promise<{ school: string }>;
 }) {
   const { school: schoolCode } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editExamId = searchParams.get('edit')?.trim() || '';
+  const editFetchStartedRef = useRef(false);
+  const [editHydrated, setEditHydrated] = useState(!editExamId);
+  const [pendingEditExam, setPendingEditExam] = useState<Record<string, unknown> | null>(null);
+
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -368,6 +386,176 @@ export default function CreateExaminationPage({
   const [bulkScheduleStart, setBulkScheduleStart] = useState('');
   const [bulkScheduleEnd, setBulkScheduleEnd] = useState('');
   const uniqueTerms = useMemo(() => dedupeTerms(terms), [terms]);
+
+  useEffect(() => {
+    if (!editExamId) {
+      setEditHydrated(true);
+      setPendingEditExam(null);
+      editFetchStartedRef.current = false;
+      return;
+    }
+    setEditHydrated(false);
+    setPendingEditExam(null);
+    editFetchStartedRef.current = false;
+  }, [editExamId]);
+
+  useEffect(() => {
+    if (!editExamId || editHydrated) return;
+    if (classes.length === 0 || structures.length === 0) return;
+    if (editFetchStartedRef.current) return;
+    editFetchStartedRef.current = true;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/examinations/v2/list?school_code=${encodeURIComponent(schoolCode)}`
+        );
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !Array.isArray(json.data)) {
+          alert('Could not load examination for editing');
+          router.replace(`/dashboard/${schoolCode}/examinations/create`);
+          setEditHydrated(true);
+          return;
+        }
+        const exam = json.data.find((e: { id: string }) => String(e.id) === editExamId) as
+          | Record<string, unknown>
+          | undefined;
+        if (!exam) {
+          alert('Examination not found');
+          router.replace(`/dashboard/${schoolCode}/examinations/create`);
+          setEditHydrated(true);
+          return;
+        }
+        const term = exam.term as { structure_id?: string } | null | undefined;
+        const sid = term?.structure_id ? String(term.structure_id) : '';
+        if (!sid) {
+          alert('This exam has no term structure linked.');
+          router.replace(`/dashboard/${schoolCode}/examinations/dashboard`);
+          setEditHydrated(true);
+          return;
+        }
+        setPendingEditExam(exam);
+        setSelectedStructureId(sid);
+      } catch {
+        if (!cancelled) {
+          alert('Failed to load examination');
+          router.replace(`/dashboard/${schoolCode}/examinations/create`);
+          setEditHydrated(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editExamId, editHydrated, classes.length, structures.length, schoolCode, router]);
+
+  useEffect(() => {
+    if (!pendingEditExam || !selectedStructureId) return;
+    const exam = pendingEditExam as {
+      term_id?: string;
+      exam_term_exam_id?: string;
+      exam_name?: string;
+      academic_year?: string;
+      start_date?: string;
+      end_date?: string;
+      description?: string | null;
+      class_mappings?: Array<{ class_id: string; class?: { class?: string; section?: string } }>;
+      subject_mappings?: Array<{
+        class_id?: string | null;
+        subject_id: string;
+        max_marks?: number;
+        pass_marks?: number;
+        subject?: { name?: string };
+      }>;
+      exam_schedules?: Array<{ exam_date?: string; start_time?: string; end_time?: string }>;
+    };
+    const tid = String(exam.term_id || '');
+    if (!tid || !uniqueTerms.some((t) => String(t.id) === tid)) {
+      if (terms.length === 0) return;
+      setPendingEditExam(null);
+      alert('Term for this exam is not in the selected structure.');
+      setEditHydrated(true);
+      return;
+    }
+
+    setSelectedTermId(tid);
+    setSelectedTemplateExamId(String(exam.exam_term_exam_id || ''));
+
+    setExamMetadata({
+      exam_name: String(exam.exam_name || '').trim(),
+      academic_year: String(exam.academic_year || '').trim(),
+      start_date: sliceISODate(exam.start_date),
+      end_date: sliceISODate(exam.end_date),
+      description: exam.description ? String(exam.description) : '',
+    });
+
+    const mappings = exam.class_mappings || [];
+    const byGrade = new Map<string, string[]>();
+    for (const m of mappings) {
+      const grade = String(m.class?.class || '');
+      const sectionId = String(m.class_id);
+      if (!byGrade.has(grade)) byGrade.set(grade, []);
+      const arr = byGrade.get(grade)!;
+      if (!arr.includes(sectionId)) arr.push(sectionId);
+    }
+    const selectedClassesNext: SelectedClass[] = Array.from(byGrade.entries()).map(([className, sections]) => ({
+      classId: sections[0],
+      className,
+      sections,
+    }));
+    setSelectedClasses(selectedClassesNext);
+
+    const rows: ClassSubject[] = [];
+    for (const sc of selectedClassesNext) {
+      for (const sectionId of sc.sections) {
+        const section = classes.find((c) => String(c.id) === String(sectionId));
+        const sms = (exam.subject_mappings || []).filter((sm) => String(sm.class_id) === String(sectionId));
+        rows.push({
+          classId: sc.classId,
+          className: sc.className,
+          sectionId,
+          sectionName: section?.section || '',
+          subjects: sms.map((sm) => ({
+            subject_id: String(sm.subject_id),
+            subject_name: String(sm.subject?.name || ''),
+            max_marks: Number(sm.max_marks ?? 100),
+            pass_marks: Number(sm.pass_marks ?? 33),
+            pass_percent: null,
+          })),
+        });
+      }
+    }
+    setClassSubjects(rows);
+
+    const schedSorted = [...(exam.exam_schedules || [])].sort(
+      (a, b) =>
+        String(a.exam_date || '').localeCompare(String(b.exam_date || '')) ||
+        String(a.start_time || '').localeCompare(String(b.start_time || ''))
+    );
+    const scheduleRows: ExamSchedule[] = [];
+    let si = 0;
+    for (const cs of rows) {
+      for (const sub of cs.subjects) {
+        const sch = schedSorted.length ? schedSorted[si % schedSorted.length] : null;
+        scheduleRows.push({
+          classId: cs.classId,
+          sectionId: cs.sectionId,
+          subjectId: sub.subject_id,
+          exam_date: sch?.exam_date ? sliceISODate(String(sch.exam_date)) : '',
+          start_time: normalizeScheduleTime(sch?.start_time),
+          end_time: normalizeScheduleTime(sch?.end_time),
+        });
+        si++;
+      }
+    }
+    setExamSchedules(scheduleRows);
+    setCurrentStep(1);
+
+    setPendingEditExam(null);
+    setEditHydrated(true);
+  }, [pendingEditExam, selectedStructureId, uniqueTerms, terms.length, classes]);
 
   const mappedSectionIdSet = useMemo(
     () => new Set(structureMappings.map((m) => String(m.class_id))),
@@ -468,12 +656,17 @@ export default function CreateExaminationPage({
         className: g.className,
         sections: g.sections,
       }));
-      setSelectedClasses(autoSelected);
+      if (!editExamId) {
+        setSelectedClasses(autoSelected);
+      }
     };
     loadStructureDetail();
-  }, [selectedStructureId, schoolCode, selectedTermId, classes]);
+  }, [selectedStructureId, schoolCode, selectedTermId, classes, editExamId]);
 
   useEffect(() => {
+    if (editExamId) {
+      return;
+    }
     if (!selectedTermId) {
       setSelectedTemplateExamId('');
       setExamMetadata((prev) => ({ ...prev, academic_year: '', exam_name: '' }));
@@ -493,7 +686,7 @@ export default function CreateExaminationPage({
       academic_year: String(term.academic_year || '').trim(),
       exam_name: String(first?.exam_name || '').trim(),
     }));
-  }, [selectedTermId, uniqueTerms]);
+  }, [selectedTermId, uniqueTerms, editExamId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -502,9 +695,13 @@ export default function CreateExaminationPage({
       return;
     }
     (async () => {
-      const res = await fetch(
-        `/api/examinations/v2/existing-sections?school_code=${encodeURIComponent(schoolCode)}&term_id=${encodeURIComponent(selectedTermId)}&exam_term_exam_id=${encodeURIComponent(selectedTemplateExamId)}`
-      );
+      const qs = new URLSearchParams({
+        school_code: schoolCode,
+        term_id: selectedTermId,
+        exam_term_exam_id: selectedTemplateExamId,
+      });
+      if (editExamId) qs.set('exclude_exam_id', editExamId);
+      const res = await fetch(`/api/examinations/v2/existing-sections?${qs.toString()}`);
       const json = await res.json();
       if (cancelled) return;
       if (res.ok && json.data?.section_ids && Array.isArray(json.data.section_ids)) {
@@ -516,7 +713,7 @@ export default function CreateExaminationPage({
     return () => {
       cancelled = true;
     };
-  }, [schoolCode, selectedTermId, selectedTemplateExamId]);
+  }, [schoolCode, selectedTermId, selectedTemplateExamId, editExamId]);
 
   useEffect(() => {
     if (existingSectionIdList.length === 0) return;
@@ -1042,8 +1239,17 @@ export default function CreateExaminationPage({
 
     // Term is required for this flow.
     if (!selectedTermId) {
-      setErrors({ schedule: 'Please select a term before creating examination' });
+      setErrors({
+        schedule: `Please select a term before ${editExamId ? 'updating' : 'creating'} examination`,
+      });
       return;
+    }
+
+    if (editExamId) {
+      const ok = confirm(
+        'Update this examination? This will replace class and subject mappings, schedules, and remove all entered marks for this exam. Continue?'
+      );
+      if (!ok) return;
     }
 
     try {
@@ -1062,33 +1268,37 @@ export default function CreateExaminationPage({
         }
       }
 
-      // Create exam via API
-      const response = await fetch('/api/examinations/v2/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          school_code: schoolCode,
-          exam_name: examMetadata.exam_name,
-          academic_year: examMetadata.academic_year,
-          start_date: examMetadata.start_date,
-          end_date: examMetadata.end_date,
-          description: examMetadata.description || null,
-          term_id: selectedTermId || null,
-          exam_term_exam_id: selectedTemplateExamId || null,
-          class_mappings: selectedClasses,
-          class_subjects: classSubjects.map((cs) => ({
-            ...cs,
-            subjects: cs.subjects.map((s) => ({
-              subject_id: s.subject_id,
-              subject_name: s.subject_name,
-              max_marks: s.max_marks,
-              pass_marks: s.pass_marks,
-            })),
+      const payload = {
+        school_code: schoolCode,
+        exam_name: examMetadata.exam_name,
+        academic_year: examMetadata.academic_year,
+        start_date: examMetadata.start_date,
+        end_date: examMetadata.end_date,
+        description: examMetadata.description || null,
+        term_id: selectedTermId || null,
+        exam_term_exam_id: selectedTemplateExamId || null,
+        class_mappings: selectedClasses,
+        class_subjects: classSubjects.map((cs) => ({
+          ...cs,
+          subjects: cs.subjects.map((s) => ({
+            subject_id: s.subject_id,
+            subject_name: s.subject_name,
+            max_marks: s.max_marks,
+            pass_marks: s.pass_marks,
           })),
-          schedules: examSchedules,
-          created_by: createdBy,
-        }),
-      });
+        })),
+        schedules: examSchedules,
+        created_by: createdBy,
+      };
+
+      const response = await fetch(
+        editExamId ? `/api/examinations/v2/${editExamId}` : '/api/examinations/v2/create',
+        {
+          method: editExamId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
 
       // Be resilient: if API returns non-JSON (e.g. Next error page), show it instead of logging {}
       const raw = await response.text();
@@ -1100,12 +1310,26 @@ export default function CreateExaminationPage({
       }
 
       if (response.ok && result.data) {
-        const data = result.data as { class_mappings_count?: number; subject_mappings_count?: number; schedules_count?: number };
-        console.log('Examination created:', result.data);
-        alert(`Examination created successfully! Created ${data.class_mappings_count || 0} class mappings, ${data.subject_mappings_count || 0} subject mappings, and ${data.schedules_count || 0} schedules.`);
+        const data = result.data as {
+          class_mappings_count?: number;
+          subject_mappings_count?: number;
+          schedules_count?: number;
+        };
+        console.log(editExamId ? 'Examination updated:' : 'Examination created:', result.data);
+        if (editExamId) {
+          alert(
+            `Examination updated. ${data.class_mappings_count || 0} class mappings, ${data.subject_mappings_count || 0} subject mappings, ${data.schedules_count || 0} schedule day(s).`
+          );
+        } else {
+          alert(
+            `Examination created successfully! Created ${data.class_mappings_count || 0} class mappings, ${data.subject_mappings_count || 0} subject mappings, and ${data.schedules_count || 0} schedules.`
+          );
+        }
         router.push(`/dashboard/${schoolCode}/examinations/dashboard`);
       } else {
-        const errorMessage = String(result.error ?? 'Failed to create examination');
+        const errorMessage = String(
+          result.error ?? (editExamId ? 'Failed to update examination' : 'Failed to create examination')
+        );
         const errorDetails = result.details ? `\nDetails: ${String(result.details)}` : '';
         const errorHint = result.hint ? `\nHint: ${String(result.hint)}` : '';
         const conflicts = result.conflicting_class_ids;
@@ -1132,12 +1356,14 @@ export default function CreateExaminationPage({
     { number: 4, title: 'Schedule Exams', icon: Calendar },
   ];
 
-  if (loading) {
+  if (loading || (editExamId && !editHydrated)) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95] border-t-transparent mx-auto mb-4"></div>
-          <p className="text-[#5A7A95] font-medium">Loading...</p>
+          <p className="text-[#5A7A95] font-medium">
+            {editExamId && !editHydrated ? 'Loading examination for editing…' : 'Loading...'}
+          </p>
         </div>
       </div>
     );
@@ -1148,8 +1374,14 @@ export default function CreateExaminationPage({
       {/* Header */}
       <div className="flex items-center gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900 leading-tight">Create Examination</h1>
-          <p className="text-xs md:text-sm text-gray-600 mt-0.5">Follow the steps to create a new examination</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 leading-tight">
+            {editExamId ? 'Edit Examination' : 'Create Examination'}
+          </h1>
+          <p className="text-xs md:text-sm text-gray-600 mt-0.5">
+            {editExamId
+              ? 'Update details, classes, subjects, and schedules — saving replaces mappings and clears marks for this exam.'
+              : 'Follow the steps to create a new examination'}
+          </p>
         </div>
       </div>
 
@@ -2023,12 +2255,12 @@ export default function CreateExaminationPage({
                     {saving ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-1.5"></div>
-                        Creating...
+                        {editExamId ? 'Saving…' : 'Creating...'}
                       </>
                     ) : (
                       <>
                         <Save size={16} className="mr-1.5" />
-                        Create Examination
+                        {editExamId ? 'Save changes' : 'Create Examination'}
                       </>
                     )}
                   </Button>
@@ -2039,5 +2271,26 @@ export default function CreateExaminationPage({
         </motion.div>
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function CreateExaminationPage({
+  params,
+}: {
+  params: Promise<{ school: string }>;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95] border-t-transparent mx-auto mb-4" />
+            <p className="text-[#5A7A95] font-medium">Loading…</p>
+          </div>
+        </div>
+      }
+    >
+      <CreateExaminationPageContent params={params} />
+    </Suspense>
   );
 }

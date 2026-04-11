@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     const schoolCode = sp.get('school_code');
     const termId = sp.get('term_id');
     const examTermExamId = sp.get('exam_term_exam_id');
+    const excludeExamId = sp.get('exclude_exam_id')?.trim() || '';
 
     if (!schoolCode || !termId || !examTermExamId) {
       return NextResponse.json(
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('exam_class_mappings')
-      .select('class_id')
+      .select('class_id, exam_id')
       .eq('school_code', schoolCode)
       .eq('term_id', termId)
       .eq('exam_term_exam_id', examTermExamId);
@@ -35,7 +36,14 @@ export async function GET(request: NextRequest) {
     }
 
     const sectionIds = Array.from(
-      new Set((data || []).map((r) => String((r as { class_id: string }).class_id)))
+      new Set(
+        (data || [])
+          .filter((r) => {
+            if (!excludeExamId) return true;
+            return String((r as { exam_id?: string }).exam_id || '') !== excludeExamId;
+          })
+          .map((r) => String((r as { class_id: string }).class_id))
+      )
     );
 
     return NextResponse.json({ data: { section_ids: sectionIds } }, { status: 200 });
