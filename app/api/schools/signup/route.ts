@@ -8,8 +8,8 @@ export async function POST(request: NextRequest) {
     // Validate required fields (school_code removed - will be auto-generated on approval)
     const requiredFields = [
       'schoolName', 'schoolAddress', 'city', 'state',
-      'zipCode', 'country', 'schoolEmail', 'schoolPhone', 'principalName',
-      'principalEmail', 'principalPhone', 'establishedYear', 'schoolType', 'affiliation'
+      'zipCode', 'country', 'schoolEmail', 'schoolPhone',
+      'establishedYear', 'schoolType', 'affiliation'
     ];
 
     for (const field of requiredFields) {
@@ -49,9 +49,9 @@ export async function POST(request: NextRequest) {
           country: body.country,
           school_email: body.schoolEmail,
           school_phone: body.schoolPhone,
-          principal_name: body.principalName,
-          principal_email: body.principalEmail,
-          principal_phone: body.principalPhone,
+          principal_name: body.principalName || null,
+          principal_email: body.principalEmail || null,
+          principal_phone: body.principalPhone || null,
           established_year: body.establishedYear,
           school_type: body.schoolType,
           affiliation: body.affiliation,

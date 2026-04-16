@@ -15,7 +15,7 @@ const nameRegex = /^[a-zA-Z\s.'-]{2,60}$/;
 const schoolNameRegex = /^[A-Za-z\s.'&-]{3,100}$/; // NO digits allowed
 
 const allowedSchoolTypes = ['Private','Public','Government','Other'];
-const allowedAffiliations = ['CBSE','ICSE','State Board','Other'];
+const allowedAffiliations = ['CBSE','ICSE','State Board','CBSE-Pattern','NIOS','Other'];
 
 const currentYear = new Date().getFullYear();
 
@@ -46,14 +46,19 @@ export default function SignupPage() {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStage, setSubmitStage] = useState<'form' | 'loading' | 'success'>('form');
-  const [lastSubmittedEmail, setLastSubmittedEmail] = useState<string>('');
-  const [lastSubmittedSchoolName, setLastSubmittedSchoolName] = useState<string>('');
+  const [, setLastSubmittedEmail] = useState<string>('');
+  const [, setLastSubmittedSchoolName] = useState<string>('');
   const [emailSendOk, setEmailSendOk] = useState<boolean>(true);
 
 /* ---------------- FIELD VALIDATOR ---------------- */
 
 const validateField = (field: string, raw: string) => {
   const v = sanitize(raw);
+  const optionalPrincipalFields = new Set(['principalName', 'principalEmail', 'principalPhone']);
+
+  if (optionalPrincipalFields.has(field) && v === '') {
+    return '';
+  }
 
   switch(field) {
     case 'schoolName':
@@ -163,7 +168,7 @@ const handleSubmit = async (e: FormEvent) => {
 
     if (!res.ok) throw new Error(result.error || 'Server error');
 
-    // Store latest values for "Resend email".
+    // Store latest values for follow-up/resend email using school email only.
     const schoolName = String(payload.schoolName ?? '');
     const email = String(payload.schoolEmail ?? '');
     setLastSubmittedSchoolName(schoolName);
@@ -174,7 +179,7 @@ const handleSubmit = async (e: FormEvent) => {
       const emailRes = await fetch('/api/send-signup-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schoolName, email }),
+        body: JSON.stringify({ schoolName, schoolEmail: email }),
       });
       const emailResult = await emailRes.json().catch(() => ({}));
       setEmailSendOk(Boolean(emailRes.ok && emailResult?.success));
@@ -303,15 +308,15 @@ return (
 </Section>
 
 <Section title="Principal">
-  <Input label="Principal Name *" value={formData.principalName}
+  <Input label="Principal Name (Optional)" value={formData.principalName}
     onChange={e => handleChange('principalName', e.target.value)}
     error={fieldErrors.principalName}
   />
-  <Input label="Principal Email *" value={formData.principalEmail}
+  <Input label="Principal Email (Optional)" value={formData.principalEmail}
     onChange={e => handleChange('principalEmail', e.target.value)}
     error={fieldErrors.principalEmail}
   />
-  <Input label="Principal Phone *" value={formData.principalPhone}
+  <Input label="Principal Phone (Optional)" value={formData.principalPhone}
     onChange={e => handleChange('principalPhone', e.target.value.replace(/\D/g,''))}
     error={fieldErrors.principalPhone}
   />
@@ -341,6 +346,9 @@ function Section({title, children}:{title:string, children:React.ReactNode}) {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-6">
       <h3 className="text-lg font-semibold mb-4 text-[#667EEA]">{title}</h3>
+      {title === 'Principal' && (
+        <p className="text-sm text-gray-500 -mt-2 mb-4">Optional - fill if available</p>
+      )}
       <div className="grid md:grid-cols-2 gap-6">{children}</div>
     </div>
   );

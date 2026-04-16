@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { Calendar, CheckCircle2, XCircle, Clock, Users, Save, Loader2, ClipboardList } from 'lucide-react';
-import ManualAttendanceModal from '@/components/attendance/ManualAttendanceModal';
+import { Calendar, CheckCircle2, XCircle, Clock, Users, Save, Loader2 } from 'lucide-react';
 import type { Staff, Student, Class } from '@/lib/supabase';
 import { getString } from '@/lib/type-utils';
 
@@ -26,7 +25,6 @@ export default function TeacherAttendancePage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isClassTeacher, setIsClassTeacher] = useState(false);
   const [isMarked, setIsMarked] = useState(false);
-  const [manualModalOpen, setManualModalOpen] = useState(false);
 
   const fetchExistingAttendance = useCallback(async () => {
     if (!selectedClass || !teacher || students.length === 0 || !selectedDate) {
@@ -477,16 +475,6 @@ export default function TeacherAttendancePage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="border-primary/40 text-primary hover:bg-primary/10"
-            onClick={() => setManualModalOpen(true)}
-          >
-            <ClipboardList size={16} className="mr-2" />
-            Manual editing
-          </Button>
           {isMarked ? (
             <span className="flex items-center gap-2 px-4 py-2 bg-accent/10 text-accent border border-accent/20 rounded-full text-sm font-medium">
               <CheckCircle2 size={16} />
@@ -500,21 +488,6 @@ export default function TeacherAttendancePage() {
           )}
         </div>
       </div>
-
-      {teacher && (
-        <ManualAttendanceModal
-          open={manualModalOpen}
-          onClose={() => setManualModalOpen(false)}
-          schoolCode={getString(teacher.school_code)}
-          staffId={getString(teacher.id) || null}
-          classes={assignedClasses.map((c) => ({
-            id: getString(c.id),
-            class: getString(c.class),
-            section: getString(c.section),
-            academic_year: c.academic_year,
-          }))}
-        />
-      )}
 
       {/* Date Selector */}
       <Card className="glass-card soft-shadow">

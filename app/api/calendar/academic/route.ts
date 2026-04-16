@@ -50,36 +50,54 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch examinations and expand to one entry per day (start_date to end_date)
+    // Examination days: one calendar entry per scheduled exam date (not start–end range)
     const yearStart = academicYear ? `${academicYear}-01-01` : '';
     const yearEnd = academicYear ? `${academicYear}-12-31` : '';
     const examEntries: Array<{ event_date: string; title: string; event_type: string; source: string; exam_id?: string; [key: string]: unknown }> = [];
     if (schoolCode) {
-      let examQuery = supabase
-        .from('examinations')
-        .select('id, exam_name, start_date, end_date')
+      let schedQuery = supabase
+        .from('exam_schedules')
+        .select('exam_id, exam_date')
         .eq('school_code', schoolCode);
       if (yearStart && yearEnd) {
-        examQuery = examQuery.lte('start_date', yearEnd).gte('end_date', yearStart);
+        schedQuery = schedQuery.gte('exam_date', yearStart).lte('exam_date', yearEnd);
       }
-      const { data: examinations, error: examError } = await examQuery;
-      if (!examError && examinations) {
-        for (const exam of examinations) {
-          const name = (exam.exam_name || 'Examination') as string;
-          const start = exam.start_date ? new Date(String(exam.start_date).split('T')[0]) : null;
-          const end = exam.end_date ? new Date(String(exam.end_date).split('T')[0]) : null;
-          if (!start || !end) continue;
-          for (let d = new Date(start.getTime()); d <= end; d.setDate(d.getDate() + 1)) {
-            const dateStr = d.toISOString().split('T')[0];
-            if (academicYear && (dateStr < yearStart || dateStr > yearEnd)) continue;
-            examEntries.push({
-              event_date: dateStr,
-              title: name,
-              event_type: 'examination',
-              source: 'examinations',
-              exam_id: exam.id,
-            });
-          }
+      const { data: scheduleRows, error: schedError } = await schedQuery;
+      if (!schedError && scheduleRows && scheduleRows.length > 0) {
+        const examIds = Array.from(
+          new Set(
+            (scheduleRows as Array<{ exam_id?: string }>)
+              .map((r) => String(r.exam_id || '').trim())
+              .filter(Boolean)
+          )
+        );
+        const { data: examMeta } =
+          examIds.length > 0
+            ? await supabase
+                .from('examinations')
+                .select('id, exam_name')
+                .eq('school_code', schoolCode)
+                .in('id', examIds)
+            : { data: [] as Array<{ id: string; exam_name?: string | null }> };
+        const nameById = new Map(
+          (examMeta || []).map((e) => [String((e as { id: string }).id), String((e as { exam_name?: string | null }).exam_name || 'Examination')])
+        );
+        const seenDateExam = new Set<string>();
+        for (const row of scheduleRows as Array<{ exam_id?: string; exam_date?: string }>) {
+          const examId = String(row.exam_id || '').trim();
+          const raw = row.exam_date ? String(row.exam_date).split('T')[0] : '';
+          if (!examId || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) continue;
+          if (academicYear && (raw < yearStart || raw > yearEnd)) continue;
+          const dedupeKey = `${examId}|${raw}`;
+          if (seenDateExam.has(dedupeKey)) continue;
+          seenDateExam.add(dedupeKey);
+          examEntries.push({
+            event_date: raw,
+            title: nameById.get(examId) || 'Examination',
+            event_type: 'examination',
+            source: 'exam_schedules',
+            exam_id: examId,
+          });
         }
       }
     }

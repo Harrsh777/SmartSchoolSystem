@@ -21,6 +21,11 @@ interface Subject {
   updated_at?: string;
 }
 
+const generateRandomHexColor = () =>
+  `#${Math.floor(Math.random() * 0xffffff)
+    .toString(16)
+    .padStart(6, '0')}`;
+
 export default function SubjectsPage({
   params,
 }: {
@@ -35,7 +40,7 @@ export default function SubjectsPage({
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    color: '#6366f1',
+    color: generateRandomHexColor(),
     category: '' as '' | 'scholastic' | 'non_scholastic',
   });
 
@@ -63,7 +68,7 @@ export default function SubjectsPage({
     setEditingSubject(null);
     setFormData({
       name: '',
-      color: '#6366f1',
+      color: generateRandomHexColor(),
       category: '',
     });
     setShowAddModal(true);

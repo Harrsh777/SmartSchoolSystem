@@ -13,6 +13,7 @@ interface EventCalendarManagementModalProps {
 const menuItems = [
   { id: 'events', label: 'Events', icon: Calendar, path: '/calendar/events' },
   { id: 'academic', label: 'Academic Calendar', icon: CalendarDays, path: '/calendar/academic' },
+  { id: 'birthdays', label: 'Birthdays', icon: CalendarDays, path: '/calendar/events/birthdays' },
 ];
 
 export default function EventCalendarManagementModal({ isOpen, onClose, schoolCode }: EventCalendarManagementModalProps) {

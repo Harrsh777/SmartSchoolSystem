@@ -788,6 +788,7 @@ export default function DashboardPage({
       { label: 'Event & Holiday Management', path: '/calendar/events', icon: CalendarDays, color: '#F97316', subItems: [
         { label: 'Academic Calendar', path: '/calendar/academic', icon: CalendarDays },
         { label: 'Events', path: '/calendar/events', icon: CalendarDays },
+        { label: 'Birthdays', path: '/calendar/events/birthdays', icon: CalendarDays },
       ]},
     ],
     finance: [

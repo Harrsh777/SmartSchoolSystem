@@ -1250,6 +1250,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Event/Calendar', path: '/calendar', category: 'Event/Calendar', icon: CalendarDays },
     { label: 'Academic Calendar', path: '/calendar/academic', category: 'Event/Calendar', icon: CalendarDays, parent: 'Event/Calendar' },
     { label: 'Events', path: '/calendar/events', category: 'Event/Calendar', icon: CalendarDays, parent: 'Event/Calendar' },
+    { label: 'Birthdays', path: '/calendar/events/birthdays', category: 'Event/Calendar', icon: CalendarDays, parent: 'Event/Calendar' },
     
     // Examinations
     { label: 'Examinations', path: '/examinations', category: 'Examinations', icon: FileText },

@@ -20,12 +20,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const { schoolName, email } = body as {
+    const { schoolName, schoolEmail, email } = body as {
       schoolName?: string;
+      schoolEmail?: string;
       email?: string;
     };
 
-    const toEmail = email?.trim();
+    const toEmail = (schoolEmail || email)?.trim();
     const safeSchoolName = schoolName?.trim() || "your school";
 
     // ✅ 3. Validate Email

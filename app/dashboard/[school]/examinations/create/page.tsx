@@ -241,6 +241,31 @@ interface ClassSubject {
   subjects: MappedExamSubject[];
 }
 
+/** Merge subjects already on the exam into timetable pools so edit mode shows names and validation passes when class_subjects is empty. */
+function mergeExamSubjectsIntoPools(
+  base: Record<string, Subject[]>,
+  rows: ClassSubject[]
+): Record<string, Subject[]> {
+  const next = { ...base };
+  for (const cs of rows) {
+    const sid = String(cs.sectionId);
+    const fromTimetable = [...(next[sid] ?? [])];
+    const byId = new Map(fromTimetable.map((s) => [String(s.id), s]));
+    for (const sub of cs.subjects) {
+      const id = String(sub.subject_id);
+      if (!byId.has(id)) {
+        byId.set(id, {
+          id: sub.subject_id,
+          name: sub.subject_name?.trim() || 'Subject',
+          color: '#94a3b8',
+        });
+      }
+    }
+    next[sid] = Array.from(byId.values());
+  }
+  return next;
+}
+
 function passMarksFromPercent(maxMarks: number, percent: number): number {
   if (!Number.isFinite(maxMarks) || maxMarks < 1) return 0;
   if (!Number.isFinite(percent) || percent <= 0) return 0;
@@ -331,6 +356,13 @@ function sliceISODate(d: string | null | undefined): string {
   return String(d).slice(0, 10);
 }
 
+function normSectionKey(id: string | null | undefined): string {
+  return String(id ?? '')
+    .trim()
+    .replace(/-/g, '')
+    .toLowerCase();
+}
+
 function normalizeScheduleTime(t: string | null | undefined): string {
   if (!t) return '';
   const s = String(t);
@@ -366,8 +398,6 @@ function CreateExaminationPageContent({
   const [examMetadata, setExamMetadata] = useState({
     exam_name: '',
     academic_year: '',
-    start_date: '',
-    end_date: '',
     description: '',
   });
 
@@ -486,8 +516,6 @@ function CreateExaminationPageContent({
     setExamMetadata({
       exam_name: String(exam.exam_name || '').trim(),
       academic_year: String(exam.academic_year || '').trim(),
-      start_date: sliceISODate(exam.start_date),
-      end_date: sliceISODate(exam.end_date),
       description: exam.description ? String(exam.description) : '',
     });
 
@@ -511,7 +539,9 @@ function CreateExaminationPageContent({
     for (const sc of selectedClassesNext) {
       for (const sectionId of sc.sections) {
         const section = classes.find((c) => String(c.id) === String(sectionId));
-        const sms = (exam.subject_mappings || []).filter((sm) => String(sm.class_id) === String(sectionId));
+        const sms = (exam.subject_mappings || []).filter(
+          (sm) => normSectionKey(sm.class_id as string) === normSectionKey(sectionId)
+        );
         rows.push({
           classId: sc.classId,
           className: sc.className,
@@ -538,7 +568,8 @@ function CreateExaminationPageContent({
     let si = 0;
     for (const cs of rows) {
       for (const sub of cs.subjects) {
-        const sch = schedSorted.length ? schedSorted[si % schedSorted.length] : null;
+        const sch = schedSorted[si] ?? null;
+        si += 1;
         scheduleRows.push({
           classId: cs.classId,
           sectionId: cs.sectionId,
@@ -547,7 +578,6 @@ function CreateExaminationPageContent({
           start_time: normalizeScheduleTime(sch?.start_time),
           end_time: normalizeScheduleTime(sch?.end_time),
         });
-        si++;
       }
     }
     setExamSchedules(scheduleRows);
@@ -733,6 +763,14 @@ function CreateExaminationPageContent({
     [classSubjects]
   );
   const sectionIdsForStep3Key = sectionIdsForStep3.join(',');
+  const examSubjectsMergeKey = useMemo(
+    () =>
+      classSubjects
+        .map((cs) => `${cs.sectionId}:${cs.subjects.map((s) => s.subject_id).sort().join(',')}`)
+        .sort()
+        .join('|'),
+    [classSubjects]
+  );
 
   useEffect(() => {
     if (currentStep !== 3 || sectionIdsForStep3.length === 0) {
@@ -740,6 +778,7 @@ function CreateExaminationPageContent({
     }
     let cancelled = false;
     setStep3SubjectsLoading(true);
+    const snapshotRows = classSubjects;
     Promise.all(
       sectionIdsForStep3.map(async (sectionId) => {
         const res = await fetch(
@@ -754,7 +793,8 @@ function CreateExaminationPageContent({
     )
       .then((entries) => {
         if (!cancelled) {
-          setSubjectsBySectionId(Object.fromEntries(entries));
+          const base = Object.fromEntries(entries);
+          setSubjectsBySectionId(mergeExamSubjectsIntoPools(base, snapshotRows));
         }
       })
       .finally(() => {
@@ -765,7 +805,7 @@ function CreateExaminationPageContent({
     return () => {
       cancelled = true;
     };
-  }, [currentStep, schoolCode, sectionIdsForStep3Key]);
+  }, [currentStep, schoolCode, sectionIdsForStep3Key, examSubjectsMergeKey]);
 
   // Step 1: Validate and Save Metadata
   const handleStep1Next = () => {
@@ -779,19 +819,6 @@ function CreateExaminationPageContent({
     }
     if (!selectedTemplateExamId || !examMetadata.exam_name.trim()) {
       newErrors.exam_name = 'Please select an examination template from Select Term flow';
-    }
-    if (!examMetadata.start_date) {
-      newErrors.start_date = 'Start date is required';
-    }
-    if (!examMetadata.end_date) {
-      newErrors.end_date = 'End date is required';
-    }
-    if (examMetadata.start_date && examMetadata.end_date) {
-      const start = new Date(examMetadata.start_date);
-      const end = new Date(examMetadata.end_date);
-      if (end < start) {
-        newErrors.end_date = 'End date must be after start date';
-      }
     }
 
     setErrors(newErrors);
@@ -848,24 +875,31 @@ function CreateExaminationPageContent({
       });
       return;
     }
-    
-    // Initialize class subjects for step 3
-    const newClassSubjects: ClassSubject[] = [];
-    selectedClasses.forEach(selectedClass => {
-      selectedClass.sections.forEach(sectionId => {
-        const section = classes.find(c => c.id === sectionId);
-        if (section) {
-          newClassSubjects.push({
-            classId: selectedClass.classId,
-            className: selectedClass.className,
-            sectionId: section.id,
-            sectionName: section.section,
-            subjects: [],
-          });
-        }
+
+    // Build step-3 rows; keep subjects already loaded (e.g. edit flow) when section still selected
+    setClassSubjects((prev) => {
+      const next: ClassSubject[] = [];
+      selectedClasses.forEach((selectedClass) => {
+        selectedClass.sections.forEach((sectionId) => {
+          const section = classes.find((c) => String(c.id) === String(sectionId));
+          if (section) {
+            const existing = prev.find((cs) => String(cs.sectionId) === String(section.id));
+            const subjects =
+              existing && existing.subjects.length > 0
+                ? existing.subjects.map((s) => ({ ...s }))
+                : [];
+            next.push({
+              classId: selectedClass.classId,
+              className: selectedClass.className,
+              sectionId: section.id,
+              sectionName: section.section,
+              subjects,
+            });
+          }
+        });
       });
+      return next;
     });
-    setClassSubjects(newClassSubjects);
     setCurrentStep(3);
   };
 
@@ -1084,21 +1118,28 @@ function CreateExaminationPageContent({
       return;
     }
 
-    // Initialize schedules for step 4
-    const newSchedules: ExamSchedule[] = [];
-    classSubjects.forEach(cs => {
-      cs.subjects.forEach(subject => {
-        newSchedules.push({
-          classId: cs.classId,
-          sectionId: cs.sectionId,
-          subjectId: subject.subject_id,
-          exam_date: '',
-          start_time: '',
-          end_time: '',
+    // Build step-4 rows; reuse date/time when same section + subject existed (e.g. edit flow)
+    setExamSchedules((prev) => {
+      const next: ExamSchedule[] = [];
+      classSubjects.forEach((cs) => {
+        cs.subjects.forEach((subject) => {
+          const existing = prev.find(
+            (s) =>
+              String(s.sectionId) === String(cs.sectionId) &&
+              String(s.subjectId) === String(subject.subject_id)
+          );
+          next.push({
+            classId: cs.classId,
+            sectionId: cs.sectionId,
+            subjectId: subject.subject_id,
+            exam_date: existing?.exam_date ?? '',
+            start_time: existing?.start_time ?? '',
+            end_time: existing?.end_time ?? '',
+          });
         });
       });
+      return next;
     });
-    setExamSchedules(newSchedules);
     setCurrentStep(4);
   };
 
@@ -1137,14 +1178,6 @@ function CreateExaminationPageContent({
 
   const handleAutoFillSequentialDatesFromFirst = () => {
     if (!examSchedules.length) return;
-    const winStart = examMetadata.start_date;
-    const winEnd = examMetadata.end_date;
-    if (!winStart || !winEnd) {
-      setErrors({
-        schedule: 'Exam start and end dates from step 1 are required before filling sequential dates.',
-      });
-      return;
-    }
 
     const groups = new Map<string, number[]>();
     examSchedules.forEach((s, idx) => {
@@ -1161,7 +1194,7 @@ function CreateExaminationPageContent({
     if (missingAnchor.length > 0) {
       setErrors({
         schedule:
-          'For each class-section, set the exam date on the first subject row in that group, then use Fill sequential dates. Dates stay within your step 1 exam window.',
+          'For each class-section, set the exam date on the first subject row in that group, then use Fill sequential dates.',
       });
       return;
     }
@@ -1171,12 +1204,6 @@ function CreateExaminationPageContent({
       const anchor = next[indices[0]].exam_date;
       for (let o = 0; o < indices.length; o++) {
         const candidate = addDaysISO(anchor, o);
-        if (candidate < winStart || candidate > winEnd) {
-          setErrors({
-            schedule: `Sequential dates would go outside the exam window (${winStart} – ${winEnd}). Add days between papers, reduce subjects per section, or widen the window in step 1.`,
-          });
-          return;
-        }
         next[indices[o]] = { ...next[indices[o]], exam_date: candidate };
       }
     }
@@ -1204,20 +1231,6 @@ function CreateExaminationPageContent({
     if (invalidTime) {
       setErrors({ schedule: 'End time must be after start time' });
       return;
-    }
-
-    const winStart = examMetadata.start_date;
-    const winEnd = examMetadata.end_date;
-    if (winStart && winEnd) {
-      const outOfWindow = examSchedules.some(
-        (s) => !s.exam_date || s.exam_date < winStart || s.exam_date > winEnd
-      );
-      if (outOfWindow) {
-        setErrors({
-          schedule: `Every exam date must be between ${winStart} and ${winEnd} (from step 1).`,
-        });
-        return;
-      }
     }
 
     // Prevent overlapping schedules for same class-section and date.
@@ -1272,8 +1285,6 @@ function CreateExaminationPageContent({
         school_code: schoolCode,
         exam_name: examMetadata.exam_name,
         academic_year: examMetadata.academic_year,
-        start_date: examMetadata.start_date,
-        end_date: examMetadata.end_date,
         description: examMetadata.description || null,
         term_id: selectedTermId || null,
         exam_term_exam_id: selectedTemplateExamId || null,
@@ -1533,37 +1544,6 @@ function CreateExaminationPageContent({
                     <p className="text-sm text-red-700">{errors.exam_name}</p>
                   </div>
                 )}
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Start Date <span className="text-red-500">*</span>
-                    </label>
-                    <Input
-                      type="date"
-                      value={examMetadata.start_date}
-                      onChange={(e) => setExamMetadata(prev => ({ ...prev, start_date: e.target.value }))}
-                      className={errors.start_date ? 'border-red-500' : ''}
-                    />
-                    {errors.start_date && (
-                      <p className="mt-1 text-sm text-red-600">{errors.start_date}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      End Date <span className="text-red-500">*</span>
-                    </label>
-                    <Input
-                      type="date"
-                      value={examMetadata.end_date}
-                      onChange={(e) => setExamMetadata(prev => ({ ...prev, end_date: e.target.value }))}
-                      className={errors.end_date ? 'border-red-500' : ''}
-                    />
-                    {errors.end_date && (
-                      <p className="mt-1 text-sm text-red-600">{errors.end_date}</p>
-                    )}
-                  </div>
-                </div>
 
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -2062,8 +2042,9 @@ function CreateExaminationPageContent({
                   <div>
                     <h2 className="text-lg font-bold text-gray-900">Schedule Examinations</h2>
                     <p className="text-xs text-gray-600 mt-0.5 max-w-3xl leading-relaxed">
-                      Exam dates are limited to the start and end dates you set in step 1. Times use hour and minute
-                      pickers; minutes follow the interval you choose (15, 30, or 45). Use{' '}
+                      Set each paper&apos;s date and time here; the exam&apos;s overall date range on records and reports
+                      is derived from these scheduled dates. Times use hour and minute pickers; minutes follow the interval
+                      you choose (15, 30, or 45). Use{' '}
                       <span className="font-medium text-gray-800">Apply to all rows</span> for the same slot everywhere.
                       <span className="font-medium text-gray-800"> Fill sequential dates</span> advances one day per
                       subject within each class-section (not across classes).
@@ -2138,7 +2119,7 @@ function CreateExaminationPageContent({
                                 size="sm"
                                 onClick={handleAutoFillSequentialDatesFromFirst}
                                 className="shrink-0 px-3 py-1 text-xs"
-                                title="Per class-section: uses the first row’s date in that group, then +1 day for each next subject (stays within step 1 dates)"
+                                title="Per class-section: uses the first row’s date in that group, then +1 day for each next subject"
                               >
                                 Fill sequential dates
                               </Button>
@@ -2203,8 +2184,6 @@ function CreateExaminationPageContent({
                                 <Input
                                   type="date"
                                   value={schedule.exam_date}
-                                  min={examMetadata.start_date || undefined}
-                                  max={examMetadata.end_date || undefined}
                                   onChange={(e) => handleScheduleChange(index, 'exam_date', e.target.value)}
                                   className="pl-3 pr-9 text-sm rounded-lg border-slate-200 focus:border-[#5A7A95] focus:ring-[#5A7A95]/20"
                                 />

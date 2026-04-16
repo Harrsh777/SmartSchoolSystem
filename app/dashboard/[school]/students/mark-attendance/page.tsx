@@ -197,10 +197,6 @@ export default function MarkAttendancePage({
           );
         }
         setClasses(availableClasses);
-        if (availableClasses.length > 0 && !selectedClass) {
-          setSelectedClass(availableClasses[0].class);
-          setSelectedSection(availableClasses[0].section || '');
-        }
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
@@ -259,19 +255,34 @@ export default function MarkAttendancePage({
     : classes;
 
   useEffect(() => {
-    if (classesForCurrentYear.length === 0) return;
-    const pairExists = selectedClass && selectedSection && classesForCurrentYear.some(
-      (c) => c.class === selectedClass && (c.section ?? '') === selectedSection
-    );
-    const classExists = selectedClass && classesForCurrentYear.some((c) => c.class === selectedClass);
-    if (selectedClass && !classExists) {
-      setSelectedClass(classesForCurrentYear[0].class);
-      setSelectedSection(classesForCurrentYear[0].section || '');
-    } else if (selectedClass && selectedSection && !pairExists) {
-      setSelectedClass(classesForCurrentYear[0].class);
-      setSelectedSection(classesForCurrentYear[0].section || '');
+    if (classesForCurrentYear.length === 0) {
+      setSelectedClass('');
+      setSelectedSection('');
+      return;
     }
-  }, [currentAcademicYear, classesForCurrentYear, selectedClass, selectedSection]);
+
+    // Keep selectors empty until user explicitly chooses class/section.
+    if (!selectedClass) {
+      setSelectedSection('');
+      return;
+    }
+
+    const classExists = classesForCurrentYear.some((c) => c.class === selectedClass);
+    if (!classExists) {
+      setSelectedClass('');
+      setSelectedSection('');
+      return;
+    }
+
+    if (selectedSection) {
+      const pairExists = classesForCurrentYear.some(
+        (c) => c.class === selectedClass && (c.section ?? '') === selectedSection
+      );
+      if (!pairExists) {
+        setSelectedSection('');
+      }
+    }
+  }, [classesForCurrentYear, selectedClass, selectedSection]);
 
   const fetchExistingAttendance = async () => {
     if (!selectedClass || !selectedSection || !selectedDate) return;

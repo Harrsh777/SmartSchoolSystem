@@ -49,6 +49,7 @@ export default function TeacherDashboard() {
   const [showAddTodo, setShowAddTodo] = useState(false);
   const [assignedSubjects, setAssignedSubjects] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [myClassStudents, setMyClassStudents] = useState<Student[]>([]);
+  const [showSchoolTotalInStudentsCard, setShowSchoolTotalInStudentsCard] = useState(false);
   const [assignedClassesFromTimetable, setAssignedClassesFromTimetable] = useState<Array<{ class: string; section: string; academic_year?: string }>>([]);
   interface EventNotification {
     id: string;
@@ -585,20 +586,20 @@ export default function TeacherDashboard() {
           </div>
         </motion.div>
 
-        {/* Stat cards: fixed equal height on md+ (compact dashboard density) */}
+        {/* Stat cards: compact equal height on md+ */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 md:items-stretch"
         >
-          {/* Students: All (School) + My Class */}
-          <div className="bg-card rounded-lg p-4 shadow-sm border border-input flex flex-col w-full md:h-48 min-h-0 overflow-hidden">
+          {/* Students: default My Class, toggle to school total */}
+          <div className="bg-card rounded-lg p-3 shadow-sm border border-input flex flex-col w-full md:h-36 min-h-0 overflow-hidden">
             <div className="w-9 h-9 rounded-md bg-blue-100 flex items-center justify-center shrink-0 mb-2">
               <Users className="text-blue-600" size={20} />
             </div>
             <p className="text-xs font-medium text-muted-foreground mb-1 shrink-0">Students</p>
-            <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col justify-between min-h-0 overflow-hidden">
               <div
                 className="shrink-0 flex items-center justify-between rounded-md border border-input/60 bg-muted/30 px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => router.push('/teacher/dashboard/students')}
@@ -607,51 +608,34 @@ export default function TeacherDashboard() {
                 tabIndex={0}
               >
                 <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">All (school)</p>
-                  <p className="text-xl font-bold text-foreground tabular-nums leading-tight">{students.length}</p>
+                  <p className="text-xs text-muted-foreground">{showSchoolTotalInStudentsCard ? 'All (school)' : 'My class'}</p>
+                  <p className="text-xl font-bold text-foreground tabular-nums leading-tight">
+                    {showSchoolTotalInStudentsCard ? students.length : myClassStudents.length}
+                  </p>
                 </div>
                 <p className="text-[10px] text-primary font-medium shrink-0">View →</p>
               </div>
-              <div
-                className={`flex-1 min-h-0 flex flex-col justify-center rounded-md border px-2.5 py-2 overflow-y-auto ${assignedClass ? 'border-input/60 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors' : 'border-input/40 bg-muted/20 opacity-80'}`}
-                onClick={assignedClass ? () => router.push('/teacher/dashboard/my-class') : undefined}
-                onKeyDown={assignedClass ? (e) => e.key === 'Enter' && router.push('/teacher/dashboard/my-class') : undefined}
-                role={assignedClass ? 'button' : undefined}
-                tabIndex={assignedClass ? 0 : undefined}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-muted-foreground">My class</p>
-                    <p className="text-xl font-bold text-foreground tabular-nums leading-tight">{myClassStudents.length}</p>
-                    {myClassStudents.length === 0 && assignedClass && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">No students yet.</p>
-                    )}
-                    {myClassStudents.length > 0 && (
-                      <div className="max-h-10 overflow-y-auto space-y-0 pr-0.5 mt-0.5">
-                        {myClassStudents.slice(0, 2).map((s) => {
-                          const name = getString(s.student_name) || getString(s.first_name) || '—';
-                          return (
-                            <div key={s.id} className="text-[10px] text-foreground truncate" title={name}>
-                              {name}
-                            </div>
-                          );
-                        })}
-                        {myClassStudents.length > 2 && (
-                          <p className="text-[10px] text-muted-foreground">+{myClassStudents.length - 2}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {assignedClass && (
-                    <p className="text-[10px] text-primary font-medium shrink-0">Class →</p>
-                  )}
-                </div>
+              <div className="pt-2 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSchoolTotalInStudentsCard((prev) => !prev)}
+                  className="text-[11px] font-medium px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted transition-colors"
+                >
+                  {showSchoolTotalInStudentsCard ? 'My class' : 'Total'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push('/teacher/dashboard/my-class')}
+                  className="text-[10px] text-primary font-medium hover:underline"
+                >
+                  Class →
+                </button>
               </div>
             </div>
           </div>
 
           {/* Pending Leave Requests */}
-          <div className="bg-card rounded-lg p-4 shadow-sm border border-input relative flex flex-col w-full md:h-48 min-h-0 overflow-hidden">
+          <div className="bg-card rounded-lg p-3 shadow-sm border border-input relative flex flex-col w-full md:h-36 min-h-0 overflow-hidden">
             <div className="absolute top-3 right-3 z-10">
               <span className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded-full font-medium">
                 {studentLeaveRequests.length > 0 ? `${studentLeaveRequests.length} New` : 'None'}
@@ -677,7 +661,7 @@ export default function TeacherDashboard() {
           </div>
 
           {/* Staff Attendance */}
-          <div className="bg-card rounded-lg p-4 shadow-sm border border-input relative flex flex-col w-full md:h-48 min-h-0 overflow-hidden">
+          <div className="bg-card rounded-lg p-3 shadow-sm border border-input relative flex flex-col w-full md:h-36 min-h-0 overflow-hidden">
             <div className="absolute top-3 right-3 z-10">
               <span className={`${
                 attendanceStats && attendanceStats.percentage >= 95 
@@ -713,7 +697,7 @@ export default function TeacherDashboard() {
           </div>
 
           {/* Active Notices */}
-          <div className="bg-card rounded-lg p-4 shadow-sm border border-input relative flex flex-col w-full md:h-48 min-h-0 overflow-hidden">
+          <div className="bg-card rounded-lg p-3 shadow-sm border border-input relative flex flex-col w-full md:h-36 min-h-0 overflow-hidden">
             <div className="absolute top-3 right-3 z-10">
               <span className="bg-orange-100 text-orange-700 text-[10px] px-1.5 py-0.5 rounded-full font-medium">
                 {noticesCount > 0 ? 'Active' : 'None'}

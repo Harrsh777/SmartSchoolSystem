@@ -6,6 +6,17 @@ import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 
+function deriveExamDatesFromSchedules(
+  schedules: Array<{ exam_date?: string }>
+): { start_date: string; end_date: string } | null {
+  const dates = schedules
+    .map((s) => (s.exam_date ? String(s.exam_date).slice(0, 10) : ''))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort();
+  if (dates.length === 0) return null;
+  return { start_date: dates[0], end_date: dates[dates.length - 1] };
+}
+
 /**
  * Full update for v2 examinations: replaces class mappings, subject mappings, and schedules
  * (same shape as POST /api/examinations/v2/create). Clears dependent rows first, including marks.
@@ -20,8 +31,6 @@ export async function PUT(
     const {
       school_code,
       exam_name,
-      start_date,
-      end_date,
       description,
       term_id,
       exam_term_exam_id,
@@ -31,7 +40,7 @@ export async function PUT(
       created_by,
     } = body;
 
-    if (!school_code || !exam_name || !start_date || !end_date) {
+    if (!school_code || !exam_name) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -157,21 +166,14 @@ export async function PUT(
       return NextResponse.json({ error: 'At least one schedule must be provided' }, { status: 400 });
     }
 
-    const windowStart = String(start_date).slice(0, 10);
-    const windowEnd = String(end_date).slice(0, 10);
-    for (let i = 0; i < schedules.length; i++) {
-      const row = schedules[i] as { exam_date?: string };
-      const d = row.exam_date ? String(row.exam_date).slice(0, 10) : '';
-      if (!d || d < windowStart || d > windowEnd) {
-        return NextResponse.json(
-          {
-            error: 'Each exam date must fall within the examination start and end dates',
-            details: `Row ${i + 1}: date ${d || '(missing)'} is outside ${windowStart} – ${windowEnd}`,
-          },
-          { status: 400 }
-        );
-      }
+    const derived = deriveExamDatesFromSchedules(schedules as Array<{ exam_date?: string }>);
+    if (!derived) {
+      return NextResponse.json(
+        { error: 'Each schedule row must include a valid exam_date (YYYY-MM-DD)' },
+        { status: 400 }
+      );
     }
+    const { start_date, end_date } = derived;
 
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
