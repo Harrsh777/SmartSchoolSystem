@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { generateAndHashPassword } from '@/lib/password-generator';
+import { defaultStudentPasswordAndHash } from '@/lib/password-generator';
 import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 import {
   parseStudentImportClassSection,
@@ -346,7 +346,7 @@ export async function POST(request: NextRequest) {
         successCount += admissionNos.length;
         const loginRecords = [];
         for (const student of admissionNos) {
-          const { password, hashedPassword } = await generateAndHashPassword();
+          const { password, hashedPassword } = await defaultStudentPasswordAndHash();
           loginRecords.push({
             school_code: school_code,
             admission_no: student.admission_no,
@@ -446,7 +446,7 @@ export async function POST(request: NextRequest) {
 
     for (const student of existingStudentsWithoutPasswords) {
       try {
-        const { password, hashedPassword } = await generateAndHashPassword();
+        const { password, hashedPassword } = await defaultStudentPasswordAndHash();
         const { error: loginInsertError } = await supabase
           .from('student_login')
           .insert({

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { generateAndHashPassword } from '@/lib/password-generator';
+import { defaultStaffPasswordAndHash, defaultStudentPasswordAndHash } from '@/lib/password-generator';
 
 export async function GET(request: NextRequest) {
   try {
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
       // Generate password if: include_passwords is true AND (regenerate_all is true OR user doesn't have password)
       if (include_passwords && (regenerate_all || !hasPassword)) {
         // Generate and hash password
-        const { password: generatedPassword, hashedPassword } = await generateAndHashPassword();
+        const { password: generatedPassword, hashedPassword } = await defaultStudentPasswordAndHash();
         password = generatedPassword;
         
         // Prepare for database insert/update (store both hash and plain password)
@@ -220,7 +220,7 @@ export async function POST(request: NextRequest) {
       // Generate password if: include_passwords is true AND (regenerate_all is true OR user doesn't have password)
       if (include_passwords && (regenerate_all || !hasPassword)) {
         // Generate and hash password
-        const { password: generatedPassword, hashedPassword } = await generateAndHashPassword();
+        const { password: generatedPassword, hashedPassword } = await defaultStaffPasswordAndHash();
         password = generatedPassword;
         
         // Prepare for database insert/update (store both hash and plain password)

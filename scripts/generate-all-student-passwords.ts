@@ -8,7 +8,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { generateAndHashPassword } from '@/lib/password-generator';
+import { defaultStudentPasswordAndHash } from '@/lib/password-generator';
 
 export async function generatePasswordsForAllStudents() {
   try {
@@ -119,11 +119,12 @@ export async function generatePasswordsForAllStudents() {
               continue;
             }
 
-            const {hashedPassword } = await generateAndHashPassword();
+            const { password, hashedPassword } = await defaultStudentPasswordAndHash();
             loginRecords.push({
               school_code: student.school_code,
               admission_no: student.admission_no,
               password_hash: hashedPassword,
+              plain_password: password,
               is_active: true,
             });
 

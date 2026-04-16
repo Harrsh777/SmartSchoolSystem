@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { hashPassword } from '@/lib/password-generator';
+import { DEFAULT_STUDENT_PORTAL_PASSWORD, hashPassword } from '@/lib/password-generator';
 
 /**
  * Reset password for a single student
@@ -33,8 +33,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Set default password to "student123"
-    const password = 'student123';
+    const password = DEFAULT_STUDENT_PORTAL_PASSWORD;
     const hash = await hashPassword(password);
 
     // Update or insert login record

@@ -16,8 +16,18 @@ export async function POST(request: NextRequest) {
   }
   try {
     const body = await request.json();
-    const school_code = typeof body.school_code === 'string' ? body.school_code.trim() : '';
-    const staff_id = typeof body.staff_id === 'string' ? body.staff_id.trim() : '';
+    const school_code =
+      typeof body.school_code === 'string'
+        ? body.school_code.trim()
+        : typeof body.schoolCode === 'string'
+          ? body.schoolCode.trim()
+          : '';
+    const staff_id =
+      typeof body.staff_id === 'string'
+        ? body.staff_id.trim()
+        : typeof body.staffId === 'string'
+          ? body.staffId.trim()
+          : '';
     const password = typeof body.password === 'string' ? body.password : '';
     const normalizedSchoolCode = school_code ? school_code.toUpperCase() : '';
 

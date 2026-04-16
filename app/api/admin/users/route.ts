@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
-import { generateAndHashPassword } from '@/lib/password-generator';
+import { defaultStaffPasswordAndHash, defaultStudentPasswordAndHash } from '@/lib/password-generator';
 import { requireSuperAdminSession } from '@/lib/super-admin-api';
 
 // GET - Fetch all users across all schools
@@ -228,7 +228,7 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      const { password, hashedPassword } = await generateAndHashPassword();
+      const { password, hashedPassword } = await defaultStudentPasswordAndHash();
       const { error: insertError } = await supabase.from('student_login').insert({
         school_code: schoolNorm,
         admission_no: identNorm,
@@ -306,7 +306,7 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      const { password, hashedPassword } = await generateAndHashPassword();
+      const { password, hashedPassword } = await defaultStaffPasswordAndHash();
       const { error: insertError } = await supabase.from('staff_login').insert({
         school_code: schoolNorm,
         staff_id: identNorm,

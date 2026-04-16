@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { generateAndHashPassword } from '@/lib/password-generator';
+import { defaultStudentPasswordAndHash } from '@/lib/password-generator';
 
 /**
  * API endpoint to generate passwords for ALL students across all schools
@@ -124,11 +124,12 @@ export async function POST(request: NextRequest) {
                 continue;
               }
 
-              const { hashedPassword } = await generateAndHashPassword();
+              const { password, hashedPassword } = await defaultStudentPasswordAndHash();
               loginRecords.push({
                 school_code: student.school_code,
                 admission_no: student.admission_no,
                 password_hash: hashedPassword,
+                plain_password: password,
                 is_active: true,
               });
             } catch (err) {

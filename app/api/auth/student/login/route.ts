@@ -16,7 +16,19 @@ export async function POST(request: NextRequest) {
   }
   try {
     const body = await request.json();
-    const { school_code, admission_no, password } = body;
+    const school_code =
+      typeof body.school_code === 'string'
+        ? body.school_code.trim()
+        : typeof body.schoolCode === 'string'
+          ? body.schoolCode.trim()
+          : '';
+    const admission_no =
+      typeof body.admission_no === 'string'
+        ? body.admission_no.trim()
+        : typeof body.admissionNo === 'string'
+          ? body.admissionNo.trim()
+          : '';
+    const password = typeof body.password === 'string' ? body.password : '';
 
     if (!school_code || !admission_no || !password) {
       return NextResponse.json(
@@ -25,7 +37,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const normalizedSchoolCode = String(school_code).trim().toUpperCase();
+    const normalizedSchoolCode = school_code.toUpperCase();
+    const normalizedAdmissionNo = admission_no.toUpperCase();
 
     // Step 0: Check if school is on hold
     const { data: school, error: schoolError } = await supabase
@@ -53,7 +66,7 @@ export async function POST(request: NextRequest) {
       .from('student_login')
       .select('*')
       .eq('school_code', normalizedSchoolCode)
-      .eq('admission_no', admission_no)
+      .ilike('admission_no', normalizedAdmissionNo)
       .single();
 
     if (loginError || !loginData) {
@@ -85,8 +98,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 2: Verify password hash
-    const isPasswordValid = await comparePassword(password, loginData.password_hash);
+    // Step 2: Verify password (support both bcrypt hash and plain text for migration)
+    const loginRecord = loginData as { password_hash?: string; password?: string };
+    const storedHash = loginRecord.password_hash ?? loginRecord.password ?? '';
+    let isPasswordValid = false;
+    if (typeof storedHash === 'string' && storedHash.startsWith('$2')) {
+      isPasswordValid = await comparePassword(password, storedHash);
+    } else {
+      isPasswordValid = storedHash === password;
+    }
     
     if (!isPasswordValid) {
       await createLoginAuditLog(request, {
@@ -107,7 +127,7 @@ export async function POST(request: NextRequest) {
       .from('students')
       .select('*')
       .eq('school_code', normalizedSchoolCode)
-      .eq('admission_no', admission_no)
+      .ilike('admission_no', normalizedAdmissionNo)
       .single();
 
     if (studentError || !student) {

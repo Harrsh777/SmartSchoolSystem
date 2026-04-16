@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { hashPassword } from '@/lib/password-generator';
+import { DEFAULT_STAFF_PORTAL_PASSWORD, hashPassword } from '@/lib/password-generator';
 
 /**
  * Reset password for a single staff member
@@ -43,8 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Set default password to "staff123"
-    const password = 'staff123';
+    const password = DEFAULT_STAFF_PORTAL_PASSWORD;
     const hash = await hashPassword(password);
 
     // Update or insert login record (staff_login.staff_id is display code e.g. STF001 for teacher login)

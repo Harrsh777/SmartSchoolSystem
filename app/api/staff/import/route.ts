@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { generateAndHashPassword } from '@/lib/password-generator';
+import { defaultStaffPasswordAndHash } from '@/lib/password-generator';
 import { randomUUID } from 'crypto';
 import {
   digits10,
@@ -297,7 +297,7 @@ async function ensureStaffLoginIfMissing(
   if (!staffRow) return;
 
   try {
-    const { password, hashedPassword } = await generateAndHashPassword();
+    const { password, hashedPassword } = await defaultStaffPasswordAndHash();
     const { error: loginInsertError } = await supabase.from('staff_login').insert({
       school_code: schoolCodeNorm,
       staff_id: staffId,
@@ -490,7 +490,7 @@ export async function POST(request: NextRequest) {
         const passwordsForRows: Array<{ staff_id: string; password: string }> =
           [];
         for (const member of members) {
-          const { password, hashedPassword } = await generateAndHashPassword();
+          const { password, hashedPassword } = await defaultStaffPasswordAndHash();
           loginRecords.push({
             school_code: schoolCodeNorm,
             staff_id: member.staff_id,

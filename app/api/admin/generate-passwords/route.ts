@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { generateAndHashPassword } from '@/lib/password-generator';
+import { defaultStaffPasswordAndHash, defaultStudentPasswordAndHash } from '@/lib/password-generator';
 
 export async function POST(request: NextRequest) {
   try {
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
           for (const student of studentsToProcess) {
             try {
-              const { password, hashedPassword } = await generateAndHashPassword();
+              const { password, hashedPassword } = await defaultStudentPasswordAndHash();
               
               const { error: insertError } = await supabase
                 .from('student_login')
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
 
           for (const member of staffToProcess) {
             try {
-              const { password, hashedPassword } = await generateAndHashPassword();
+              const { password, hashedPassword } = await defaultStaffPasswordAndHash();
               
               const { error: insertError } = await supabase
                 .from('staff_login')

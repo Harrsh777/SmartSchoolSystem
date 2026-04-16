@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { generateAndHashPassword } from '@/lib/password-generator';
+import { defaultStaffPasswordAndHash } from '@/lib/password-generator';
 
 export async function POST(request: NextRequest) {
   try {
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 
       for (const member of batch) {
         try {
-          const { password, hashedPassword } = await generateAndHashPassword();
+          const { password, hashedPassword } = await defaultStaffPasswordAndHash();
           const isExisting = existingStaffIds.has(member.staff_id);
 
           loginRecords.push({

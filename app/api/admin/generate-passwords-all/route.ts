@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { generateAndHashPassword } from '@/lib/password-generator';
+import { defaultStaffPasswordAndHash, defaultStudentPasswordAndHash } from '@/lib/password-generator';
 
 export async function POST(request: NextRequest) {
   try {
@@ -156,11 +156,12 @@ export async function POST(request: NextRequest) {
                   continue;
                 }
 
-                const { password, hashedPassword } = await generateAndHashPassword();
+                const { password, hashedPassword } = await defaultStudentPasswordAndHash();
                 loginRecords.push({
                   school_code: student.school_code,
                   admission_no: student.admission_no,
                   password_hash: hashedPassword,
+                  plain_password: password,
                   is_active: true,
                 });
                 results[schoolCode]?.passwords?.push({
@@ -238,11 +239,12 @@ export async function POST(request: NextRequest) {
 
             for (const member of batch) {
               try {
-                const { password, hashedPassword } = await generateAndHashPassword();
+                const { password, hashedPassword } = await defaultStaffPasswordAndHash();
                 loginRecords.push({
                   school_code: member.school_code,
                   staff_id: member.staff_id,
                   password_hash: hashedPassword,
+                  plain_password: password,
                   is_active: true,
                 });
                 results[schoolCode]?.passwords?.push({
