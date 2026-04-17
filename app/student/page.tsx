@@ -235,18 +235,23 @@ export default function StudentDashboard() {
       );
       const result = await response.json();
       
-      if (response.ok && result.data) {
+      if (response.ok && result.data != null) {
+        const payload = result.data;
+        const list: Exam[] = Array.isArray(payload) ? payload : (payload.examinations ?? []);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const upcoming = result.data.filter((exam: Exam) => {
-          if (!exam.start_date) return false;
-          const examDate = new Date(exam.start_date);
-          examDate.setHours(0, 0, 0, 0);
-          const endDate = new Date(exam.end_date || exam.start_date);
-          endDate.setHours(0, 0, 0, 0);
-          // Show upcoming and ongoing exams
-          return (exam.status === 'upcoming' || exam.status === 'ongoing' || !exam.status) && 
-                 (today >= examDate && today <= endDate || today < examDate);
+        const upcoming = list.filter((exam: Exam) => {
+          const examDate = exam.start_date ? new Date(exam.start_date) : null;
+          const endDate = new Date(exam.end_date || exam.start_date || 0);
+          if (exam.start_date && !Number.isNaN(examDate!.getTime())) {
+            examDate!.setHours(0, 0, 0, 0);
+            endDate.setHours(0, 0, 0, 0);
+            return (
+              (exam.status === 'upcoming' || exam.status === 'ongoing' || !exam.status) &&
+              ((today >= examDate! && today <= endDate) || today < examDate!)
+            );
+          }
+          return exam.status === 'upcoming' || exam.status === 'ongoing' || !exam.status;
         });
         setExams(upcoming);
       }

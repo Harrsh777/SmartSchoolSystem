@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { comparePassword } from '@/lib/password-utils';
+import { comparePassword, hashPassword } from '@/lib/password-utils';
 import { applyLoginCookies, SESSION_MAX_AGE } from '@/lib/auth-cookie';
 import { createSession } from '@/lib/session-store';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -98,14 +98,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 2: Verify password (support both bcrypt hash and plain text for migration)
-    const loginRecord = loginData as { password_hash?: string; password?: string };
+    // Step 2: Verify password (support bcrypt hash and legacy plain-text fields during migration)
+    const loginRecord = loginData as { id?: string; password_hash?: string; password?: string; plain_password?: string };
     const storedHash = loginRecord.password_hash ?? loginRecord.password ?? '';
+    const legacyPlainPassword = typeof loginRecord.plain_password === 'string' ? loginRecord.plain_password : '';
     let isPasswordValid = false;
     if (typeof storedHash === 'string' && storedHash.startsWith('$2')) {
       isPasswordValid = await comparePassword(password, storedHash);
     } else {
       isPasswordValid = storedHash === password;
+    }
+
+    // Fallback for existing rows where plain_password is still the source of truth
+    if (!isPasswordValid && legacyPlainPassword) {
+      isPasswordValid = legacyPlainPassword === password;
+
+      // Opportunistically migrate to hash so future logins use secure verification
+      if (isPasswordValid) {
+        try {
+          const migratedHash = await hashPassword(password);
+          await supabase
+            .from('student_login')
+            .update({ password_hash: migratedHash })
+            .eq('id', loginRecord.id);
+        } catch {
+          // If migration fails, keep login successful and retry on next login.
+        }
+      }
     }
     
     if (!isPasswordValid) {

@@ -247,7 +247,7 @@ function SortableMenuItem({
             }}
             className={`group flex-1 flex ${sidebarCollapsed ? 'flex-col items-center px-2' : 'items-center gap-3 px-2'} py-3 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active
-                ? 'bg-gradient-to-r from-slate-600 to-slate-500 text-white shadow-lg scale-[1.02]'
+                ? 'bg-[#4194cb] text-white shadow-lg scale-[1.02]'
                 : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
             }`}
           >
@@ -361,7 +361,7 @@ function SortableMenuItem({
                     }}
                     className={`group flex items-center gap-3 px-4 py-2.5 transition-all duration-300 ${
                       subActive
-                        ? 'bg-slate-500 text-white'
+                        ? 'bg-[#4194cb] text-white'
                         : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
                     }`}
                   >
@@ -371,7 +371,7 @@ function SortableMenuItem({
                     </span>
                     <ExternalLink size={14} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
                     {subActive && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                     )}
                   </Link>
                 );
@@ -417,7 +417,7 @@ function SortableMenuItem({
             onClick={() => toggleSection(item.label)}
             className={`group flex-1 flex ${sidebarCollapsed ? 'flex-col items-center px-2' : 'items-center gap-3 px-2'} py-3 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active
-                ? 'bg-gradient-to-r from-slate-600 to-slate-500 text-white shadow-lg scale-[1.02]'
+                ? 'bg-[#4194cb] text-white shadow-lg scale-[1.02]'
                 : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
             }`}
           >
@@ -516,7 +516,7 @@ function SortableMenuItem({
             }}
             className={`group flex-1 flex ${sidebarCollapsed ? 'flex-col items-center px-2' : 'items-center gap-3 px-2'} py-3 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
               active
-                ? 'bg-gradient-to-r from-slate-600 to-slate-500 text-white shadow-lg scale-[1.02]'
+                ? 'bg-[#4194cb] text-white shadow-lg scale-[1.02]'
                 : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
             }`}
           >
@@ -610,7 +610,7 @@ function SortableMenuItem({
                   }}
                   className={`group flex items-center gap-3 px-4 py-2.5 transition-all duration-300 ${
                     subActive
-                      ? 'bg-white/10 text-slate-200'
+                      ? 'bg-[#4194cb] text-white'
                       : 'text-[#E2E8F0] hover:text-white hover:bg-[rgba(255,255,255,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'
                   }`}
                 >
@@ -620,7 +620,7 @@ function SortableMenuItem({
                   </span>
                   <ExternalLink size={14} className={subActive ? 'text-white' : 'text-[#E2E8F0] group-hover:text-white'} />
                   {subActive && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                   )}
                 </Link>
               );
@@ -1989,7 +1989,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
                     ease: [0.4, 0, 0.2, 1]
                   }
                 }}
-                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] bg-[#1e293b] dark:bg-[#0f172a] border-r border-slate-600/30 z-50 lg:z-auto overflow-y-auto overflow-x-hidden shadow-xl"
+                className="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] bg-[#3982b8] dark:bg-[#3982b8] border-r border-blue-500 z-50 lg:z-auto overflow-y-auto overflow-x-hidden shadow-xl"
                 style={{ 
                   willChange: 'width',
                   marginLeft: 0

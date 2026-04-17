@@ -14,9 +14,36 @@ interface ExamScheduleItem {
   subject?: string;
 }
 
+interface ClassSummary {
+  id: string;
+  class?: unknown;
+  section?: unknown;
+  academic_year?: string | null;
+}
+
+interface TemplateExamRow {
+  id: string;
+  exam_name: string;
+  serial?: number;
+  weightage?: number;
+}
+
+interface TermWithTemplates extends Record<string, unknown> {
+  id: string;
+  name?: string;
+  serial?: number;
+  template_exams?: TemplateExamRow[];
+}
+
+interface StructureBundle {
+  structure: Record<string, unknown> & { id?: string; name?: string };
+  terms: TermWithTemplates[];
+}
+
 export default function ExaminationsPage() {
-  // student kept for potential future use
   const [, setStudent] = useState<Student | null>(null);
+  const [classInfo, setClassInfo] = useState<ClassSummary | null>(null);
+  const [structures, setStructures] = useState<StructureBundle[]>([]);
   const [exams, setExams] = useState<Examination[]>([]);
   const [marks, setMarks] = useState<Record<string, Mark>>({});
   const [loading, setLoading] = useState(true);
@@ -33,22 +60,37 @@ export default function ExaminationsPage() {
 
   const fetchExams = async (studentData: Student) => {
     try {
-      const response = await fetch(
-        `/api/examinations/v2/student?school_code=${studentData.school_code}&student_id=${studentData.id}`
-      );
+      const sc = encodeURIComponent(String(studentData.school_code ?? ''));
+      const sid = encodeURIComponent(String(studentData.id ?? ''));
+      const response = await fetch(`/api/examinations/v2/student?school_code=${sc}&student_id=${sid}`);
       const result = await response.json();
-      if (response.ok && result.data) {
-        // Show all exams (upcoming, ongoing, and previous). Sort: upcoming/ongoing first, then by start_date desc
+      if (response.ok && result.data != null) {
+        const payload = result.data as Examination[] | {
+          class?: ClassSummary | null;
+          structures?: StructureBundle[];
+          examinations?: Examination[];
+        };
+        const examList: Examination[] = Array.isArray(payload)
+          ? payload
+          : (payload.examinations ?? []);
+        const structureList: StructureBundle[] = Array.isArray(payload) ? [] : (payload.structures ?? []);
+        const cls: ClassSummary | null = Array.isArray(payload) ? null : (payload.class ?? null);
+
+        setClassInfo(cls);
+        setStructures(structureList);
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const all = (result.data as Examination[]).filter((exam: Examination) => exam.start_date);
-        const sorted = [...all].sort((a, b) => {
-          const endA = new Date(a.end_date || a.start_date!).getTime();
-          const endB = new Date(b.end_date || b.start_date!).getTime();
+        const sorted = [...examList].sort((a, b) => {
+          const endA = new Date(a.end_date || a.start_date || 0).getTime();
+          const endB = new Date(b.end_date || b.start_date || 0).getTime();
+          if (!endA && !endB) {
+            return String(a.exam_name || '').localeCompare(String(b.exam_name || ''));
+          }
           const aPast = endA < today.getTime();
           const bPast = endB < today.getTime();
-          if (aPast !== bPast) return aPast ? 1 : -1; // upcoming/ongoing first
-          return endB - endA; // then by end date descending (most recent first within same group)
+          if (aPast !== bPast) return aPast ? 1 : -1;
+          return endB - endA;
         });
         setExams(sorted);
         fetchMarks(studentData);
@@ -93,6 +135,7 @@ export default function ExaminationsPage() {
     const isPass = mark ? ((mark as { percentage?: number }).percentage ?? 0) >= 40 : false;
     const displayStatus = getStatus(exam);
     const statusLabel = displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1);
+    const termMeta = (exam as { term?: { name?: string; serial?: number } }).term;
     return (
       <Card key={exam.id} hover>
         <div className="flex items-start justify-between gap-4">
@@ -107,6 +150,11 @@ export default function ExaminationsPage() {
                 </span>
               )}
               <h3 className="text-xl font-bold text-black">{exam.exam_name}</h3>
+              {termMeta?.name && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                  Term: {termMeta.name}
+                </span>
+              )}
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                 displayStatus === 'ongoing'
                   ? 'bg-yellow-100 text-yellow-800'
@@ -343,16 +391,100 @@ ${rows.map((r) => `<tr><td>${r.subject}</td><td>${r.date}</td><td>${r.time}</td>
         </div>
       </motion.div>
 
-      {exams.length === 0 ? (
+      {classInfo && (
+        <Card>
+          <p className="text-sm text-gray-600 mb-1">Your class</p>
+          <p className="text-lg font-semibold text-black">
+            Class {String(classInfo.class ?? '—')}-{String(classInfo.section ?? '—')}
+            {classInfo.academic_year ? (
+              <span className="text-gray-600 font-normal"> · {classInfo.academic_year}</span>
+            ) : null}
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            Schedules and subjects below are only for this class section. Results show after your school locks marks.
+          </p>
+        </Card>
+      )}
+
+      {structures.length > 0 && (
+        <div className="space-y-6">
+          <h2 className="text-lg font-semibold text-black">Exam structure &amp; terms</h2>
+          {structures.map((bundle, si) => {
+            const s = bundle.structure;
+            const sName = typeof s.name === 'string' ? s.name : 'Exam structure';
+            return (
+              <motion.div
+                key={String(s.id ?? si)}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: si * 0.05 }}
+              >
+                <Card>
+                  <h3 className="text-xl font-bold text-black mb-1">{sName}</h3>
+                  <p className="text-sm text-gray-600 mb-4">Terms and examination types configured for your class.</p>
+                  {bundle.terms.length === 0 ? (
+                    <p className="text-sm text-gray-500">No terms are set up yet for this structure.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {bundle.terms.map((term) => (
+                        <div
+                          key={term.id}
+                          className="rounded-lg border border-gray-200 bg-gray-50/80 p-4"
+                        >
+                          <p className="font-semibold text-black">
+                            Term {term.serial != null ? `${term.serial}: ` : ''}
+                            {term.name || 'Term'}
+                          </p>
+                          {Array.isArray(term.template_exams) && term.template_exams.length > 0 ? (
+                            <ul className="mt-2 text-sm text-gray-700 list-disc list-inside space-y-1">
+                              {term.template_exams.map((te) => (
+                                <li key={te.id}>
+                                  {te.exam_name}
+                                  {te.weightage != null && Number(te.weightage) > 0 ? (
+                                    <span className="text-gray-500"> ({te.weightage}% weight)</span>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-gray-500 mt-1">No examination types added to this term yet.</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      {exams.length === 0 && structures.length === 0 && !classInfo ? (
         <Card>
           <div className="text-center py-12">
             <FileText className="mx-auto mb-4 text-gray-400" size={48} />
-            <p className="text-gray-600 text-lg">No examinations found</p>
-            <p className="text-gray-500 text-sm mt-1">Exams for your class will appear here once they are created.</p>
+            <p className="text-gray-600 text-lg">No examination setup found</p>
+            <p className="text-gray-500 text-sm mt-1">
+              Your class could not be matched or no exam structure exists yet. Contact your school if this is unexpected.
+            </p>
           </div>
         </Card>
-      ) : (
+      ) : exams.length === 0 ? (
+        <Card>
+          <div className="text-center py-10">
+            <FileText className="mx-auto mb-4 text-gray-400" size={48} />
+            <p className="text-gray-600 text-lg">No scheduled examinations yet</p>
+            <p className="text-gray-500 text-sm mt-1 max-w-md mx-auto">
+              When your school creates dated exams for your class, they will appear in the list below with subjects and schedules.
+            </p>
+          </div>
+        </Card>
+      ) : null}
+
+      {exams.length > 0 ? (
         <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-black">Scheduled examinations</h2>
           {(() => {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -388,7 +520,7 @@ ${rows.map((r) => `<tr><td>${r.subject}</td><td>${r.date}</td><td>${r.time}</td>
             );
           })()}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

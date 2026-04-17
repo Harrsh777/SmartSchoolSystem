@@ -4,11 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { 
-  Trophy,
   MessageSquare,
   Calendar,
   GraduationCap,
-  FileText,
   User,
   CheckCircle,
   Check,
@@ -17,7 +15,6 @@ import {
   Bell,
   Bus,
   IndianRupee,
-  Award,
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 import TimetableView from '@/components/timetable/TimetableView';
@@ -25,12 +22,6 @@ import TimetableView from '@/components/timetable/TimetableView';
 interface Stats {
   attendance: number;
   attendance_change: number;
-  gpa: string;
-  gpa_rank: string;
-  merit_points: number;
-  progress_current: number;
-  progress_total: number;
-  term: string;
 }
 
 interface AttendanceDay {
@@ -68,7 +59,6 @@ export default function StudentDashboardHome() {
   const [student, setStudent] = useState<Student | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [upcoming, setUpcoming] = useState<UpcomingItem[]>([]);
-  const [upcomingExamsCount, setUpcomingExamsCount] = useState(0);
   const [classTeacher, setClassTeacher] = useState<ClassTeacher | null>(null);
   const [classId, setClassId] = useState<string | null>(null);
   const [, setWeeklyCompletion] = useState({ weekly_completion: 0, assignments_to_complete: 0 });
@@ -79,8 +69,6 @@ export default function StudentDashboardHome() {
   const [feeDueQuarter, setFeeDueQuarter] = useState(0);
   const [receiptCount, setReceiptCount] = useState(0);
   const [transportBrief, setTransportBrief] = useState<{ has_transport: boolean; route_name?: string } | null>(null);
-  const [publishedMarksCount, setPublishedMarksCount] = useState(0);
-  const [upcomingExamPeek, setUpcomingExamPeek] = useState<string[]>([]);
 
   const getString = (value: unknown): string => {
     return typeof value === 'string' ? value : '';
@@ -128,8 +116,6 @@ export default function StudentDashboardHome() {
         feesRes,
         receiptsRes,
         transportRes,
-        examsV2Res,
-        marksRes,
       ] = await Promise.all([
         fetch(`/api/student/stats?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`),
         fetch(`/api/student/upcoming-items?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}&limit=3`),
@@ -142,8 +128,6 @@ export default function StudentDashboardHome() {
         fetch(`/api/student/fees?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
         fetch(`/api/student/fees/receipts?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
         fetch(`/api/student/transport?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
-        fetch(`/api/examinations/v2/student?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
-        fetch(`/api/student/marks?school_code=${enc(schoolCode)}&student_id=${enc(studentId)}`, { cache: 'no-store' }),
       ]);
 
       if (statsRes.ok) {
@@ -154,24 +138,6 @@ export default function StudentDashboardHome() {
       if (upcomingRes.ok) {
         const upcomingData = await upcomingRes.json();
         setUpcoming(upcomingData.data || []);
-        const examsCount = (upcomingData.data || []).filter((item: UpcomingItem) => item.subtitle === 'Examination').length;
-        setUpcomingExamsCount(examsCount);
-      }
-
-      if (examsV2Res.ok) {
-        const examsJson = await examsV2Res.json();
-        const examsList = (examsJson.data || []) as { exam_name?: string; start_date?: string | null; end_date?: string | null }[];
-        const todayCut = new Date();
-        todayCut.setHours(0, 0, 0, 0);
-        const upcomingExams = examsList.filter((e) => {
-          const end = new Date(e.end_date || e.start_date || 0);
-          end.setHours(23, 59, 59, 999);
-          return !Number.isNaN(end.getTime()) && end >= todayCut;
-        });
-        setUpcomingExamsCount(upcomingExams.length);
-        setUpcomingExamPeek(
-          upcomingExams.slice(0, 4).map((e) => (typeof e.exam_name === 'string' ? e.exam_name : 'Exam'))
-        );
       }
 
       if (feesRes.ok) {
@@ -214,11 +180,6 @@ export default function StudentDashboardHome() {
             route_name: (d as { route?: { route_name?: string } | null }).route?.route_name,
           });
         }
-      }
-
-      if (marksRes.ok) {
-        const mj = await marksRes.json();
-        setPublishedMarksCount(Array.isArray(mj.data) ? mj.data.length : 0);
       }
 
       if (weeklyRes.ok) {
@@ -330,13 +291,13 @@ export default function StudentDashboardHome() {
           </div>
         </section>
 
-        {/* Stats Cards */}
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Quick stats: one row on large screens */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Attendance Card */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+            className="min-w-0 bg-white rounded-xl p-5 sm:p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-50">
@@ -356,37 +317,12 @@ export default function StudentDashboardHome() {
             </div>
           </motion.div>
 
-          {/* Upcoming Examinations Card */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-purple-50">
-                <FileText className="text-purple-500" size={24} />
-              </div>
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600">
-                {upcomingExamsCount > 0 ? `${upcomingExamsCount} New` : 'None'}
-              </span>
-            </div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Upcoming Examinations</p>
-            <p className="text-2xl font-bold text-gray-900 mb-3">{upcomingExamsCount}</p>
-            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-purple-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min((upcomingExamsCount / 10) * 100, 100)}%` }}
-              ></div>
-            </div>
-          </motion.div>
-
           {/* Class Teacher Card */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+            transition={{ delay: 0.05 }}
+            className="min-w-0 bg-white rounded-xl p-5 sm:p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-green-50">
@@ -411,40 +347,13 @@ export default function StudentDashboardHome() {
             </div>
           </motion.div>
 
-          {/* Academic Index Card (GPA) */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-orange-50">
-                <Trophy className="text-orange-500" size={24} />
-              </div>
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600">
-                {stats?.gpa_rank || 'A- Avg'}
-              </span>
-            </div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Academic Index</p>
-            <p className="text-2xl font-bold text-gray-900 mb-3">{stats?.gpa != null && stats.gpa !== '' ? `${Number(stats.gpa).toFixed(1)}%` : '—'}</p>
-            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-orange-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(parseFloat(stats?.gpa || '0') || 0, 100)}%` }}
-              ></div>
-            </div>
-          </motion.div>
-        </section>
-
-        {/* Fees, transport, exams & published results */}
-        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <motion.button
             type="button"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
             onClick={() => router.push('/student/dashboard/fees')}
-            className="text-left glass-card soft-shadow rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors"
+            className="min-w-0 text-left glass-card soft-shadow rounded-xl sm:rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors h-full"
           >
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
@@ -465,9 +374,9 @@ export default function StudentDashboardHome() {
             type="button"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
+            transition={{ delay: 0.15 }}
             onClick={() => router.push('/student/dashboard/transport')}
-            className="text-left glass-card soft-shadow rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors"
+            className="min-w-0 text-left glass-card soft-shadow rounded-xl sm:rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors h-full"
           >
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-lg bg-sky-500/10 flex items-center justify-center">
@@ -488,49 +397,6 @@ export default function StudentDashboardHome() {
                 <p className="text-[11px] text-muted-foreground mt-2">Contact the office if you need bus service.</p>
               </>
             )}
-          </motion.button>
-
-          <motion.button
-            type="button"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            onClick={() => router.push('/student/dashboard/examinations')}
-            className="text-left glass-card soft-shadow rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors md:col-span-2 xl:col-span-1"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                <FileText className="text-violet-600" size={20} />
-              </div>
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Examinations</span>
-            </div>
-            <p className="text-sm font-semibold text-foreground">{upcomingExamsCount} upcoming</p>
-            {upcomingExamPeek.length > 0 && (
-              <ul className="mt-2 space-y-1 text-xs text-muted-foreground list-disc list-inside">
-                {upcomingExamPeek.map((name, i) => (
-                  <li key={`${i}-${name}`} className="truncate">{name}</li>
-                ))}
-              </ul>
-            )}
-            <p className="text-[11px] text-primary font-semibold mt-3 uppercase tracking-wide">Schedules &amp; published marks →</p>
-          </motion.button>
-
-          <motion.button
-            type="button"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            onClick={() => router.push('/student/dashboard/examinations')}
-            className="text-left glass-card soft-shadow rounded-2xl border border-input p-5 hover:border-primary/40 transition-colors"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                <Award className="text-emerald-600" size={20} />
-              </div>
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Published results</span>
-            </div>
-            <p className="text-2xl font-bold text-foreground">{publishedMarksCount}</p>
-            <p className="text-xs text-muted-foreground mt-1">Exams where marks are visible after admin lock</p>
           </motion.button>
         </section>
 
