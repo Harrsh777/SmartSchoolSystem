@@ -17,6 +17,8 @@ export async function PATCH(
       content,
       type,
       mode,
+      subject_id,
+      subject_name,
       targets,
       attachments,
       updated_by,
@@ -42,6 +44,18 @@ export async function PATCH(
     if (content !== undefined) updateData.content = content;
     if (type !== undefined) updateData.type = type;
     if (mode !== undefined) updateData.mode = mode;
+    if (subject_id !== undefined) updateData.subject_id = subject_id || null;
+    if (subject_name !== undefined) updateData.subject_name = subject_name || null;
+    if (mode === 'GENERAL' && ('subject_id' in existing || 'subject_name' in existing)) {
+      updateData.subject_id = null;
+      updateData.subject_name = null;
+    }
+    if (mode === 'SUBJECT_WISE' && !subject_id && !existing.subject_id) {
+      return NextResponse.json(
+        { error: 'Subject is required when diary mode is Subject-wise' },
+        { status: 400 }
+      );
+    }
     if (updated_by !== undefined) updateData.updated_by = updated_by;
 
     const { error: updateError } = await supabase

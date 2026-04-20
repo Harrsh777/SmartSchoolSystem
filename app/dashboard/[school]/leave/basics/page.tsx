@@ -13,9 +13,7 @@ import {
   Trash2,
   Settings,
   Save,
-  X,
-  RefreshCw,
-  FileText
+  X
 } from 'lucide-react';
 
 interface LeaveType {
@@ -230,13 +228,6 @@ export default function LeaveBasicsPage({
     }
   };
 
-  const handleResetLeaveTypes = async () => {
-    if (confirm('Are you sure you want to reset all leave types? This will restore default settings.')) {
-      // This is a placeholder - you can implement default leave types if needed
-      alert('Reset functionality can be implemented as needed');
-    }
-  };
-
   return (
     <div className="space-y-6 pb-8 min-h-screen bg-[#ECEDED]">
       {/* Header */}
@@ -286,21 +277,6 @@ export default function LeaveBasicsPage({
             </div>
           </div>
           <div className="flex items-end gap-3">
-            <Button
-              variant="outline"
-              onClick={handleResetLeaveTypes}
-              className="border-orange-500 text-orange-600 hover:bg-orange-50"
-            >
-              <RefreshCw size={18} className="mr-2" />
-              Reset Leave Types
-            </Button>
-            <Button
-              variant="outline"
-              className="border-[#1e3a8a] text-[#1e3a8a]"
-            >
-              <FileText size={18} className="mr-2" />
-              Logs
-            </Button>
             <Button
               onClick={() => handleOpenModal()}
               className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white"

@@ -173,7 +173,6 @@ export async function POST(request: NextRequest) {
 
     // If student_id is provided, submit for single student
     if (student_id) {
-      // Check if all subjects have marks for this student (do not filter by status – column may not exist)
       const { data: existingMarks, error: fetchError } = await supabase
         .from('student_subject_marks')
         .select('subject_id, marks_obtained')
@@ -185,19 +184,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { error: 'Failed to check marks', details: fetchError.message },
           { status: 500 }
-        );
-      }
-
-      const markedSubjects = new Set(existingMarks?.map(m => m.subject_id) || []);
-      const allSubjectsMarked = subjectIds.every(subjectId => markedSubjects.has(subjectId));
-
-      if (!allSubjectsMarked) {
-        return NextResponse.json(
-          { 
-            error: 'Cannot submit: Incomplete marks for this student',
-            hint: 'Please ensure all subjects have marks before submitting'
-          },
-          { status: 400 }
         );
       }
 
@@ -254,7 +240,7 @@ export async function POST(request: NextRequest) {
       .eq('section', classData.section || '')
       .eq('status', 'active');
 
-    // Check if all students have marks for all subjects (do not filter by status – column may not exist)
+    // Submit all available saved marks for this class.
     const { data: existingMarks, error: bulkFetchError } = await supabase
       .from('student_subject_marks')
       .select('student_id, subject_id')
@@ -266,31 +252,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Failed to check marks', details: bulkFetchError.message },
         { status: 500 }
-      );
-    }
-
-    const incompleteStudents: string[] = [];
-    
-    students?.forEach((student) => {
-      const studentMarks = existingMarks?.filter(m => m.student_id === student.id) || [];
-      const markedSubjects = new Set(studentMarks.map(m => m.subject_id));
-      
-      // Check if all subjects have marks
-      const allSubjectsMarked = subjectIds.every(subjectId => markedSubjects.has(subjectId));
-      
-      if (!allSubjectsMarked) {
-        incompleteStudents.push(student.id);
-      }
-    });
-
-    if (incompleteStudents.length > 0) {
-      return NextResponse.json(
-        { 
-          error: 'Cannot submit: Some students have incomplete marks',
-          incomplete_count: incompleteStudents.length,
-          hint: 'Please ensure all students have marks for all subjects before submitting for review'
-        },
-        { status: 400 }
       );
     }
 

@@ -69,6 +69,8 @@ interface ExistingMark {
   subject_id: string;
   marks_obtained: number;
   max_marks: number;
+  marks_entry_code?: string | null;
+  status?: string | null;
 }
 
 interface TermOption {
@@ -172,7 +174,9 @@ export default function MarksEntryPage({
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [marks, setMarks] = useState<Record<string, Record<string, number>>>({});
+  const [marks, setMarks] = useState<Record<string, Record<string, number | undefined>>>({});
+  const [absentByStudentSubject, setAbsentByStudentSubject] = useState<Record<string, Record<string, boolean>>>({});
+  const [hasSubmittedMarks, setHasSubmittedMarks] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -183,6 +187,11 @@ export default function MarksEntryPage({
   const [marksTableSort, setMarksTableSort] = useState<MarksTableSort>('roll_asc');
   const [showTotals, setShowTotals] = useState(true);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
+  const draftStorageKey = useMemo(
+    () =>
+      `marks-entry-draft:${schoolCode}:${selectedClassId || '_'}:${selectedExam || '_'}:${selectedSubjectId || '_'}`,
+    [schoolCode, selectedClassId, selectedExam, selectedSubjectId]
+  );
 
   // Fetch classes and sections
   useEffect(() => {
@@ -255,6 +264,8 @@ export default function MarksEntryPage({
       setSubjects([]);
       setSelectedSubjectId('');
       setMarks({});
+      setAbsentByStudentSubject({});
+      setHasSubmittedMarks(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedExam, selectedClassId]);
@@ -462,24 +473,37 @@ export default function MarksEntryPage({
           );
           const marksData = await marksRes.json();
           if (marksRes.ok && marksData.data && marksData.data.length > 0) {
-            const studentMarks: Record<string, number> = {};
+            const studentMarks: Record<string, number | undefined> = {};
+            const absentMap: Record<string, boolean> = {};
+            let submittedFound = false;
             marksData.data.forEach((m: ExistingMark) => {
-              studentMarks[m.subject_id] = m.marks_obtained;
+              const isAbsent = String(m.marks_entry_code || '').toUpperCase() === 'AB';
+              absentMap[m.subject_id] = isAbsent;
+              studentMarks[m.subject_id] = isAbsent ? 0 : m.marks_obtained;
+              if (String(m.status || '').toLowerCase() === 'submitted') {
+                submittedFound = true;
+              }
             });
-            return { studentId: student.id, marks: studentMarks };
+            return { studentId: student.id, marks: studentMarks, absentMap, submittedFound };
           }
         } catch (err) {
           console.error(`Error fetching marks for student ${student.id}:`, err);
         }
-        return { studentId: student.id, marks: {} };
+        return { studentId: student.id, marks: {}, absentMap: {}, submittedFound: false };
       });
 
       const existingMarksResults = await Promise.all(existingMarksPromises);
-      const marksState: Record<string, Record<string, number>> = {};
-      existingMarksResults.forEach(({ studentId, marks: studentMarks }) => {
+      const marksState: Record<string, Record<string, number | undefined>> = {};
+      const absentState: Record<string, Record<string, boolean>> = {};
+      let submittedExists = false;
+      existingMarksResults.forEach(({ studentId, marks: studentMarks, absentMap, submittedFound }) => {
         marksState[studentId] = studentMarks;
+        absentState[studentId] = absentMap;
+        if (submittedFound) submittedExists = true;
       });
       setMarks(marksState);
+      setAbsentByStudentSubject(absentState);
+      setHasSubmittedMarks(submittedExists);
     } catch (err) {
       console.error('Error fetching students and subjects:', err);
       setError('Failed to load data. Please try again.');
@@ -488,8 +512,44 @@ export default function MarksEntryPage({
     }
   }, [selectedClass, selectedSection, selectedExam, selectedClassId, schoolCode]);
 
+  useEffect(() => {
+    if (!selectedExam || !selectedClassId) return;
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        marks?: Record<string, Record<string, number | undefined>>;
+        absentByStudentSubject?: Record<string, Record<string, boolean>>;
+      };
+      if (parsed.marks && typeof parsed.marks === 'object') {
+        setMarks((prev) => ({ ...prev, ...parsed.marks }));
+      }
+      if (parsed.absentByStudentSubject && typeof parsed.absentByStudentSubject === 'object') {
+        setAbsentByStudentSubject((prev) => ({ ...prev, ...parsed.absentByStudentSubject }));
+      }
+    } catch (e) {
+      console.warn('Failed to restore marks draft from storage', e);
+    }
+  }, [draftStorageKey, selectedExam, selectedClassId]);
+
+  useEffect(() => {
+    if (!selectedExam || !selectedClassId) return;
+    try {
+      localStorage.setItem(
+        draftStorageKey,
+        JSON.stringify({
+          marks,
+          absentByStudentSubject,
+        })
+      );
+    } catch (e) {
+      console.warn('Failed to persist marks draft to storage', e);
+    }
+  }, [draftStorageKey, marks, absentByStudentSubject, selectedExam, selectedClassId]);
+
   const handleMarksChange = (studentId: string, subjectId: string, value: string) => {
-    const numValue = value === '' ? 0 : parseFloat(value);
+    const parsed = value === '' ? undefined : parseFloat(value);
+    const numValue = Number.isFinite(parsed as number) ? parsed : undefined;
     setMarks(prev => ({
       ...prev,
       [studentId]: {
@@ -497,9 +557,36 @@ export default function MarksEntryPage({
         [subjectId]: numValue,
       },
     }));
+    if (numValue !== undefined && numValue > 0) {
+      setAbsentByStudentSubject((prev) => ({
+        ...prev,
+        [studentId]: {
+          ...prev[studentId],
+          [subjectId]: false,
+        },
+      }));
+    }
   };
 
-  const handleSave = async (submitForReview = false): Promise<boolean> => {
+  const handleAbsentToggle = (studentId: string, subjectId: string, checked: boolean) => {
+    setAbsentByStudentSubject((prev) => ({
+      ...prev,
+      [studentId]: {
+        ...prev[studentId],
+        [subjectId]: checked,
+      },
+    }));
+    setMarks((prev) => ({
+      ...prev,
+      [studentId]: {
+        ...prev[studentId],
+        [subjectId]: checked ? 0 : prev[studentId]?.[subjectId],
+      },
+    }));
+  };
+
+  const handleSave = async (options?: { silent?: boolean }): Promise<boolean> => {
+    const silent = Boolean(options?.silent);
     if (!selectedClass || !selectedSection || !selectedExam || !selectedClassId) {
       setError('Please select class, section, and examination');
       return false;
@@ -513,25 +600,6 @@ export default function MarksEntryPage({
     if (subjects.length === 0) {
       setError('No subjects found for this exam');
       return false;
-    }
-
-    // Validate all marks are entered if submitting for review
-    if (submitForReview) {
-      let incompleteMarks = false;
-      for (const student of students) {
-        for (const subject of subjects) {
-          const markValue = marks[student.id]?.[subject.id];
-          if (markValue === undefined || markValue === null || isNaN(markValue)) {
-            incompleteMarks = true;
-            break;
-          }
-        }
-        if (incompleteMarks) break;
-      }
-      if (incompleteMarks) {
-        setError('All marks must be entered before submitting for review.');
-        return false;
-      }
     }
 
     // Get user ID from session storage (supports staff, principal, admin)
@@ -609,25 +677,43 @@ export default function MarksEntryPage({
     
     console.log('Access granted - proceeding with save. enteredBy:', enteredBy || 'null (principal/admin)');
 
-    const action = submitForReview ? setSubmitting : setSaving;
-    action(true);
+    setSaving(true);
     setError('');
-    setSuccess('');
+    if (!silent) setSuccess('');
 
     try {
       // Prepare bulk marks data
-      const bulkMarks = students.map((student) => {
+      const bulkMarks = students
+        .map((student) => {
         const studentMarks = marks[student.id] || {};
+        const studentAbsent = absentByStudentSubject[student.id] || {};
+        const subjectsPayload = subjects
+          .map((subject) => {
+            const isAbsent = Boolean(studentAbsent[subject.id]);
+            const val = studentMarks[subject.id];
+            const hasValue = typeof val === 'number' && Number.isFinite(val);
+            if (!isAbsent && !hasValue) return null;
+            return {
+              subject_id: subject.id,
+              max_marks: subject.max_marks,
+              marks_obtained: isAbsent ? 0 : Number(val),
+              remarks: '',
+              marks_entry_code: isAbsent ? 'AB' : null,
+            };
+          })
+          .filter(Boolean);
+
         return {
           student_id: student.id,
-          subjects: subjects.map((subject) => ({
-            subject_id: subject.id,
-            max_marks: subject.max_marks,
-            marks_obtained: studentMarks[subject.id] || 0,
-            remarks: '',
-          })),
+          subjects: subjectsPayload,
         };
-      });
+      })
+      .filter((x) => x.subjects.length > 0);
+
+      if (bulkMarks.length === 0) {
+        setError('No draft changes found to save.');
+        return false;
+      }
 
       // Use bulk API for efficiency
       console.log('Saving marks with:', {
@@ -638,15 +724,14 @@ export default function MarksEntryPage({
         marks_count: bulkMarks.length,
       });
       
-      const endpoint = submitForReview ? '/api/examinations/marks/submit' : '/api/examinations/marks/bulk';
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/examinations/marks/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
           exam_id: selectedExam,
           class_id: selectedClassId,
-          marks: submitForReview ? bulkMarks : bulkMarks,
+          marks: bulkMarks,
           entered_by: enteredBy,
         }),
       });
@@ -654,29 +739,27 @@ export default function MarksEntryPage({
       const result = await response.json();
 
       if (response.ok) {
-        if (submitForReview) {
-          setSuccess(`Marks submitted for review successfully! ${result.submitted_count || 0} marks submitted.`);
-        } else {
+        if (!silent) {
           const savedCount = result.summary?.total_students || students.length;
           setSuccess(`Marks saved successfully for ${savedCount} student(s)!`);
+          setTimeout(() => {
+            setSuccess('');
+            fetchStudentsAndSubjects();
+          }, 3000);
         }
-        setTimeout(() => {
-          setSuccess('');
-          fetchStudentsAndSubjects();
-        }, 3000);
         return true;
       } else {
-        const errorMsg = result.error || `Failed to ${submitForReview ? 'submit' : 'save'} marks`;
+        const errorMsg = result.error || 'Failed to save marks';
         const details = result.errors ? `\n\nErrors: ${result.errors.slice(0, 3).map((e: { error: string }) => e.error).join('; ')}` : '';
         setError(`${errorMsg}${details}`);
         return false;
       }
     } catch (err) {
-      console.error(`Error ${submitForReview ? 'submitting' : 'saving'} marks:`, err);
-      setError(`Failed to ${submitForReview ? 'submit' : 'save'} marks. Please try again.`);
+      console.error('Error saving marks:', err);
+      setError('Failed to save marks. Please try again.');
       return false;
     } finally {
-      action(false);
+      setSaving(false);
     }
   };
 
@@ -700,7 +783,88 @@ export default function MarksEntryPage({
   };
 
   const handleSubmitForReview = async () => {
-    await handleSave(true);
+    if (!selectedClass || !selectedSection || !selectedExam || !selectedClassId) {
+      setError('Please select class, section, and examination');
+      return;
+    }
+    if (students.length === 0) {
+      setError('No students found');
+      return;
+    }
+    if (subjects.length === 0) {
+      setError('No subjects found for this exam');
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const subjectIdToValidate = selectedSubjectId || displayedSubjects[0]?.id || '';
+      if (!subjectIdToValidate) {
+        setError('Please select a subject before submitting.');
+        return;
+      }
+
+      for (const student of students) {
+        const isAbsent = Boolean(absentByStudentSubject[student.id]?.[subjectIdToValidate]);
+        const markValue = marks[student.id]?.[subjectIdToValidate];
+        const hasValue = typeof markValue === 'number' && Number.isFinite(markValue);
+
+        if (isAbsent) {
+          if (!hasValue || Number(markValue) !== 0) {
+            setError(`Absent students must have 0 marks (${student.student_name}).`);
+            return;
+          }
+          continue;
+        }
+
+        if (!hasValue) {
+          setError(`Please enter ${displayedSubjects[0]?.name || 'selected subject'} marks for all students before submit.`);
+          return;
+        }
+        if (Number(markValue) <= 0) {
+          setError(`0 marks are only allowed when Absent is checked (${student.student_name}).`);
+          return;
+        }
+      }
+
+      if (hasSubmittedMarks) {
+        const proceed = window.confirm('Some marks are already submitted for this exam/class. Re-submit now?');
+        if (!proceed) return;
+      }
+
+      // Always auto-save the latest draft before submit.
+      const saved = await handleSave({ silent: true });
+      if (!saved) return;
+
+      const response = await fetch('/api/examinations/marks/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          exam_id: selectedExam,
+          class_id: selectedClassId,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setError(result.error || result.hint || 'Failed to submit marks for review');
+        return;
+      }
+
+      setSuccess(`Marks submitted for review successfully! ${result.submitted_count || 0} marks submitted.`);
+      setTimeout(() => {
+        setSuccess('');
+        fetchStudentsAndSubjects();
+      }, 3000);
+    } catch (err) {
+      console.error('Error submitting marks:', err);
+      setError('Failed to submit marks for review. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const displayStudents = useMemo(() => {
@@ -932,7 +1096,7 @@ export default function MarksEntryPage({
             </div>
             <div className="flex items-end gap-2">
               <Button
-                onClick={() => handleSave(false)}
+                onClick={() => handleSave()}
                 disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
                 size="sm"
                 className="px-3 bg-[#2C3E50] hover:bg-[#34495E] dark:bg-[#4A707A] dark:hover:bg-[#5A879A] disabled:opacity-50"
@@ -1106,23 +1270,30 @@ export default function MarksEntryPage({
                                   min="0"
                                   max={subject.max_marks}
                                   step="0.01"
-                                  value={marksObtained || ''}
+                                  value={marksObtained ?? ''}
                                   onChange={(e) => handleMarksChange(student.id, subject.id, e.target.value)}
                                   onBlur={(e) => {
                                     const raw = e.target.value;
-                                    const v = raw === '' ? 0 : parseFloat(raw);
+                                    const v = raw === '' ? undefined : parseFloat(raw);
                                     if (!Number.isFinite(v)) return;
-                                    if (v < 0) {
+                                    if ((v as number) < 0) {
                                       alert('Marks cannot be negative.');
-                                      handleMarksChange(student.id, subject.id, '0');
+                                      handleMarksChange(student.id, subject.id, '');
                                       return;
                                     }
-                                    if (v > subject.max_marks) {
+                                    if ((v as number) > subject.max_marks) {
                                       alert(`Marks cannot exceed ${subject.max_marks}`);
                                       handleMarksChange(student.id, subject.id, String(subject.max_marks));
+                                      return;
+                                    }
+                                    const isAbsent = Boolean(absentByStudentSubject[student.id]?.[subject.id]);
+                                    if (!isAbsent && (v as number) <= 0) {
+                                      alert('0 marks are only allowed when Absent is checked.');
+                                      handleMarksChange(student.id, subject.id, '');
                                     }
                                   }}
                                   placeholder="0"
+                                  disabled={Boolean(absentByStudentSubject[student.id]?.[subject.id])}
                                   className={`w-20 text-center text-sm font-medium ${
                                     isPass 
                                       ? 'border-green-500 focus:ring-green-500' 
@@ -1131,6 +1302,17 @@ export default function MarksEntryPage({
                                       : 'border-red-500 focus:ring-red-500'
                                   }`}
                                 />
+                                <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(absentByStudentSubject[student.id]?.[subject.id])}
+                                    onChange={(e) =>
+                                      handleAbsentToggle(student.id, subject.id, e.target.checked)
+                                    }
+                                    className="w-3.5 h-3.5 rounded border-gray-300"
+                                  />
+                                  Absent
+                                </label>
                                 <div className="flex items-center gap-1 text-xs">
                                   <span className={`font-semibold ${getGradeColor(grade)}`}>
                                     {grade}

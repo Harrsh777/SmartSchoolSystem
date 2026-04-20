@@ -27,6 +27,7 @@ import {
   X,
   School,
   ArrowUpDown,
+  Hash,
 } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
@@ -85,6 +86,9 @@ export default function StudentDirectoryPage({
   ]);
   const [exporting, setExporting] = useState(false);
   const [statusCounts, setStatusCounts] = useState({ active: 0, deactivated: 0, transferred: 0, alumni: 0 });
+  const [generatingRollNumbers, setGeneratingRollNumbers] = useState(false);
+  const [rollGenMessage, setRollGenMessage] = useState<string>('');
+  const [lastRollGeneratedAt, setLastRollGeneratedAt] = useState<string>('');
 
   /** Columns that can be included in the Excel export */
   const EXPORT_COLUMN_OPTIONS: { key: string; label: string }[] = [
@@ -408,6 +412,61 @@ export default function StudentDirectoryPage({
     handleChangeStatus(e, studentId, newStatus);
   };
 
+  const handleGenerateRollNumbers = async () => {
+    if (!selectionReady || generatingRollNumbers) return;
+    setGeneratingRollNumbers(true);
+    setRollGenMessage('');
+    try {
+      const payload = {
+        school_code: schoolCode,
+        class: selectedClass,
+        section: selectedSection,
+      };
+      let response = await fetch('/api/students/roll-numbers/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      let result = await response.json();
+
+      if (response.status === 409 && result.requires_confirmation) {
+        const proceed = window.confirm(
+          'Existing roll numbers will be removed and reassigned. Do you want to continue?'
+        );
+        if (!proceed) {
+          setRollGenMessage('Roll number generation cancelled.');
+          return;
+        }
+        response = await fetch('/api/students/roll-numbers/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, force_overwrite: true }),
+        });
+        result = await response.json();
+      }
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          setRollGenMessage('No students found');
+        } else {
+          setRollGenMessage(result.error || 'Failed to generate roll numbers.');
+        }
+        return;
+      }
+
+      const generatedCount =
+        typeof result.total_students === 'number' ? result.total_students : Array.isArray(result.data) ? result.data.length : 0;
+      setLastRollGeneratedAt(result.generated_at || new Date().toISOString());
+      setRollGenMessage(`Roll numbers generated successfully for ${generatedCount} students.`);
+      await fetchStudents();
+    } catch (err) {
+      console.error('Error generating roll numbers:', err);
+      setRollGenMessage('Failed to generate roll numbers.');
+    } finally {
+      setGeneratingRollNumbers(false);
+    }
+  };
+
   const updateStudentHouse = async (e: React.ChangeEvent<HTMLSelectElement>, studentId: string) => {
     e.stopPropagation();
     const houseName = e.target.value;
@@ -670,7 +729,39 @@ export default function StudentDirectoryPage({
               ) : null}
             </p>
           )}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleGenerateRollNumbers}
+              disabled={!selectionReady || generatingRollNumbers}
+              className="bg-blue-800 hover:bg-blue-900 text-white disabled:opacity-50"
+              title={!selectionReady ? 'Select class and section first' : undefined}
+            >
+              {generatingRollNumbers ? (
+                <>
+                  <Loader2 size={16} className="mr-1.5 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                 
+                  Generate Roll Numbers
+                </>
+              )}
+            </Button>
+          </div>
         </div>
+        {(rollGenMessage || lastRollGeneratedAt) && (
+          <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-900">
+            {rollGenMessage ? <p>{rollGenMessage}</p> : null}
+            {lastRollGeneratedAt ? (
+              <p className="text-blue-700 mt-0.5">
+                Last generated: {new Date(lastRollGeneratedAt).toLocaleString()}
+              </p>
+            ) : null}
+          </div>
+        )}
       </Card>
 
       {/* Export to Excel Modal */}

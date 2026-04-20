@@ -6,11 +6,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { 
-  FileText, 
-  Calendar, 
-  Folder, 
-  X, 
+import {
+  FileText,
+  Calendar,
+  Folder,
   Save,
   Edit,
   User,
@@ -679,7 +678,7 @@ export default function CopyCheckingPage({
         </Button>
       </motion.div>
 
-      {/* Success/Error Messages */}
+      {/* Success Message */}
       <AnimatePresence>
         {successMessage && (
           <motion.div
@@ -689,16 +688,6 @@ export default function CopyCheckingPage({
             className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-800"
           >
             {successMessage}
-          </motion.div>
-        )}
-        {errorMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-800"
-          >
-            {errorMessage}
           </motion.div>
         )}
       </AnimatePresence>
@@ -930,27 +919,7 @@ export default function CopyCheckingPage({
             </div>
 
             {/* Topic Input */}
-            <div className="flex-1 max-w-md w-full">
-              <label className="block text-sm font-semibold text-[#0F172A] mb-2">Topic (Optional)</label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  placeholder="Enter topic/subject matter..."
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  disabled={!isEditingTopic}
-                  className="flex-1"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => setIsEditingTopic(!isEditingTopic)}
-                  className="bg-[#1e3a8a] hover:bg-[#3B82F6] text-white"
-                >
-                  <Edit size={16} className="mr-1" />
-                  {isEditingTopic ? 'Done' : 'Edit'}
-                </Button>
-              </div>
-            </div>
+            
           </div>
 
           {/* Action Buttons */}
@@ -960,7 +929,7 @@ export default function CopyCheckingPage({
               variant="outline"
               onClick={() => handleBulkStatusChange('not_checked')}
               disabled={students.length === 0}
-              className="border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="border-gray-300 text-gray-700 hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Uncheck All
             </Button>
@@ -969,24 +938,9 @@ export default function CopyCheckingPage({
               variant="outline"
               onClick={() => handleBulkStatusChange('checked')}
               disabled={students.length === 0}
-              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="border-emerald-300 text-emerald-700 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Check All
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSelectedClassName('');
-                setSelectedClassId('');
-                setSelectedSection('');
-                setSelectedSubjectId('');
-                setStudents([]);
-                setStudentRecords({});
-              }}
-              className="border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              <X size={18} className="mr-2" />
-              Clear
             </Button>
             <Button
               onClick={handleSave}
@@ -1007,6 +961,15 @@ export default function CopyCheckingPage({
             </Button>
           </div>
         </div>
+        {errorMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm"
+          >
+            {errorMessage}
+          </motion.div>
+        )}
       </Card>
 
       {/* Students Table */}

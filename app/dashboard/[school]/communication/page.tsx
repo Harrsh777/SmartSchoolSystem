@@ -19,7 +19,8 @@ export default function CommunicationPage({
 }) {
   const { school: schoolCode } = use(params);
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
@@ -29,21 +30,30 @@ export default function CommunicationPage({
     priority: 'all',
     status: 'all',
   });
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearch(filters.search);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [filters.search]);
 
   useEffect(() => {
     fetchNotices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolCode, filters]);
+  }, [schoolCode, filters.category, filters.priority, filters.status, debouncedSearch]);
 
   const fetchNotices = async () => {
     try {
-      setLoading(true);
+      setIsFetching(true);
       const params = new URLSearchParams({
         school_code: schoolCode,
         ...(filters.category !== 'all' && { category: filters.category }),
         ...(filters.priority !== 'all' && { priority: filters.priority }),
         ...(filters.status !== 'all' && { status: filters.status }),
-        ...(filters.search && { search: filters.search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
       });
 
       const response = await fetch(`/api/communication/notices?${params}`);
@@ -55,7 +65,8 @@ export default function CommunicationPage({
     } catch (err) {
       console.error('Error fetching notices:', err);
     } finally {
-      setLoading(false);
+      setIsFetching(false);
+      setInitialLoading(false);
     }
   };
 
@@ -91,7 +102,7 @@ export default function CommunicationPage({
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
@@ -136,6 +147,10 @@ export default function CommunicationPage({
         filters={filters}
         onFilterChange={handleFilterChange}
       />
+
+      {isFetching && (
+        <p className="text-sm text-gray-500 dark:text-gray-400 -mt-4">Updating results...</p>
+      )}
 
       {/* Notices List */}
       <motion.div

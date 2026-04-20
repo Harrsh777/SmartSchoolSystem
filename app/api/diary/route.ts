@@ -114,6 +114,8 @@ export async function POST(request: NextRequest) {
       content,
       type,
       mode,
+      subject_id,
+      subject_name,
       targets, // Array of { class_name, section_name }
       attachments, // Array of { file_name, file_url, file_type, file_size }
       created_by,
@@ -137,6 +139,13 @@ export async function POST(request: NextRequest) {
     if (!targets || targets.length === 0) {
       return NextResponse.json(
         { error: 'At least one class/section must be selected' },
+        { status: 400 }
+      );
+    }
+
+    if (mode === 'SUBJECT_WISE' && !subject_id) {
+      return NextResponse.json(
+        { error: 'Subject is required when diary mode is Subject-wise' },
         { status: 400 }
       );
     }
@@ -165,6 +174,8 @@ export async function POST(request: NextRequest) {
       mode: string;
       created_by: string | null;
       academic_year_id?: string;
+      subject_id?: string | null;
+      subject_name?: string | null;
     }
 
     const diaryData: DiaryData = {
@@ -180,6 +191,10 @@ export async function POST(request: NextRequest) {
     // Add academic_year_id if provided (it's a text field, not a UUID)
     if (academic_year_id) {
       diaryData.academic_year_id = academic_year_id;
+    }
+    if (mode === 'SUBJECT_WISE') {
+      diaryData.subject_id = subject_id || null;
+      diaryData.subject_name = subject_name || null;
     }
 
     const { data: diary, error: insertError } = await supabase

@@ -28,6 +28,8 @@ interface DiaryEntry {
   content: string | null;
   type: 'HOMEWORK' | 'OTHER' | 'ASSIGNMENT' | 'NOTICE';
   mode: 'GENERAL' | 'SUBJECT_WISE';
+  subject_id?: string | null;
+  subject_name?: string | null;
   created_at: string;
   diary_targets: Array<{
     id: string;
@@ -42,6 +44,11 @@ interface DiaryEntry {
   }>;
   read_count: number;
   total_targets: number;
+}
+
+interface Subject {
+  id: string;
+  name: string;
 }
 
 export default function TeacherDigitalDiaryPage() {
@@ -485,6 +492,9 @@ function DiaryModal({
   const [selectedSection, setSelectedSection] = useState<string>('');
   const [selectedTargets, setSelectedTargets] = useState<Array<{ class_name: string; section_name?: string }>>([]);
   const [attachments, setAttachments] = useState<Array<{ file_name: string; file_url: string; file_type: string; file_size?: number }>>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(diary?.subject_id || '');
   const [formData, setFormData] = useState({
     title: diary?.title || '',
     content: diary?.content || '',
@@ -511,6 +521,7 @@ function DiaryModal({
       if (academicYearId) {
         setSelectedAcademicYear(academicYearId);
       }
+      setSelectedSubjectId(diary.subject_id || '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -541,6 +552,24 @@ function DiaryModal({
       setSelectedSection('');
     }
   }, [selectedClass, classes]);
+
+  useEffect(() => {
+    if (formData.mode !== 'SUBJECT_WISE') {
+      setSubjects([]);
+      setSelectedSubjectId('');
+      return;
+    }
+
+    const matchedClass = classes.find((c) => c.class === selectedClass);
+    if (!matchedClass?.id) {
+      setSubjects([]);
+      setSelectedSubjectId('');
+      return;
+    }
+
+    fetchSubjects(matchedClass.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.mode, selectedClass, classes]);
 
   const fetchAcademicYears = async () => {
     try {
@@ -578,6 +607,32 @@ function DiaryModal({
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
+    }
+  };
+
+  const fetchSubjects = async (classId: string) => {
+    setLoadingSubjects(true);
+    try {
+      const classSubjectRes = await fetch(`/api/timetable/subjects?school_code=${schoolCode}&class_id=${classId}`);
+      const classSubjectResult = await classSubjectRes.json();
+
+      if (classSubjectRes.ok && Array.isArray(classSubjectResult.data) && classSubjectResult.data.length > 0) {
+        setSubjects(classSubjectResult.data.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })));
+        return;
+      }
+
+      const allSubjectRes = await fetch(`/api/subjects?school_code=${schoolCode}`);
+      const allSubjectResult = await allSubjectRes.json();
+      if (allSubjectRes.ok && Array.isArray(allSubjectResult.data)) {
+        setSubjects(allSubjectResult.data.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })));
+      } else {
+        setSubjects([]);
+      }
+    } catch (err) {
+      console.error('Error fetching subjects:', err);
+      setSubjects([]);
+    } finally {
+      setLoadingSubjects(false);
     }
   };
 
@@ -646,9 +701,14 @@ function DiaryModal({
       alert('Please select at least one class/section');
       return;
     }
+    if (formData.mode === 'SUBJECT_WISE' && !selectedSubjectId) {
+      alert('Please select a subject for Subject-wise diary');
+      return;
+    }
 
     setSaving(true);
     try {
+      const selectedSubject = subjects.find((s) => s.id === selectedSubjectId);
       const url = diary ? `/api/diary/${diary.id}` : '/api/diary';
       const method = diary ? 'PATCH' : 'POST';
       const response = await fetch(url, {
@@ -658,6 +718,12 @@ function DiaryModal({
           school_code: schoolCode,
           academic_year_id: selectedAcademicYear || academicYearId || null,
           ...formData,
+          ...(formData.mode === 'SUBJECT_WISE'
+            ? {
+                subject_id: selectedSubjectId,
+                subject_name: selectedSubject?.name || null,
+              }
+            : {}),
           targets: selectedTargets,
           attachments: attachments,
         }),
@@ -734,13 +800,43 @@ function DiaryModal({
               <label className="block text-sm font-semibold text-gray-700 mb-2">Diary Mode</label>
               <select
                 value={formData.mode}
-                onChange={(e) => setFormData({ ...formData, mode: e.target.value as typeof formData.mode })}
+                onChange={(e) => {
+                  const nextMode = e.target.value as typeof formData.mode;
+                  setFormData({ ...formData, mode: nextMode });
+                  if (nextMode !== 'SUBJECT_WISE') {
+                    setSelectedSubjectId('');
+                  }
+                }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               >
                 <option value="GENERAL">General</option>
                 <option value="SUBJECT_WISE">Subject-wise</option>
               </select>
             </div>
+
+            {formData.mode === 'SUBJECT_WISE' && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Subject <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => setSelectedSubjectId(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  disabled={!selectedClass || loadingSubjects}
+                  required={formData.mode === 'SUBJECT_WISE'}
+                >
+                  <option value="">
+                    {!selectedClass ? 'Select class first' : loadingSubjects ? 'Loading subjects...' : 'Select Subject'}
+                  </option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">

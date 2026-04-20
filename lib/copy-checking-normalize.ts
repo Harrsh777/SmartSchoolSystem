@@ -9,6 +9,7 @@ export type CopyCheckingWorkTypeClient = 'homework' | 'classwork';
 export type CopyCheckingWorkTypeDb = 'homework' | 'class_work';
 
 export type CopyCheckingStatus = 'not_checked' | 'checked' | 'missing' | 'late';
+type CopyCheckingStatusDb = 'not_checked' | 'completed' | 'missing' | 'late';
 
 export type CopyCheckingStats = {
   not_checked: number;
@@ -35,12 +36,12 @@ export function workTypeToClient(db: string | null | undefined): CopyCheckingWor
   return x === 'homework' ? 'homework' : 'classwork';
 }
 
-/** Map legacy + new input to canonical status for storage */
-export function normalizeStatusForStorage(raw: string | null | undefined): CopyCheckingStatus {
+/** Map legacy + new input to canonical status for storage (DB expects `completed`) */
+export function normalizeStatusForStorage(raw: string | null | undefined): CopyCheckingStatusDb {
   const s = String(raw || '')
     .toLowerCase()
     .trim();
-  if (s === 'checked' || s === 'green') return 'checked';
+  if (s === 'checked' || s === 'completed' || s === 'green') return 'completed';
   if (s === 'late' || s === 'yellow') return 'late';
   if (s === 'missing' || s === 'red' || s === 'absent') return 'missing';
   if (
@@ -56,7 +57,13 @@ export function normalizeStatusForStorage(raw: string | null | undefined): CopyC
 }
 
 export function normalizeStatusForDisplay(raw: string | null | undefined): CopyCheckingStatus {
-  return normalizeStatusForStorage(raw);
+  const s = String(raw || '')
+    .toLowerCase()
+    .trim();
+  if (s === 'completed' || s === 'checked' || s === 'green') return 'checked';
+  if (s === 'late' || s === 'yellow') return 'late';
+  if (s === 'missing' || s === 'red' || s === 'absent') return 'missing';
+  return 'not_checked';
 }
 
 export function emptyCopyCheckingStats(): CopyCheckingStats {

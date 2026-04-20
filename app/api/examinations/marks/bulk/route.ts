@@ -203,6 +203,7 @@ export async function POST(request: NextRequest) {
         const resolvedMaxMarks = maxMarksBySubjectId.get(String(subject_id)) ?? payloadMaxMarks;
         const maxMarks = resolvedMaxMarks;
         const marksObtained = entryCode ? 0 : parseFloat(String(marks_obtained ?? '0')) || 0;
+        const isAbsent = entryCode === 'AB';
 
         if (maxMarks <= 0) {
           errors.push({
@@ -218,6 +219,15 @@ export async function POST(request: NextRequest) {
             student_id,
             subject_id,
             error: 'Marks obtained cannot be negative',
+          });
+          continue;
+        }
+
+        if (!isAbsent && marksObtained <= 0) {
+          errors.push({
+            student_id,
+            subject_id,
+            error: '0 marks are only allowed when student is marked absent',
           });
           continue;
         }
