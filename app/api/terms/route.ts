@@ -63,7 +63,30 @@ export async function GET(request: NextRequest) {
       out = out.filter((r) => !r.is_deleted);
     }
     if (classId) {
-      out = out.filter((r) => String(r.class_id ?? '') === String(classId));
+      let mappedStructureIds = new Set<string>();
+      // Terms inside a structure may carry a representative class_id.
+      // Resolve class filtering through active structure mappings as well.
+      const mappingQuery = supabase
+        .from('exam_term_structure_mappings')
+        .select('structure_id')
+        .eq('school_code', schoolCode)
+        .eq('class_id', classId)
+        .eq('is_active', true);
+      if (section) {
+        mappingQuery.eq('section', section);
+      }
+      const { data: mappingRows } = await mappingQuery;
+      mappedStructureIds = new Set(
+        (mappingRows || [])
+          .map((m: Record<string, unknown>) => String(m.structure_id || ''))
+          .filter(Boolean)
+      );
+
+      out = out.filter((r) => {
+        if (String(r.class_id ?? '') === String(classId)) return true;
+        const sid = String(r.structure_id ?? '');
+        return Boolean(sid && mappedStructureIds.has(sid));
+      });
     }
     if (section) {
       out = out.filter((r) => norm(r.section).toLowerCase() === norm(section).toLowerCase());
