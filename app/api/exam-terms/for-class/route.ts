@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 /**
  * GET /api/exam-terms/for-class?school_code=&structure_id=&class_id=
- * Terms (exam_terms) for a class-section within a term structure.
+ * Terms (exam_terms) for a mapped class-section within a term structure.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -30,13 +30,36 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Class not found' }, { status: 404 });
     }
 
-    const { data, error } = await supabase
-      .from('exam_terms')
-      .select('id, name, serial, academic_year, structure_id, class_id, section')
+    // Structure mappings are the source of truth for class-section applicability.
+    const normalizedSection = String(row.section || '').trim().toLowerCase();
+    const { data: mappings, error: mappingErr } = await supabase
+      .from('exam_term_structure_mappings')
+      .select('id, section, is_active')
       .eq('school_code', schoolCode)
       .eq('structure_id', structureId)
       .eq('class_id', classId)
-      .eq('section', String(row.section || ''))
+      .eq('is_active', true);
+
+    if (mappingErr) {
+      return NextResponse.json({ error: mappingErr.message }, { status: 500 });
+    }
+
+    const hasMapping = (mappings || []).some(
+      (m: { section?: string | null }) =>
+        String(m.section || '').trim().toLowerCase() === normalizedSection
+    );
+
+    if (!hasMapping) {
+      return NextResponse.json({ data: [] }, { status: 200 });
+    }
+
+    // Terms are stored once per structure; do not hard-filter by class_id/section.
+    const { data, error } = await supabase
+      .from('exam_terms')
+      .select('id, name, serial, academic_year, structure_id, class_id, section, is_deleted, is_active')
+      .eq('school_code', schoolCode)
+      .eq('structure_id', structureId)
+      .eq('is_active', true)
       .order('serial', { ascending: true });
 
     if (error) {

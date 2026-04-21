@@ -67,20 +67,46 @@ export default function NonScholasticMarksPage({
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const buildClassOptionsFromRows = useCallback(
+    (rows: Array<{ id: string; class: string; section: string }>): ClassOption[] => {
+      const grouped = new Map<string, Set<string>>();
+      for (const row of rows) {
+        const className = String(row.class || '').trim();
+        const sectionName = String(row.section || '').trim();
+        if (!className || !sectionName) continue;
+        if (!grouped.has(className)) grouped.set(className, new Set<string>());
+        grouped.get(className)!.add(sectionName);
+      }
+      return Array.from(grouped.entries())
+        .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+        .map(([className, sections]) => ({
+          class: className,
+          sections: Array.from(sections).sort((a, b) =>
+            a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+          ),
+        }));
+    },
+    []
+  );
+
   useEffect(() => {
     const load = async () => {
       setLoadingMeta(true);
       try {
-        const [cGrouped, cAll, sRes] = await Promise.all([
-          fetch(`/api/examinations/classes?school_code=${encodeURIComponent(schoolCode)}`),
+        const [cAll, sRes] = await Promise.all([
           fetch(`/api/classes?school_code=${encodeURIComponent(schoolCode)}`),
           fetch(`/api/term-structures?school_code=${encodeURIComponent(schoolCode)}`),
         ]);
-        const cGroupedJson = await cGrouped.json();
         const cAllJson = await cAll.json();
         const sJson = await sRes.json();
-        if (cGrouped.ok && Array.isArray(cGroupedJson.data)) setClassOptions(cGroupedJson.data);
-        if (cAll.ok && Array.isArray(cAllJson.data)) setAllClassRows(cAllJson.data);
+        if (cAll.ok && Array.isArray(cAllJson.data)) {
+          const rows = cAllJson.data as Array<{ id: string; class: string; section: string }>;
+          setAllClassRows(rows);
+          setClassOptions(buildClassOptionsFromRows(rows));
+        } else {
+          setAllClassRows([]);
+          setClassOptions([]);
+        }
         if (sRes.ok && Array.isArray(sJson.data)) setStructures(sJson.data);
       } catch {
         setError('Failed to load filters');
@@ -89,7 +115,7 @@ export default function NonScholasticMarksPage({
       }
     };
     load();
-  }, [schoolCode]);
+  }, [schoolCode, buildClassOptionsFromRows]);
 
   useEffect(() => {
     if (!selectedClassName || !selectedSection) {
