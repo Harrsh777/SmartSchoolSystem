@@ -41,24 +41,7 @@ export async function PATCH(
       );
     }
 
-    // Update status in school_signups table
-    const { error: updateError } = await supabase
-      .from('school_signups')
-      .update({ 
-        status,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id);
-
-    if (updateError) {
-      console.error('Supabase error updating status:', updateError);
-      return NextResponse.json(
-        { error: 'Failed to update school status', details: updateError.message },
-        { status: 500 }
-      );
-    }
-
-    // If approved, save to accepted_schools table with generated school code and password
+    // If approved, save to accepted_schools first, then mark signup as approved.
     if (status === 'approved') {
       // If this email is already approved (exists in accepted_schools), return existing credentials
       // instead of failing with a duplicate key error.
@@ -69,6 +52,22 @@ export async function PATCH(
         .single();
 
       if (existingAccepted && !existingAcceptedErr) {
+        const { error: syncSignupError } = await supabase
+          .from('school_signups')
+          .update({
+            status: 'approved',
+            school_code: existingAccepted.school_code,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+
+        if (syncSignupError) {
+          return NextResponse.json(
+            { error: 'School approved but failed to sync signup record', details: syncSignupError.message },
+            { status: 500 }
+          );
+        }
+
         return NextResponse.json(
           {
             success: true,
@@ -152,6 +151,26 @@ export async function PATCH(
         );
       }
 
+      // Keep school_signups in sync with accepted_schools after successful approval.
+      const { error: updateApprovedSignupError } = await supabase
+        .from('school_signups')
+        .update({
+          status: 'approved',
+          school_code: generatedSchoolCode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      if (updateApprovedSignupError) {
+        return NextResponse.json(
+          {
+            error: 'School approved but failed to sync signup status',
+            details: updateApprovedSignupError.message,
+          },
+          { status: 500 }
+        );
+      }
+
       // Return the generated credentials in the response (for admin to see/share)
       return NextResponse.json(
         { 
@@ -162,6 +181,23 @@ export async function PATCH(
           data: insertedData
         },
         { status: 200 }
+      );
+    }
+
+    // Update status in school_signups table for non-approved paths
+    const { error: updateError } = await supabase
+      .from('school_signups')
+      .update({
+        status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('Supabase error updating status:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update school status', details: updateError.message },
+        { status: 500 }
       );
     }
 
