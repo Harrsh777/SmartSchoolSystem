@@ -185,10 +185,34 @@ export function parseMarksCell(
   if (n < 0) {
     return { ok: false, error: 'Marks cannot be negative.' };
   }
+  if (n === 0) {
+    return { ok: false, error: '0 marks are only allowed with AB (Absent).' };
+  }
   if (n > maxMarks) {
     return { ok: false, error: `Marks (${n}) exceed maximum (${maxMarks}) for this exam subject.` };
   }
   return { ok: true, value: n, code: null };
+}
+
+export function parseBulkMarksSnapshotAt(
+  rows: unknown[][],
+  headerIdx: number
+): { ok: true; snapshotAt: string | null } | { ok: false; error: string } {
+  if (headerIdx <= 0) return { ok: true, snapshotAt: null };
+  for (let i = 0; i < headerIdx; i++) {
+    const row = rows[i] as unknown[];
+    if (!row || row.length === 0) continue;
+    const label = normHeader(row[0]);
+    if (label !== 'snapshot at') continue;
+    const raw = String(row[1] ?? '').trim();
+    if (!raw) return { ok: true, snapshotAt: null };
+    const ms = new Date(raw).getTime();
+    if (!Number.isFinite(ms)) {
+      return { ok: false, error: 'Invalid Snapshot At value in template. Re-download the template.' };
+    }
+    return { ok: true, snapshotAt: new Date(ms).toISOString() };
+  }
+  return { ok: true, snapshotAt: null };
 }
 
 function normIdentity(s: unknown): string {
@@ -307,12 +331,14 @@ export function readBulkMarksSheet(buffer: Buffer): { ok: true; rows: unknown[][
 export type BulkMarksTemplateMeta = {
   subjectName: string;
   maxMarks: number;
+  snapshotAt?: string;
 };
 
 export function buildBulkMarksTemplateBuffer(rows: string[][], meta?: BulkMarksTemplateMeta): Buffer {
   const headerRow = [...BULK_MARKS_TEMPLATE_HEADERS];
   const top: string[][] = meta
     ? [
+        ['Snapshot At', meta.snapshotAt || new Date().toISOString()],
         ['Subject', meta.subjectName],
         ['Maximum marks', String(meta.maxMarks)],
         [],

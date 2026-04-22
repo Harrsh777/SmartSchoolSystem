@@ -43,11 +43,13 @@ export function getGradeFromPercentage(
   // Ensure percentage is within valid range
   const validPercentage = Math.max(0, Math.min(100, percentage));
 
-  // Find matching grade
-  for (const scale of gradeScale) {
-    if (validPercentage >= scale.min_percentage && validPercentage <= scale.max_percentage) {
-      return scale.grade;
-    }
+  // Sort by descending minimum percentage and match by threshold.
+  // This avoids decimal gaps between ranges (e.g. 89.3 between 89 and 90).
+  const sortedScale = [...gradeScale].sort(
+    (a, b) => b.min_percentage - a.min_percentage
+  );
+  for (const scale of sortedScale) {
+    if (validPercentage >= scale.min_percentage) return scale.grade;
   }
 
   // Default to F if no match found

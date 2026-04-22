@@ -761,7 +761,7 @@ export default function DashboardBulkMarksUploadPage({
             {uploading ? 'Processing…' : 'Upload & validate'}
           </Button>
           <p className="text-xs text-gray-500 leading-relaxed max-w-4xl">
-            Allowed in Marks: numbers (0–max), or AB, NA, ML, EXEMPT. Empty cells are skipped. Uploading the same file again updates rows (upsert). Rate limit: 10 uploads per minute.
+            Allowed in Marks: numbers greater than 0 up to max, or AB, NA, ML, EXEMPT. Empty cells are skipped. Uploading the same file again updates rows (upsert). Rate limit: 10 uploads per minute.
           </p>
         </Card>
       </motion.div>

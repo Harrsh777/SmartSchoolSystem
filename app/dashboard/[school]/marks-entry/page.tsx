@@ -71,6 +71,8 @@ interface ExistingMark {
   max_marks: number;
   marks_entry_code?: string | null;
   status?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
 }
 
 interface TermOption {
@@ -78,6 +80,17 @@ interface TermOption {
   name: string;
   serial?: number;
   structure_id?: string | null;
+}
+
+interface StudentStats {
+  totalObtained: number;
+  totalMax: number;
+  percentage: number | null;
+  grade: string | null;
+  isPass: boolean | null;
+  enteredSubjects: number;
+  totalSubjects: number;
+  isComplete: boolean;
 }
 
 function normClassLabel(v: unknown): string {
@@ -175,6 +188,9 @@ export default function MarksEntryPage({
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [marks, setMarks] = useState<Record<string, Record<string, number | undefined>>>({});
+  const [marksVersionByStudentSubject, setMarksVersionByStudentSubject] = useState<
+    Record<string, Record<string, string | null>>
+  >({});
   const [absentByStudentSubject, setAbsentByStudentSubject] = useState<Record<string, Record<string, boolean>>>({});
   const [hasSubmittedMarks, setHasSubmittedMarks] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
@@ -264,6 +280,7 @@ export default function MarksEntryPage({
       setSubjects([]);
       setSelectedSubjectId('');
       setMarks({});
+      setMarksVersionByStudentSubject({});
       setAbsentByStudentSubject({});
       setHasSubmittedMarks(false);
     }
@@ -475,33 +492,38 @@ export default function MarksEntryPage({
           if (marksRes.ok && marksData.data && marksData.data.length > 0) {
             const studentMarks: Record<string, number | undefined> = {};
             const absentMap: Record<string, boolean> = {};
+            const versionMap: Record<string, string | null> = {};
             let submittedFound = false;
             marksData.data.forEach((m: ExistingMark) => {
               const isAbsent = String(m.marks_entry_code || '').toUpperCase() === 'AB';
               absentMap[m.subject_id] = isAbsent;
               studentMarks[m.subject_id] = isAbsent ? 0 : m.marks_obtained;
+              versionMap[m.subject_id] = m.updated_at || m.created_at || null;
               if (String(m.status || '').toLowerCase() === 'submitted') {
                 submittedFound = true;
               }
             });
-            return { studentId: student.id, marks: studentMarks, absentMap, submittedFound };
+            return { studentId: student.id, marks: studentMarks, absentMap, versionMap, submittedFound };
           }
         } catch (err) {
           console.error(`Error fetching marks for student ${student.id}:`, err);
         }
-        return { studentId: student.id, marks: {}, absentMap: {}, submittedFound: false };
+        return { studentId: student.id, marks: {}, absentMap: {}, versionMap: {}, submittedFound: false };
       });
 
       const existingMarksResults = await Promise.all(existingMarksPromises);
       const marksState: Record<string, Record<string, number | undefined>> = {};
+      const versionsState: Record<string, Record<string, string | null>> = {};
       const absentState: Record<string, Record<string, boolean>> = {};
       let submittedExists = false;
-      existingMarksResults.forEach(({ studentId, marks: studentMarks, absentMap, submittedFound }) => {
+      existingMarksResults.forEach(({ studentId, marks: studentMarks, absentMap, versionMap, submittedFound }) => {
         marksState[studentId] = studentMarks;
+        versionsState[studentId] = versionMap;
         absentState[studentId] = absentMap;
         if (submittedFound) submittedExists = true;
       });
       setMarks(marksState);
+      setMarksVersionByStudentSubject(versionsState);
       setAbsentByStudentSubject(absentState);
       setHasSubmittedMarks(submittedExists);
     } catch (err) {
@@ -699,6 +721,7 @@ export default function MarksEntryPage({
               marks_obtained: isAbsent ? 0 : Number(val),
               remarks: '',
               marks_entry_code: isAbsent ? 'AB' : null,
+              expected_updated_at: marksVersionByStudentSubject[student.id]?.[subject.id] ?? null,
             };
           })
           .filter(Boolean);
@@ -739,6 +762,22 @@ export default function MarksEntryPage({
       const result = await response.json();
 
       if (response.ok) {
+        const savedRows = Array.isArray(result.data)
+          ? (result.data as Array<{ student_id?: string; subject_id?: string; updated_at?: string | null; created_at?: string | null }>)
+          : [];
+        if (savedRows.length > 0) {
+          setMarksVersionByStudentSubject((prev) => {
+            const next = { ...prev };
+            for (const row of savedRows) {
+              const sid = String(row.student_id || '');
+              const subId = String(row.subject_id || '');
+              if (!sid || !subId) continue;
+              if (!next[sid]) next[sid] = {};
+              next[sid][subId] = row.updated_at || row.created_at || null;
+            }
+            return next;
+          });
+        }
         if (!silent) {
           const savedCount = result.summary?.total_students || students.length;
           setSuccess(`Marks saved successfully for ${savedCount} student(s)!`);
@@ -749,6 +788,20 @@ export default function MarksEntryPage({
         }
         return true;
       } else {
+        if (response.status === 409 && Array.isArray(result.conflicts) && result.conflicts.length > 0) {
+          const top = result.conflicts.slice(0, 3).map((c: {
+            student_name?: string;
+            subject_name?: string;
+            updated_by_name?: string | null;
+            updated_at?: string | null;
+          }) => {
+            const who = c.updated_by_name || 'another teacher';
+            const when = c.updated_at ? new Date(c.updated_at).toLocaleString() : 'recently';
+            return `${c.student_name || 'Student'} - ${c.subject_name || 'Subject'} (updated by ${who} at ${when})`;
+          });
+          setError(`This record was updated by someone else while you were editing. Please refresh and re-apply your changes.\n\n${top.join('\n')}`);
+          return false;
+        }
         const errorMsg = result.error || 'Failed to save marks';
         const details = result.errors ? `\n\nErrors: ${result.errors.slice(0, 3).map((e: { error: string }) => e.error).join('; ')}` : '';
         setError(`${errorMsg}${details}`);
@@ -764,22 +817,31 @@ export default function MarksEntryPage({
   };
 
   // Calculate student totals and grades
-  const calculateStudentStats = (studentId: string) => {
+  const calculateStudentStats = (studentId: string): StudentStats => {
     const studentMarks = marks[studentId] || {};
+    const studentAbsent = absentByStudentSubject[studentId] || {};
     let totalObtained = 0;
     let totalMax = 0;
+    let enteredSubjects = 0;
 
     subjects.forEach((subject) => {
-      const marksObtained = studentMarks[subject.id] || 0;
+      const isAbsent = Boolean(studentAbsent[subject.id]);
+      const value = studentMarks[subject.id];
+      const hasValue = typeof value === 'number' && Number.isFinite(value);
+      if (!isAbsent && !hasValue) return;
+      const marksObtained = isAbsent ? 0 : Number(value);
       totalObtained += marksObtained;
       totalMax += subject.max_marks;
+      enteredSubjects += 1;
     });
 
-    const percentage = totalMax > 0 ? calculatePercentage(totalObtained, totalMax) : 0;
-    const grade = getGradeFromPercentage(percentage);
-    const isPass = percentage >= 40;
+    const totalSubjects = subjects.length;
+    const isComplete = totalSubjects > 0 && enteredSubjects === totalSubjects;
+    const percentage = totalMax > 0 ? calculatePercentage(totalObtained, totalMax) : null;
+    const grade = percentage !== null ? getGradeFromPercentage(percentage) : null;
+    const isPass = percentage !== null ? percentage >= 40 : null;
 
-    return { totalObtained, totalMax, percentage, grade, isPass };
+    return { totalObtained, totalMax, percentage, grade, isPass, enteredSubjects, totalSubjects, isComplete };
   };
 
   const handleSubmitForReview = async () => {
@@ -1244,7 +1306,7 @@ export default function MarksEntryPage({
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.02 }}
-                        className={`hover:bg-[#5A7A95]/5 dark:hover:bg-[#6B9BB8]/10 transition-colors ${stats.isPass ? '' : 'bg-red-50/50 dark:bg-red-900/10'}`}
+                        className={`hover:bg-[#5A7A95]/5 dark:hover:bg-[#6B9BB8]/10 transition-colors ${stats.isPass === false ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}
                       >
                         <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-[#1e293b] z-10">
                           {student.roll_number || '-'}
@@ -1256,11 +1318,16 @@ export default function MarksEntryPage({
                           {student.student_name}
                         </td>
                         {displayedSubjects.map(subject => {
-                          const marksObtained = marks[student.id]?.[subject.id] || 0;
-                          const percentage = calculatePercentage(marksObtained, subject.max_marks);
-                          const grade = getGradeFromPercentage(percentage);
-                          const isPass = percentage >= 40;
-                          const isBorderline = percentage >= 35 && percentage < 40;
+                          const isAbsent = Boolean(absentByStudentSubject[student.id]?.[subject.id]);
+                          const value = marks[student.id]?.[subject.id];
+                          const hasValue = typeof value === 'number' && Number.isFinite(value);
+                          const marksObtained = isAbsent ? 0 : value;
+                          const percentage = isAbsent || hasValue
+                            ? calculatePercentage(isAbsent ? 0 : Number(value), subject.max_marks)
+                            : null;
+                          const grade = percentage !== null ? getGradeFromPercentage(percentage) : null;
+                          const isPass = percentage !== null ? percentage >= 40 : null;
+                          const isBorderline = percentage !== null && percentage >= 35 && percentage < 40;
                           
                           return (
                             <td key={subject.id} className="px-3 py-3">
@@ -1293,13 +1360,15 @@ export default function MarksEntryPage({
                                     }
                                   }}
                                   placeholder="0"
-                                  disabled={Boolean(absentByStudentSubject[student.id]?.[subject.id])}
+                                  disabled={isAbsent}
                                   className={`w-20 text-center text-sm font-medium ${
-                                    isPass 
+                                    isPass === true
                                       ? 'border-green-500 focus:ring-green-500' 
                                       : isBorderline
                                       ? 'border-yellow-500 focus:ring-yellow-500'
-                                      : 'border-red-500 focus:ring-red-500'
+                                      : isPass === false
+                                        ? 'border-red-500 focus:ring-red-500'
+                                        : 'border-gray-300 focus:ring-[#5A7A95]'
                                   }`}
                                 />
                                 <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
@@ -1314,11 +1383,11 @@ export default function MarksEntryPage({
                                   Absent
                                 </label>
                                 <div className="flex items-center gap-1 text-xs">
-                                  <span className={`font-semibold ${getGradeColor(grade)}`}>
-                                    {grade}
+                                  <span className={`font-semibold ${grade ? getGradeColor(grade) : 'text-gray-400 dark:text-gray-500'}`}>
+                                    {grade || '--'}
                                   </span>
                                   <span className="text-gray-500 dark:text-gray-400">
-                                    ({percentage.toFixed(1)}%)
+                                    ({percentage !== null ? `${percentage.toFixed(1)}%` : '--'})
                                   </span>
                                 </div>
                               </div>
@@ -1333,18 +1402,28 @@ export default function MarksEntryPage({
                               </div>
                             </td>
                             <td className="px-3 py-3 text-center bg-gray-50 dark:bg-gray-800/50">
-                              <div className={`font-bold ${stats.isPass ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                {stats.percentage.toFixed(1)}%
+                              <div className={`font-bold ${
+                                stats.isPass === null
+                                  ? 'text-gray-500 dark:text-gray-400'
+                                  : stats.isPass
+                                    ? 'text-green-600 dark:text-green-400'
+                                    : 'text-red-600 dark:text-red-400'
+                              }`}>
+                                {stats.percentage !== null ? `${stats.percentage.toFixed(1)}%` : '--'}
                               </div>
                             </td>
                             <td className="px-3 py-3 text-center bg-gray-50 dark:bg-gray-800/50">
-                              <div className={`font-bold text-lg ${getGradeColor(stats.grade)}`}>
-                                {stats.grade}
+                              <div className={`font-bold text-lg ${stats.grade ? getGradeColor(stats.grade) : 'text-gray-400 dark:text-gray-500'}`}>
+                                {stats.grade || '--'}
                               </div>
                             </td>
                             <td className="px-3 py-3 text-center bg-gray-50 dark:bg-gray-800/50">
-                              <div className={`text-xs px-2 py-0.5 rounded-full ${getPassStatusColor(stats.isPass ? 'pass' : 'fail')}`}>
-                                {stats.isPass ? 'Pass' : 'Fail'}
+                              <div className={`text-xs px-2 py-0.5 rounded-full ${
+                                stats.isPass === null
+                                  ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                  : getPassStatusColor(stats.isPass ? 'pass' : 'fail')
+                              }`}>
+                                {stats.isPass === null ? `Pending (${stats.enteredSubjects}/${stats.totalSubjects})` : (stats.isPass ? 'Pass' : 'Fail')}
                               </div>
                             </td>
                           </>

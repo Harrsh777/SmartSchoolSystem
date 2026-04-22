@@ -1,6 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+interface DiaryTargetInput {
+  class_name: string;
+  section_name?: string;
+}
+
+async function validateSubjectWiseScope(params: {
+  school_code: string;
+  academic_year_id?: string;
+  mode?: string;
+  subject_id?: string;
+  targets: DiaryTargetInput[];
+}) {
+  const { school_code, academic_year_id, mode, subject_id, targets } = params;
+
+  if (!targets || targets.length !== 1) {
+    return { ok: false, error: 'Please select exactly one class/section target' };
+  }
+
+  const target = targets[0];
+  let classQuery = supabase
+    .from('classes')
+    .select('id, section')
+    .eq('school_code', school_code)
+    .eq('class', target.class_name);
+
+  if (academic_year_id) {
+    classQuery = classQuery.eq('academic_year', academic_year_id);
+  }
+  if (target.section_name) {
+    classQuery = classQuery.eq('section', target.section_name);
+  }
+
+  const { data: classRows, error: classError } = await classQuery;
+  if (classError) {
+    return { ok: false, error: `Failed to validate class/section: ${classError.message}` };
+  }
+  if (!classRows || classRows.length === 0) {
+    return { ok: false, error: 'Selected class/section was not found in this academic year' };
+  }
+
+  if (mode !== 'SUBJECT_WISE') {
+    return { ok: true };
+  }
+
+  if (!subject_id) {
+    return { ok: false, error: 'Subject is required when diary mode is Subject-wise' };
+  }
+
+  const classIds = classRows.map((row) => row.id);
+  const { data: subjectMappings, error: subjectMapError } = await supabase
+    .from('class_subjects')
+    .select('class_id')
+    .eq('school_code', school_code)
+    .eq('subject_id', subject_id)
+    .in('class_id', classIds);
+
+  if (subjectMapError) {
+    return { ok: false, error: `Failed to validate subject mapping: ${subjectMapError.message}` };
+  }
+
+  const coveredClassIds = new Set((subjectMappings || []).map((row) => row.class_id));
+  if (coveredClassIds.size !== classIds.length) {
+    return { ok: false, error: 'Selected subject is not assigned to the selected class/section scope' };
+  }
+
+  return { ok: true };
+}
+
 /**
  * GET /api/diary
  * Get diary entries with filters
@@ -115,7 +183,6 @@ export async function POST(request: NextRequest) {
       type,
       mode,
       subject_id,
-      subject_name,
       targets, // Array of { class_name, section_name }
       attachments, // Array of { file_name, file_url, file_type, file_size }
       created_by,
@@ -136,18 +203,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!targets || targets.length === 0) {
-      return NextResponse.json(
-        { error: 'At least one class/section must be selected' },
-        { status: 400 }
-      );
-    }
-
-    if (mode === 'SUBJECT_WISE' && !subject_id) {
-      return NextResponse.json(
-        { error: 'Subject is required when diary mode is Subject-wise' },
-        { status: 400 }
-      );
+    const scopeValidation = await validateSubjectWiseScope({
+      school_code,
+      academic_year_id,
+      mode,
+      subject_id,
+      targets: targets || [],
+    });
+    if (!scopeValidation.ok) {
+      return NextResponse.json({ error: scopeValidation.error }, { status: 400 });
     }
 
     // Get school ID
@@ -175,7 +239,6 @@ export async function POST(request: NextRequest) {
       created_by: string | null;
       academic_year_id?: string;
       subject_id?: string | null;
-      subject_name?: string | null;
     }
 
     const diaryData: DiaryData = {
@@ -194,7 +257,6 @@ export async function POST(request: NextRequest) {
     }
     if (mode === 'SUBJECT_WISE') {
       diaryData.subject_id = subject_id || null;
-      diaryData.subject_name = subject_name || null;
     }
 
     const { data: diary, error: insertError } = await supabase

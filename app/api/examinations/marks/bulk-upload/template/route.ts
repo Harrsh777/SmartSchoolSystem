@@ -140,25 +140,63 @@ export async function GET(request: NextRequest) {
 
     const marksByStudent = new Map<
       string,
-      { marks_obtained: number; marks_entry_code: string | null }
+      { marks_obtained: number; marks_entry_code: string | null; updated_at: string | null; created_at: string | null }
     >();
 
     if (ids.length > 0) {
-      const { data: existing } = await supabase
+      let existing: Array<{
+        student_id: string;
+        marks_obtained: number;
+        marks_entry_code: string | null;
+        updated_at?: string | null;
+        created_at?: string | null;
+      }> | null = null;
+      const { data: existingWithUpdatedAt, error: existingErr } = await supabase
         .from('student_subject_marks')
-        .select('student_id, marks_obtained, marks_entry_code')
+        .select('student_id, marks_obtained, marks_entry_code, updated_at, created_at')
         .eq('exam_id', exam_id)
         .eq('class_id', class_id)
         .eq('subject_id', subject_id)
         .eq('school_code', school_code)
         .in('student_id', ids);
+      if (!existingErr) {
+        existing = existingWithUpdatedAt as typeof existing;
+      } else {
+        const colErr =
+          existingErr.code === 'PGRST204' ||
+          /column.*does not exist|Could not find the/.test(existingErr.message || '');
+        if (!colErr) {
+          return NextResponse.json({ error: 'Failed to load existing marks', details: existingErr.message }, { status: 500 });
+        }
+        const { data: existingFallback, error: fallbackErr } = await supabase
+          .from('student_subject_marks')
+          .select('student_id, marks_obtained, marks_entry_code, created_at')
+          .eq('exam_id', exam_id)
+          .eq('class_id', class_id)
+          .eq('subject_id', subject_id)
+          .eq('school_code', school_code)
+          .in('student_id', ids);
+        if (fallbackErr) {
+          return NextResponse.json({ error: 'Failed to load existing marks', details: fallbackErr.message }, { status: 500 });
+        }
+        existing = (existingFallback as typeof existing) || [];
+      }
 
       for (const m of existing || []) {
         marksByStudent.set(m.student_id, {
           marks_obtained: Number(m.marks_obtained) || 0,
           marks_entry_code: m.marks_entry_code ? String(m.marks_entry_code) : null,
+          updated_at: m.updated_at ? String(m.updated_at) : null,
+          created_at: m.created_at ? String(m.created_at) : null,
         });
       }
+    }
+
+    let snapshotAt = new Date().toISOString();
+    for (const m of marksByStudent.values()) {
+      const ts = m.updated_at || m.created_at;
+      if (!ts) continue;
+      if (new Date(ts).getTime() > new Date(snapshotAt).getTime()) snapshotAt = ts;
     }
 
     const rows: string[][] = list.map((s) => {
@@ -183,6 +221,7 @@ export async function GET(request: NextRequest) {
     const buf = buildBulkMarksTemplateBuffer(rows, {
       subjectName: subjectDisplayName,
       maxMarks: maxMarksNum,
+      snapshotAt,
     });
     const safeName = String((exam as { exam_name?: string }).exam_name || 'exam')
       .replace(/[^\w\- ]+/g, '')

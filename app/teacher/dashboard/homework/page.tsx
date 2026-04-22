@@ -51,6 +51,13 @@ interface Subject {
   name: string;
 }
 
+interface ClassOption {
+  id?: string;
+  class: string;
+  section?: string;
+  academic_year?: string;
+}
+
 export default function TeacherDigitalDiaryPage() {
   const [schoolCode, setSchoolCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -486,7 +493,7 @@ function DiaryModal({
   const [uploading, setUploading] = useState(false);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
-  const [classes, setClasses] = useState<Array<{ id?: string; class: string; section?: string; academic_year?: string }>>([]);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [availableSections, setAvailableSections] = useState<string[]>([]);
   const [selectedSection, setSelectedSection] = useState<string>('');
@@ -560,16 +567,30 @@ function DiaryModal({
       return;
     }
 
-    const matchedClass = classes.find((c) => c.class === selectedClass);
-    if (!matchedClass?.id) {
+    const activeTarget = selectedTargets[0];
+    const className = activeTarget?.class_name || selectedClass;
+    const sectionName = activeTarget?.section_name || selectedSection || undefined;
+    if (!className) {
       setSubjects([]);
       setSelectedSubjectId('');
       return;
     }
 
-    fetchSubjects(matchedClass.id);
+    const scopedClasses = classes.filter((c) => {
+      if (c.class !== className) return false;
+      if (sectionName) return c.section === sectionName;
+      return true;
+    });
+    const classIds = scopedClasses.map((c) => c.id).filter((id): id is string => !!id);
+    if (classIds.length === 0) {
+      setSubjects([]);
+      setSelectedSubjectId('');
+      return;
+    }
+
+    fetchSubjectsForClassScope(classIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.mode, selectedClass, classes]);
+  }, [formData.mode, selectedClass, selectedSection, selectedTargets, classes]);
 
   const fetchAcademicYears = async () => {
     try {
@@ -610,23 +631,38 @@ function DiaryModal({
     }
   };
 
-  const fetchSubjects = async (classId: string) => {
+  const fetchSubjectsForClassScope = async (classIds: string[]) => {
     setLoadingSubjects(true);
     try {
-      const classSubjectRes = await fetch(`/api/timetable/subjects?school_code=${schoolCode}&class_id=${classId}`);
-      const classSubjectResult = await classSubjectRes.json();
+      const subjectResults = await Promise.all(
+        classIds.map(async (classId) => {
+          const res = await fetch(`/api/classes/${classId}/subjects?school_code=${schoolCode}`);
+          const result = await res.json();
+          if (!res.ok || !Array.isArray(result.data)) return [];
+          return result.data.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }));
+        })
+      );
 
-      if (classSubjectRes.ok && Array.isArray(classSubjectResult.data) && classSubjectResult.data.length > 0) {
-        setSubjects(classSubjectResult.data.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })));
+      if (subjectResults.length === 0) {
+        setSubjects([]);
         return;
       }
 
-      const allSubjectRes = await fetch(`/api/subjects?school_code=${schoolCode}`);
-      const allSubjectResult = await allSubjectRes.json();
-      if (allSubjectRes.ok && Array.isArray(allSubjectResult.data)) {
-        setSubjects(allSubjectResult.data.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })));
-      } else {
-        setSubjects([]);
+      const firstList = subjectResults[0];
+      const allowedMap = new Map(firstList.map((s: Subject) => [s.id, s]));
+      for (let i = 1; i < subjectResults.length; i++) {
+        const nextIds = new Set(subjectResults[i].map((s: Subject) => s.id));
+        for (const id of Array.from(allowedMap.keys())) {
+          if (!nextIds.has(id)) {
+            allowedMap.delete(id);
+          }
+        }
+      }
+
+      const finalSubjects = Array.from(allowedMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      setSubjects(finalSubjects);
+      if (selectedSubjectId && !finalSubjects.some((s) => s.id === selectedSubjectId)) {
+        setSelectedSubjectId('');
       }
     } catch (err) {
       console.error('Error fetching subjects:', err);
@@ -634,6 +670,14 @@ function DiaryModal({
     } finally {
       setLoadingSubjects(false);
     }
+  };
+
+  const getClassScopeLabel = () => {
+    const activeTarget = selectedTargets[0];
+    const className = activeTarget?.class_name || selectedClass;
+    if (!className) return 'Select class first';
+    const sectionName = activeTarget?.section_name || selectedSection || '';
+    return sectionName ? `${className}-${sectionName}` : `${className} (All Sections)`;
   };
 
   const handleFileUpload = async (file: File) => {
@@ -668,27 +712,24 @@ function DiaryModal({
       return;
     }
 
+    if (selectedTargets.length > 0) {
+      alert('Only one class/section can be selected for this diary entry.');
+      return;
+    }
+
     const target = {
       class_name: selectedClass,
       section_name: selectedSection || undefined,
     };
-
-    const exists = selectedTargets.some(
-      (t) => t.class_name === target.class_name && (t.section_name || '') === (target.section_name || '')
-    );
-
-    if (exists) {
-      alert('This class/section is already added');
-      return;
-    }
-
-    setSelectedTargets((prev) => [...prev, target]);
-    setSelectedClass('');
-    setSelectedSection('');
+    setSelectedTargets([target]);
   };
 
   const removeTarget = (index: number) => {
     setSelectedTargets((prev) => prev.filter((_, i) => i !== index));
+    if (index === 0) {
+      setSelectedSubjectId('');
+      setSubjects([]);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -697,12 +738,16 @@ function DiaryModal({
       alert('Please enter a title');
       return;
     }
-    if (selectedTargets.length === 0) {
-      alert('Please select at least one class/section');
+    if (selectedTargets.length !== 1) {
+      alert('Please select exactly one class/section');
       return;
     }
     if (formData.mode === 'SUBJECT_WISE' && !selectedSubjectId) {
       alert('Please select a subject for Subject-wise diary');
+      return;
+    }
+    if (formData.mode === 'SUBJECT_WISE' && subjects.length === 0) {
+      alert('No subjects are assigned to the selected class/section');
       return;
     }
 
@@ -729,13 +774,27 @@ function DiaryModal({
         }),
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result: Record<string, unknown> = {};
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText) as Record<string, unknown>;
+        } catch {
+          result = { raw: responseText };
+        }
+      }
+
       if (response.ok) {
         onClose();
       } else {
-        const errorMsg = result.details
-          ? `${result.error}: ${result.details}${result.hint ? ` (${result.hint})` : ''}`
-          : result.error || `Failed to ${diary ? 'update' : 'create'} diary entry`;
+        const error = typeof result.error === 'string' ? result.error : '';
+        const details = typeof result.details === 'string' ? result.details : '';
+        const hint = typeof result.hint === 'string' ? result.hint : '';
+        const raw = typeof result.raw === 'string' ? result.raw : '';
+        const fallback = raw || response.statusText || `HTTP ${response.status}`;
+        const errorMsg = details
+          ? `${error || 'Request failed'}: ${details}${hint ? ` (${hint})` : ''}`
+          : error || `${`Failed to ${diary ? 'update' : 'create'} diary entry`} (${fallback})`;
         console.error('Diary creation error:', result);
         alert(errorMsg);
       }
@@ -814,30 +873,6 @@ function DiaryModal({
               </select>
             </div>
 
-            {formData.mode === 'SUBJECT_WISE' && (
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Subject <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={selectedSubjectId}
-                  onChange={(e) => setSelectedSubjectId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  disabled={!selectedClass || loadingSubjects}
-                  required={formData.mode === 'SUBJECT_WISE'}
-                >
-                  <option value="">
-                    {!selectedClass ? 'Select class first' : loadingSubjects ? 'Loading subjects...' : 'Select Subject'}
-                  </option>
-                  {subjects.map((subject) => (
-                    <option key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Academic Year <span className="text-red-500">*</span>
@@ -907,7 +942,7 @@ function DiaryModal({
                 <Button
                   type="button"
                   onClick={handleAddTarget}
-                  disabled={!selectedClass}
+                  disabled={!selectedClass || selectedTargets.length > 0}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Plus size={16} className="mr-2" />
@@ -940,6 +975,37 @@ function DiaryModal({
                     ))}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {formData.mode === 'SUBJECT_WISE' && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Subject <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => setSelectedSubjectId(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  disabled={selectedTargets.length === 0 || loadingSubjects}
+                  required={formData.mode === 'SUBJECT_WISE'}
+                >
+                  <option value="">
+                    {selectedTargets.length === 0
+                      ? 'Select class and section first'
+                      : loadingSubjects
+                        ? 'Loading subjects...'
+                        : subjects.length === 0
+                          ? 'No subject assigned to selected class/section'
+                          : 'Select Subject'}
+                  </option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">Subject scope: {getClassScopeLabel()}</p>
               </div>
             )}
 

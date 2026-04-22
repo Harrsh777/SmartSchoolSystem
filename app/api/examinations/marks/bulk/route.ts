@@ -7,6 +7,12 @@ import { normalizeMarksEntryCode } from '@/lib/marks-entry-codes';
 import { assertTeacherSubjectScope, loadTeachingMap } from '@/lib/marks-teacher-validation';
 import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
 
+function asTimestamp(value: unknown): number | null {
+  if (!value) return null;
+  const ms = new Date(String(value)).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 /**
  * Bulk save marks for multiple students
  * POST /api/examinations/marks/bulk
@@ -18,7 +24,7 @@ export async function POST(request: NextRequest) {
       school_code,
       exam_id,
       class_id,
-      marks, // Array of { student_id, subjects: [{ subject_id, max_marks, marks_obtained, remarks, marks_entry_code? }] }
+      marks, // Array of { student_id, subjects: [{ subject_id, max_marks, marks_obtained, remarks, marks_entry_code?, expected_updated_at? }] }
       entered_by,
       teacher_marks_scoped,
     } = body;
@@ -162,6 +168,7 @@ export async function POST(request: NextRequest) {
       marks_entry_code?: string | null;
       status?: string;
     }> = [];
+    const expectedVersionByKey = new Map<string, string | null>();
 
     const errors: Array<{ student_id: string; subject_id?: string; error: string }> = [];
 
@@ -185,7 +192,11 @@ export async function POST(request: NextRequest) {
           marks_obtained?: unknown;
           remarks?: string | null;
           marks_entry_code?: unknown;
+          expected_updated_at?: unknown;
         };
+        const expectedUpdatedAt = subjectMark.expected_updated_at == null
+          ? null
+          : String(subjectMark.expected_updated_at);
 
         const entryCode = normalizeMarksEntryCode(subjectMark.marks_entry_code);
 
@@ -265,6 +276,7 @@ export async function POST(request: NextRequest) {
         };
         if (entryCode) row.marks_entry_code = entryCode;
         allMarksRecords.push(row);
+        expectedVersionByKey.set(`${student_id}::${subject_id}`, expectedUpdatedAt);
       }
     }
 
@@ -272,6 +284,96 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'No valid marks to save', errors },
         { status: 400 }
+      );
+    }
+
+    const studentIds = [...new Set(allMarksRecords.map((m) => m.student_id))];
+    const subjectIds = [...new Set(allMarksRecords.map((m) => m.subject_id))];
+    const { data: existingRows, error: existingRowsError } = await supabase
+      .from('student_subject_marks')
+      .select('student_id, subject_id, updated_at, created_at, entered_by')
+      .eq('exam_id', exam_id)
+      .eq('class_id', class_id)
+      .in('student_id', studentIds)
+      .in('subject_id', subjectIds);
+
+    if (existingRowsError) {
+      return NextResponse.json(
+        { error: 'Failed to verify latest mark versions before save', details: existingRowsError.message },
+        { status: 500 }
+      );
+    }
+
+    const existingByKey = new Map<
+      string,
+      { updated_at?: string | null; created_at?: string | null; entered_by?: string | null }
+    >();
+    for (const row of existingRows || []) {
+      existingByKey.set(`${row.student_id}::${row.subject_id}`, row);
+    }
+
+    const conflicts: Array<{
+      student_id: string;
+      subject_id: string;
+      student_name: string;
+      subject_name: string;
+      updated_at: string | null;
+      updated_by: string | null;
+      updated_by_name: string | null;
+    }> = [];
+
+    for (const rec of allMarksRecords) {
+      const key = `${rec.student_id}::${rec.subject_id}`;
+      const expected = expectedVersionByKey.get(key);
+      const current = existingByKey.get(key);
+      if (!current) continue;
+      const currentIso = current.updated_at || current.created_at || null;
+      if (asTimestamp(expected) !== asTimestamp(currentIso)) {
+        conflicts.push({
+          student_id: rec.student_id,
+          subject_id: rec.subject_id,
+          student_name: '',
+          subject_name: '',
+          updated_at: currentIso,
+          updated_by: current.entered_by || null,
+          updated_by_name: null,
+        });
+      }
+    }
+
+    if (conflicts.length > 0) {
+      const conflictStudentIds = [...new Set(conflicts.map((c) => c.student_id))];
+      const conflictSubjectIds = [...new Set(conflicts.map((c) => c.subject_id))];
+      const conflictUpdatedByIds = [
+        ...new Set(conflicts.map((c) => c.updated_by).filter((x): x is string => Boolean(x))),
+      ];
+
+      const [{ data: studentRows }, { data: subjectRows }, { data: staffRows }] = await Promise.all([
+        supabase.from('students').select('id, student_name').in('id', conflictStudentIds),
+        supabase.from('subjects').select('id, name').in('id', conflictSubjectIds),
+        conflictUpdatedByIds.length > 0
+          ? supabase.from('staff').select('id, full_name').in('id', conflictUpdatedByIds)
+          : Promise.resolve({ data: [] as Array<{ id: string; full_name: string | null }> }),
+      ]);
+
+      const studentNameById = new Map((studentRows || []).map((s) => [String(s.id), String(s.student_name || '')]));
+      const subjectNameById = new Map((subjectRows || []).map((s) => [String(s.id), String(s.name || '')]));
+      const staffNameById = new Map((staffRows || []).map((s) => [String(s.id), s.full_name || null]));
+
+      const detailedConflicts = conflicts.map((c) => ({
+        ...c,
+        student_name: studentNameById.get(c.student_id) || c.student_id,
+        subject_name: subjectNameById.get(c.subject_id) || c.subject_id,
+        updated_by_name: c.updated_by ? (staffNameById.get(c.updated_by) || null) : null,
+      }));
+
+      return NextResponse.json(
+        {
+          error: 'Concurrent update conflict',
+          message: 'Some records were updated by another teacher while you were editing.',
+          conflicts: detailedConflicts,
+        },
+        { status: 409 }
       );
     }
 

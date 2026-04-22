@@ -8,6 +8,7 @@ import {
   buildParsedRowFromMarks,
   findBulkMarksHeaderRowIndex,
   isBulkMarksCellEmpty,
+  parseBulkMarksSnapshotAt,
   parseBulkMarksSheetMeta,
   parseMarksCell,
   readBulkMarksSheet,
@@ -41,6 +42,12 @@ type MarkRecord = {
   marks_entry_code?: string | null;
   status?: string;
 };
+
+function tsMs(v: unknown): number | null {
+  if (!v) return null;
+  const n = new Date(String(v)).getTime();
+  return Number.isFinite(n) ? n : null;
+}
 
 async function upsertMarksRecords(
   supabase: ReturnType<typeof getServiceRoleClient>,
@@ -266,6 +273,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const snapshotParse = parseBulkMarksSnapshotAt(rows, headerIdx);
+    if (!snapshotParse.ok) {
+      return NextResponse.json({ error: snapshotParse.error, code: 'INVALID_TEMPLATE_META' }, { status: 400 });
+    }
+    const snapshotAtMs = tsMs(snapshotParse.snapshotAt);
     if (metaParse.kind === 'ok') {
       if (!expectedSubjectName) {
         return NextResponse.json({ error: 'Subject not found for this school.', code: 'SUBJECT_NOT_FOUND' }, { status: 400 });
@@ -334,20 +347,69 @@ export async function POST(request: NextRequest) {
     }
 
     const rosterIds = roster.map((s) => s.id);
-    const lockedSubjects = new Set<string>();
+    const existingByStudent = new Map<
+      string,
+      { updated_at: string | null; created_at: string | null; entered_by: string | null }
+    >();
     if (rosterIds.length > 0) {
-      const { data: lockedRows } = await supabase
+      const { data: existingRowsWithUpdatedAt, error: existingRowsError } = await supabase
         .from('student_subject_marks')
-        .select('student_id')
+        .select('student_id, updated_at, created_at, entered_by')
         .eq('exam_id', exam_id)
         .eq('class_id', class_id)
         .eq('subject_id', subject_id)
         .eq('school_code', school_code)
-        .eq('status', 'submitted')
         .in('student_id', rosterIds);
+      let existingRows: Array<{
+        student_id: string;
+        updated_at?: string | null;
+        created_at?: string | null;
+        entered_by?: string | null;
+      }> = [];
+      if (!existingRowsError) {
+        existingRows = (existingRowsWithUpdatedAt || []) as typeof existingRows;
+      } else {
+        const colErr =
+          existingRowsError.code === 'PGRST204' ||
+          /column.*does not exist|Could not find the/.test(existingRowsError.message || '');
+        if (!colErr) {
+          return NextResponse.json(
+            { error: 'Failed to verify existing marks before upload', details: existingRowsError.message },
+            { status: 500 }
+          );
+        }
+        const { data: existingRowsFallback, error: fallbackErr } = await supabase
+          .from('student_subject_marks')
+          .select('student_id, created_at, entered_by')
+          .eq('exam_id', exam_id)
+          .eq('class_id', class_id)
+          .eq('subject_id', subject_id)
+          .eq('school_code', school_code)
+          .in('student_id', rosterIds);
+        if (fallbackErr) {
+          return NextResponse.json(
+            { error: 'Failed to verify existing marks before upload', details: fallbackErr.message },
+            { status: 500 }
+          );
+        }
+        existingRows = (existingRowsFallback || []) as typeof existingRows;
+      }
 
-      for (const r of lockedRows || []) {
-        lockedSubjects.add(r.student_id);
+      for (const r of existingRows) {
+        existingByStudent.set(String(r.student_id), {
+          updated_at: r.updated_at ? String(r.updated_at) : null,
+          created_at: r.created_at ? String(r.created_at) : null,
+          entered_by: r.entered_by ? String(r.entered_by) : null,
+        });
+      }
+    }
+
+    const updaterIds = [...new Set(Array.from(existingByStudent.values()).map((x) => x.entered_by).filter(Boolean))] as string[];
+    const staffNameById = new Map<string, string>();
+    if (updaterIds.length > 0) {
+      const { data: staffRows } = await supabase.from('staff').select('id, full_name').in('id', updaterIds);
+      for (const s of staffRows || []) {
+        staffNameById.set(String(s.id), String(s.full_name || ''));
       }
     }
 
@@ -416,21 +478,25 @@ export async function POST(request: NextRequest) {
       }
       seenInFile.add(resolved.student.id);
 
-      if (lockedSubjects.has(resolved.student.id)) {
-        failed.push({
-          excel_row,
-          reason: 'Marks for this student are already submitted and locked.',
-          student_id: resolved.student.id,
-        });
-        continue;
-      }
-
       const parsed = parseMarksCell(c5, maxMarks);
       if (!parsed.ok) {
         failed.push({
           excel_row,
           reason: parsed.error,
           student_id: resolved.student.id,
+        });
+        continue;
+      }
+
+      const existing = existingByStudent.get(resolved.student.id);
+      const currentTs = tsMs(existing?.updated_at || existing?.created_at);
+      if (snapshotAtMs !== null && currentTs !== null && currentTs > snapshotAtMs) {
+        const who = existing?.entered_by ? (staffNameById.get(existing.entered_by) || 'another teacher') : 'another teacher';
+        failed.push({
+          excel_row,
+          reason: `Record was updated by ${who} after this template was downloaded. Re-download the latest template and re-apply changes.`,
+          student_id: resolved.student.id,
+          admission_no: resolved.student.admission_no || undefined,
         });
         continue;
       }

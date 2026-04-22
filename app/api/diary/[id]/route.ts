@@ -1,6 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+interface DiaryTargetInput {
+  class_name: string;
+  section_name?: string;
+}
+
+async function validateSubjectWiseScope(params: {
+  school_code: string;
+  academic_year_id?: string;
+  mode?: string;
+  subject_id?: string;
+  targets: DiaryTargetInput[];
+}) {
+  const { school_code, academic_year_id, mode, subject_id, targets } = params;
+
+  if (!targets || targets.length !== 1) {
+    return { ok: false, error: 'Please select exactly one class/section target' };
+  }
+
+  const target = targets[0];
+  let classQuery = supabase
+    .from('classes')
+    .select('id, section')
+    .eq('school_code', school_code)
+    .eq('class', target.class_name);
+
+  if (academic_year_id) {
+    classQuery = classQuery.eq('academic_year', academic_year_id);
+  }
+  if (target.section_name) {
+    classQuery = classQuery.eq('section', target.section_name);
+  }
+
+  const { data: classRows, error: classError } = await classQuery;
+  if (classError) {
+    return { ok: false, error: `Failed to validate class/section: ${classError.message}` };
+  }
+  if (!classRows || classRows.length === 0) {
+    return { ok: false, error: 'Selected class/section was not found in this academic year' };
+  }
+
+  if (mode !== 'SUBJECT_WISE') {
+    return { ok: true };
+  }
+
+  if (!subject_id) {
+    return { ok: false, error: 'Subject is required when diary mode is Subject-wise' };
+  }
+
+  const classIds = classRows.map((row) => row.id);
+  const { data: subjectMappings, error: subjectMapError } = await supabase
+    .from('class_subjects')
+    .select('class_id')
+    .eq('school_code', school_code)
+    .eq('subject_id', subject_id)
+    .in('class_id', classIds);
+
+  if (subjectMapError) {
+    return { ok: false, error: `Failed to validate subject mapping: ${subjectMapError.message}` };
+  }
+
+  const coveredClassIds = new Set((subjectMappings || []).map((row) => row.class_id));
+  if (coveredClassIds.size !== classIds.length) {
+    return { ok: false, error: 'Selected subject is not assigned to the selected class/section scope' };
+  }
+
+  return { ok: true };
+}
+
 /**
  * PATCH /api/diary/[id]
  * Update a diary entry
@@ -18,7 +86,6 @@ export async function PATCH(
       type,
       mode,
       subject_id,
-      subject_name,
       targets,
       attachments,
       updated_by,
@@ -27,7 +94,13 @@ export async function PATCH(
     // Get existing diary
     const { data: existing, error: fetchError } = await supabase
       .from('diaries')
-      .select('*')
+      .select(`
+        *,
+        diary_targets (
+          class_name,
+          section_name
+        )
+      `)
       .eq('id', id)
       .single();
 
@@ -45,10 +118,8 @@ export async function PATCH(
     if (type !== undefined) updateData.type = type;
     if (mode !== undefined) updateData.mode = mode;
     if (subject_id !== undefined) updateData.subject_id = subject_id || null;
-    if (subject_name !== undefined) updateData.subject_name = subject_name || null;
-    if (mode === 'GENERAL' && ('subject_id' in existing || 'subject_name' in existing)) {
+    if (mode === 'GENERAL' && 'subject_id' in existing) {
       updateData.subject_id = null;
-      updateData.subject_name = null;
     }
     if (mode === 'SUBJECT_WISE' && !subject_id && !existing.subject_id) {
       return NextResponse.json(
@@ -56,6 +127,24 @@ export async function PATCH(
         { status: 400 }
       );
     }
+
+    const effectiveMode = mode ?? existing.mode;
+    const effectiveSubjectId =
+      subject_id !== undefined ? (subject_id || undefined) : (existing.subject_id || undefined);
+    const effectiveTargets: DiaryTargetInput[] = Array.isArray(targets)
+      ? targets
+      : (existing.diary_targets as DiaryTargetInput[] | undefined) || [];
+    const scopeValidation = await validateSubjectWiseScope({
+      school_code: existing.school_code,
+      academic_year_id: existing.academic_year_id || undefined,
+      mode: effectiveMode,
+      subject_id: effectiveSubjectId,
+      targets: effectiveTargets,
+    });
+    if (!scopeValidation.ok) {
+      return NextResponse.json({ error: scopeValidation.error }, { status: 400 });
+    }
+
     if (updated_by !== undefined) updateData.updated_by = updated_by;
 
     const { error: updateError } = await supabase
