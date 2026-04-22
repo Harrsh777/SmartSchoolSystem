@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
       let existing: Array<{
         student_id: string;
         marks_obtained: number;
-        marks_entry_code: string | null;
+        marks_entry_code?: string | null;
         updated_at?: string | null;
         created_at?: string | null;
       }> | null = null;
@@ -176,10 +176,29 @@ export async function GET(request: NextRequest) {
           .eq('subject_id', subject_id)
           .eq('school_code', school_code)
           .in('student_id', ids);
-        if (fallbackErr) {
-          return NextResponse.json({ error: 'Failed to load existing marks', details: fallbackErr.message }, { status: 500 });
+        if (!fallbackErr) {
+          existing = (existingFallback as unknown as typeof existing) || [];
+        } else {
+          const fallbackColErr =
+            fallbackErr.code === 'PGRST204' ||
+            /column.*does not exist|Could not find the/.test(fallbackErr.message || '');
+          if (!fallbackColErr) {
+            return NextResponse.json({ error: 'Failed to load existing marks', details: fallbackErr.message }, { status: 500 });
+          }
+          // Final compatibility fallback for older schemas without marks_entry_code and/or updated_at.
+          const { data: existingLegacy, error: legacyErr } = await supabase
+            .from('student_subject_marks')
+            .select('student_id, marks_obtained, created_at')
+            .eq('exam_id', exam_id)
+            .eq('class_id', class_id)
+            .eq('subject_id', subject_id)
+            .eq('school_code', school_code)
+            .in('student_id', ids);
+          if (legacyErr) {
+            return NextResponse.json({ error: 'Failed to load existing marks', details: legacyErr.message }, { status: 500 });
+          }
+          existing = (existingLegacy as unknown as typeof existing) || [];
         }
-        existing = (existingFallback as unknown as typeof existing) || [];
       }
 
       for (const m of existing || []) {
