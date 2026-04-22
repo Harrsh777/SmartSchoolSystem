@@ -588,12 +588,12 @@ function DiaryModal({
   const fetchSubjectsForClassScope = async (classIds: string[]) => {
     setLoadingSubjects(true);
     try {
-      const subjectResults = await Promise.all(
+      const subjectResults: Subject[][] = await Promise.all(
         classIds.map(async (classId) => {
           const res = await fetch(`/api/classes/${classId}/subjects?school_code=${schoolCode}`);
           const result = await res.json();
           if (!res.ok || !Array.isArray(result.data)) return [];
-          return result.data.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }));
+          return result.data.map((s: { id: string; name: string }): Subject => ({ id: s.id, name: s.name }));
         })
       );
 

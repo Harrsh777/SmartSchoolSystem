@@ -40,6 +40,8 @@ interface Student {
     status?: string;
     remarks?: string;
     topic?: string;
+    created_at?: string;
+    updated_at?: string;
     [key: string]: unknown;
   };
 }
@@ -639,6 +641,20 @@ export default function CopyCheckingPage({
     }
   };
 
+  const formatDateTime = (raw: string | null | undefined) => {
+    if (!raw) return '-';
+    const dt = new Date(raw);
+    if (Number.isNaN(dt.getTime())) return '-';
+    return dt.toLocaleString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
   const ctSetForHint = new Set((classTeacherClassIds || []).map((id) => String(id).trim()));
   const isCtForSelected =
     Boolean(selectedClassId) && ctSetForHint.has(String(selectedClassId).trim());
@@ -998,6 +1014,7 @@ export default function CopyCheckingPage({
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Student Name</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Admission ID</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Roll Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Last Updated</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider">
                     Status
                     <div className="flex items-center justify-center gap-1 mt-1 text-[10px] text-[#64748B] font-normal normal-case">
@@ -1042,6 +1059,12 @@ export default function CopyCheckingPage({
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-[#64748B]">
                         {student.roll_number || '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-[#64748B]">
+                        {formatDateTime(
+                          student.copy_checking?.updated_at as string | undefined
+                            ?? student.copy_checking?.created_at as string | undefined
+                        )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2 flex-wrap">

@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
         .eq('school_code', school_code)
         .in('student_id', ids);
       if (!existingErr) {
-        existing = existingWithUpdatedAt as typeof existing;
+        existing = existingWithUpdatedAt as unknown as typeof existing;
       } else {
         const colErr =
           existingErr.code === 'PGRST204' ||
@@ -179,7 +179,7 @@ export async function GET(request: NextRequest) {
         if (fallbackErr) {
           return NextResponse.json({ error: 'Failed to load existing marks', details: fallbackErr.message }, { status: 500 });
         }
-        existing = (existingFallback as typeof existing) || [];
+        existing = (existingFallback as unknown as typeof existing) || [];
       }
 
       for (const m of existing || []) {
