@@ -93,6 +93,16 @@ interface StudentStats {
   isComplete: boolean;
 }
 
+interface SubmittedSubjectMeta {
+  submitted: boolean;
+  submitted_at: string | null;
+  submitted_by_name: string | null;
+}
+
+interface SubmittedSubjectMetaMap {
+  [subjectId: string]: SubmittedSubjectMeta;
+}
+
 function normClassLabel(v: unknown): string {
   return String(v ?? '').trim();
 }
@@ -203,6 +213,7 @@ export default function MarksEntryPage({
   const [marksTableSort, setMarksTableSort] = useState<MarksTableSort>('roll_asc');
   const [showTotals, setShowTotals] = useState(true);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
+  const [submittedSubjectMeta, setSubmittedSubjectMeta] = useState<SubmittedSubjectMeta | null>(null);
   const draftStorageKey = useMemo(
     () =>
       `marks-entry-draft:${schoolCode}:${selectedClassId || '_'}:${selectedExam || '_'}:${selectedSubjectId || '_'}`,
@@ -569,6 +580,45 @@ export default function MarksEntryPage({
     }
   }, [draftStorageKey, marks, absentByStudentSubject, selectedExam, selectedClassId]);
 
+  const fetchSubmittedSubjectMeta = useCallback(async () => {
+    if (!selectedExam || !selectedClassId || !selectedSubjectId) {
+      setSubmittedSubjectMeta(null);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/examinations/marks/status?exam_id=${encodeURIComponent(selectedExam)}&class_id=${encodeURIComponent(
+          selectedClassId
+        )}&subject_id=${encodeURIComponent(selectedSubjectId)}&school_code=${encodeURIComponent(schoolCode)}`
+      );
+      const data = await res.json();
+      if (res.ok && data.data) {
+        const storageKey = `marks-entry-submitted-meta:${schoolCode}:${selectedClassId}:${selectedExam}`;
+        let merged = data.data as SubmittedSubjectMeta;
+        try {
+          const raw = localStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as SubmittedSubjectMetaMap;
+            if (parsed?.[selectedSubjectId]?.submitted) {
+              merged = parsed[selectedSubjectId];
+            }
+          }
+        } catch {
+          // Ignore local storage parse issues.
+        }
+        setSubmittedSubjectMeta(merged);
+      } else {
+        setSubmittedSubjectMeta(null);
+      }
+    } catch {
+      setSubmittedSubjectMeta(null);
+    }
+  }, [selectedExam, selectedClassId, selectedSubjectId, schoolCode]);
+
+  useEffect(() => {
+    void fetchSubmittedSubjectMeta();
+  }, [fetchSubmittedSubjectMeta]);
+
   const handleMarksChange = (studentId: string, subjectId: string, value: string) => {
     const parsed = value === '' ? undefined : parseFloat(value);
     const numValue = Number.isFinite(parsed as number) ? parsed : undefined;
@@ -835,14 +885,14 @@ export default function MarksEntryPage({
   };
 
   // Calculate student totals and grades
-  const calculateStudentStats = (studentId: string): StudentStats => {
+  const calculateStudentStats = (studentId: string, subjectsForStats: Subject[]): StudentStats => {
     const studentMarks = marks[studentId] || {};
     const studentAbsent = absentByStudentSubject[studentId] || {};
     let totalObtained = 0;
     let totalMax = 0;
     let enteredSubjects = 0;
 
-    subjects.forEach((subject) => {
+    subjectsForStats.forEach((subject) => {
       const isAbsent = Boolean(studentAbsent[subject.id]);
       const value = studentMarks[subject.id];
       const hasValue = typeof value === 'number' && Number.isFinite(value);
@@ -853,7 +903,7 @@ export default function MarksEntryPage({
       enteredSubjects += 1;
     });
 
-    const totalSubjects = subjects.length;
+    const totalSubjects = subjectsForStats.length;
     const isComplete = totalSubjects > 0 && enteredSubjects === totalSubjects;
     const percentage = totalMax > 0 ? calculatePercentage(totalObtained, totalMax) : null;
     const grade = percentage !== null ? getGradeFromPercentage(percentage) : null;
@@ -937,7 +987,36 @@ export default function MarksEntryPage({
         return;
       }
 
+      const role = sessionStorage.getItem('role');
+      const submitterName = role === 'admin' || role === 'principal' ? 'Admin' : (() => {
+        try {
+          const staffRaw = sessionStorage.getItem('staff') || sessionStorage.getItem('teacher');
+          if (!staffRaw) return 'Staff';
+          const parsed = JSON.parse(staffRaw) as { full_name?: string; name?: string };
+          return parsed.full_name || parsed.name || 'Staff';
+        } catch {
+          return 'Staff';
+        }
+      })();
+      const submittedAt = new Date().toISOString();
+      const storageKey = `marks-entry-submitted-meta:${schoolCode}:${selectedClassId}:${selectedExam}`;
+      try {
+        const raw = localStorage.getItem(storageKey);
+        const parsed = raw ? (JSON.parse(raw) as SubmittedSubjectMetaMap) : {};
+        for (const subjectId of subjectIdsToSubmit) {
+          parsed[subjectId] = {
+            submitted: true,
+            submitted_at: submittedAt,
+            submitted_by_name: submitterName,
+          };
+        }
+        localStorage.setItem(storageKey, JSON.stringify(parsed));
+      } catch {
+        // Best effort local persistence only.
+      }
+
       setSuccess(`Marks submitted for review successfully! ${result.submitted_count || 0} marks submitted.`);
+      await fetchSubmittedSubjectMeta();
       setTimeout(() => {
         setSuccess('');
         fetchStudentsAndSubjects();
@@ -1180,6 +1259,22 @@ export default function MarksEntryPage({
           </div>
         </Card>
 
+        {submittedSubjectMeta?.submitted && (
+          <Card className="p-3 border border-amber-300/70 bg-amber-50 dark:bg-amber-900/20">
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              Marks already submitted for this section and subject by{' '}
+              <span className="font-semibold">{submittedSubjectMeta.submitted_by_name || 'Admin'}</span>{' '}
+              at{' '}
+              <span className="font-semibold">
+                {submittedSubjectMeta.submitted_at
+                  ? new Date(submittedSubjectMeta.submitted_at).toLocaleString()
+                  : 'timestamp unavailable'}
+              </span>
+              .
+            </p>
+          </Card>
+        )}
+
         {/* Loading State */}
         {loadingStudents && (
           <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50">
@@ -1285,7 +1380,7 @@ export default function MarksEntryPage({
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {displayStudents.map((student, index) => {
-                    const stats = calculateStudentStats(student.id);
+                    const stats = calculateStudentStats(student.id, displayedSubjects);
                     return (
                       <motion.tr
                         key={student.id}
