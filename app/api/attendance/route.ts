@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { cacheKeys, DASHBOARD_REDIS_TTL, getCached, invalidateCachePattern } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,22 +16,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch attendance records
-    const { data: attendance, error: attendanceError } = await supabase
-      .from('student_attendance')
-      .select('*')
-      .eq('class_id', classId)
-      .eq('attendance_date', date)
-      .eq('school_code', schoolCode);
+    const cacheKey = cacheKeys.attendanceDaily(schoolCode, classId, date);
+    const response = await getCached(
+      cacheKey,
+      async () => {
+        // Fetch attendance records
+        const { data: attendance, error: attendanceError } = await supabase
+          .from('student_attendance')
+          .select('*')
+          .eq('class_id', classId)
+          .eq('attendance_date', date)
+          .eq('school_code', schoolCode);
 
-    if (attendanceError) {
-      return NextResponse.json(
-        { error: 'Failed to fetch attendance', details: attendanceError.message },
-        { status: 500 }
-      );
-    }
+        if (attendanceError) {
+          throw new Error(attendanceError.message);
+        }
 
-    return NextResponse.json({ data: attendance || [] }, { status: 200 });
+        return { data: attendance || [] };
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.attendanceDaily }
+    );
+
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error fetching attendance:', error);
     return NextResponse.json(
@@ -134,6 +141,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    void invalidateCachePattern(cacheKeys.attendanceDailyPattern(school_code));
+    void invalidateCachePattern(cacheKeys.attendanceOverviewPattern(school_code));
     return NextResponse.json(
       { data: savedAttendance, message: 'Attendance saved successfully' },
       { status: 200 }

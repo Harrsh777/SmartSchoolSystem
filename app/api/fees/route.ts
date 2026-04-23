@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { requirePermission } from '@/lib/api-permissions';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
+import { cacheKeys, DASHBOARD_REDIS_TTL, getCached, invalidateCachePattern } from '@/lib/cache';
 
 // Helper function to fetch fee with related data
 async function fetchFeeWithRelations(feeId: string, schoolCode: string) {
@@ -64,111 +65,131 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build query (fetch fees first, then enrich with related data)
-    let query = supabase
-      .from('fees')
-      .select('*')
-      .eq('school_code', schoolCode)
-      .order('payment_date', { ascending: false })
-      .order('created_at', { ascending: false });
-
-    // Apply filters
-    if (studentId) {
-      query = query.eq('student_id', studentId);
-    }
-    if (admissionNo) {
-      query = query.eq('admission_no', admissionNo);
-    }
-    if (startDate) {
-      query = query.gte('payment_date', startDate);
-    }
-    if (endDate) {
-      query = query.lte('payment_date', endDate);
-    }
-    if (collectedBy) {
-      query = query.eq('collected_by', collectedBy);
-    }
-
-    const { data: fees, error: feesError } = await query;
-
-    if (feesError) {
-      return NextResponse.json(
-        { error: 'Failed to fetch fees', details: feesError.message },
-        { status: 500 }
-      );
-    }
-
-    // Fetch related data for all fees
-    interface FeeData {
-      student_id?: string;
-      amount?: string | number;
-      payment_date?: string;
-      student?: { class?: string; [key: string]: unknown };
-      [key: string]: unknown;
-    }
-    const feesWithRelations = await Promise.all(
-      (fees || []).map(async (fee: FeeData) => {
-        // Fetch student data
-        const { data: student } = await supabase
-          .from('students')
-          .select('id, admission_no, student_name, class, section')
-          .eq('id', fee.student_id)
+    const cacheKey = cacheKeys.feesList(
+      schoolCode,
+      studentId,
+      admissionNo,
+      startDate,
+      endDate,
+      classFilter,
+      collectedBy
+    );
+    const response = await getCached(
+      cacheKey,
+      async () => {
+        // Build query (fetch fees first, then enrich with related data)
+        let query = supabase
+          .from('fees')
+          .select('*')
           .eq('school_code', schoolCode)
-          .single();
+          .order('payment_date', { ascending: false })
+          .order('created_at', { ascending: false });
 
-        // Fetch accountant data
-        const { data: accountant } = await supabase
-          .from('staff')
-          .select('id, full_name, staff_id')
-          .eq('id', fee.collected_by)
-          .eq('school_code', schoolCode)
-          .single();
+        // Apply filters
+        if (studentId) {
+          query = query.eq('student_id', studentId);
+        }
+        if (admissionNo) {
+          query = query.eq('admission_no', admissionNo);
+        }
+        if (startDate) {
+          query = query.gte('payment_date', startDate);
+        }
+        if (endDate) {
+          query = query.lte('payment_date', endDate);
+        }
+        if (collectedBy) {
+          query = query.eq('collected_by', collectedBy);
+        }
+
+        const { data: fees, error: feesError } = await query;
+        if (feesError) {
+          throw new Error(feesError.message);
+        }
+
+        // Fetch related data for all fees
+        interface FeeData {
+          student_id?: string;
+          amount?: string | number;
+          payment_date?: string;
+          student?: { class?: string; [key: string]: unknown };
+          [key: string]: unknown;
+        }
+        const feesWithRelations = await Promise.all(
+          (fees || []).map(async (fee: FeeData) => {
+            // Fetch student data
+            const { data: student } = await supabase
+              .from('students')
+              .select('id, admission_no, student_name, class, section')
+              .eq('id', fee.student_id)
+              .eq('school_code', schoolCode)
+              .single();
+
+            // Fetch accountant data
+            const { data: accountant } = await supabase
+              .from('staff')
+              .select('id, full_name, staff_id')
+              .eq('id', fee.collected_by)
+              .eq('school_code', schoolCode)
+              .single();
+
+            return {
+              ...fee,
+              student: student || null,
+              accountant: accountant || null,
+            };
+          })
+        );
+
+        // If class filter is provided, filter by student class
+        let filteredFees = feesWithRelations;
+        if (classFilter && feesWithRelations) {
+          filteredFees = feesWithRelations.filter((fee) => {
+            const student = fee.student as { class?: string } | null | undefined;
+            return student?.class === classFilter;
+          });
+        }
+
+        // Calculate statistics
+        const totalAmount = filteredFees.reduce(
+          (sum: number, fee) => sum + Number((fee as { amount?: string | number }).amount || 0),
+          0
+        );
+        const totalTransactions = filteredFees.length;
+        const today = new Date().toISOString().split('T')[0];
+        const todayCollection = filteredFees
+          .filter((fee) => (fee as { payment_date?: string }).payment_date === today)
+          .reduce((sum: number, fee) => sum + Number((fee as { amount?: string | number }).amount || 0), 0);
+
+        // Calculate monthly collection (this month)
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+          .toISOString()
+          .split('T')[0];
+        const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+          .toISOString()
+          .split('T')[0];
+        const monthlyCollection = filteredFees
+          .filter((fee) => {
+            const paymentDate = (fee as { payment_date?: string }).payment_date;
+            return paymentDate && paymentDate >= firstDayOfMonth && paymentDate <= lastDayOfMonth;
+          })
+          .reduce((sum: number, fee) => sum + Number((fee as { amount?: string | number }).amount || 0), 0);
 
         return {
-          ...fee,
-          student: student || null,
-          accountant: accountant || null,
+          data: filteredFees,
+          statistics: {
+            totalAmount,
+            totalTransactions,
+            todayCollection,
+            monthlyCollection,
+          },
         };
-      })
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.feesList }
     );
 
-    // If class filter is provided, filter by student class
-    let filteredFees = feesWithRelations;
-    if (classFilter && feesWithRelations) {
-      filteredFees = feesWithRelations.filter((fee) => {
-        const student = fee.student as { class?: string } | null | undefined;
-        return student?.class === classFilter;
-      });
-    }
-
-    // Calculate statistics
-    const totalAmount = filteredFees.reduce((sum: number, fee) => sum + Number((fee as { amount?: string | number }).amount || 0), 0);
-    const totalTransactions = filteredFees.length;
-    const today = new Date().toISOString().split('T')[0];
-    const todayCollection = filteredFees
-      .filter((fee) => (fee as { payment_date?: string }).payment_date === today)
-      .reduce((sum: number, fee) => sum + Number((fee as { amount?: string | number }).amount || 0), 0);
-    
-    // Calculate monthly collection (this month)
-    const now = new Date();
-    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-    const monthlyCollection = filteredFees
-      .filter((fee) => {
-        const paymentDate = (fee as { payment_date?: string }).payment_date;
-        return paymentDate && paymentDate >= firstDayOfMonth && paymentDate <= lastDayOfMonth;
-      })
-      .reduce((sum: number, fee) => sum + Number((fee as { amount?: string | number }).amount || 0), 0);
-
-    return NextResponse.json({
-      data: filteredFees,
-      statistics: {
-        totalAmount,
-        totalTransactions,
-        todayCollection,
-        monthlyCollection,
-      },
-    }, { status: 200 });
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error fetching fees:', error);
     return NextResponse.json(
@@ -371,6 +392,7 @@ export async function POST(request: NextRequest) {
 
         // Fetch related data separately
         const feeWithRelations = await fetchFeeWithRelations(retryFee.id, school_code);
+        void invalidateCachePattern(cacheKeys.feesListPattern(school_code));
         return NextResponse.json({
           message: 'Fee payment recorded successfully (without transport fee columns)',
           data: feeWithRelations || retryFee,
@@ -391,6 +413,7 @@ export async function POST(request: NextRequest) {
     // Fetch related data separately to avoid relationship issues
     const feeWithRelations = await fetchFeeWithRelations(newFee.id, school_code);
 
+    void invalidateCachePattern(cacheKeys.feesListPattern(school_code));
     return NextResponse.json({
       message: 'Fee payment recorded successfully',
       data: feeWithRelations || newFee,

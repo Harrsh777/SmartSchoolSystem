@@ -2,10 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { MdSchool, MdArrowForward } from 'react-icons/md';
-import FeaturesPage from '@/components/scroll';
-import FAQSection from '@/components/FAQ';
 
 export default function EduCoreLanding() {
   const [scrolled, setScrolled] = useState(false);
@@ -44,6 +41,35 @@ export default function EduCoreLanding() {
     return () => {
       window.removeEventListener('scroll', handleScroll);
       document.removeEventListener('click', handleAnchorClick);
+    };
+  }, []);
+
+  useEffect(() => {
+    const revealElements = Array.from(document.querySelectorAll<HTMLElement>('.ec-reveal'));
+    if (revealElements.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.08 }
+    );
+
+    revealElements.forEach((element, index) => {
+      element.style.transitionDelay = `${index * 0.05}s`;
+      observer.observe(element);
+    });
+
+    return () => {
+      revealElements.forEach((element) => observer.unobserve(element));
+      observer.disconnect();
     };
   }, []);
 
@@ -418,6 +444,13 @@ export default function EduCoreLanding() {
         }
         .ec-phone-notch { height: 24px; background: #1e2535; display: flex; align-items: center; justify-content: center; }
         .ec-phone-notch-bar { width: 70px; height: 14px; background: #0e1117; border-radius: 999px; }
+        .ec-phone img {
+          width: 100%;
+          height: calc(100% - 24px);
+          object-fit: cover;
+          object-position: center;
+          display: block;
+        }
 
         /* ── STEPS / JOURNEY ── */
         .ec-journey { background: var(--surface-card); }
@@ -690,13 +723,12 @@ export default function EduCoreLanding() {
             <div className="ec-bar-url"><span>app.educore.systems/dashboard</span></div>
           </div>
           <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9' }}>
-            <Image
-              src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?q=80&w=2400&auto=format&fit=crop"
+            <img
+              src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1600&auto=format&fit=crop"
               alt="Students in a modern campus setting"
-              fill
-              style={{ objectFit: 'cover' }}
-              priority
-              unoptimized
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              loading="eager"
+              referrerPolicy="no-referrer"
             />
           </div>
         </div>
@@ -1031,27 +1063,6 @@ export default function EduCoreLanding() {
   </div>
 </footer>
 
-      {/* ── SCROLL-REVEAL SCRIPT ── */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            (function() {
-              var obs = new IntersectionObserver(function(entries) {
-                entries.forEach(function(e) {
-                  if (e.isIntersecting) {
-                    e.target.classList.add('visible');
-                    obs.unobserve(e.target);
-                  }
-                });
-              }, { threshold: 0.08 });
-              document.querySelectorAll('.ec-reveal').forEach(function(el, i) {
-                el.style.transitionDelay = (i * 0.05) + 's';
-                obs.observe(el);
-              });
-            })();
-          `,
-        }}
-      />
     </>
   );
 }

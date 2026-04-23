@@ -8,7 +8,6 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ModuleGuideButton from '@/components/ModuleGuideButton';
 import {
-  Download,
   Eye,
   Search,
   Filter,
@@ -96,7 +95,9 @@ export default function MarksDashboardPage({
   const [marks, setMarks] = useState<StudentMark[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [classes, setClasses] = useState<Array<{ id: string; class: string; section?: string }>>([]);
-  const [examinations, setExaminations] = useState<Array<{ id: string; exam_name: string; name?: string }>>([]);
+  const [examinations, setExaminations] = useState<
+    Array<{ id: string; exam_name: string; name?: string; term_id?: string; term?: { id?: string; name?: string; serial?: number } | null }>
+  >([]);
   /** Subjects assigned to the selected class–section (from class_subjects), not the whole school catalog */
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
@@ -109,6 +110,7 @@ export default function MarksDashboardPage({
 
   // Filters (class_id holds class *name* for /api/marks/view — same as students.class)
   const [filters, setFilters] = useState({
+    term_id: '',
     class_id: '',
     section: '',
     exam_id: '',
@@ -127,6 +129,7 @@ export default function MarksDashboardPage({
   }, [schoolCode]);
 
   const canLoadMarks =
+    Boolean(filters.term_id?.trim()) &&
     Boolean(filters.exam_id?.trim()) &&
     Boolean(filters.class_id?.trim()) &&
     Boolean(filters.section?.trim());
@@ -135,7 +138,7 @@ export default function MarksDashboardPage({
 
   useEffect(() => {
     setMarksLoadedScopeKey(null);
-  }, [filters.exam_id, filters.class_id, filters.section]);
+  }, [filters.exam_id, filters.class_id, filters.section, filters.term_id]);
 
   // Fetch marks when exam + class + section are all set (no "all classes/sections")
   useEffect(() => {
@@ -167,10 +170,20 @@ export default function MarksDashboardPage({
       const result = await response.json();
       if (response.ok && result.data) {
         // Transform the v2 API response to match expected format
-        const exams = (result.data as Array<{ id?: string; exam_name?: string; name?: string }>).map((exam) => ({
+        const exams = (
+          result.data as Array<{
+            id?: string;
+            exam_name?: string;
+            name?: string;
+            term_id?: string;
+            term?: { id?: string; name?: string; serial?: number } | null;
+          }>
+        ).map((exam) => ({
           id: String(exam.id ?? ''),
           exam_name: String(exam.exam_name || exam.name || ''),
           name: String(exam.exam_name || exam.name || ''),
+          term_id: exam.term_id ? String(exam.term_id) : undefined,
+          term: exam.term || null,
         }));
         setExaminations(exams);
       }
@@ -363,49 +376,33 @@ export default function MarksDashboardPage({
     };
   }, [matchingClassRow?.id, schoolCode]);
 
-  // Download handlers
-  const handleDownloadReportCard = (studentId: string, examId: string) => {
-    const url = `/api/marks/report-card/html?school_code=${encodeURIComponent(
-      schoolCode
-    )}&student_id=${encodeURIComponent(studentId)}&exam_id=${encodeURIComponent(examId)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
+  const structureTerms = useMemo(() => {
+    const terms = examinations
+      .map((exam) => exam.term)
+      .filter((term): term is NonNullable<typeof term> => Boolean(term && term.id))
+      .map((term) => ({
+        id: String(term.id),
+        name: String(term.name || '').trim() || (typeof term.serial === 'number' ? `Term ${term.serial}` : 'Unnamed Term'),
+        serial: term.serial,
+      }));
 
-  const handleBulkDownload = async () => {
-    if (!filters.exam_id) {
-      alert('Please select an examination first');
-      return;
-    }
-    if (!filters.class_id?.trim() || !filters.section?.trim()) {
-      alert('Please select class and section first');
-      return;
-    }
-
-    try {
-      const params = new URLSearchParams({
-        school_code: schoolCode,
-        exam_id: filters.exam_id,
-        class_id: filters.class_id,
-        section: filters.section,
+    const seen = new Set<string>();
+    return terms
+      .filter((term) => {
+        if (seen.has(term.id)) return false;
+        seen.add(term.id);
+        return true;
+      })
+      .sort((a, b) => {
+        if (typeof a.serial === 'number' && typeof b.serial === 'number') return a.serial - b.serial;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
       });
+  }, [examinations]);
 
-      const response = await fetch(`/api/marks/bulk-download?${params}`);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `report_cards_${filters.exam_id}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
-    } catch (err) {
-      console.error('Error downloading bulk report cards:', err);
-      alert('Failed to download report cards');
-    }
-  };
+  const examinationsForSelectedTerm = useMemo(() => {
+    if (!filters.term_id) return [];
+    return examinations.filter((exam) => String(exam.term_id || '') === filters.term_id);
+  }, [examinations, filters.term_id]);
 
   const handleExportExcel = async () => {
     if (!filters.exam_id?.trim()) {
@@ -506,10 +503,33 @@ export default function MarksDashboardPage({
               <h2 className="text-lg font-semibold text-foreground">Filters</h2>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              Select examination, class, and section to load marks. Subject list shows only subjects assigned to that class–section;
+              Select structure term, examination, class, and section to load marks. Subject list shows only subjects assigned to that class–section;
               search is optional.
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+              {/* Structure Term */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Structure Term <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={filters.term_id}
+                  onChange={(e) => {
+                    setFilters({ ...filters, term_id: e.target.value, exam_id: '' });
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                  required
+                >
+                  <option value="">Select Structure Term</option>
+                  {structureTerms.map((term) => (
+                    <option key={term.id} value={term.id}>
+                      {term.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Examination */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -521,11 +541,12 @@ export default function MarksDashboardPage({
                     setFilters({ ...filters, exam_id: e.target.value });
                     setCurrentPage(1);
                   }}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                  disabled={!filters.term_id}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900"
                   required
                 >
-                  <option value="">Select Examination</option>
-                  {examinations.map((exam) => (
+                  <option value="">{filters.term_id ? 'Select Examination' : 'Select structure term first'}</option>
+                  {examinationsForSelectedTerm.map((exam) => (
                     <option key={exam.id} value={exam.id}>
                       {exam.exam_name || exam.name}
                     </option>
@@ -628,11 +649,11 @@ export default function MarksDashboardPage({
               </div>
             </div>
 
-            <div className="flex items-center justify-between mt-4 flex-wrap gap-3">
+            <div className="mt-5 pt-4 border-t border-border flex items-center justify-between flex-wrap gap-3">
               <Button
                 onClick={() => {
                   if (!canLoadMarks) {
-                    alert('Select examination, class, and section to load marks.');
+                    alert('Select structure term, examination, class, and section to load marks.');
                     return;
                   }
                   fetchMarks();
@@ -652,15 +673,6 @@ export default function MarksDashboardPage({
                 >
                   <FileSpreadsheet size={18} className="mr-2" />
                   Export Excel
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleBulkDownload}
-                  disabled={!canLoadMarks || marks.length === 0}
-                  className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
-                >
-                  <Download size={18} className="mr-2" />
-                  Download All Report Cards
                 </Button>
               </div>
             </div>
@@ -818,7 +830,7 @@ export default function MarksDashboardPage({
             <AlertCircle className="text-gray-400 dark:text-gray-600 mx-auto mb-4" size={48} />
             <p className="text-gray-600 dark:text-gray-400">
               {!canLoadMarks
-                ? 'Choose examination, class, and section to load marks.'
+                ? 'Choose structure term, examination, class, and section to load marks.'
                 : 'No marks match the current filters.'}
             </p>
           </div>
@@ -898,26 +910,15 @@ export default function MarksDashboardPage({
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => router.push(`/dashboard/${schoolCode}/marks/${mark.student_id}?exam_id=${mark.exam_id}`)}
-                              className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
-                            >
-                              <Eye size={14} className="mr-1" />
-                              View
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDownloadReportCard(mark.student_id, mark.exam_id)}
-                              className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
-                            >
-                              <Download size={14} className="mr-1" />
-                              PDF
-                            </Button>
-                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => router.push(`/dashboard/${schoolCode}/marks/${mark.student_id}?exam_id=${mark.exam_id}`)}
+                            className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
+                          >
+                            <Eye size={14} className="mr-1" />
+                            View Details
+                          </Button>
                         </td>
                       </motion.tr>
                     );

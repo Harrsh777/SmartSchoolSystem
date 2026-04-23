@@ -37,6 +37,7 @@ let tripsInWindow = 0;
 let lastErrorLogAt = 0;
 const ERROR_LOG_THROTTLE_MS = 15_000;
 const REDIS_DEBUG = process.env.REDIS_DEBUG === 'true';
+const REDIS_READY_WAIT_MS = 5000;
 
 function throttledWarn(message: string): void {
   const now = Date.now();
@@ -56,7 +57,15 @@ function isRedisExplicitlyEnabled(): boolean {
 
 function getRedisUrl(): string | undefined {
   if (!isRedisExplicitlyEnabled()) return undefined;
-  return process.env.REDIS_URL?.trim() || undefined;
+  const raw = process.env.REDIS_URL?.trim() || '';
+  if (!raw) return undefined;
+
+  // Opt-in TLS upgrade when instance exposes TLS on the configured port.
+  if (process.env.REDIS_TLS === 'true' && raw.startsWith('redis://')) {
+    return raw.replace(/^redis:\/\//i, 'rediss://');
+  }
+
+  return raw;
 }
 
 function connectionLikeMessage(msg: string): boolean {
@@ -77,6 +86,48 @@ function killClient(c: Redis | null): void {
   } catch {
     /* ignore */
   }
+}
+
+async function ensureRedisReady(redis: Redis): Promise<boolean> {
+  if (redis.status === 'ready') return true;
+
+  try {
+    if (redis.status === 'wait') {
+      await redis.connect();
+    }
+  } catch (err) {
+    const msg = (err as Error).message || String(err);
+    // ioredis throws when connect() is called while already connecting/connected.
+    if (!/already connecting|already connected/i.test(msg)) {
+      if (connectionLikeMessage(msg)) tripCircuit(msg);
+      return false;
+    }
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    const timeout = setTimeout(() => cleanup(false), REDIS_READY_WAIT_MS);
+
+    const onReady = () => cleanup(true);
+    const onFail = (err?: Error) => {
+      const msg = err?.message || 'redis not ready';
+      if (connectionLikeMessage(msg)) tripCircuit(msg);
+      cleanup(false);
+    };
+
+    const cleanup = (ok: boolean) => {
+      clearTimeout(timeout);
+      redis.off('ready', onReady);
+      redis.off('error', onFail);
+      redis.off('close', onFail);
+      redis.off('end', onFail);
+      resolve(ok);
+    };
+
+    redis.once('ready', onReady);
+    redis.once('error', onFail);
+    redis.once('close', onFail);
+    redis.once('end', onFail);
+  });
 }
 
 /**
@@ -138,7 +189,8 @@ export function getRedis(): Redis | null {
       retryStrategy() {
         return null;
       },
-      lazyConnect: true,
+      // Eager connect avoids "Stream isn't writeable" with offline queue disabled.
+      lazyConnect: false,
       enableOfflineQueue: false,
       connectTimeout: 5000,
       commandTimeout: 4000,
@@ -163,6 +215,8 @@ export async function connectRedis(): Promise<boolean> {
   const redis = getRedis();
   if (!redis) return false;
   try {
+    const ready = await ensureRedisReady(redis);
+    if (!ready) return false;
     await redis.ping();
     return true;
   } catch (e) {
@@ -188,6 +242,11 @@ export async function runRedisDiagnostics(): Promise<{
   }
 
   try {
+    const ready = await ensureRedisReady(redis);
+    if (!ready) {
+      return { connected: false, value: null, ttl: null, keys: [] };
+    }
+
     await redis.set('test_key', 'working', 'EX', 60);
     const value = await redis.get('test_key');
     console.log('Redis Test:', value);
@@ -223,6 +282,8 @@ export async function redisGet(key: string): Promise<string | null> {
   const redis = getRedis();
   if (!redis) return null;
   try {
+    const ready = await ensureRedisReady(redis);
+    if (!ready) return null;
     debugLog('Getting from Redis:', key);
     return await redis.get(key);
   } catch (err) {
@@ -239,6 +300,8 @@ export async function redisSet(key: string, value: string, ttlSeconds: number): 
   const redis = getRedis();
   if (!redis) return false;
   try {
+    const ready = await ensureRedisReady(redis);
+    if (!ready) return false;
     debugLog('Setting in Redis:', key, 'EX', ttlSeconds);
     await redis.setex(key, ttlSeconds, value);
     return true;
@@ -256,6 +319,8 @@ export async function redisDel(key: string): Promise<boolean> {
   const redis = getRedis();
   if (!redis) return false;
   try {
+    const ready = await ensureRedisReady(redis);
+    if (!ready) return false;
     debugLog('Deleting from Redis:', key);
     await redis.del(key);
     return true;
@@ -273,6 +338,8 @@ export async function redisDelByPattern(pattern: string): Promise<number> {
   const redis = getRedis();
   if (!redis) return 0;
   try {
+    const ready = await ensureRedisReady(redis);
+    if (!ready) return 0;
     debugLog('Deleting by Redis pattern:', pattern);
     let cursor = '0';
     let deleted = 0;

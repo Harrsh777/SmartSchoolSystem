@@ -6,6 +6,7 @@ import { resolveStaffForAudit } from '@/lib/audit-staff';
 import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 import { isExamClassMarksLocked, MARKS_LOCKED_MESSAGE } from '@/lib/exam-marks-lock';
+import { cacheKeys, DASHBOARD_REDIS_TTL, getCached, invalidateCachePattern } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,10 +23,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build query
-    let query = supabase
-      .from('marks')
-      .select(`
+    const cacheKey = cacheKeys.marksList(schoolCode, examId, classId, studentId);
+    const response = await getCached(
+      cacheKey,
+      async () => {
+        // Build query
+        let query = supabase
+          .from('marks')
+          .select(`
         *,
         students:student_id (
           id,
@@ -43,32 +48,34 @@ export async function GET(request: NextRequest) {
           end_date,
           status
         )
-      `)
-      .eq('school_code', schoolCode);
+          `)
+          .eq('school_code', schoolCode);
 
-    // Apply filters
-    if (examId) {
-      query = query.eq('exam_id', examId);
-    }
+        // Apply filters
+        if (examId) {
+          query = query.eq('exam_id', examId);
+        }
 
-    if (classId) {
-      query = query.eq('class_id', classId);
-    }
+        if (classId) {
+          query = query.eq('class_id', classId);
+        }
 
-    if (studentId) {
-      query = query.eq('student_id', studentId);
-    }
+        if (studentId) {
+          query = query.eq('student_id', studentId);
+        }
 
-    const { data: marks, error } = await query.order('created_at', { ascending: false });
+        const { data: marks, error } = await query.order('created_at', { ascending: false });
 
-    if (error) {
-      return NextResponse.json(
-        { error: 'Failed to fetch marks', details: error.message },
-        { status: 500 }
-      );
-    }
+        if (error) {
+          throw new Error(error.message);
+        }
 
-    return NextResponse.json({ data: marks || [] }, { status: 200 });
+        return { data: marks || [] };
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.marksList }
+    );
+
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error fetching marks:', error);
     return NextResponse.json(
@@ -245,6 +252,8 @@ export async function POST(request: NextRequest) {
           severity: 'CRITICAL',
           metadata: { class_id, student_id },
         });
+        void invalidateCachePattern(cacheKeys.marksListPattern(school_code));
+        void invalidateCachePattern(cacheKeys.marksViewPattern(school_code));
         return NextResponse.json({ data: mark2 }, { status: 201 });
       }
 
@@ -266,6 +275,8 @@ export async function POST(request: NextRequest) {
       metadata: { class_id, student_id },
     });
 
+    void invalidateCachePattern(cacheKeys.marksListPattern(school_code));
+    void invalidateCachePattern(cacheKeys.marksViewPattern(school_code));
     return NextResponse.json({ data: mark }, { status: 201 });
   } catch (error) {
     console.error('Error saving marks:', error);

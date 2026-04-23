@@ -15,6 +15,7 @@ import {
   User,
   GraduationCap,
 } from 'lucide-react';
+import { calculatePercentage, getGradeFromPercentage } from '@/lib/grade-calculator';
 
 export default function StudentReportPage({
   params,
@@ -150,6 +151,15 @@ export default function StudentReportPage({
   }
 
   const isPass = (summary?.percentage || 0) >= 40;
+  const fallbackTotalMarks = marks.reduce((sum, mark) => sum + (Number(mark.marks_obtained) || 0), 0);
+  const fallbackTotalMaxMarks = marks.reduce((sum, mark) => sum + (Number(mark.max_marks) || 0), 0);
+  const fallbackSummaryPercentage = calculatePercentage(fallbackTotalMarks, fallbackTotalMaxMarks);
+  const effectiveSummaryPercentage =
+    typeof summary?.percentage === 'number' && Number.isFinite(summary.percentage)
+      ? summary.percentage
+      : fallbackSummaryPercentage;
+  const effectiveSummaryGrade =
+    (summary?.grade && summary.grade.trim()) || getGradeFromPercentage(effectiveSummaryPercentage);
 
   return (
     <div className="space-y-6 pb-20 print:pb-0">
@@ -245,8 +255,10 @@ export default function StudentReportPage({
               </thead>
               <tbody>
                 {marks.map((mark, idx) => {
-                  const percentage = mark.max_marks > 0 ? (mark.marks_obtained / mark.max_marks) * 100 : 0;
+                  const percentage = calculatePercentage(mark.marks_obtained, mark.max_marks);
                   const isSubjectPass = percentage >= 40;
+                  const effectiveSubjectGrade =
+                    (mark.grade && mark.grade.trim()) || getGradeFromPercentage(percentage);
                   return (
                     <motion.tr
                       key={mark.id || idx}
@@ -271,7 +283,7 @@ export default function StudentReportPage({
                       </td>
                       <td className="border border-gray-300 px-4 py-3 text-center">
                         <span className={isSubjectPass ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
-                          {mark.grade || 'N/A'}
+                          {effectiveSubjectGrade}
                         </span>
                       </td>
                       <td className="border border-gray-300 px-4 py-3 text-gray-600">
@@ -288,27 +300,25 @@ export default function StudentReportPage({
         {/* Summary */}
         {summary && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <Card className="p-6 bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-              <div className="text-center">
-                <p className="text-blue-100 text-sm mb-2">Total Marks</p>
-                <p className="text-3xl font-bold">
-                  {summary.total_marks || 0} / {summary.total_max_marks || 0}
-                </p>
-              </div>
-            </Card>
-            <Card className="p-6 bg-gradient-to-br from-purple-500 to-purple-600 text-white">
-              <div className="text-center">
-                <p className="text-purple-100 text-sm mb-2">Percentage</p>
-                <p className="text-3xl font-bold">{summary.percentage?.toFixed(2) || 0}%</p>
-              </div>
-            </Card>
-            <Card className={`p-6 text-white ${isPass ? 'bg-gradient-to-br from-green-500 to-green-600' : 'bg-gradient-to-br from-red-500 to-red-600'}`}>
-              <div className="text-center">
-                <p className="text-white/80 text-sm mb-2">Grade</p>
-                <p className="text-3xl font-bold">{summary.grade || 'N/A'}</p>
-                <p className="text-sm mt-2">{isPass ? 'PASS' : 'FAIL'}</p>
-              </div>
-            </Card>
+            <div className="rounded-lg border border-gray-300 p-6 text-center bg-white">
+              <p className="text-gray-600 text-sm mb-2">Total Marks</p>
+              <p className="text-3xl font-bold text-gray-900">
+                {(summary.total_marks ?? fallbackTotalMarks) || 0} / {(summary.total_max_marks ?? fallbackTotalMaxMarks) || 0}
+              </p>
+            </div>
+            <div className="rounded-lg border border-gray-300 p-6 text-center bg-white">
+              <p className="text-gray-600 text-sm mb-2">Percentage</p>
+              <p className="text-3xl font-bold text-gray-900">{effectiveSummaryPercentage.toFixed(2)}%</p>
+            </div>
+            <div className="rounded-lg border border-gray-300 p-6 text-center bg-white">
+              <p className="text-gray-600 text-sm mb-2">Grade</p>
+              <p className={`text-3xl font-bold ${effectiveSummaryPercentage >= 40 ? 'text-green-700' : 'text-red-700'}`}>
+                {effectiveSummaryGrade}
+              </p>
+              <p className={`text-sm mt-2 font-semibold ${effectiveSummaryPercentage >= 40 ? 'text-green-700' : 'text-red-700'}`}>
+                {effectiveSummaryPercentage >= 40 ? 'PASS' : 'FAIL'}
+              </p>
+            </div>
           </div>
         )}
 

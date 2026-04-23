@@ -21,6 +21,8 @@ import {
   X,
   Send,
   ClipboardList,
+  RefreshCw,
+  Database,
 } from 'lucide-react';
 import {
   calculatePercentage,
@@ -101,6 +103,20 @@ interface SubmittedSubjectMeta {
 
 interface SubmittedSubjectMetaMap {
   [subjectId: string]: SubmittedSubjectMeta;
+}
+
+interface RedisInfo {
+  enabled: boolean;
+  configured: boolean;
+  url: string | null;
+  circuitMs: number;
+  checkedAt: string;
+  diagnostics: {
+    connected: boolean;
+    value: string | null;
+    ttl: number | null;
+    keys: string[];
+  };
 }
 
 function normClassLabel(v: unknown): string {
@@ -214,6 +230,8 @@ export default function MarksEntryPage({
   const [showTotals, setShowTotals] = useState(true);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   const [submittedSubjectMeta, setSubmittedSubjectMeta] = useState<SubmittedSubjectMeta | null>(null);
+  const [redisInfo, setRedisInfo] = useState<RedisInfo | null>(null);
+  const [redisLoading, setRedisLoading] = useState(false);
   const draftStorageKey = useMemo(
     () =>
       `marks-entry-draft:${schoolCode}:${selectedClassId || '_'}:${selectedExam || '_'}:${selectedSubjectId || '_'}`,
@@ -253,6 +271,28 @@ export default function MarksEntryPage({
     };
     fetchStructures();
   }, [schoolCode]);
+
+  const fetchRedisInfo = useCallback(async () => {
+    try {
+      setRedisLoading(true);
+      const response = await fetch('/api/redis');
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setRedisInfo(result.data as RedisInfo);
+      } else {
+        setRedisInfo(null);
+      }
+    } catch (e) {
+      console.error('Error fetching redis info:', e);
+      setRedisInfo(null);
+    } finally {
+      setRedisLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchRedisInfo();
+  }, [fetchRedisInfo]);
 
   // Update sections when class changes
   useEffect(() => {
@@ -1112,6 +1152,53 @@ export default function MarksEntryPage({
             <ModuleGuideButton />
           </div>
         </motion.div>
+
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <Database size={16} className="text-[#2C3E50] dark:text-[#9FB7C9]" />
+              <h2 className="text-sm font-semibold text-foreground">Redis</h2>
+            </div>
+            <Button
+              onClick={() => void fetchRedisInfo()}
+              size="sm"
+              variant="secondary"
+              className="inline-flex items-center gap-2"
+              disabled={redisLoading}
+            >
+              {redisLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Refresh
+            </Button>
+          </div>
+          {redisInfo ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-muted-foreground">Enabled</p>
+                <p className={`font-semibold ${redisInfo.enabled ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {redisInfo.enabled ? 'Yes' : 'No'}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-muted-foreground">Configured</p>
+                <p className={`font-semibold ${redisInfo.configured ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {redisInfo.configured ? 'Yes' : 'No'}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-muted-foreground">Connection</p>
+                <p className={`font-semibold ${redisInfo.diagnostics.connected ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {redisInfo.diagnostics.connected ? 'Connected' : 'Unavailable'}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-muted-foreground">Diagnostic TTL</p>
+                <p className="font-semibold text-foreground">{redisInfo.diagnostics.ttl ?? 'N/A'}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Unable to load Redis information.</p>
+          )}
+        </Card>
 
         {/* Error/Success Messages */}
         {success && (

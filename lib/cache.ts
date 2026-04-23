@@ -87,6 +87,12 @@ export const DASHBOARD_REDIS_TTL = {
   studentsCounts: 75,
   transportStudents: 120,
   financeOverview: 90,
+  marksList: 90,
+  marksView: 90,
+  feesList: 60,
+  attendanceDaily: 45,
+  attendanceOverview: 60,
+  feesPendingStudents: 75,
 } as const;
 
 export const cacheKeys = {
@@ -151,6 +157,64 @@ export const cacheKeys = {
   /** Student home stats; `monthKey` = YYYY-MM (rolling month boundaries). */
   studentStats: (schoolCode: string, studentId: string, monthKey: string) =>
     `stu:stats:v1:${schoolCode}:${studentId}:${monthKey}`,
+  marksList: (
+    schoolCode: string,
+    examId: string | null,
+    classId: string | null,
+    studentId: string | null
+  ) => `marks:list:v1:${schoolCode}:${examId ?? '_'}:${classId ?? '_'}:${studentId ?? '_'}`,
+  marksListPattern: (schoolCode: string) => `marks:list:v1:${schoolCode}:*`,
+  marksView: (
+    schoolCode: string,
+    examId: string | null,
+    classId: string | null,
+    section: string | null,
+    subjectId: string | null,
+    studentId: string | null,
+    searchQuery: string | null
+  ) =>
+    `marks:view:v1:${schoolCode}:${examId ?? '_'}:${classId ?? '_'}:${section ?? '_'}:${
+      subjectId ?? '_'
+    }:${studentId ?? '_'}:${searchQuery ?? '_'}`,
+  marksViewPattern: (schoolCode: string) => `marks:view:v1:${schoolCode}:*`,
+  feesList: (
+    schoolCode: string,
+    studentId: string | null,
+    admissionNo: string | null,
+    startDate: string | null,
+    endDate: string | null,
+    classFilter: string | null,
+    collectedBy: string | null
+  ) =>
+    `fees:list:v1:${schoolCode}:${studentId ?? '_'}:${admissionNo ?? '_'}:${startDate ?? '_'}:${
+      endDate ?? '_'
+    }:${classFilter ?? '_'}:${collectedBy ?? '_'}`,
+  feesListPattern: (schoolCode: string) => `fees:list:v1:${schoolCode}:*`,
+  attendanceDaily: (schoolCode: string, classId: string, date: string) =>
+    `att:daily:v1:${schoolCode}:${classId}:${date}`,
+  attendanceDailyPattern: (schoolCode: string) => `att:daily:v1:${schoolCode}:*`,
+  attendanceOverview: (
+    schoolCode: string,
+    classId: string | null,
+    date: string | null,
+    startDate: string | null,
+    endDate: string | null
+  ) =>
+    `att:overview:v1:${schoolCode}:${classId ?? '_'}:${date ?? '_'}:${startDate ?? '_'}:${
+      endDate ?? '_'
+    }`,
+  attendanceOverviewPattern: (schoolCode: string) => `att:overview:v1:${schoolCode}:*`,
+  feesPendingStudents: (
+    schoolCode: string,
+    classFilter: string | null,
+    sectionFilter: string | null,
+    academicYear: string | null,
+    limit: number
+  ) =>
+    `fees:pending:v1:${schoolCode}:${classFilter ?? '_'}:${sectionFilter ?? '_'}:${
+      academicYear ?? '_'
+    }:${limit}`,
+  feesPendingStudentsPattern: (schoolCode: string) => `fees:pending:v1:${schoolCode}:*`,
 };
 
 /** After any timetable slot write, drop slots/agenda/list cache for that school. */

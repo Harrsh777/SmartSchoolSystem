@@ -17,6 +17,7 @@ import {
   normalizeBillingFrequency,
   periodStartForBilling,
 } from '@/lib/transport/transport-billing-period';
+import { cacheKeys, DASHBOARD_REDIS_TTL, getCached } from '@/lib/cache';
 
 const PAY_EPS = 0.02;
 
@@ -196,8 +197,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'School code is required' }, { status: 400 });
     }
 
-    const supabase = getServiceRoleClient();
     const normalizedSchoolCode = schoolCode.toUpperCase();
+    const cacheKey = cacheKeys.feesPendingStudents(
+      normalizedSchoolCode,
+      classFilter || null,
+      sectionFilter || null,
+      academicYear || null,
+      limit
+    );
+
+    const response = await getCached(
+      cacheKey,
+      async () => {
+        const supabase = getServiceRoleClient();
 
     const selectPendingWithRte = () =>
       supabase
@@ -473,11 +485,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const pendingStudents = Array.from(studentMap.values())
-      .sort(comparePendingStudentsByRoll)
-      .slice(0, limit);
+        const pendingStudents = Array.from(studentMap.values())
+          .sort(comparePendingStudentsByRoll)
+          .slice(0, limit);
 
-    return NextResponse.json({ data: pendingStudents });
+        return { data: pendingStudents };
+      },
+      { ttlSeconds: DASHBOARD_REDIS_TTL.feesPendingStudents }
+    );
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Error in pending students:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
