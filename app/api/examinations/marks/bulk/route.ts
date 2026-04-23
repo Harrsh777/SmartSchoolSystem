@@ -212,8 +212,9 @@ export async function POST(request: NextRequest) {
 
         const payloadMaxMarks = parseFloat(String(max_marks || '0')) || 0;
         const resolvedMaxMarks = maxMarksBySubjectId.get(String(subject_id)) ?? payloadMaxMarks;
-        const maxMarks = resolvedMaxMarks;
-        const marksObtained = entryCode ? 0 : parseFloat(String(marks_obtained ?? '0')) || 0;
+        const maxMarks = Math.round(resolvedMaxMarks);
+        const rawMarksObtained = entryCode ? 0 : parseFloat(String(marks_obtained ?? '0')) || 0;
+        const marksObtained = Math.round(rawMarksObtained);
         const isAbsent = entryCode === 'AB';
 
         if (maxMarks <= 0) {
@@ -393,14 +394,7 @@ export async function POST(request: NextRequest) {
       } : null,
     });
 
-    const selectJoin = `
-        *,
-        subject:subjects (
-          id,
-          name,
-          color
-        )
-      `;
+    const selectFields = 'id, exam_id, student_id, subject_id, class_id, marks_obtained, max_marks, status, created_at, updated_at';
 
     let savedMarks: unknown[] | null = null;
     let marksError: { message?: string; code?: string; hint?: string } | null = null;
@@ -411,7 +405,7 @@ export async function POST(request: NextRequest) {
         onConflict: 'exam_id,student_id,subject_id',
         ignoreDuplicates: false,
       })
-      .select(selectJoin);
+      .select(selectFields);
 
     if (!err1) {
       savedMarks = data1;
@@ -431,7 +425,7 @@ export async function POST(request: NextRequest) {
             onConflict: 'exam_id,student_id,subject_id',
             ignoreDuplicates: false,
           })
-          .select(selectJoin);
+          .select(selectFields);
         if (!err2) savedMarks = data2;
         else marksError = err2;
       } else {

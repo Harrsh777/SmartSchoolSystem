@@ -816,6 +816,24 @@ export default function MarksEntryPage({
     }
   };
 
+  const handleSubjectSelectionChange = async (nextSubjectId: string) => {
+    if (nextSubjectId === selectedSubjectId) return;
+    if (!selectedExam || !selectedClassId || students.length === 0) {
+      setSelectedSubjectId(nextSubjectId);
+      return;
+    }
+
+    const saved = await handleSave({ silent: true });
+    if (!saved) {
+      const proceed = window.confirm(
+        'Could not auto-save current subject marks. Continue anyway and switch subject?'
+      );
+      if (!proceed) return;
+    }
+
+    setSelectedSubjectId(nextSubjectId);
+  };
+
   // Calculate student totals and grades
   const calculateStudentStats = (studentId: string): StudentStats => {
     const studentMarks = marks[studentId] || {};
@@ -863,32 +881,34 @@ export default function MarksEntryPage({
     setSuccess('');
 
     try {
-      const subjectIdToValidate = selectedSubjectId || displayedSubjects[0]?.id || '';
-      if (!subjectIdToValidate) {
-        setError('Please select a subject before submitting.');
-        return;
-      }
+      const subjectIdsToSubmit = selectedSubjectId
+        ? [selectedSubjectId]
+        : subjects.map((s) => s.id);
+      const subjectNamesById = new Map(subjects.map((s) => [s.id, s.name] as const));
 
       for (const student of students) {
-        const isAbsent = Boolean(absentByStudentSubject[student.id]?.[subjectIdToValidate]);
-        const markValue = marks[student.id]?.[subjectIdToValidate];
-        const hasValue = typeof markValue === 'number' && Number.isFinite(markValue);
+        for (const subjectId of subjectIdsToSubmit) {
+          const subjectName = subjectNamesById.get(subjectId) || 'selected subject';
+          const isAbsent = Boolean(absentByStudentSubject[student.id]?.[subjectId]);
+          const markValue = marks[student.id]?.[subjectId];
+          const hasValue = typeof markValue === 'number' && Number.isFinite(markValue);
 
-        if (isAbsent) {
-          if (!hasValue || Number(markValue) !== 0) {
-            setError(`Absent students must have 0 marks (${student.student_name}).`);
+          if (isAbsent) {
+            if (!hasValue || Number(markValue) !== 0) {
+              setError(`Absent students must have 0 marks (${student.student_name} - ${subjectName}).`);
+              return;
+            }
+            continue;
+          }
+
+          if (!hasValue) {
+            setError(`Please enter ${subjectName} marks for all students before submit.`);
             return;
           }
-          continue;
-        }
-
-        if (!hasValue) {
-          setError(`Please enter ${displayedSubjects[0]?.name || 'selected subject'} marks for all students before submit.`);
-          return;
-        }
-        if (Number(markValue) <= 0) {
-          setError(`0 marks are only allowed when Absent is checked (${student.student_name}).`);
-          return;
+          if (Number(markValue) <= 0) {
+            setError(`0 marks are only allowed when Absent is checked (${student.student_name} - ${subjectName}).`);
+            return;
+          }
         }
       }
 
@@ -908,6 +928,7 @@ export default function MarksEntryPage({
           school_code: schoolCode,
           exam_id: selectedExam,
           class_id: selectedClassId,
+          scoped_subject_ids: subjectIdsToSubmit,
         }),
       });
       const result = await response.json();
@@ -1045,7 +1066,7 @@ export default function MarksEntryPage({
 
         {/* Filters */}
         <Card className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-2">
                 <BookOpen size={14} className="inline mr-1" />
@@ -1156,44 +1177,6 @@ export default function MarksEntryPage({
                 ))}
               </select>
             </div>
-            <div className="flex items-end gap-2">
-              <Button
-                onClick={() => handleSave()}
-                disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
-                size="sm"
-                className="px-3 bg-[#2C3E50] hover:bg-[#34495E] dark:bg-[#4A707A] dark:hover:bg-[#5A879A] disabled:opacity-50"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 size={18} className="mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save size={18} className="mr-2" />
-                    Draft
-                  </>
-                )}
-              </Button>
-              <Button
-                onClick={handleSubmitForReview}
-                disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
-                size="sm"
-                className="px-3 bg-[#4A707A] hover:bg-[#5A879A] dark:bg-[#5A879A] dark:hover:bg-[#6B99AA] disabled:opacity-50"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 size={18} className="mr-2 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  <>
-                    <Send size={18} className="mr-2" />
-                    Submit
-                  </>
-                )}
-              </Button>
-            </div>
           </div>
         </Card>
 
@@ -1247,7 +1230,10 @@ export default function MarksEntryPage({
                   <select
                     id="subject-filter"
                     value={selectedSubjectId}
-                    onChange={(e) => setSelectedSubjectId(e.target.value)}
+                    onChange={(e) => {
+                      void handleSubjectSelectionChange(e.target.value);
+                    }}
+                    disabled={saving || submitting}
                     className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] min-w-[180px]"
                   >
                     {subjects.map((subject) => (
@@ -1353,8 +1339,12 @@ export default function MarksEntryPage({
                                       handleMarksChange(student.id, subject.id, String(subject.max_marks));
                                       return;
                                     }
+                                    const rounded = Math.round(v as number);
+                                    if (rounded !== (v as number)) {
+                                      handleMarksChange(student.id, subject.id, String(rounded));
+                                    }
                                     const isAbsent = Boolean(absentByStudentSubject[student.id]?.[subject.id]);
-                                    if (!isAbsent && (v as number) <= 0) {
+                                    if (!isAbsent && rounded <= 0) {
                                       alert('0 marks are only allowed when Absent is checked.');
                                       handleMarksChange(student.id, subject.id, '');
                                     }
@@ -1433,6 +1423,49 @@ export default function MarksEntryPage({
                   })}
                 </tbody>
               </table>
+            </div>
+          </Card>
+        )}
+
+        {students.length > 0 && subjects.length > 0 && !loadingStudents && (
+          <Card className="p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+              <Button
+                onClick={() => handleSave()}
+                disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
+                size="sm"
+                className="px-3 bg-[#2C3E50] hover:bg-[#34495E] dark:bg-[#4A707A] dark:hover:bg-[#5A879A] disabled:opacity-50"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 size={18} className="mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save size={18} className="mr-2" />
+                    Save Draft
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleSubmitForReview}
+                disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
+                size="sm"
+                className="px-3 bg-[#4A707A] hover:bg-[#5A879A] dark:bg-[#5A879A] dark:hover:bg-[#6B99AA] disabled:opacity-50"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={18} className="mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send size={18} className="mr-2" />
+                    Submit
+                  </>
+                )}
+              </Button>
             </div>
           </Card>
         )}
