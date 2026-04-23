@@ -69,9 +69,19 @@ function getRedisUrl(): string | undefined {
 }
 
 function connectionLikeMessage(msg: string): boolean {
-  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|EPIPE|Connection is closed|Command timed out|Socket closed|READONLY|Broken pipe/i.test(
+  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|EPIPE|Connection is closed|Socket closed|READONLY|Broken pipe/i.test(
     msg
   );
+}
+
+function isCommandTimeoutMessage(msg: string): boolean {
+  return /Command timed out/i.test(msg);
+}
+
+function shouldTripCircuit(msg: string): boolean {
+  // A slow command can be transient; avoid opening a 5-minute circuit for it.
+  if (isCommandTimeoutMessage(msg)) return false;
+  return connectionLikeMessage(msg);
 }
 
 function killClient(c: Redis | null): void {
@@ -99,7 +109,7 @@ async function ensureRedisReady(redis: Redis): Promise<boolean> {
     const msg = (err as Error).message || String(err);
     // ioredis throws when connect() is called while already connecting/connected.
     if (!/already connecting|already connected/i.test(msg)) {
-      if (connectionLikeMessage(msg)) tripCircuit(msg);
+      if (shouldTripCircuit(msg)) tripCircuit(msg);
       return false;
     }
   }
@@ -110,7 +120,7 @@ async function ensureRedisReady(redis: Redis): Promise<boolean> {
     const onReady = () => cleanup(true);
     const onFail = (err?: Error) => {
       const msg = err?.message || 'redis not ready';
-      if (connectionLikeMessage(msg)) tripCircuit(msg);
+      if (shouldTripCircuit(msg)) tripCircuit(msg);
       cleanup(false);
     };
 
@@ -193,7 +203,7 @@ export function getRedis(): Redis | null {
       lazyConnect: false,
       enableOfflineQueue: false,
       connectTimeout: 5000,
-      commandTimeout: 4000,
+      commandTimeout: 8000,
       socketTimeout: 10000,
     });
 
@@ -260,7 +270,7 @@ export async function runRedisDiagnostics(): Promise<{
     return { connected: true, value, ttl, keys };
   } catch (e) {
     const msg = (e as Error).message || String(e);
-    if (connectionLikeMessage(msg)) tripCircuit(msg);
+    if (shouldTripCircuit(msg)) tripCircuit(msg);
     console.error('[Redis Test] Diagnostics failed:', msg);
     return { connected: false, value: null, ttl: null, keys: [] };
   }
@@ -288,7 +298,7 @@ export async function redisGet(key: string): Promise<string | null> {
     return await redis.get(key);
   } catch (err) {
     const msg = (err as Error).message || String(err);
-    if (connectionLikeMessage(msg)) tripCircuit(msg);
+    if (shouldTripCircuit(msg)) tripCircuit(msg);
     return null;
   }
 }
@@ -307,7 +317,7 @@ export async function redisSet(key: string, value: string, ttlSeconds: number): 
     return true;
   } catch (err) {
     const msg = (err as Error).message || String(err);
-    if (connectionLikeMessage(msg)) tripCircuit(msg);
+    if (shouldTripCircuit(msg)) tripCircuit(msg);
     return false;
   }
 }
@@ -326,7 +336,7 @@ export async function redisDel(key: string): Promise<boolean> {
     return true;
   } catch (err) {
     const msg = (err as Error).message || String(err);
-    if (connectionLikeMessage(msg)) tripCircuit(msg);
+    if (shouldTripCircuit(msg)) tripCircuit(msg);
     return false;
   }
 }
@@ -354,7 +364,7 @@ export async function redisDelByPattern(pattern: string): Promise<number> {
     return deleted;
   } catch (err) {
     const msg = (err as Error).message || String(err);
-    if (connectionLikeMessage(msg)) tripCircuit(msg);
+    if (shouldTripCircuit(msg)) tripCircuit(msg);
     return 0;
   }
 }

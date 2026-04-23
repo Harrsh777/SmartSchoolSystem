@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, Save, CheckCircle, BookOpen, Search, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, BookOpen, Search, AlertCircle } from 'lucide-react';
 
 interface Student {
   id: string;
@@ -409,29 +409,39 @@ export default function MarksEntryPage() {
 
   const buildBulkPayload = useCallback(() => {
     if (!subjects.length) return [];
-    return studentMarks.map((studentMark) => ({
-      student_id: studentMark.student_id,
-      subjects: subjects.map((subject) => {
-        const cell = studentMark.marks[subject.subject_id];
-        const code = cell?.entry_code;
+    return studentMarks
+      .map((studentMark) => {
+        const submittedSubjects = subjects
+          .map((subject) => {
+            const cell = studentMark.marks[subject.subject_id];
+            if (!cell) return null;
+            const code = cell.entry_code;
+            const hasNumeric = Number.isFinite(cell.marks_obtained) && cell.marks_obtained > 0;
+            if (!code && !hasNumeric) return null;
+            return {
+              subject_id: subject.subject_id,
+              max_marks: subject.max_marks,
+              marks_obtained: code ? 0 : cell.marks_obtained,
+              remarks:
+                code === 'AB' || cell.absent
+                  ? 'Absent'
+                  : code === 'NA'
+                    ? 'N/A'
+                    : code === 'EXEMPT'
+                      ? 'Exempt'
+                      : code === 'ML'
+                        ? 'Medical leave'
+                        : null,
+              marks_entry_code: code || undefined,
+            };
+          })
+          .filter((row): row is NonNullable<typeof row> => Boolean(row));
         return {
-          subject_id: subject.subject_id,
-          max_marks: subject.max_marks,
-          marks_obtained: code ? 0 : cell?.marks_obtained ?? 0,
-          remarks:
-            code === 'AB' || cell?.absent
-              ? 'Absent'
-              : code === 'NA'
-                ? 'N/A'
-                : code === 'EXEMPT'
-                  ? 'Exempt'
-                  : code === 'ML'
-                    ? 'Medical leave'
-                    : null,
-          marks_entry_code: code || undefined,
+          student_id: studentMark.student_id,
+          subjects: submittedSubjects,
         };
-      }),
-    }));
+      })
+      .filter((row) => row.subjects.length > 0);
   }, [studentMarks, subjects]);
 
   const saveMarksBulk = useCallback(
@@ -479,10 +489,6 @@ export default function MarksEntryPage() {
     return () => clearTimeout(t);
   }, [studentMarks, selectedExam, selectedClass, locked, subjects, saveMarksBulk]);
 
-  const handleSaveDraft = async () => {
-    await saveMarksBulk(false);
-  };
-
   const handleSubmit = async () => {
     if (!selectedExam || !selectedClass || !teacher?.id) return;
 
@@ -507,25 +513,20 @@ export default function MarksEntryPage() {
         return;
       }
 
-      const submitPromises = studentMarks.map(async (studentMark) => {
-        const res = await fetch('/api/examinations/marks/submit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            school_code: schoolCode,
-            exam_id: selectedExam.id,
-            student_id: studentMark.student_id,
-            class_id: selectedClass,
-            scoped_subject_ids: scopedIds,
-            teacher_marks_scoped: true,
-            entered_by: teacher.id,
-          }),
-        });
-        return res.ok;
+      const res = await fetch('/api/examinations/marks/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          exam_id: selectedExam.id,
+          class_id: selectedClass,
+          scoped_subject_ids: scopedIds,
+          teacher_marks_scoped: true,
+          entered_by: teacher.id,
+        }),
       });
-
-      const results = await Promise.all(submitPromises);
-      if (results.every((r) => r)) {
+      const submitResult = await res.json();
+      if (res.ok) {
         setLocked(true);
         await loadExistingMarks(
           selectedExam.id,
@@ -534,7 +535,7 @@ export default function MarksEntryPage() {
         );
         alert('Your subjects are submitted and locked for editing.');
       } else {
-        alert('Some submissions failed. Try again.');
+        alert(submitResult?.error || submitResult?.hint || 'Submit failed. Please try again.');
       }
     } catch (error) {
       console.error('Error submitting marks:', error);
@@ -714,10 +715,6 @@ export default function MarksEntryPage() {
                 </Button>
                 {!locked && (
                   <>
-                    <Button variant="outline" onClick={handleSaveDraft} disabled={saving}>
-                      <Save size={18} className="mr-2" />
-                      {saving ? 'Saving...' : 'Save Draft'}
-                    </Button>
                     <Button onClick={handleSubmit} disabled={submitting}>
                       <CheckCircle size={18} className="mr-2" />
                       {submitting ? 'Submitting...' : 'Submit Marks'}

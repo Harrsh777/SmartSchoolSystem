@@ -21,6 +21,7 @@ type SubmitRowFilters = {
   student_id?: string;
   class_id?: string;
   subject_ids?: string[];
+  submitter_id?: string | null;
 };
 
 /**
@@ -43,8 +44,16 @@ async function runSubmittedUpdate(
     return q.select();
   };
 
-  const { data, error } = await run({ status: 'submitted', updated_at: ts });
+  const submitPatch: Record<string, unknown> = { status: 'submitted', updated_at: ts };
+  if (filters.submitter_id) submitPatch.entered_by = filters.submitter_id;
+  const { data, error } = await run(submitPatch);
   if (!error) return { data: data as unknown[] | null, error: null };
+
+  if (missingSchemaColumnMessage(error, 'entered_by')) {
+    const retry = await run({ status: 'submitted', updated_at: ts });
+    if (!retry.error) return { data: retry.data as unknown[] | null, error: null };
+    return { data: null, error: retry.error };
+  }
 
   if (missingSchemaColumnMessage(error, 'status')) {
     const r2 = await run({ updated_at: ts });
@@ -197,6 +206,7 @@ export async function POST(request: NextRequest) {
         exam_id,
         student_id,
         subject_ids: subjectFilter,
+        submitter_id: entered_by ? String(entered_by) : null,
       });
 
       if (updateError) {
@@ -265,6 +275,7 @@ export async function POST(request: NextRequest) {
       exam_id,
       class_id,
       subject_ids: bulkSubjectFilter,
+      submitter_id: entered_by ? String(entered_by) : null,
     });
 
     if (updateError) {

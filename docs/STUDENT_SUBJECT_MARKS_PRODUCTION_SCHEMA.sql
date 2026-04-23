@@ -1,14 +1,6 @@
--- student_subject_marks migration (idempotent, production-safe)
--- Goal:
--- 1) Converge existing table to canonical schema
--- 2) Remove duplicate constraints/indexes/triggers
--- 3) Keep integer marks and safe data checks
 
 begin;
 
--- ----------------------------------------
--- A) Round legacy decimal values before integer enforcement
--- ----------------------------------------
 update public.student_subject_marks
 set marks_obtained = round(marks_obtained::numeric)::integer
 where marks_obtained::text like '%.%';

@@ -14,15 +14,12 @@ import {
   FileText,
   Users,
   BookOpen,
-  Save,
   Loader2,
   AlertCircle,
   CheckCircle,
   X,
   Send,
   ClipboardList,
-  RefreshCw,
-  Database,
 } from 'lucide-react';
 import {
   calculatePercentage,
@@ -99,24 +96,6 @@ interface SubmittedSubjectMeta {
   submitted: boolean;
   submitted_at: string | null;
   submitted_by_name: string | null;
-}
-
-interface SubmittedSubjectMetaMap {
-  [subjectId: string]: SubmittedSubjectMeta;
-}
-
-interface RedisInfo {
-  enabled: boolean;
-  configured: boolean;
-  url: string | null;
-  circuitMs: number;
-  checkedAt: string;
-  diagnostics: {
-    connected: boolean;
-    value: string | null;
-    ttl: number | null;
-    keys: string[];
-  };
 }
 
 function normClassLabel(v: unknown): string {
@@ -230,8 +209,6 @@ export default function MarksEntryPage({
   const [showTotals, setShowTotals] = useState(true);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   const [submittedSubjectMeta, setSubmittedSubjectMeta] = useState<SubmittedSubjectMeta | null>(null);
-  const [redisInfo, setRedisInfo] = useState<RedisInfo | null>(null);
-  const [redisLoading, setRedisLoading] = useState(false);
   const draftStorageKey = useMemo(
     () =>
       `marks-entry-draft:${schoolCode}:${selectedClassId || '_'}:${selectedExam || '_'}:${selectedSubjectId || '_'}`,
@@ -271,28 +248,6 @@ export default function MarksEntryPage({
     };
     fetchStructures();
   }, [schoolCode]);
-
-  const fetchRedisInfo = useCallback(async () => {
-    try {
-      setRedisLoading(true);
-      const response = await fetch('/api/redis');
-      const result = await response.json();
-      if (response.ok && result.data) {
-        setRedisInfo(result.data as RedisInfo);
-      } else {
-        setRedisInfo(null);
-      }
-    } catch (e) {
-      console.error('Error fetching redis info:', e);
-      setRedisInfo(null);
-    } finally {
-      setRedisLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchRedisInfo();
-  }, [fetchRedisInfo]);
 
   // Update sections when class changes
   useEffect(() => {
@@ -633,20 +588,7 @@ export default function MarksEntryPage({
       );
       const data = await res.json();
       if (res.ok && data.data) {
-        const storageKey = `marks-entry-submitted-meta:${schoolCode}:${selectedClassId}:${selectedExam}`;
-        let merged = data.data as SubmittedSubjectMeta;
-        try {
-          const raw = localStorage.getItem(storageKey);
-          if (raw) {
-            const parsed = JSON.parse(raw) as SubmittedSubjectMetaMap;
-            if (parsed?.[selectedSubjectId]?.submitted) {
-              merged = parsed[selectedSubjectId];
-            }
-          }
-        } catch {
-          // Ignore local storage parse issues.
-        }
-        setSubmittedSubjectMeta(merged);
+        setSubmittedSubjectMeta(data.data as SubmittedSubjectMeta);
       } else {
         setSubmittedSubjectMeta(null);
       }
@@ -971,6 +913,39 @@ export default function MarksEntryPage({
     setSuccess('');
 
     try {
+      let submitterId: string | null = null;
+      const storedStaff = sessionStorage.getItem('staff');
+      if (storedStaff) {
+        try {
+          const staffData = JSON.parse(storedStaff) as { id?: string };
+          submitterId = staffData.id || null;
+        } catch {
+          // Ignore parse errors.
+        }
+      }
+      if (!submitterId) {
+        const storedTeacher = sessionStorage.getItem('teacher');
+        if (storedTeacher) {
+          try {
+            const teacherData = JSON.parse(storedTeacher) as { id?: string };
+            submitterId = teacherData.id || null;
+          } catch {
+            // Ignore parse errors.
+          }
+        }
+      }
+      if (!submitterId) {
+        const storedSchool = sessionStorage.getItem('school');
+        if (storedSchool) {
+          try {
+            const schoolData = JSON.parse(storedSchool) as { principal_id?: string };
+            submitterId = schoolData.principal_id || null;
+          } catch {
+            // Ignore parse errors.
+          }
+        }
+      }
+
       const subjectIdsToSubmit = selectedSubjectId
         ? [selectedSubjectId]
         : subjects.map((s) => s.id);
@@ -1019,40 +994,13 @@ export default function MarksEntryPage({
           exam_id: selectedExam,
           class_id: selectedClassId,
           scoped_subject_ids: subjectIdsToSubmit,
+          entered_by: submitterId,
         }),
       });
       const result = await response.json();
       if (!response.ok) {
         setError(result.error || result.hint || 'Failed to submit marks for review');
         return;
-      }
-
-      const role = sessionStorage.getItem('role');
-      const submitterName = role === 'admin' || role === 'principal' ? 'Admin' : (() => {
-        try {
-          const staffRaw = sessionStorage.getItem('staff') || sessionStorage.getItem('teacher');
-          if (!staffRaw) return 'Staff';
-          const parsed = JSON.parse(staffRaw) as { full_name?: string; name?: string };
-          return parsed.full_name || parsed.name || 'Staff';
-        } catch {
-          return 'Staff';
-        }
-      })();
-      const submittedAt = new Date().toISOString();
-      const storageKey = `marks-entry-submitted-meta:${schoolCode}:${selectedClassId}:${selectedExam}`;
-      try {
-        const raw = localStorage.getItem(storageKey);
-        const parsed = raw ? (JSON.parse(raw) as SubmittedSubjectMetaMap) : {};
-        for (const subjectId of subjectIdsToSubmit) {
-          parsed[subjectId] = {
-            submitted: true,
-            submitted_at: submittedAt,
-            submitted_by_name: submitterName,
-          };
-        }
-        localStorage.setItem(storageKey, JSON.stringify(parsed));
-      } catch {
-        // Best effort local persistence only.
       }
 
       setSuccess(`Marks submitted for review successfully! ${result.submitted_count || 0} marks submitted.`);
@@ -1147,58 +1095,18 @@ export default function MarksEntryPage({
               <div>
                 <h1 className="text-2xl font-semibold text-foreground">Marks Entry</h1>
                 <p className="text-sm text-muted-foreground mt-1">Enter and manage examination marks for students</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {submittedSubjectMeta?.submitted_at
+                    ? `Last submitted: ${new Date(submittedSubjectMeta.submitted_at).toLocaleString()} by ${
+                        submittedSubjectMeta.submitted_by_name || 'Admin'
+                      }`
+                    : 'Last submitted: Not submitted yet'}
+                </p>
               </div>
             </div>
             <ModuleGuideButton />
           </div>
         </motion.div>
-
-        <Card className="p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2">
-              <Database size={16} className="text-[#2C3E50] dark:text-[#9FB7C9]" />
-              <h2 className="text-sm font-semibold text-foreground">Redis</h2>
-            </div>
-            <Button
-              onClick={() => void fetchRedisInfo()}
-              size="sm"
-              variant="secondary"
-              className="inline-flex items-center gap-2"
-              disabled={redisLoading}
-            >
-              {redisLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              Refresh
-            </Button>
-          </div>
-          {redisInfo ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Enabled</p>
-                <p className={`font-semibold ${redisInfo.enabled ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {redisInfo.enabled ? 'Yes' : 'No'}
-                </p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Configured</p>
-                <p className={`font-semibold ${redisInfo.configured ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {redisInfo.configured ? 'Yes' : 'No'}
-                </p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Connection</p>
-                <p className={`font-semibold ${redisInfo.diagnostics.connected ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {redisInfo.diagnostics.connected ? 'Connected' : 'Unavailable'}
-                </p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Diagnostic TTL</p>
-                <p className="font-semibold text-foreground">{redisInfo.diagnostics.ttl ?? 'N/A'}</p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Unable to load Redis information.</p>
-          )}
-        </Card>
 
         {/* Error/Success Messages */}
         {success && (
@@ -1610,32 +1518,17 @@ export default function MarksEntryPage({
         )}
 
         {students.length > 0 && subjects.length > 0 && !loadingStudents && (
-          <Card className="p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+          <Card className="p-4 border border-[#4A707A]/20 bg-gradient-to-r from-white to-[#F4F8FA] dark:from-[#1e293b] dark:to-[#233447]">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">
+                Finalize this subject for review after confirming all marks are complete.
+              </p>
               <Button
-                onClick={() => handleSave()}
-                disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
-                size="sm"
-                className="px-3 bg-[#2C3E50] hover:bg-[#34495E] dark:bg-[#4A707A] dark:hover:bg-[#5A879A] disabled:opacity-50"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 size={18} className="mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save size={18} className="mr-2" />
-                    Save Draft
-                  </>
-                )}
-              </Button>
-              <Button
-                onClick={handleSubmitForReview}
-                disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
-                size="sm"
-                className="px-3 bg-[#4A707A] hover:bg-[#5A879A] dark:bg-[#5A879A] dark:hover:bg-[#6B99AA] disabled:opacity-50"
-              >
+  onClick={handleSubmitForReview}
+  disabled={saving || submitting || !selectedClass || !selectedSection || !selectedExam || students.length === 0}
+  size="sm"
+  className="w-full sm:w-auto min-w-[190px] h-12 px-6 flex items-center justify-center bg-[#4A707A] hover:bg-[#3E616A] dark:bg-[#5A879A] dark:hover:bg-[#6B99AA] shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+>
                 {submitting ? (
                   <>
                     <Loader2 size={18} className="mr-2 animate-spin" />
@@ -1644,7 +1537,7 @@ export default function MarksEntryPage({
                 ) : (
                   <>
                     <Send size={18} className="mr-2" />
-                    Submit
+                    Submit for Review
                   </>
                 )}
               </Button>
