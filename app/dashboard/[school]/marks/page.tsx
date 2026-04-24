@@ -68,6 +68,19 @@ interface StudentMark {
       color: string;
     };
   }>;
+  subject_mark?: {
+    id: string;
+    subject_id: string;
+    marks_obtained: number;
+    max_marks: number;
+    percentage: number;
+    grade: string;
+    subject: {
+      id: string;
+      name: string;
+      color: string;
+    };
+  };
 }
 
 interface Analytics {
@@ -235,6 +248,7 @@ export default function MarksDashboardPage({
   }, [filteredMarks, currentPage]);
 
   const totalPages = Math.ceil(filteredMarks.length / itemsPerPage);
+  const isSingleSubjectView = Boolean(filters.subject_id);
 
   const uniqueClassNames = useMemo(() => {
     const names = classes.map((c) => String(c.class ?? '').trim()).filter(Boolean);
@@ -844,7 +858,9 @@ export default function MarksDashboardPage({
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase">Student Name</th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase">Class</th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase">Subject Marks</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Total</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">
+                      {isSingleSubjectView ? 'Subject Total' : 'Total'}
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase">%</th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase">Grade</th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase">Status</th>
@@ -857,6 +873,8 @@ export default function MarksDashboardPage({
                     const isPass = pct >= 40;
                     const effectiveGrade =
                       (mark.grade && mark.grade.trim()) || getGradeFromPercentage(pct) || 'N/A';
+                    const singleSubjectMark =
+                      mark.subject_marks?.[0] || mark.subject_mark;
                     return (
                       <motion.tr
                         key={mark.id}
@@ -869,7 +887,9 @@ export default function MarksDashboardPage({
                         <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{mark.student?.class || '-'} {mark.student?.section ? `- ${mark.student.section}` : ''}</td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
-                            {mark.subject_marks?.slice(0, 3).map((sm) => (
+                            {(mark.subject_marks || (mark.subject_mark ? [mark.subject_mark] : []))
+                              .slice(0, 3)
+                              .map((sm) => (
                               <span
                                 key={sm.id}
                                 className="px-2 py-1 text-xs rounded"
@@ -884,7 +904,9 @@ export default function MarksDashboardPage({
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-                          {mark.total_marks || 0} / {mark.total_max_marks || 0}
+                          {isSingleSubjectView
+                            ? `${singleSubjectMark?.marks_obtained || 0} / ${singleSubjectMark?.max_marks || 0}`
+                            : `${mark.total_marks || 0} / ${mark.total_max_marks || 0}`}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">

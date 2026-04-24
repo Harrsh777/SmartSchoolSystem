@@ -251,6 +251,8 @@ export async function GET(request: NextRequest) {
       subject_id?: string;
       marks_obtained?: number;
       max_marks?: number;
+      percentage?: number;
+      grade?: string;
       subject?: {
         id: string;
         name: string;
@@ -300,14 +302,28 @@ export async function GET(request: NextRequest) {
       if (marksError) {
         console.error('Error fetching subject marks:', marksError);
       } else {
-        // Merge subject marks into summaries
+        // Normalize payload for single-subject mode:
+        // always expose subject_marks[] so UI can render consistently.
         filteredSummaries = filteredSummaries.map((summary: SummaryItem) => {
           const subjectMark = subjectMarks?.find(
             (m: SubjectMark) => m.student_id === summary.student_id && m.exam_id === summary.exam_id
           );
+          const normalizedMarks = subjectMark ? [subjectMark] : [];
+          const totalMarks = Number(subjectMark?.marks_obtained || 0);
+          const totalMaxMarks = Number(subjectMark?.max_marks || 0);
+          const percentage =
+            totalMaxMarks > 0
+              ? Number(subjectMark?.percentage ?? (totalMarks / totalMaxMarks) * 100)
+              : 0;
+          const grade = String(subjectMark?.grade || summary.grade || '').trim() || 'N/A';
           return {
             ...summary,
             subject_mark: subjectMark,
+            subject_marks: normalizedMarks,
+            total_marks: totalMarks,
+            total_max_marks: totalMaxMarks,
+            percentage,
+            grade,
           };
         });
       }
