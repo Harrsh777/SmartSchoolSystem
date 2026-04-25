@@ -73,6 +73,7 @@ export default function PasswordPage({
   const [passwordStatusFilter, setPasswordStatusFilter] = useState<'all' | 'with' | 'without'>('all');
   const [studentClassFilter, setStudentClassFilter] = useState('');
   const [studentSectionFilter, setStudentSectionFilter] = useState('');
+  const [activePortal, setActivePortal] = useState<'students' | 'staff'>('students');
 
   const NO_SECTION_VALUE = '__NO_SECTION__';
 
@@ -100,7 +101,10 @@ export default function PasswordPage({
   };
 
   const handleGenerateNewPasswords = async () => {
-    if (!confirm('This will create a new password for each student who doesn\'t have one. Do you want to continue?')) {
+    const isStudentMode = activePortal === 'students';
+    const defaultPassword = isStudentMode ? 'student123' : 'staff123';
+    const targetGroup = isStudentMode ? 'students' : 'staff';
+    if (!confirm(`This will set password "${defaultPassword}" for all ${targetGroup} in this school. They can change it later from their dashboard. Do you want to continue?`)) {
       return;
     }
     
@@ -113,17 +117,18 @@ export default function PasswordPage({
           school_code: schoolCode, 
           include_passwords: true,
           regenerate_all: false,
+          regenerate_all_students: isStudentMode,
+          regenerate_all_staff: !isStudentMode,
+          generate_students_only: isStudentMode,
+          generate_staff_only: !isStudentMode,
         }),
       });
       const result = await response.json();
       if (response.ok && result.data) {
         setLoginCredentials(result.data);
         setPasswordsGenerated(true);
-        interface StudentWithPassword {
-          password?: string;
-          [key: string]: unknown;
-        }
-        alert(`Passwords generated successfully! ${result.data.students.filter((s: StudentWithPassword) => s.password).length} new passwords created.`);
+        setShowPasswords(true);
+        alert(`Passwords generated successfully. All ${targetGroup} passwords are now set to "${defaultPassword}".`);
       } else {
         alert(`Error: ${result.error || 'Failed to generate passwords'}`);
       }
@@ -198,7 +203,7 @@ export default function PasswordPage({
   };
 
   const handleResetStaffPassword = async (staffId: string) => {
-    if (!confirm(`Are you sure you want to reset the password for this staff member? A new password will be generated and displayed.`)) {
+    if (!confirm(`Are you sure you want to reset the password for this staff member? The password will be set to "staff123".`)) {
       return;
     }
 
@@ -308,6 +313,13 @@ export default function PasswordPage({
 
     return matchesSearch && matchesFilter;
   });
+  const selectedClassSectionStudents = studentFiltersReady
+    ? (studentsRaw ?? []).filter((student: StudentCredential) => matchesClassSection(student))
+    : [];
+  const noPasswordsSetForSelectedGroup =
+    studentFiltersReady &&
+    selectedClassSectionStudents.length > 0 &&
+    !selectedClassSectionStudents.some((student) => student.hasPassword);
 
   const studentStartIndex = (studentPage - 1) * itemsPerPage;
   const studentEndIndex = studentStartIndex + itemsPerPage;
@@ -333,6 +345,9 @@ export default function PasswordPage({
   const staffEndIndex = staffStartIndex + itemsPerPage;
   const paginatedStaff = filteredStaff.slice(staffStartIndex, staffEndIndex);
   const totalStaffPages = Math.ceil(filteredStaff.length / itemsPerPage);
+  const noPasswordsSetForStaff =
+    filteredStaff.length > 0 &&
+    !filteredStaff.some((member) => member.hasPassword);
 
   // Reset pages when search changes
   useEffect(() => {
@@ -358,6 +373,30 @@ export default function PasswordPage({
           <p className="text-[#64748B]">View password status for students and staff</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center rounded-lg border border-[#D1D5DB] bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setActivePortal('students')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                activePortal === 'students'
+                  ? 'bg-[#2F6FED] text-white'
+                  : 'text-[#475569] hover:bg-[#F1F5F9]'
+              }`}
+            >
+              Students
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivePortal('staff')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                activePortal === 'staff'
+                  ? 'bg-[#2F6FED] text-white'
+                  : 'text-[#475569] hover:bg-[#F1F5F9]'
+              }`}
+            >
+              Staff
+            </button>
+          </div>
           <Button
             variant="outline"
             size="sm"
@@ -427,6 +466,7 @@ export default function PasswordPage({
             </div>
 
             {/* Students Table */}
+            {activePortal === 'students' && (
             <div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
                 <div>
@@ -504,6 +544,14 @@ export default function PasswordPage({
                   />
                 </div>
               </div>
+
+              {noPasswordsSetForSelectedGroup && (
+                <div className="mb-4 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3">
+                  <p className="text-sm text-[#0F172A]">
+                    No passwords are set. Click the <strong>Generate New Passwords</strong> button on top to generate passwords for your students.
+                  </p>
+                </div>
+              )}
 
               <div className="overflow-x-auto border border-[#E5E7EB] rounded-lg">
                 <table className="w-full">
@@ -634,8 +682,10 @@ export default function PasswordPage({
                 </div>
               )}
             </div>
+            )}
 
             {/* Staff Table */}
+            {activePortal === 'staff' && (
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-lg font-semibold text-[#0F172A]">
@@ -656,6 +706,14 @@ export default function PasswordPage({
                   />
                 </div>
               </div>
+
+              {noPasswordsSetForStaff && (
+                <div className="mb-4 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3">
+                  <p className="text-sm text-[#0F172A]">
+                    No passwords are set. Click the <strong>Generate New Passwords</strong> button on top to generate passwords for your staff.
+                  </p>
+                </div>
+              )}
 
               <div className="overflow-x-auto border border-[#E5E7EB] rounded-lg">
                 <table className="w-full">
@@ -778,12 +836,15 @@ export default function PasswordPage({
                 </div>
               )}
             </div>
+            )}
 
             <div className="bg-[#E0F2FE] border border-[#E5E7EB] rounded-lg p-4">
               <p className="text-sm text-[#0F172A]">
                 <strong className="text-[#2F6FED]">Note:</strong> {showPasswords 
                   ? 'Passwords shown here are retrieved from the database. Click "Hide Passwords" to hide them. Use the copy button to copy passwords to clipboard. Only passwords that were generated through the system are stored and can be viewed.'
-                  : 'Click "Generate New Passwords" to create passwords for students without them. Click "Show Passwords" to view stored passwords from the database.'}
+                  : activePortal === 'students'
+                    ? 'Click "Generate New Passwords" to set "student123" for all students. Click "Show Passwords" to view stored passwords from the database.'
+                    : 'Click "Generate New Passwords" to set "staff123" for all staff. Click "Show Passwords" to view stored passwords from the database.'}
               </p>
             </div>
           </div>

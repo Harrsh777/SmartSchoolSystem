@@ -128,7 +128,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { school_code, include_passwords, regenerate_all } = body;
+    const {
+      school_code,
+      include_passwords,
+      regenerate_all,
+      regenerate_all_students,
+      regenerate_all_staff,
+      generate_students_only,
+      generate_staff_only,
+    } = body;
 
     if (!school_code) {
       return NextResponse.json(
@@ -183,8 +191,11 @@ export async function POST(request: NextRequest) {
       const hasPassword = existingStudentLogins.has(student.admission_no);
       let password = null;
 
-      // Generate password if: include_passwords is true AND (regenerate_all is true OR user doesn't have password)
-      if (include_passwords && (regenerate_all || !hasPassword)) {
+      // Generate password if requested:
+      // - all students (regenerate_all_students), or
+      // - all users (regenerate_all), or
+      // - only missing passwords
+      if (!generate_staff_only && include_passwords && (regenerate_all_students || regenerate_all || !hasPassword)) {
         // Generate and hash password
         const { password: generatedPassword, hashedPassword } = await defaultStudentPasswordAndHash();
         password = generatedPassword;
@@ -204,8 +215,8 @@ export async function POST(request: NextRequest) {
         name: student.student_name,
         class: student.class,
         section: student.section,
-        hasPassword: regenerate_all ? true : hasPassword,
-        password: include_passwords && (regenerate_all || !hasPassword) ? password : null,
+        hasPassword: regenerate_all_students || regenerate_all ? true : hasPassword,
+        password: !generate_staff_only && include_passwords && (regenerate_all_students || regenerate_all || !hasPassword) ? password : null,
       });
     }
 
@@ -217,8 +228,8 @@ export async function POST(request: NextRequest) {
       const hasPassword = existingStaffLogins.has(member.staff_id);
       let password = null;
 
-      // Generate password if: include_passwords is true AND (regenerate_all is true OR user doesn't have password)
-      if (include_passwords && (regenerate_all || !hasPassword)) {
+      // Respect student-only generation mode and skip staff updates.
+      if (!generate_students_only && include_passwords && (regenerate_all_staff || regenerate_all || !hasPassword)) {
         // Generate and hash password
         const { password: generatedPassword, hashedPassword } = await defaultStaffPasswordAndHash();
         password = generatedPassword;
@@ -237,8 +248,8 @@ export async function POST(request: NextRequest) {
         staff_id: member.staff_id,
         name: member.full_name,
         role: member.role,
-        hasPassword: regenerate_all ? true : hasPassword,
-        password: include_passwords && (regenerate_all || !hasPassword) ? password : null,
+        hasPassword: regenerate_all_staff || regenerate_all ? true : hasPassword,
+        password: !generate_students_only && include_passwords && (regenerate_all_staff || regenerate_all || !hasPassword) ? password : null,
       });
     }
 
