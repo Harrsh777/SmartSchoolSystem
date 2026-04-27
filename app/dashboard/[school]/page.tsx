@@ -650,10 +650,53 @@ export default function DashboardPage({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#2F6FED] mx-auto mb-4"></div>
-          <p className="text-[#64748B]">Loading dashboard...</p>
+      <div className="space-y-6 animate-pulse">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-2">
+            <div className="h-8 w-56 rounded-md bg-slate-200 dark:bg-slate-800" />
+            <div className="h-4 w-72 rounded-md bg-slate-200 dark:bg-slate-800" />
+          </div>
+          <div className="h-10 w-40 rounded-lg bg-slate-200 dark:bg-slate-800" />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Card key={`stat-skeleton-${index}`}>
+              <div className="space-y-3">
+                <div className="h-4 w-28 rounded-md bg-slate-200 dark:bg-slate-800" />
+                <div className="h-8 w-20 rounded-md bg-slate-200 dark:bg-slate-800" />
+                <div className="h-3 w-36 rounded-md bg-slate-200 dark:bg-slate-800" />
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <Card className="xl:col-span-2">
+            <div className="space-y-4">
+              <div className="h-6 w-52 rounded-md bg-slate-200 dark:bg-slate-800" />
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div
+                    key={`detail-skeleton-${index}`}
+                    className="h-24 rounded-lg bg-slate-100 dark:bg-slate-900"
+                  />
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="space-y-4">
+              <div className="h-6 w-40 rounded-md bg-slate-200 dark:bg-slate-800" />
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div
+                  key={`list-skeleton-${index}`}
+                  className="h-12 rounded-lg bg-slate-100 dark:bg-slate-900"
+                />
+              ))}
+            </div>
+          </Card>
         </div>
       </div>
     );

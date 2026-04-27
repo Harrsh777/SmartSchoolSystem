@@ -305,6 +305,11 @@ export default function DigitalDiaryPage({
                   <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getTypeColor(diary.type)}`}>
                     {diary.type}
                   </span>
+                  {diary.mode === 'SUBJECT_WISE' && (
+                    <span className="inline-block ml-2 px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                      {diary.subject_name ? `Subject: ${diary.subject_name}` : 'Subject-wise'}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 ml-2">
                   <button

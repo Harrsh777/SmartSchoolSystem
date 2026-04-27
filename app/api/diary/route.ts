@@ -142,10 +142,35 @@ export async function GET(request: NextRequest) {
       readCountMap.set(read.diary_id, (readCountMap.get(read.diary_id) || 0) + 1);
     });
 
+    const subjectIds = Array.from(
+      new Set(
+        (diaries || [])
+          .map((diary) => diary.subject_id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      )
+    );
+    const subjectNameById = new Map<string, string>();
+    if (subjectIds.length > 0) {
+      const { data: subjects, error: subjectsError } = await supabase
+        .from('subjects')
+        .select('id, name')
+        .in('id', subjectIds);
+
+      if (subjectsError) {
+        console.error('Error fetching diary subject names:', subjectsError);
+      } else {
+        (subjects || []).forEach((subject: { id: string; name: string }) => {
+          subjectNameById.set(subject.id, subject.name);
+        });
+      }
+    }
+
     // Get total target counts (students in assigned classes)
     // For now, we'll use a placeholder - in production, calculate from students table
     const diariesWithCounts = (diaries || []).map((diary) => ({
       ...diary,
+      subject_name:
+        diary.subject_name || (diary.subject_id ? subjectNameById.get(diary.subject_id) || null : null),
       read_count: readCountMap.get(diary.id) || 0,
       total_targets: diary.diary_targets?.length || 0, // Simplified - should count actual students
     }));

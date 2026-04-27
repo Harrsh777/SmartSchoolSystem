@@ -100,6 +100,8 @@ export async function GET(request: NextRequest) {
       content: string;
       type: string;
       mode?: string | null;
+      subject_id?: string | null;
+      subject_name?: string | null;
       created_at: string;
       updated_at?: string | null;
       created_by?: string;
@@ -115,6 +117,33 @@ export async function GET(request: NextRequest) {
       } | null;
       academic_year_id?: string | null;
     }
+    const subjectIds = Array.from(
+      new Set(
+        filteredDiaries
+          .map((diary) => {
+            const d = diary as DiaryWithDetails;
+            return d.subject_id || null;
+          })
+          .filter((id): id is string => !!id)
+      )
+    );
+
+    const subjectNameById = new Map<string, string>();
+    if (subjectIds.length > 0) {
+      const { data: subjects, error: subjectsError } = await supabase
+        .from('subjects')
+        .select('id, name')
+        .in('id', subjectIds);
+
+      if (subjectsError) {
+        console.error('Error fetching subject names for diary:', subjectsError);
+      } else {
+        (subjects || []).forEach((subject: { id: string; name: string }) => {
+          subjectNameById.set(subject.id, subject.name);
+        });
+      }
+    }
+
     const formattedDiaries = filteredDiaries.map((diary: DiaryWithDetails) => {
       // Get target classes for display
       const targetClasses = (diary.diary_targets || [])
@@ -127,6 +156,9 @@ export async function GET(request: NextRequest) {
         content: diary.content,
         type: diary.type, // 'HOMEWORK' or 'OTHER'
         mode: diary.mode,
+        subject_id: diary.subject_id || null,
+        subject_name:
+          diary.subject_name || (diary.subject_id ? subjectNameById.get(diary.subject_id) || null : null),
         created_at: diary.created_at,
         updated_at: diary.updated_at,
         created_by: diary.created_by_staff?.full_name || 'Unknown',

@@ -13,6 +13,8 @@ interface DiaryEntry {
   content: string | null;
   type: string;
   mode: string;
+  subject_id: string | null;
+  subject_name: string | null;
   created_at: string;
   updated_at: string;
   created_by: string;
@@ -288,6 +290,11 @@ export default function StudentDiaryPage() {
                         <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getTypeColor(diary.type)}`}>
                           {getTypeLabel(diary.type)}
                         </span>
+                        {diary.mode === 'SUBJECT_WISE' && (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-medium border bg-indigo-100 text-indigo-700 border-indigo-200">
+                            {diary.subject_name ? `Subject: ${diary.subject_name}` : 'Subject-wise'}
+                          </span>
+                        )}
                         {!diary.is_read && (
                           <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs font-medium rounded-full">
                             New
