@@ -185,6 +185,20 @@ export interface ReportCardTemplateConfig {
   result_summary?: { show_total?: boolean; show_percentage?: boolean; show_grade?: boolean; show_rank?: boolean; show_pass_fail?: boolean };
   signatures?: { show_class_teacher?: boolean; show_principal?: boolean };
   output?: { watermark?: string };
+  /** Printable overrides merged at render time (empty strings are ignored in favor of exam / school data). */
+  content?: {
+    school_email?: string;
+    school_phone?: string;
+    school_address?: string;
+    affiliation?: string;
+    /** When set, overrides the academic year on the card (e.g. ANNUAL REPORT line). */
+    academic_year?: string;
+    exam_name?: string;
+    promoted_to?: string;
+    remarks?: string;
+    instructions?: string;
+    result_date?: string;
+  };
 }
 
 /** Default JSON config when a school has no report card template row yet (customize page + API seed). */
@@ -257,10 +271,9 @@ export function getDefaultReportCardTemplateConfig(): ReportCardTemplateConfig {
       promoted_to: '',
       remarks: '',
       instructions: '',
-      /** Printed after “Result date:” when set; otherwise exam/today fallback. */
       result_date: '',
     },
-  } as unknown as ReportCardTemplateConfig;
+  } satisfies ReportCardTemplateConfig;
 }
 
 export function generateReportCardHTML(data: ReportCardData, templateConfig?: ReportCardTemplateConfig): string {
@@ -1028,6 +1041,35 @@ export function buildDemoReportCardData(): ReportCardData {
   };
 }
 
+/**
+ * Printed in the remarks block when template and per-student remarks are both left blank.
+ * Bands align with common Indian school reporting (33% pass).
+ */
+export function getPerformanceBasedDefaultRemarks(overallPct: number): string {
+  if (overallPct >= 90) {
+    return `Outstanding performance. The student has shown exceptional understanding and consistency. Keep up the excellent work.`;
+  }
+  if (overallPct >= 80) {
+    return `Excellent performance. Very good grasp of concepts; continued practice will help maintain this standard.`;
+  }
+  if (overallPct >= 70) {
+    return `Very good performance. The student is progressing well; focus on weaker topics for even better results.`;
+  }
+  if (overallPct >= 60) {
+    return `Good performance. Meets expectations; regular study and revision can push results higher.`;
+  }
+  if (overallPct >= 50) {
+    return `Satisfactory performance. Needs to work harder, especially in difficult subjects, and attend classes regularly.`;
+  }
+  if (overallPct >= 40) {
+    return `Fair performance. Must improve study habits and seek help where needed; parental support is encouraged.`;
+  }
+  if (overallPct >= 33) {
+    return `Marginal performance. Passed with minimum criteria; significant improvement is required to cope with the next level.`;
+  }
+  return `Performance is below passing criteria. Intensive guidance, regular practice, and close monitoring by teachers and parents are essential.`;
+}
+
 function generateLandscapeReportCardHTML(
   data: ReportCardData,
   templateConfig?: ReportCardTemplateConfig
@@ -1100,14 +1142,13 @@ function generateLandscapeReportCardHTML(
   if (showHeaderAffiliation && affiliation) headerMetaParts.push(`Affiliation No: ${affiliation}`);
   if (showHeaderPhone && schoolPhone) headerMetaParts.push(`Phone: ${schoolPhone}`);
   const headerMetaLine = headerMetaParts.join(' | ');
-  const academicYear = (content.academic_year as string) ?? data.exam.academic_year ?? 'N/A';
+  const academicYear = pickText(content.academic_year, data.exam.academic_year) || 'N/A';
   const examName = (content.exam_name as string) ?? data.exam.exam_name ?? 'Examination';
   const promotedTo = String((content.promoted_to as string) ?? data.promoted_to ?? '').trim();
   const instructionsText =
     (content.instructions as string) ??
     data.school.instructions ??
     'Minimum Passing Marks in Each Subject is 33%.';
-  const preprintedRemarks = String((content.remarks as string) ?? '').trim();
 
   const showPf = (k: string) => (profileFields as Record<string, boolean>)[k] !== false;
   const showAdmission = showPf('show_admission');
@@ -1289,9 +1330,10 @@ function generateLandscapeReportCardHTML(
     hardcodedResultDate ||
     data.exam?.result_date ||
     new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  const remarkHtml = preprintedRemarks
-    ? preprintedRemarks.replace(/\n/g, '<br/>')
-    : '<span style="color:#888;font-style:italic;font-size:9px;"></span>';
+  const manualRemarks = pickText(content.remarks, data.remarks);
+  const remarkHtml = manualRemarks
+    ? manualRemarks.replace(/\n/g, '<br/>')
+    : getPerformanceBasedDefaultRemarks(overallPct).replace(/\n/g, '<br/>');
 
   const summaryThirdLabel = showOverallGrade ? 'Grade' : 'Class';
   const summaryThirdValue = showOverallGrade ? overallGrade || '-' : classValueOnly;

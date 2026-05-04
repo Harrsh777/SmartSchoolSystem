@@ -8,6 +8,7 @@ import {
   type ReportCardTemplateConfig,
 } from '@/lib/report-card-html';
 import { fetchCoScholasticRowsForReportCard } from '@/lib/co-scholastic-report';
+import { getOptionalCurrentAcademicYear } from '@/lib/school-current-academic-year';
 
 /**
  * Use the same photo endpoint as the student profile UI so report cards work when
@@ -296,6 +297,11 @@ export async function fetchReportCardData(
     return null;
   }
 
+  let resolvedExamAcademicYear = String(exam.academic_year ?? '').trim();
+  if (!resolvedExamAcademicYear) {
+    resolvedExamAcademicYear = (await getOptionalCurrentAcademicYear(schoolCode)) ?? '';
+  }
+
   const [marksRes, summaryRes, gradeScalesRes] = await Promise.all([
     supabase
       .from('student_subject_marks')
@@ -311,7 +317,7 @@ export async function fetchReportCardData(
       .eq('student_id', studentId)
       .eq('school_code', schoolCode)
       .maybeSingle(),
-    gradeScalesQuery(supabase, schoolCode, exam.academic_year as string | undefined),
+    gradeScalesQuery(supabase, schoolCode, resolvedExamAcademicYear || undefined),
   ]);
 
   const marks = marksRes.data || [];
@@ -345,13 +351,15 @@ export async function fetchReportCardData(
   const totalMax = summary?.total_max_marks ?? marks.reduce((s, m) => s + (m.max_marks || 0), 0);
   const overallPct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
 
-  const academicYearStart = exam.academic_year ? parseInt(String(exam.academic_year).split('-')[0] || '', 10) : new Date().getFullYear();
+  const academicYearStart = resolvedExamAcademicYear
+    ? parseInt(String(resolvedExamAcademicYear).split('-')[0] || '', 10)
+    : new Date().getFullYear();
   const academicYearEnd = academicYearStart + 1;
   const startDate = `${academicYearStart}-04-01`;
   const endDate = `${academicYearEnd}-03-31`;
 
   const yearForClass = String(
-    (student as { academic_year?: string }).academic_year || exam.academic_year || ''
+    (student as { academic_year?: string }).academic_year || resolvedExamAcademicYear || ''
   ).trim();
 
   const classRow = await resolveClassRowForStudent(
@@ -370,7 +378,7 @@ export async function fetchReportCardData(
     schoolCode,
     studentId,
     classId: classRow?.id ?? null,
-    academicYear: yearForClass || String(exam.academic_year || ''),
+    academicYear: yearForClass || resolvedExamAcademicYear,
     startDate,
     endDate,
   });
@@ -441,7 +449,7 @@ export async function fetchReportCardData(
     },
     exam: {
       exam_name: exam.exam_name || exam.name || '',
-      academic_year: exam.academic_year || '',
+      academic_year: resolvedExamAcademicYear,
       result_date: new Date().toLocaleDateString('en-IN'),
     },
     marks: marks.map((m) => {
@@ -519,6 +527,10 @@ export async function fetchReportCardDataMultiExam(
 
   type ExamRecord = { id: string; academic_year?: string; exam_name?: string; name?: string; start_date?: string };
   const firstExam = exams[0] as ExamRecord;
+  let resolvedMultiExamAcademicYear = String(firstExam.academic_year ?? '').trim();
+  if (!resolvedMultiExamAcademicYear) {
+    resolvedMultiExamAcademicYear = (await getOptionalCurrentAcademicYear(schoolCode)) ?? '';
+  }
   const examNames = exams.map((e: ExamRecord) => e.exam_name || e.name || '').filter(Boolean);
   const combinedExamName = examNames.join(' + ') || 'Combined Exam';
 
@@ -547,7 +559,7 @@ export async function fetchReportCardDataMultiExam(
   const { data: gradeScalesData } = await gradeScalesQuery(
     supabase,
     schoolCode,
-    firstExam.academic_year as string | undefined
+    resolvedMultiExamAcademicYear || undefined
   );
 
   let gradeScales: Array<{ grade: string; min_marks?: number; max_marks?: number; min_percentage?: number; max_percentage?: number }> = [];
@@ -704,12 +716,14 @@ export async function fetchReportCardDataMultiExam(
   const totalMax = marks.reduce((s, m) => s + m.max_marks, 0);
   const overallPct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
 
-  const academicYearStart = firstExam.academic_year ? parseInt(String(firstExam.academic_year).split('-')[0] || '', 10) : new Date().getFullYear();
+  const academicYearStart = resolvedMultiExamAcademicYear
+    ? parseInt(String(resolvedMultiExamAcademicYear).split('-')[0] || '', 10)
+    : new Date().getFullYear();
   const startDate = `${academicYearStart}-04-01`;
   const endDate = `${academicYearStart + 1}-03-31`;
 
   const yearForClassMulti = String(
-    (student as { academic_year?: string }).academic_year || firstExam.academic_year || ''
+    (student as { academic_year?: string }).academic_year || resolvedMultiExamAcademicYear || ''
   ).trim();
   const classRowMulti = await resolveClassRowForStudent(
     supabase,
@@ -730,7 +744,7 @@ export async function fetchReportCardDataMultiExam(
     schoolCode,
     studentId,
     classId: classRowMulti?.id ?? null,
-    academicYear: yearForClassMulti || String(firstExam.academic_year || ''),
+    academicYear: yearForClassMulti || resolvedMultiExamAcademicYear,
     startDate,
     endDate,
   });
@@ -802,7 +816,7 @@ export async function fetchReportCardDataMultiExam(
     },
     exam: {
       exam_name: combinedExamName,
-      academic_year: firstExam.academic_year || '',
+      academic_year: resolvedMultiExamAcademicYear,
       result_date: new Date().toLocaleDateString('en-IN'),
     },
     marks,

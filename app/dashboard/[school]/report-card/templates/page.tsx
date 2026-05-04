@@ -47,6 +47,8 @@ export default function ReportCardTemplatesPage({
     affiliation_number?: string;
     logo_url?: string | null;
   } | null>(null);
+  /** Shown on live preview when template “Academic year” is left blank (same source as generated cards). */
+  const [runningAcademicYear, setRunningAcademicYear] = useState<string | null>(null);
 
   const normSchool = useCallback((s: string) => String(s || '').trim().toUpperCase(), []);
   /** Prefer this school’s rows so the picker isn’t a long list of system duplicates. */
@@ -115,6 +117,30 @@ export default function ReportCardTemplatesPage({
       }
     };
     loadSchoolPreviewData();
+  }, [schoolCode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/schools/current-academic-year?school_code=${encodeURIComponent(schoolCode)}`
+        );
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (res.ok) {
+          const y = String(json.current_academic_year || json.data || '').trim();
+          setRunningAcademicYear(y || null);
+        } else {
+          setRunningAcademicYear(null);
+        }
+      } catch {
+        if (!cancelled) setRunningAcademicYear(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [schoolCode]);
 
   /** Keep select value in sync when the list loads (avoids blank HTML selects). */
@@ -290,8 +316,12 @@ export default function ReportCardTemplatesPage({
         logo_url: schoolPreviewData.logo_url ?? previewData.school.logo_url,
       };
     }
+    const manualAy = String((content.academic_year as string) ?? '').trim();
+    if (!manualAy && runningAcademicYear) {
+      previewData.exam = { ...previewData.exam, academic_year: runningAcademicYear };
+    }
     return generateReportCardHTML(previewData, config as ReportCardTemplateConfig);
-  }, [config, schoolPreviewData]);
+  }, [config, schoolPreviewData, content.academic_year, runningAcademicYear]);
 
   if (loading) {
     return (
@@ -683,8 +713,18 @@ export default function ReportCardTemplatesPage({
                 <input type="text" value={(content.affiliation as string) ?? ''} onChange={(e) => updateConfig(['content', 'affiliation'], e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="1234567" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Academic Year</label>
-                <input type="text" value={(content.academic_year as string) ?? ''} onChange={(e) => updateConfig(['content', 'academic_year'], e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="2024-25" />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Academic year (optional override)</label>
+                <input
+                  type="text"
+                  value={(content.academic_year as string) ?? ''}
+                  onChange={(e) => updateConfig(['content', 'academic_year'], e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder={runningAcademicYear ? `${runningAcademicYear} (school current)` : '2025-26'}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Leave blank to use each examination&apos;s academic year, or the school&apos;s current running year when the exam has none (shown on the &quot;ANNUAL REPORT&quot; line).
+                  {runningAcademicYear ? ` Current year: ${runningAcademicYear}.` : ''}
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Exam Name</label>
@@ -710,9 +750,12 @@ export default function ReportCardTemplatesPage({
                   value={(content.remarks as string) ?? ''} 
                   onChange={(e) => updateConfig(['content', 'remarks'], e.target.value)} 
                   className="w-full px-3 py-2 border rounded-lg" 
-                  placeholder="Leave blank for an empty remarks box (shows “No remarks” on the card). Add text here only if you want it printed."
+                  placeholder="Leave blank to auto-fill remarks from overall % (e.g. 40–50%, 50–60%). Type here only if you want the same fixed text on every card."
                   rows={2}
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  When empty, each report uses standard remarks based on overall performance (no percentage or grade repeated here).
+                </p>
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Instructions</label>

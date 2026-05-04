@@ -1,321 +1,317 @@
-# Staff (teacher) portal — module-by-module API & tables
+# Staff Dashboard + Mobile API Blueprint (React Native)
 
-Reference for the **React Native** app: same **`/api/*`** as web. Web paths are **labels only** (`/teacher/dashboard/...`).
+This document is the implementation blueprint for the React Native staff app using the existing `/api/*` backend.
+Web route names (like `/teacher/dashboard/...`) are used only as module labels.
 
-**Auth:** `POST /api/auth/teacher/login` (cookie session). `GET /api/auth/session` returns `{ role, user }`. Mobile must send cookies or use the pattern in `docs/MOBILE_APP_GUIDE.md`.
+## 1) Scope, actors, and lifecycle
 
-**Menu gating:** `app/teacher/layout.tsx` — class teacher = non-empty `GET /api/classes/teacher` **`data`**; subject teacher (marks) = non-empty `GET /api/teachers/teaching-assignments` **`data.assignments`**; RBAC extras = `GET /api/staff/{id}/menu`.
+### Actors
 
----
+- **Admin**: assigns roles, class-teacher ownership, subject/timetable ownership, and module permissions.
+- **Class Teacher**: class-level tasks (student attendance, class roster, non-scholastic marks, student leave approvals).
+- **Subject Teacher**: subject-level tasks (marks entry by exam/subject/class from teaching assignments).
 
-## Menu index (teaching staff)
+### Assignment lifecycle (admin -> teacher -> execution)
 
-| Module | Web path | Who sees it |
-|--------|----------|-------------|
-| Home | `/teacher/dashboard` | Teaching |
-| Mark Attendance | `/teacher/dashboard/attendance` | Class teacher |
-| My Attendance | `/teacher/dashboard/attendance-staff` | Teaching |
-| My Timetable | `/teacher/dashboard/my-timetable` | Teaching |
-| Marks Entry | `/teacher/dashboard/marks` | Class teacher **or** timetable assignments |
-| Non-Scholastic Marks | `/teacher/dashboard/non-scholastic-marks` | Class teacher |
-| Examinations | `/teacher/dashboard/examinations` | Teaching |
-| My Class | `/teacher/dashboard/my-class` | Class teacher |
-| Classes | `/teacher/dashboard/classes` | Teaching |
-| Student Management | `/teacher/dashboard/students` | Teaching |
-| Academic Calendar | `/teacher/dashboard/calendar` | Teaching |
-| Digital Diary | `/teacher/dashboard/homework` | Teaching |
-| Copy Checking | `/teacher/dashboard/copy-checking` | Teaching |
-| Apply for Leave | `/teacher/dashboard/apply-leave` | Teaching |
-| My Leaves | `/teacher/dashboard/my-leaves` | Teaching |
-| Student Leave Approvals | `/teacher/dashboard/student-leave-approvals` | Class teacher |
-| Institute Info | `/teacher/dashboard/institute-info` | Teaching |
-| Library | `/teacher/dashboard/library` | Teaching |
-| Certificate Management | `/teacher/dashboard/certificates` | Teaching |
-| Gallery | `/teacher/dashboard/gallery` | Teaching |
-| Staff Information | `/teacher/dashboard/staff-management/directory` | Teaching |
-| Communication | `/teacher/dashboard/communication` | Teaching |
-| Settings | `/teacher/dashboard/settings` | Teaching |
-| Change Password | `/teacher/dashboard/change-password` | Teaching |
+1. **Admin creates/maintains roles and permissions**  
+   Tables: `roles`, `role_permissions`, `sub_modules`, `modules`, `permission_categories`.
+2. **Admin links role(s) to staff**  
+   Table: `staff_roles`.
+3. **Admin assigns class teacher**  
+   Table: `classes` (`class_teacher_id`, `class_teacher_staff_id`).
+4. **Admin assigns subject teaching responsibility**  
+   Tables: `timetable_slots` (`teacher_id`/`teacher_ids`) and optionally `staff_subjects`.
+5. **Staff login + menu resolution in app**  
+   APIs: `POST /api/auth/teacher/login`, `GET /api/auth/session`, `GET /api/staff/{id}/menu`.
+6. **Teacher performs module tasks**  
+   Attendance, marks, diary, leave, etc. write to their respective module tables.
 
-**Non-teaching staff:** reduced menu + redirect (`lib/staff-teaching-role.ts`, `NON_TEACHING_TEACHER_PORTAL_MENU_IDS`).
+### Effective access decision in mobile app
 
-**Permission-based extras:** Fees, Timetable (admin), Transport, Reports, Gate pass, etc. appear when `GET /api/staff/{id}/menu` / derived permission keys match. They reuse **admin** APIs under `/teacher/dashboard/...`; tables are whatever those routes query (not duplicated here).
+- **Class teacher access**: `GET /api/classes/teacher` has non-empty `data`.
+- **Subject teacher marks access**: `GET /api/teachers/teaching-assignments` has non-empty `data.assignments`.
+- **Permission extras**: `GET /api/staff/{id}/menu` merged role + direct permissions.
 
 ---
 
-## 0. Session, login, staff menu (cross-cutting)
+## 2) Core tables for role management
 
-### 0a. Login & session
-
-| API | Tables / storage | Read / write |
-|-----|------------------|--------------|
-| `POST /api/auth/teacher/login` | `accepted_schools` (hold check), `staff_login`, `staff`, `sessions` | Validates credentials; inserts **session** row; sets cookie |
-| `GET /api/auth/session` | `sessions` | Reads session by cookie; returns `user` payload |
-
-### 0b. Staff menu & RBAC (dynamic sidebar + permission keys)
-
-| API | Tables | Read / write |
-|-----|--------|--------------|
-| `GET /api/staff/{id}/menu` | `staff`; `classes` (class-teacher check); `staff_subjects`; `staff_roles` → `roles`; `role_permissions` → `sub_modules`, `modules`, `permission_categories`; `staff_permissions` (same joins); optional `sub_modules` fetch for fallback | **Read** merged view/edit flags per sub-module |
-| Admin assign roles (web) | `staff`; `staff_roles`; `roles` | `GET /api/admin/staff`; `GET /api/staff/{id}/roles`; `POST /api/staff/{id}/roles` replaces rows in **`staff_roles`** |
-
-### 0c. Class teacher & teaching scope
-
-| API | Tables | Read / write |
-|-----|--------|--------------|
-| `GET /api/classes/teacher` | `classes` (filter `class_teacher_id` / `class_teacher_staff_id`); `students` (count per class) | **Read** |
-| `GET /api/teachers/teaching-assignments` | `timetable_slots` (all school slots, filtered in code); `classes`; `subjects` | **Read** — builds class → subject list for staff UUID |
+| Concern | Primary tables | Notes |
+|--------|----------------|-------|
+| Staff identity | `staff`, `staff_login` | Staff profile and credential linkage |
+| Session/auth | `sessions`, `accepted_schools` | School hold checks + session cookies |
+| Role mapping | `staff_roles`, `roles` | Staff can have multiple roles |
+| Permission model | `role_permissions`, `staff_permissions`, `modules`, `sub_modules`, `permission_categories` | Menu gating and action-level access |
+| Class teacher mapping | `classes` | `class_teacher_id`, `class_teacher_staff_id` |
+| Subject teaching mapping | `timetable_slots`, `staff_subjects` | Timetable is operational source of truth |
 
 ---
 
-## 1. Home (`/teacher/dashboard`)
+## 3) Authentication and RBAC APIs (cross-cutting)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/students?school_code=` | `accepted_schools`; `academic_years` (current); **`students`** | **Read** student list columns (see `app/api/students/route.ts` `studentFields`) |
-| `GET /api/classes/teacher?...` | `classes`; `students` (counts) | **Read** assigned classes |
-| `GET /api/timetable/slots?school_code=&teacher_id=` | **`timetable_slots`**; `staff`; `classes`; `subjects`; `timetable_period_groups`; `accepted_schools` | **Read** teacher slots |
-| `GET /api/teacher/grade-distribution?...` | **`classes`**; **`exam_summaries`** or **`student_subject_marks`** | **Read** grade buckets / pass rate |
-| `GET|POST /api/teacher/todos`, `PATCH|DELETE /api/teacher/todos/:id` | `accepted_schools`; **`teacher_todos`** | **Read / write** todos |
-| `GET /api/timetable/daily-agenda?...` | **`timetable_slots`**; **`teacher_todos`** | **Read** merged day view |
-| `GET /api/attendance/staff?...` | `accepted_schools`; **`staff_attendance`** | **Read** staff attendance rows |
-| `GET /api/examinations/v2/teacher?...` | **`examinations`**; **`exam_class_mappings`**; **`exam_subject_mappings`**; **`classes`**; **`subjects`**; **`timetable_slots`** (via lib); **`staff`**; **`staff_subjects`** | **Read** exams scoped to teacher |
-| `GET /api/communication/notices?...` | `accepted_schools`; **`notices`** | **Read** notice list |
-| `GET /api/calendar/notifications?...` | **`event_notifications`** | **Read** unread events |
-| `GET /api/staff-subjects/{staffUuid}?...` | **`staff`**; **`staff_subjects`**; **`subjects`** | **Read** assigned subjects |
-| `GET /api/students?class=&section=&...` | **`students`** | **Read** roster slice |
-| `GET /api/leave/student-requests?...` | **`student_leave_requests`**; `students`; `leave_types` | **Read** pending leaves (school-wide filter) |
+| API | Tables / storage | Purpose |
+|-----|------------------|---------|
+| `POST /api/auth/teacher/login` | `accepted_schools`, `staff_login`, `staff`, `sessions` | Validate teacher login and create session |
+| `GET /api/auth/session` | `sessions` | Resolve logged-in user + role payload |
+| `GET /api/staff/{id}/menu` | `staff`, `classes`, `staff_subjects`, `staff_roles`, `roles`, `role_permissions`, `sub_modules`, `modules`, `permission_categories`, `staff_permissions` | Build final menu and action permissions |
+| `GET /api/admin/staff` | `staff` | Admin fetches staff list for assignment |
+| `GET /api/staff/{id}/roles` | `staff_roles`, `roles` | Read current role mapping |
+| `POST /api/staff/{id}/roles` | `staff_roles` | Replace/update staff role mappings |
+| `GET /api/classes/teacher` | `classes`, `students` | Class-teacher scope |
+| `GET /api/teachers/teaching-assignments` | `timetable_slots`, `classes`, `subjects` | Subject-teacher scope for marks and teaching |
 
 ---
 
-## 2. Mark attendance (`/teacher/dashboard/attendance`)
+## 4) React Native design system (color + UI/UX rules)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/classes/teacher?...` | `classes`; `students` | **Read** |
-| `GET /api/attendance/class?class_id=&date=&school_code=` | **`student_attendance`**; `students`; `staff` | **Read** existing marks + names |
-| `GET /api/students?class=&section=&academic_year=` | **`students`** | **Read** roster |
-| `POST /api/attendance/mark` | `accepted_schools`; `classes`; **`staff`**; **`student_attendance`** | **Insert** attendance rows |
-| `PATCH /api/attendance/update` | `classes`; `staff`; **`student_attendance`** | **Update** rows |
+Use a single design token set across all modules.
 
----
+### Color scheme
 
-## 3. My attendance (`/teacher/dashboard/attendance-staff`)
+- `primary`: `#2563EB` (actions, active tab, key buttons)
+- `primarySoft`: `#DBEAFE` (selected chips/cards background)
+- `accent`: `#14B8A6` (secondary highlights, progress accents)
+- `success`: `#16A34A` (approved/saved/completed states)
+- `warning`: `#D97706` (pending/attention states)
+- `danger`: `#DC2626` (reject/delete/error)
+- `bg`: `#F8FAFC` (screen background)
+- `surface`: `#FFFFFF` (cards, sheets)
+- `textPrimary`: `#0F172A`
+- `textSecondary`: `#475569`
+- `border`: `#E2E8F0`
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/attendance/staff?school_code=&staff_id=&start_date=&end_date=` | `accepted_schools`; **`staff_attendance`** (optional POST path uses `staff` too) | **Read** |
+### Typography and spacing
 
----
+- Title: 22/700
+- Section heading: 18/600
+- Body: 14-16/400-500
+- Caption/meta: 12/400
+- Base spacing scale: 4, 8, 12, 16, 20, 24
 
-## 4. My timetable (`/teacher/dashboard/my-timetable`)
+### Component behavior
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/timetable/period-groups?school_code=` | `accepted_schools`; **`timetable_period_groups`**; **`timetable_periods`** | **Read** period definitions |
-| `GET /api/timetable/slots?school_code=&teacher_id=` | **`timetable_slots`**; `staff`; `classes`; `subjects`; … | **Read** |
-
----
-
-## 5. Marks entry — scholastic (`/teacher/dashboard/marks`)
-
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/examinations/v2/teacher?...` | **`examinations`**; **`exam_class_mappings`**; **`exam_subject_mappings`**; **`classes`**; **`subjects`**; **`timetable_slots`** (teaching map); **`staff`**; **`staff_subjects`** | **Read** exams + trimmed mappings + `teaching_assignments` / `class_teacher_class_ids` |
-| `GET /api/examinations/{examId}?school_code=` | **`examinations`**; **`exam_class_mappings`**; **`exam_subject_mappings`**; **`classes`**; **`subjects`**; `staff` (created_by) | **Read** full exam payload |
-| `GET /api/examinations/{examId}/class-mappings?school_code=&class_id=` | **`examinations`**; **`exam_subject_mappings`**; **`subjects`** | **Read** all subject mappings for class (class-teacher grid) |
-| `GET /api/classes/teacher?...` | `classes`; `students` | **Read** |
-| `GET /api/classes?school_code=&id=` | **`classes`** | **Read** |
-| `GET /api/students?...&status=active` | **`students`** | **Read** |
-| `GET /api/examinations/marks?exam_id=&student_id=` | **`student_subject_marks`**; **`exam_subject_mappings`**; `accepted_schools` | **Read** |
-| `GET /api/examinations/marks/status?...` | **`student_subject_marks`** | **Read** lock flags |
-| `POST /api/examinations/marks` | **`student_subject_marks`**; **`exam_subject_mappings`**; **`student_exam_summary`**; **`marks_entry_audit`**; `accepted_schools` | **Upsert** marks; audit |
+- **Lists:** card-based rows with search, filter chips, pull-to-refresh.
+- **Forms:** sticky submit button at bottom, inline validation, disable submit while saving.
+- **Status tags:** standardized chips (`Approved`, `Pending`, `Rejected`, `Absent`, `Present`).
+- **Empty states:** icon + concise guidance + clear CTA.
+- **Loaders:** skeleton for first load, spinner for incremental fetch.
 
 ---
 
-## 6. Non-scholastic marks (`/teacher/dashboard/non-scholastic-marks`)
+## 5) Module-by-module mapping (tables + what user sees + role)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/classes/teacher?...&array=true` | `classes`; `students` | **Read** |
-| `GET /api/term-structures?school_code=` | `accepted_schools`; **`exam_term_structures`** | **Read** |
-| `GET /api/exam-terms/for-class?...` | **`classes`**; **`exam_terms`** | **Read** |
-| `GET /api/non-scholastic-marks?...` | **`classes`**; **`students`**; **`class_subjects`** (→ **`subjects`**); **`non_scholastic_marks`** | **Read** |
-| `POST /api/non-scholastic-marks` | **`non_scholastic_marks`** (upsert) | **Write** |
+### 0. Session & menu bootstrap
 
----
+- **Who uses:** Admin, Class Teacher, Subject Teacher (all staff logins).
+- **Main APIs:** `POST /api/auth/teacher/login`, `GET /api/auth/session`, `GET /api/staff/{id}/menu`.
+- **Tables:** `accepted_schools`, `staff_login`, `staff`, `sessions`, `staff_roles`, `roles`, `role_permissions`, `staff_permissions`, `modules`, `sub_modules`, `permission_categories`, `classes`, `staff_subjects`.
+- **RN screens:** Login, session-loader, dynamic menu drawer.
+- **UI shown:** school selector (if required), mobile/password, login CTA, error prompts, role-based home shortcuts.
 
-## 7. Examinations list (`/teacher/dashboard/examinations`)
+### 1. Home (`/teacher/dashboard`)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/examinations/v2/teacher?...` | Same as §5 | **Read** |
+- **Who uses:** all teaching staff.
+- **Main APIs:** students summary, teacher classes, timetable slots, grade distribution, todos, daily agenda, notices, calendar notifications.
+- **Tables:** `students`, `classes`, `timetable_slots`, `teacher_todos`, `staff_attendance`, `examinations`, `exam_class_mappings`, `exam_subject_mappings`, `notices`, `event_notifications`, `student_leave_requests`, `leave_types`.
+- **UI shown:** KPI cards (today classes/todos/pending approvals), quick actions, next period card, notice carousel, pending task widgets.
 
----
+### 2. Mark Attendance (`/teacher/dashboard/attendance`)
 
-## 8. My class (`/teacher/dashboard/my-class`)
+- **Who uses:** class teacher.
+- **Main APIs:** class list, attendance by class/date, roster fetch, mark/update attendance.
+- **Tables:** `classes`, `students`, `student_attendance`, `staff`, `accepted_schools`.
+- **UI shown:** class and date picker, student list with Present/Absent/Half-day toggles, save banner, submission status.
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/classes/teacher?...&array=true` | `classes`; `students` | **Read** |
-| `GET /api/students?...&status=active` | **`students`** | **Read** |
+### 3. My Attendance (`/teacher/dashboard/attendance-staff`)
 
----
+- **Who uses:** all teaching staff.
+- **Main API:** staff attendance history.
+- **Tables:** `staff_attendance`, `accepted_schools`.
+- **UI shown:** month calendar strip, attendance summary donut, day-wise status timeline.
 
-## 9. Classes (`/teacher/dashboard/classes`)
+### 4. My Timetable (`/teacher/dashboard/my-timetable`)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/classes?school_code=` | `accepted_schools`; **`classes`**; `students` (counts); `staff` (class teacher names) | **Read** |
-| `GET /api/students?class=&section=&academic_year=` | **`students`** | **Read** (per-class list / count) |
+- **Who uses:** all teaching staff.
+- **Main APIs:** period groups, timetable slots.
+- **Tables:** `timetable_period_groups`, `timetable_periods`, `timetable_slots`, `classes`, `subjects`, `staff`.
+- **UI shown:** day tabs, period cards (time/class/subject/room), free-period highlighting.
 
----
+### 5. Marks Entry - Scholastic (`/teacher/dashboard/marks`)
 
-## 10. Student management (`/teacher/dashboard/students`)
+- **Who uses:** class teacher and assigned subject teacher.
+- **Main APIs:** teacher examinations, exam detail, class mappings, students, marks read/status/write.
+- **Tables:** `examinations`, `exam_class_mappings`, `exam_subject_mappings`, `classes`, `subjects`, `students`, `student_subject_marks`, `student_exam_summary`, `marks_entry_audit`, `timetable_slots`, `staff_subjects`.
+- **UI shown:** exam selector -> class/subject selector -> mark-entry grid, lock status tags, save and finalize actions, audit snackbar.
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/students?school_code=` | `accepted_schools`; **`academic_years`**; **`students`** | **Read** directory (permission middleware may require staff headers) |
-| `GET /api/student/fees?...` (detail) | **`students`**; **`student_fees`** | **Read** |
-| `GET /api/student/transport?...` (detail) | **`students`**; **`transport_routes`**; **`transport_stops`** | **Read** |
+### 6. Non-Scholastic Marks (`/teacher/dashboard/non-scholastic-marks`)
 
----
+- **Who uses:** class teacher.
+- **Main APIs:** class teacher classes, term structures, terms-for-class, non-scholastic marks read/write.
+- **Tables:** `classes`, `students`, `exam_term_structures`, `exam_terms`, `class_subjects`, `subjects`, `non_scholastic_marks`.
+- **UI shown:** class + term + activity filter, rubric-based grade chips, per-student rating cards.
 
-## 11. Academic calendar (`/teacher/dashboard/calendar`)
+### 7. Examinations (`/teacher/dashboard/examinations`)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/calendar/academic?school_code=&academic_year=` | **`events`**; **`academic_calendar`**; **`exam_schedules`** + **`examinations`** (optional merge) | **Read** |
+- **Who uses:** all teaching staff.
+- **Main API:** teacher-scoped examinations list.
+- **Tables:** `examinations`, `exam_class_mappings`, `exam_subject_mappings`, `classes`, `subjects`, `timetable_slots`, `staff_subjects`.
+- **UI shown:** exam cards with status/date window/class coverage and CTA to marks module.
 
----
+### 8. My Class (`/teacher/dashboard/my-class`)
 
-## 12. Digital diary (`/teacher/dashboard/homework`)
+- **Who uses:** class teacher.
+- **Main APIs:** class-teacher classes and active students.
+- **Tables:** `classes`, `students`.
+- **UI shown:** class profile card, strength and section, student roster with quick actions.
 
-| API | Tables / bucket | Fetched / written |
-|-----|------------------|-------------------|
-| `GET /api/classes/academic-years?school_code=` | **`classes`**; **`students`** (derive years) | **Read** |
-| `GET /api/diary?...` | **`diaries`**; **`diary_targets`**; **`diary_attachments`**; **`diary_reads`** | **Read** |
-| `GET /api/diary/stats?...` | **`diaries`** | **Read** |
-| `GET /api/diary/:id` | **`diaries`** | **Read** |
-| `POST /api/diary` / `PUT /api/diary/:id` / `DELETE /api/diary/:id` | **`diaries`**; **`diary_targets`**; **`diary_attachments`**; `accepted_schools` | **Write** |
-| `POST /api/diary/upload` | Storage **`diary-attachments`** | **Upload** file |
+### 9. Classes (`/teacher/dashboard/classes`)
 
----
+- **Who uses:** all teaching staff.
+- **Main APIs:** school classes list and class-wise student roster.
+- **Tables:** `classes`, `students`, `staff`, `accepted_schools`.
+- **UI shown:** class cards, section chips, count badges, tap into roster details.
 
-## 13. Copy checking (`/teacher/dashboard/copy-checking`)
+### 10. Student Management (`/teacher/dashboard/students`)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/classes/teacher?...` | `classes`; `students` | **Read** |
-| `GET /api/timetable/slots?...` | **`timetable_slots`**; … | **Read** |
+- **Who uses:** all teaching staff (as permitted).
+- **Main APIs:** student directory + student fees/transport detail.
+- **Tables:** `students`, `academic_years`, `student_fees`, `transport_routes`, `transport_stops`, `accepted_schools`.
+- **UI shown:** searchable directory, profile header, parent/contact/transport/fee info blocks.
 
----
+### 11. Academic Calendar (`/teacher/dashboard/calendar`)
 
-## 14. Apply for leave (`/teacher/dashboard/apply-leave`)
+- **Who uses:** all teaching staff.
+- **Main API:** academic calendar aggregation.
+- **Tables:** `events`, `academic_calendar`, `exam_schedules`, `examinations`.
+- **UI shown:** monthly calendar with colored event dots, agenda list, event detail sheet.
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/leave/types?school_code=` | **`leave_types`**; `accepted_schools` (admin writes) | **Read** |
-| `POST /api/leave/requests` | **`staff_leave_requests`**; **`staff`**; **`leave_types`** | **Insert** |
+### 12. Digital Diary (`/teacher/dashboard/homework`)
 
----
+- **Who uses:** all teaching staff.
+- **Main APIs:** diary listing, stats, details, CRUD, upload.
+- **Tables/Buckets:** `diaries`, `diary_targets`, `diary_attachments`, `diary_reads`, storage `diary-attachments`, `classes`, `students`.
+- **UI shown:** compose editor with attachments, class/section targeting, publish schedule, read receipts.
 
-## 15. My leaves (`/teacher/dashboard/my-leaves`)
+### 13. Copy Checking (`/teacher/dashboard/copy-checking`)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/leave/types?school_code=` | **`leave_types`** | **Read** |
-| `GET /api/leave/requests?school_code=&staff_id=` | **`staff_leave_requests`** | **Read** |
-| `POST /api/leave/requests/:id/withdraw` | **`staff_leave_requests`** | **Update** status |
+- **Who uses:** all teaching staff.
+- **Main APIs:** teacher classes and timetable slots.
+- **Tables:** `classes`, `students`, `timetable_slots`.
+- **UI shown:** class-subject checklist, pending/checked counters, completion tracker timeline.
 
----
+### 14. Apply for Leave (`/teacher/dashboard/apply-leave`)
 
-## 16. Student leave approvals (`/teacher/dashboard/student-leave-approvals`)
+- **Who uses:** all teaching staff.
+- **Main APIs:** leave types, leave create.
+- **Tables:** `leave_types`, `staff_leave_requests`, `staff`.
+- **UI shown:** leave type dropdown, date range picker, reason text box, attachment option, submit state.
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/leave/student-requests/class-teacher?...` | **`classes`**; **`students`**; **`student_leave_requests`**; **`leave_types`** | **Read** |
-| `PATCH /api/leave/student-requests/:id/class-teacher-approval` | **`student_leave_requests`**; **`students`**; **`classes`** | **Update** approve/reject |
+### 15. My Leaves (`/teacher/dashboard/my-leaves`)
 
----
+- **Who uses:** all teaching staff.
+- **Main APIs:** leave types, own leave requests, withdraw request.
+- **Tables:** `staff_leave_requests`, `leave_types`.
+- **UI shown:** request timeline with status chips, filter by status/date, withdraw CTA for pending only.
 
-## 17. Institute info (`/teacher/dashboard/institute-info`)
+### 16. Student Leave Approvals (`/teacher/dashboard/student-leave-approvals`)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/schools/accepted` | **`accepted_schools`** | **Read**; client picks row by `school_code` |
+- **Who uses:** class teacher.
+- **Main APIs:** class-teacher student leave queue, approval action.
+- **Tables:** `student_leave_requests`, `students`, `classes`, `leave_types`.
+- **UI shown:** pending leave cards with reason/dates/docs and Approve/Reject bottom actions.
 
----
+### 17. Institute Info (`/teacher/dashboard/institute-info`)
 
-## 18. Library (`/teacher/dashboard/library`)
+- **Who uses:** all teaching staff.
+- **Main API:** accepted schools list.
+- **Table:** `accepted_schools`.
+- **UI shown:** school profile (name, board, contacts, address, logo), static info cards.
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/library/books?school_code=` | **`library_books`**; **`library_sections`**; **`library_material_types`**; **`library_book_copies`** | **Read** catalogue + copy status |
+### 18. Library (`/teacher/dashboard/library`)
 
----
+- **Who uses:** all teaching staff.
+- **Main API:** library books catalog.
+- **Tables:** `library_books`, `library_sections`, `library_material_types`, `library_book_copies`.
+- **UI shown:** search + filter chips (section/type/availability), book cards, copy status tags.
 
-## 19. Certificate management (`/teacher/dashboard/certificates`)
+### 19. Certificate Management (`/teacher/dashboard/certificates`)
 
-| API | Tables / bucket | Fetched / written |
-|-----|------------------|-------------------|
-| `GET /api/classes/teacher?...` | `classes`; `students` | **Read** |
-| `GET /api/students?...` | **`students`** | **Read** |
-| `GET /api/certificates/simple?school_code=` | **`simple_certificates`**; **`students`** | **Read** |
-| `POST /api/certificates/simple/upload` | **`accepted_schools`**; **`students`**; storage **`certificates`**; **`simple_certificates`** | **Upload** + **insert** row |
+- **Who uses:** all teaching staff (as permitted).
+- **Main APIs:** teacher classes/students, simple certificate list/upload.
+- **Tables/Buckets:** `simple_certificates`, `students`, `accepted_schools`, storage `certificates`.
+- **UI shown:** student picker, certificate type/upload form, issued history list with download/open.
 
----
+### 20. Gallery (`/teacher/dashboard/gallery`)
 
-## 20. Gallery (`/teacher/dashboard/gallery`)
+- **Who uses:** all teaching staff.
+- **Main API:** gallery listing.
+- **Tables/Bucket:** `gallery`, `staff`, `accepted_schools`, storage `school-media`.
+- **UI shown:** category tabs, media grid, image viewer modal, upload metadata chips (if allowed).
 
-| API | Tables / bucket | Fetched / written |
-|-----|------------------|-------------------|
-| `GET /api/gallery?school_code=&category=` | **`gallery`**; **`staff`** (uploader); `accepted_schools`; storage **`school-media`** | **Read** |
+### 21. Staff Information (`/teacher/dashboard/staff-management/directory`)
 
----
+- **Who uses:** all teaching staff.
+- **Main API:** staff directory.
+- **Tables:** `staff` (+ optional subject joins).
+- **UI shown:** searchable teacher/staff cards, contact actions (call/message), department filters.
 
-## 21. Staff information (`/teacher/dashboard/staff-management/directory`)
+### 22. Communication (`/teacher/dashboard/communication`)
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/staff?school_code=` | **`staff`**; optional **`timetable_subjects`** / joins per route | **Read** directory |
+- **Who uses:** all teaching staff.
+- **Main API:** notices feed.
+- **Tables:** `notices`, `accepted_schools`.
+- **UI shown:** notice cards, priority badge, attachment preview, read/unread state.
 
----
+### 23. Settings (`/teacher/dashboard/settings`)
 
-## 22. Communication (`/teacher/dashboard/communication`)
+- **Who uses:** all teaching staff.
+- **Main APIs:** profile read/update, photo read/upload.
+- **Tables/Bucket:** `staff`, storage `staff-photos`.
+- **UI shown:** editable profile form, avatar upload, preferences toggles, save confirmation.
 
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `GET /api/communication/notices?...` | `accepted_schools`; **`notices`** | **Read** |
+### 24. Change Password (`/teacher/dashboard/change-password`)
 
----
-
-## 23. Settings (`/teacher/dashboard/settings`)
-
-| API | Tables / bucket | Fetched / written |
-|-----|------------------|-------------------|
-| `GET /api/staff/:id` | **`staff`** | **Read** profile |
-| `PATCH /api/staff/:id` | **`staff`** | **Update** profile |
-| `GET /api/staff/photos/self` (or per-id photo route) | **`staff`**; storage **`staff-photos`** | **Read** / **upload** photo |
-
----
-
-## 24. Change password (`/teacher/dashboard/change-password`)
-
-| API | Tables | Fetched / written |
-|-----|--------|-------------------|
-| `POST /api/staff/change-password` | **`staff`**; **`staff_login`** | **Verify** + **update** password |
-
----
-
-## Admin: class teacher & timetable (data model)
-
-| Assignment | Table / object | Field / row |
-|------------|----------------|-------------|
-| Class teacher | **`classes`** | `class_teacher_id` (staff UUID), `class_teacher_staff_id` (employee id) |
-| Subject on timetable | **`timetable_slots`** | `teacher_id` / `teacher_ids`, `class_id`, `subject_id`, `school_code` |
-| Subject directory (optional) | **`staff_subjects`** | `staff_id`, `subject_id`, `school_code` |
+- **Who uses:** all teaching staff.
+- **Main API:** change password.
+- **Tables:** `staff`, `staff_login`.
+- **UI shown:** old/new/confirm fields, password strength meter, success confirmation + re-login prompt.
 
 ---
 
-*Generated from `app/teacher/dashboard/*`, `app/teacher/layout.tsx`, and `app/api/*` route handlers. Permission-based screens reuse additional admin APIs not listed here.*
+## 6) Admin role assignment module (recommended RN admin flow)
+
+If admin features are exposed in mobile app, create these pages:
+
+1. **Staff Directory (Admin)**  
+   - List all staff (`GET /api/admin/staff`).
+   - Search by name/employee id/department.
+
+2. **Assign Role Page**  
+   - Load existing roles (`GET /api/staff/{id}/roles`).
+   - Multi-select role chips.
+   - Save (`POST /api/staff/{id}/roles` -> updates `staff_roles`).
+
+3. **Assign Class Teacher Page**  
+   - Select class and teacher.
+   - Save mapping to `classes.class_teacher_id` / `class_teacher_staff_id`.
+
+4. **Assign Subject Teacher Page**  
+   - Matrix: class x subject x period.
+   - Save in `timetable_slots.teacher_id` (or `teacher_ids`).
+   - Optional sync to `staff_subjects`.
+
+5. **Permission Override Page (optional advanced)**  
+   - Add direct staff permissions (`staff_permissions`) for exceptions over role defaults.
+
+---
+
+## 7) Missing items added in this revision
+
+- Clear **end-to-end role management flow** (admin assignment to teacher action).
+- Explicit **Class Teacher vs Subject Teacher** behavior and access checks.
+- **UI/UX + color system** for every module, tailored to React Native implementation.
+- Added **admin-side mobile module recommendations** for assignment and governance.
+
+---
+
+Generated from `app/teacher/dashboard/*`, `app/teacher/layout.tsx`, and `app/api/*` route handlers, then expanded for React Native implementation and product design consistency.
