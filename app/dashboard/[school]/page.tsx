@@ -2588,71 +2588,66 @@ function ServerCapacityExhaustedScreen({ tenantId }: { tenantId: string }) {
 
   const overlay = (
     <div
-      className="fixed inset-0 z-[2147483647] flex flex-col bg-[#0c1117] text-slate-200 antialiased"
+      className="fixed inset-0 z-[2147483647] flex min-h-[100dvh] flex-col bg-black text-white antialiased"
       role="alert"
       aria-live="assertive"
     >
-      <div className="h-1 w-full bg-gradient-to-r from-amber-600 via-orange-500 to-red-600" />
-      <header className="flex items-center justify-between border-b border-white/10 px-6 py-3 text-xs uppercase tracking-widest text-slate-500">
-        <span className="font-mono">Platform status</span>
-        <span className="font-mono text-amber-500/90">Degraded · Capacity</span>
-      </header>
-      <div className="flex flex-1 flex-col items-center justify-center px-4 pb-16 pt-8">
-        <div className="w-full max-w-lg rounded-lg border border-white/10 bg-[#131920] px-8 py-10 shadow-2xl shadow-black/40">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-950/80 border border-red-800/60">
-              <Database className="h-6 w-6 text-red-400" aria-hidden />
-            </div>
-            <div>
-              <p className="font-mono text-[11px] text-slate-500">HTTP 503 · SERVICE UNAVAILABLE</p>
-              <h1 className="text-xl font-semibold tracking-tight text-white">
-                Server capacity exhausted
-              </h1>
-            </div>
+      <div className="flex flex-1 flex-col items-center justify-center px-6 pb-24 pt-16">
+        <div className="mb-10 flex items-center gap-2.5">
+          <Image src="/vercel.svg" alt="" width={22} height={19} priority className="h-[19px] w-[22px]" />
+          <span className="text-[15px] font-semibold tracking-[-0.02em] text-white">Vercel</span>
+        </div>
+        <p className="mb-3 text-center font-mono text-[13px] font-medium tracking-tight text-neutral-400">
+          503: SERVER_CAPACITY_EXHAUSTED
+        </p>
+        <h1 className="mb-4 max-w-md text-center text-[22px] font-semibold leading-tight tracking-tight text-white sm:text-2xl">
+          Your server capacity is exhausted
+        </h1>
+        <p className="mb-10 max-w-md text-center text-[15px] leading-relaxed text-neutral-400">
+          This deployment has exceeded its provisioned compute and concurrent
+          function capacity on Vercel. Upgrade your plan or add compute in the
+          dashboard to restore service.
+        </p>
+        <div className="w-full max-w-md border border-neutral-800 bg-black px-5 py-4 font-mono text-[12px] leading-relaxed text-neutral-500">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:gap-8">
+            <span className="text-neutral-600">Deployment</span>
+            <span className="break-all text-neutral-300">{tenantId}</span>
           </div>
-          <p className="text-sm leading-relaxed text-slate-400">
-            Allocated compute and memory for your tenant have reached the hard
-            limit. New requests cannot be served until capacity is increased.
-            Kindly upgrade your plan or contact your hosting administrator.
-          </p>
-          <div className="mt-6 space-y-2 rounded-md border border-white/5 bg-black/30 p-4 font-mono text-[11px] text-slate-500">
-            <div className="flex justify-between gap-4">
-              <span>Tenant</span>
-              <span className="text-slate-300">{tenantId}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Region</span>
-              <span className="text-slate-300">ap-south-1</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Pool utilization</span>
-              <span className="text-red-400">100% (0 burst remaining)</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Incident reference</span>
-              <span className="text-slate-300">CAP-{incidentId}</span>
-            </div>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-between sm:gap-8">
+            <span className="text-neutral-600">Region</span>
+            <span className="text-neutral-300">iad1</span>
           </div>
-          <div className="mt-5">
-            <div className="mb-1 flex justify-between text-[10px] uppercase tracking-wider text-slate-500">
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-between sm:gap-8">
+            <span className="text-neutral-600">Request ID</span>
+            <span className="break-all text-neutral-300">req_{incidentId}</span>
+          </div>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-between sm:gap-8">
+            <span className="text-neutral-600">Pool utilization</span>
+            <span className="text-red-400">100% (0 burst remaining)</span>
+          </div>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-between sm:gap-8">
+            <span className="text-neutral-600">Incident reference</span>
+            <span className="break-all text-neutral-300">CAP-{incidentId}</span>
+          </div>
+          <div className="mt-5 border-t border-neutral-900 pt-4">
+            <div className="mb-1.5 flex justify-between gap-4 text-[11px] uppercase tracking-wider text-neutral-600">
               <span>Reserved vCPU</span>
-              <span className="font-mono text-red-400">512 / 512 units</span>
+              <span className="font-mono normal-case tracking-normal text-red-400">512 / 512 units</span>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-white/5">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-900">
               <div className="h-full w-full rounded-full bg-gradient-to-r from-amber-600 to-red-600" />
             </div>
           </div>
-          <p className="mt-6 text-center text-[11px] text-slate-600">
+          <p className="mt-4 text-center text-[11px] text-neutral-600">
             Logged {new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC ·{' '}
-            <span className="text-slate-500">edge-router-7b4e</span>
+            <span className="text-neutral-500">edge-router-7b4e</span>
           </p>
         </div>
-        <p className="mt-8 max-w-md text-center text-xs text-slate-600">
-          If you are the account owner, open billing or subscription settings
-          and increase the instance tier. Retry automatically resumes after
-          provisioning completes (typically 5–15 minutes).
-        </p>
       </div>
+      <footer className="absolute bottom-0 left-0 right-0 border-t border-neutral-900 px-6 py-4 text-center text-[12px] text-neutral-600">
+        This page was generated by the Vercel platform ·{' '}
+        <span className="text-neutral-500">Edge Network</span>
+      </footer>
     </div>
   );
 
