@@ -7,9 +7,7 @@ import { createPortal } from 'react-dom';
 import { MdSchool, MdArrowForward } from 'react-icons/md';
 
 // =============================================================================
-// TEMP: LANDING PAGE SERVER CAPACITY GATE (easy to remove)
-// Delete this whole block and the `if (TEMP_MAIN_SERVER_CAPACITY_GATE)` in
-// `EduCoreLanding` when no longer needed.
+// TEMP: LANDING PAGE SERVER CAPACITY GATE 
 const TEMP_MAIN_SERVER_CAPACITY_GATE = true;
 
 function ServerCapacityExhaustedScreen({ tenantId }: { tenantId: string }) {
@@ -104,10 +102,6 @@ export default function EduCoreLanding() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const heroRef = useRef<HTMLElement>(null);
 
-  if (TEMP_MAIN_SERVER_CAPACITY_GATE) {
-    return <ServerCapacityExhaustedScreen tenantId="landing-page" />;
-  }
-
   useEffect(() => {
     const handleScroll = () => {
       const y = window.scrollY;
@@ -171,6 +165,10 @@ export default function EduCoreLanding() {
       observer.disconnect();
     };
   }, []);
+
+  if (TEMP_MAIN_SERVER_CAPACITY_GATE) {
+    return <ServerCapacityExhaustedScreen tenantId="landing-page" />;
+  }
 
   return (
     <>
