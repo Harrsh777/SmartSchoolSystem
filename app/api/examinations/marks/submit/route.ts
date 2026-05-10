@@ -242,14 +242,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: students } = await supabase
-      .from('students')
-      .select('id')
-      .eq('school_code', school_code)
-      .eq('class', classData.class)
-      .eq('section', classData.section || '')
-      .eq('status', 'active');
-
     // Submit all available saved marks for this class.
     const { data: existingMarks, error: bulkFetchError } = await supabase
       .from('student_subject_marks')
