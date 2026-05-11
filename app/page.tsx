@@ -3,11 +3,126 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { MdSchool, MdArrowForward } from 'react-icons/md';
+import './landing.css';
+
+/** Email pattern matching the server-side validator in /api/contact-inquiries. */
+const EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
+/** Phone validator: 10–15 digits, optional leading "+", spaces/dashes/parens tolerated. */
+function isValidPhone(raw: string): boolean {
+  const digits = raw.replace(/[\s()\-]/g, '');
+  return /^\+?\d{10,15}$/.test(digits);
+}
+
+type InquiryField = 'full_name' | 'email' | 'phone' | 'institution_name' | 'message';
+type InquiryForm = Record<InquiryField, string>;
+type InquiryErrors = Partial<Record<InquiryField, string>>;
 
 export default function EduCoreLanding() {
   const [scrolled, setScrolled] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const heroRef = useRef<HTMLElement>(null);
+
+  const [form, setForm] = useState<InquiryForm>({
+    full_name: '',
+    email: '',
+    phone: '',
+    institution_name: '',
+    message: '',
+  });
+  const [errors, setErrors] = useState<InquiryErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [submitMessage, setSubmitMessage] = useState<string>('');
+
+  const updateField = (field: InquiryField) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const value = e.target.value;
+      setForm((prev) => ({ ...prev, [field]: value }));
+      setErrors((prev) => {
+        if (!prev[field]) return prev;
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+      if (submitStatus !== 'idle') setSubmitStatus('idle');
+    };
+
+  const validate = (values: InquiryForm): InquiryErrors => {
+    const e: InquiryErrors = {};
+    const fullName = values.full_name.trim();
+    const email = values.email.trim();
+    const phone = values.phone.trim();
+    const inst = values.institution_name.trim();
+    const msg = values.message.trim();
+
+    if (!fullName) e.full_name = 'Please enter your full name.';
+    else if (fullName.length > 120) e.full_name = 'Max 120 characters.';
+
+    if (!email) e.email = 'Email is required.';
+    else if (!EMAIL_RE.test(email)) e.email = 'Enter a valid email (e.g. you@school.edu).';
+
+    if (phone && !isValidPhone(phone))
+      e.phone = 'Enter 10–15 digits, with optional leading +.';
+
+    if (!inst) e.institution_name = 'Institution name is required.';
+    else if (inst.length > 160) e.institution_name = 'Max 160 characters.';
+
+    if (!msg) e.message = 'Tell us a bit about your needs.';
+    else if (msg.length < 5) e.message = 'A little more detail, please.';
+    else if (msg.length > 2000) e.message = 'Keep it under 2000 characters.';
+
+    return e;
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const v = validate(form);
+    setErrors(v);
+    if (Object.keys(v).length > 0) {
+      setSubmitStatus('error');
+      setSubmitMessage('Please fix the highlighted fields.');
+      return;
+    }
+
+    setSubmitting(true);
+    setSubmitStatus('idle');
+    setSubmitMessage('');
+    try {
+      const res = await fetch('/api/contact-inquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: form.full_name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+          institution_name: form.institution_name.trim(),
+          message: form.message.trim(),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (json?.fields && typeof json.fields === 'object') {
+          setErrors(json.fields as InquiryErrors);
+        }
+        setSubmitStatus('error');
+        setSubmitMessage(
+          (json?.error as string) || 'Could not send your message. Please try again.'
+        );
+      } else {
+        setSubmitStatus('success');
+        setSubmitMessage("Thanks! We've received your message and will be in touch shortly.");
+        setForm({ full_name: '', email: '', phone: '', institution_name: '', message: '' });
+        setErrors({});
+      }
+    } catch (err) {
+      console.error('Contact inquiry submit failed:', err);
+      setSubmitStatus('error');
+      setSubmitMessage('Network error. Please check your connection and try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -45,6 +160,13 @@ export default function EduCoreLanding() {
   }, []);
 
   useEffect(() => {
+    document.body.classList.add('ec-body');
+    return () => {
+      document.body.classList.remove('ec-body');
+    };
+  }, []);
+
+  useEffect(() => {
     const revealElements = Array.from(document.querySelectorAll<HTMLElement>('.ec-reveal'));
     if (revealElements.length === 0) {
       return;
@@ -74,588 +196,14 @@ export default function EduCoreLanding() {
   }, []);
 
   return (
-    <>
-      <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
-
-        :root {
-          --ink: #0a0e1a;
-          --ink-soft: #1e2535;
-          --ink-muted: #4a5568;
-          --sky: #0ea5e9;
-          --sky-bright: #38bdf8;
-          --sky-pale: #e0f2fe;
-          --teal: #0d9488;
-          --amber: #f59e0b;
-          --surface: #f8fafc;
-          --surface-card: #ffffff;
-          --border: rgba(14,165,233,0.12);
-          --radius-lg: 1.5rem;
-          --radius-xl: 2rem;
-          --radius-pill: 9999px;
-          --font-main: 'Space Grotesk', sans-serif;
-          --shadow-card: 0 4px 24px rgba(14,165,233,0.08), 0 1px 4px rgba(0,0,0,0.06);
-          --shadow-glow: 0 0 60px rgba(14,165,233,0.18);
-        }
-
-        *, *::before, *::after { box-sizing: border-box; }
-        html { scroll-behavior: smooth; }
-
-        body {
-          font-family: var(--font-main) !important;
-          background: var(--surface);
-          color: var(--ink);
-          overflow-x: hidden;
-          -webkit-font-smoothing: antialiased;
-        }
-
-        h1, h2, h3, h4, h5, h6 {
-          font-family: var(--font-main) !important;
-        }
-
-        /* ── SCROLL PROGRESS ── */
-        .ec-scroll-bar {
-          position: fixed; top: 0; left: 0; right: 0; height: 3px;
-          background: linear-gradient(90deg, var(--sky), var(--teal));
-          transform-origin: 0%;
-          z-index: 200;
-        }
-
-        /* ── NAV ── */
-        .ec-nav {
-          position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-          padding: 1rem 2.5rem;
-          display: flex; align-items: center; justify-content: space-between;
-          background: rgba(248,250,252,0.72);
-          backdrop-filter: blur(20px);
-          border-bottom: 1px solid var(--border);
-          transition: box-shadow .3s;
-        }
-        .ec-nav.scrolled { box-shadow: 0 4px 30px rgba(0,0,0,0.08); }
-
-        .ec-logo {
-          font-family: var(--font-main) !important;
-          font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em;
-          background: linear-gradient(135deg, var(--sky), var(--teal));
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-          display: flex; align-items: center; gap: .5rem; text-decoration: none;
-        }
-        .ec-logo-icon {
-          width: 36px; height: 36px; border-radius: .65rem;
-          background: linear-gradient(135deg, var(--sky), var(--teal));
-          display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 4px 14px rgba(14,165,233,0.35);
-          flex-shrink: 0;
-        }
-
-        .ec-nav-links { display: flex; align-items: center; gap: 2.5rem; }
-        .ec-nav-links a {
-          font-size: .875rem; font-weight: 500; color: var(--ink-muted);
-          text-decoration: none; transition: color .2s; letter-spacing: -0.01em;
-          font-family: var(--font-main) !important;
-        }
-        .ec-nav-links a:hover { color: var(--sky); }
-
-        .ec-nav-cta { display: flex; align-items: center; gap: .75rem; }
-
-        .ec-btn-ghost {
-          padding: .5rem 1.25rem; border-radius: var(--radius-pill);
-          font-size: .875rem; font-weight: 600; color: var(--ink);
-          background: transparent; border: 1.5px solid var(--border);
-          cursor: pointer; transition: all .2s; font-family: var(--font-main) !important;
-          text-decoration: none; display: inline-flex; align-items: center;
-        }
-        .ec-btn-ghost:hover { border-color: var(--sky); color: var(--sky); }
-
-        .ec-btn-primary {
-          padding: .6rem 1.5rem; border-radius: var(--radius-pill);
-          font-size: .875rem; font-weight: 700; color: #fff;
-          background: linear-gradient(135deg, var(--sky) 0%, var(--teal) 100%);
-          border: none; cursor: pointer; transition: all .25s;
-          font-family: var(--font-main) !important; letter-spacing: -0.01em;
-          box-shadow: 0 4px 20px rgba(14,165,233,0.35);
-          display: inline-flex; align-items: center; gap: .4rem; text-decoration: none;
-        }
-        .ec-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(14,165,233,0.4); color: #fff; }
-
-        /* ── HERO ── */
-        .ec-hero {
-          min-height: 100vh;
-          display: flex; flex-direction: column; align-items: center; justify-content: center;
-          padding: 7rem 2.5rem 5rem; position: relative; overflow: hidden; text-align: center;
-        }
-        .ec-hero-bg {
-          position: absolute; inset: 0; z-index: 0;
-          background:
-            radial-gradient(ellipse 80% 60% at 50% -10%, rgba(14,165,233,0.13) 0%, transparent 70%),
-            radial-gradient(ellipse 50% 40% at 80% 50%, rgba(13,148,136,0.08) 0%, transparent 60%),
-            radial-gradient(ellipse 40% 30% at 10% 70%, rgba(245,158,11,0.06) 0%, transparent 60%);
-        }
-        .ec-hero-bg::before {
-          content: '';
-          position: absolute; inset: 0;
-          background-image:
-            linear-gradient(rgba(14,165,233,0.06) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(14,165,233,0.06) 1px, transparent 1px);
-          background-size: 60px 60px;
-          mask-image: radial-gradient(ellipse at center, black 0%, transparent 75%);
-        }
-
-        .ec-hero-badge {
-          display: inline-flex; align-items: center; gap: .5rem;
-          padding: .4rem 1rem; border-radius: var(--radius-pill);
-          background: rgba(14,165,233,0.08); border: 1px solid rgba(14,165,233,0.2);
-          font-size: .78rem; font-weight: 600; color: var(--sky);
-          text-transform: uppercase; letter-spacing: .08em;
-          margin-bottom: 2rem; position: relative; z-index: 1;
-          animation: ecFadeUp .6s ease both;
-        }
-        .ec-hero-badge .dot {
-          width: 6px; height: 6px; border-radius: 50%;
-          background: var(--sky); box-shadow: 0 0 8px var(--sky);
-          animation: ecPulseDot 2s ease infinite;
-        }
-
-        @keyframes ecPulseDot {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: .6; transform: scale(1.4); }
-        }
-
-        .ec-hero h1 {
-          font-family: var(--font-main) !important;
-          font-size: clamp(3rem, 7vw, 6rem);
-          font-weight: 700; line-height: 1.05; letter-spacing: -0.04em;
-          color: var(--ink); margin-bottom: 1.5rem;
-          position: relative; z-index: 1;
-          animation: ecFadeUp .7s ease .1s both;
-        }
-        .ec-gradient-text {
-          background: linear-gradient(135deg, var(--sky) 0%, var(--teal) 50%, var(--sky-bright) 100%);
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-          background-size: 200% 200%;
-          animation: ecShimmer 4s linear infinite;
-        }
-        @keyframes ecShimmer {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-
-        .ec-hero p {
-          max-width: 580px; margin: 0 auto 2.5rem;
-          font-size: 1.15rem; line-height: 1.7; color: var(--ink-muted);
-          font-weight: 400; position: relative; z-index: 1;
-          animation: ecFadeUp .7s ease .2s both;
-        }
-
-        .ec-hero-actions {
-          display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
-          position: relative; z-index: 1;
-          animation: ecFadeUp .7s ease .3s both;
-          margin-bottom: 5rem;
-        }
-
-        .ec-btn-hero {
-          padding: .9rem 2.2rem; border-radius: var(--radius-pill);
-          font-size: 1rem; font-weight: 700; font-family: var(--font-main) !important;
-          letter-spacing: -0.02em; cursor: pointer; transition: all .25s;
-          display: inline-flex; align-items: center; gap: .5rem; text-decoration: none;
-        }
-        .ec-btn-hero-primary {
-          background: linear-gradient(135deg, var(--sky), var(--teal));
-          color: #fff; border: none; box-shadow: 0 6px 30px rgba(14,165,233,0.38);
-        }
-        .ec-btn-hero-primary:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(14,165,233,0.45); color: #fff; }
-        .ec-btn-hero-secondary {
-          background: var(--surface-card); color: var(--ink);
-          border: 1.5px solid rgba(0,0,0,0.08); box-shadow: var(--shadow-card);
-        }
-        .ec-btn-hero-secondary:hover { transform: translateY(-2px); border-color: var(--sky); color: var(--sky); }
-
-        /* Browser frame */
-        .ec-frame {
-          position: relative; z-index: 1; width: 100%; max-width: 1100px;
-          border-radius: var(--radius-xl); overflow: hidden;
-          box-shadow: 0 32px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(14,165,233,0.15);
-          animation: ecFadeUp .8s ease .4s both;
-        }
-        .ec-frame-bar {
-          display: flex; align-items: center; gap: .5rem; padding: .75rem 1.25rem;
-          background: rgba(10,14,26,0.92); border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-        .ec-bar-dot { width: 10px; height: 10px; border-radius: 50%; }
-        .ec-bar-url { flex: 1; display: flex; justify-content: center; }
-        .ec-bar-url span {
-          padding: .2rem .8rem; background: rgba(255,255,255,0.06);
-          border-radius: var(--radius-pill); font-size: .73rem; color: rgba(255,255,255,0.45);
-          font-family: monospace;
-        }
-
-        /* ── STATS STRIP ── */
-        .ec-stats {
-          display: flex; justify-content: center; flex-wrap: wrap; gap: 0;
-          border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-          background: var(--surface-card);
-        }
-        .ec-stat {
-          flex: 1; min-width: 150px; max-width: 220px;
-          text-align: center; padding: 1.75rem 2rem; position: relative;
-        }
-        .ec-stat:not(:last-child)::after {
-          content: ''; position: absolute; right: 0; top: 25%; height: 50%;
-          width: 1px; background: var(--border);
-        }
-        .ec-stat-num {
-          font-family: var(--font-main) !important;
-          font-size: 2.5rem; font-weight: 700; line-height: 1; letter-spacing: -0.04em;
-          background: linear-gradient(135deg, var(--sky), var(--teal));
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-          margin-bottom: .3rem;
-        }
-        .ec-stat-label { font-size: .8rem; color: var(--ink-muted); font-weight: 500; letter-spacing: .02em; }
-
-        /* ── SECTION SHARED ── */
-        .ec-section { padding: 6rem 2.5rem; }
-        .ec-container { max-width: 1200px; margin: 0 auto; }
-        .ec-section-tag {
-          display: inline-flex; align-items: center; gap: .4rem;
-          font-size: .75rem; font-weight: 700; text-transform: uppercase;
-          letter-spacing: .1em; color: var(--sky); margin-bottom: 1rem;
-          font-family: var(--font-main) !important;
-        }
-        .ec-section-tag::before { content: ''; width: 20px; height: 2px; background: var(--sky); border-radius: 1px; }
-        .ec-section-title {
-          font-family: var(--font-main) !important;
-          font-size: clamp(2rem, 4vw, 3.2rem);
-          font-weight: 700; line-height: 1.1; letter-spacing: -0.04em;
-          color: var(--ink); margin-bottom: 1rem;
-        }
-        .ec-section-title .accent { color: var(--sky); }
-        .ec-section-desc { font-size: 1.05rem; color: var(--ink-muted); line-height: 1.7; max-width: 520px; }
-
-        /* ── PORTALS ── */
-        .ec-portals { background: var(--ink); position: relative; overflow: hidden; }
-        .ec-portals::before {
-          content: '';
-          position: absolute; top: -200px; left: 50%; transform: translateX(-50%);
-          width: 900px; height: 500px;
-          background: radial-gradient(ellipse, rgba(14,165,233,0.15) 0%, transparent 70%);
-          pointer-events: none;
-        }
-        .ec-portals .ec-section-tag { color: var(--sky-bright); }
-        .ec-portals .ec-section-title { color: #fff; }
-        .ec-portals .ec-section-desc { color: rgba(255,255,255,0.5); }
-
-        .ec-portals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-top: 4rem; }
-
-        .ec-portal-card {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: var(--radius-xl); overflow: hidden;
-          transition: all .3s ease;
-        }
-        .ec-portal-card:hover {
-          background: rgba(255,255,255,0.07);
-          border-color: rgba(14,165,233,0.3);
-          transform: translateY(-6px);
-          box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 30px rgba(14,165,233,0.1);
-        }
-        .ec-portal-img-wrap { overflow: hidden; }
-        .ec-portal-img {
-          width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block;
-          transition: transform .5s ease;
-        }
-        .ec-portal-card:hover .ec-portal-img { transform: scale(1.04); }
-        .ec-portal-body { padding: 1.75rem; }
-        .ec-portal-icon {
-          width: 44px; height: 44px; border-radius: .75rem;
-          display: flex; align-items: center; justify-content: center;
-          margin-bottom: 1rem;
-        }
-        .ec-portal-card h3 {
-          font-family: var(--font-main) !important;
-          font-size: 1.3rem; font-weight: 700; color: #fff;
-          margin-bottom: .5rem; letter-spacing: -0.03em;
-        }
-        .ec-portal-card p { font-size: .88rem; color: rgba(255,255,255,0.5); line-height: 1.6; }
-        .ec-portal-pill {
-          display: inline-block; margin-top: 1rem;
-          padding: .3rem .85rem; border-radius: var(--radius-pill);
-          font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-        }
-
-        /* ── MODULES ── */
-        .ec-modules { background: var(--surface); }
-        .ec-modules-header { display: flex; flex-wrap: wrap; gap: 2rem; justify-content: space-between; align-items: flex-end; margin-bottom: 3.5rem; }
-        .ec-modules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
-
-        .ec-module-card {
-          background: var(--surface-card); border: 1px solid var(--border);
-          border-radius: var(--radius-lg); padding: 1.5rem;
-          transition: all .25s ease; position: relative; overflow: hidden;
-        }
-        .ec-module-card::before {
-          content: ''; position: absolute; inset: 0;
-          background: linear-gradient(135deg, rgba(14,165,233,0.05), transparent);
-          opacity: 0; transition: opacity .25s;
-        }
-        .ec-module-card:hover { border-color: rgba(14,165,233,0.25); transform: translateY(-4px); box-shadow: 0 12px 40px rgba(14,165,233,0.1), var(--shadow-card); }
-        .ec-module-card:hover::before { opacity: 1; }
-
-        .ec-module-icon {
-          width: 46px; height: 46px; border-radius: .85rem;
-          background: var(--sky-pale); display: flex; align-items: center; justify-content: center;
-          margin-bottom: 1rem; transition: background .25s;
-          font-size: 1.4rem;
-        }
-        .ec-module-card:hover .ec-module-icon { background: rgba(14,165,233,0.15); }
-        .ec-module-card h4 { font-size: .95rem; font-weight: 700; color: var(--ink); margin-bottom: .35rem; letter-spacing: -0.02em; font-family: var(--font-main) !important; }
-        .ec-module-card p { font-size: .8rem; color: var(--ink-muted); line-height: 1.55; }
-
-        /* ── MOBILE SECTION ── */
-        .ec-mobile { background: linear-gradient(160deg, #0c1628 0%, #0a1220 100%); position: relative; overflow: hidden; }
-        .ec-mobile::after {
-          content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
-          background: linear-gradient(90deg, transparent, rgba(14,165,233,0.4), transparent);
-        }
-        .ec-mobile-inner { display: flex; flex-wrap: wrap; gap: 5rem; align-items: center; max-width: 1200px; margin: 0 auto; }
-        .ec-mobile-copy { flex: 1; min-width: 300px; }
-        .ec-mobile-copy .ec-section-title { color: #fff; }
-        .ec-mobile-copy .ec-section-desc { color: rgba(255,255,255,0.5); margin-bottom: 2.5rem; }
-
-        .ec-app-features { display: flex; flex-direction: column; gap: 1.25rem; }
-        .ec-app-feature {
-          display: flex; align-items: flex-start; gap: 1rem; padding: 1rem 1.25rem;
-          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07);
-          border-radius: var(--radius-lg); transition: all .2s;
-        }
-        .ec-app-feature:hover { background: rgba(14,165,233,0.08); border-color: rgba(14,165,233,0.2); }
-        .ec-app-feature-icon { width: 40px; height: 40px; border-radius: .7rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-        .ec-app-feature h4 { font-size: .9rem; font-weight: 700; color: #fff; margin-bottom: .2rem; letter-spacing: -0.02em; font-family: var(--font-main) !important; }
-        .ec-app-feature p { font-size: .8rem; color: rgba(255,255,255,0.45); line-height: 1.5; }
-
-        .ec-phone-wrap { flex: 0 0 auto; display: flex; justify-content: center; align-items: center; position: relative; }
-        .ec-phone-glow { position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, rgba(14,165,233,0.2) 0%, transparent 70%); border-radius: 50%; }
-        .ec-phone {
-          position: relative; z-index: 1; width: 320px; height: 600px;
-          background: #0e1117; border-radius: 3rem; border: 8px solid #1e2535;
-          box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05), inset 0 0 0 1px rgba(255,255,255,0.03);
-          overflow: hidden;
-        }
-        .ec-phone-notch { height: 24px; background: #1e2535; display: flex; align-items: center; justify-content: center; }
-        .ec-phone-notch-bar { width: 70px; height: 14px; background: #0e1117; border-radius: 999px; }
-        .ec-phone img {
-          width: 100%;
-          height: calc(100% - 24px);
-          object-fit: cover;
-          object-position: center;
-          display: block;
-        }
-
-        /* ── STEPS / JOURNEY ── */
-        .ec-journey { background: var(--surface-card); }
-        .ec-steps { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 4rem; position: relative; }
-        .ec-steps::before {
-          content: ''; position: absolute; top: 56px; left: 10%; right: 10%; height: 1px;
-          background: linear-gradient(90deg, transparent, var(--border) 20%, var(--border) 80%, transparent);
-        }
-        .ec-step {
-          flex: 1; min-width: 220px; text-align: center; position: relative;
-          padding: 2.5rem 1.5rem 2rem;
-          background: var(--surface); border: 1px solid var(--border);
-          border-radius: var(--radius-xl); transition: all .25s;
-        }
-        .ec-step:hover { transform: translateY(-6px); box-shadow: var(--shadow-card), 0 0 0 1px rgba(14,165,233,0.15); }
-        .ec-step-num {
-          position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
-          width: 28px; height: 28px; border-radius: 50%;
-          background: var(--sky); color: #fff; font-size: .72rem; font-weight: 800;
-          display: flex; align-items: center; justify-content: center; font-family: var(--font-main) !important;
-        }
-        .ec-step-icon { width: 80px; height: 80px; border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; font-size: 2rem; }
-        .ec-step h3 { font-family: var(--font-main) !important; font-size: 1.15rem; font-weight: 700; color: var(--ink); margin-bottom: .6rem; letter-spacing: -0.03em; }
-        .ec-step p { font-size: .85rem; color: var(--ink-muted); line-height: 1.6; }
-
-        /* ── CTA SECTION ── */
-        .ec-cta {
-          background: linear-gradient(135deg, var(--sky) 0%, #0369a1 40%, var(--teal) 100%);
-          padding: 6rem 2.5rem; position: relative; overflow: hidden;
-        }
-        .ec-cta::before {
-          content: ''; position: absolute; inset: 0;
-          background-image:
-            linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
-          background-size: 40px 40px;
-        }
-        .ec-cta-inner { max-width: 1100px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 4rem; align-items: stretch; position: relative; z-index: 1; }
-        .ec-cta-copy { flex: 1; min-width: 280px; }
-        .ec-cta-copy h2 { font-family: var(--font-main) !important; font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; color: #fff; line-height: 1.1; letter-spacing: -0.04em; margin-bottom: 1rem; }
-        .ec-cta-copy p { color: rgba(255,255,255,0.75); font-size: 1rem; line-height: 1.7; margin-bottom: 2rem; }
-        .ec-cta-contacts { display: flex; flex-direction: column; gap: .75rem; }
-        .ec-cta-contact { display: flex; align-items: center; gap: .75rem; color: rgba(255,255,255,0.9); font-size: .9rem; font-weight: 500; }
-
-        .ec-cta-form {
-          flex: 1; min-width: 300px;
-          background: rgba(255,255,255,0.1); backdrop-filter: blur(20px);
-          border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius-xl); padding: 2.5rem;
-        }
-        .ec-cta-form h3 { font-family: var(--font-main) !important; font-size: 1.3rem; font-weight: 700; color: #fff; margin-bottom: 1.5rem; letter-spacing: -0.03em; }
-        .ec-form-group { margin-bottom: 1rem; }
-        .ec-form-group label { display: block; font-size: .78rem; font-weight: 700; color: rgba(255,255,255,0.8); margin-bottom: .4rem; text-transform: uppercase; letter-spacing: .06em; }
-        .ec-form-group input, .ec-form-group textarea {
-          width: 100%; padding: .75rem 1rem;
-          background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.15);
-          border-radius: .75rem; color: #fff; font-family: var(--font-main) !important; font-size: .9rem;
-          outline: none; transition: all .2s; resize: none;
-        }
-        .ec-form-group input::placeholder, .ec-form-group textarea::placeholder { color: rgba(255,255,255,0.35); }
-        .ec-form-group input:focus, .ec-form-group textarea:focus { border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.18); }
-
-        .ec-btn-submit {
-          width: 100%; padding: .9rem; background: #fff; color: var(--sky);
-          border: none; border-radius: .85rem; font-family: var(--font-main) !important;
-          font-size: .95rem; font-weight: 800; cursor: pointer; transition: all .2s;
-          letter-spacing: -0.02em; display: flex; align-items: center; justify-content: center; gap: .5rem;
-        }
-        .ec-btn-submit:hover { background: rgba(255,255,255,0.92); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.15); }
-
-        .ec-trust-badges { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 2.5rem; }
-        .ec-badge {
-          display: flex; align-items: center; gap: .4rem;
-          background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
-          border-radius: var(--radius-pill); padding: .35rem .85rem;
-          color: rgba(255,255,255,0.9); font-size: .75rem; font-weight: 600;
-        }
-
-        /* ── FOOTER ── */
-       .ec-footer {
-  background: #0f172a;
-  color: #94a3b8;
-  padding: 50px 20px 25px;
-}
-
-.ec-footer-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-}
-
-/* TOP SECTION */
-.ec-footer-top {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 60px;
-  align-items: start;
-}
-
-.ec-footer-brand {
-  max-width: 320px;
-}
-
-.ec-footer-logo {
-  font-size: 22px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 10px;
-}
-
-.ec-footer-tagline {
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-/* LINKS */
-.ec-footer-links {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 40px;
-}
-
-.ec-footer-column span {
-  font-weight: 600;
-  color: #fff;
-  margin-bottom: 10px;
-  display: block;
-}
-
-.ec-footer-column a {
-  display: block;
-  font-size: 13px;
-  margin-bottom: 6px;
-  color: #94a3b8;
-  text-decoration: none;
-  transition: 0.2s;
-}
-
-.ec-footer-column a:hover {
-  color: #38bdf8;
-}
-
-/* DIVIDER */
-.ec-footer-divider {
-  height: 1px;
-  background: #1e293b;
-  margin: 30px 0;
-}
-
-/* BOTTOM */
-.ec-footer-bottom {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.ec-footer-bottom a {
-  color: #38bdf8;
-  text-decoration: none;
-}
-
-.ec-footer-bottom a:hover {
-  text-decoration: underline;
-}
-
-/* RESPONSIVE */
-@media (max-width: 768px) {
-  .ec-footer-top {
-    grid-template-columns: 1fr;
-    gap: 40px;
-  }
-
-  .ec-footer-links {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .ec-footer-bottom {
-    flex-direction: column;
-    text-align: center;
-  }
-}
-
-        /* ── SCROLL-TRIGGERED FADE UP ── */
-        @keyframes ecFadeUp {
-          from { opacity: 0; transform: translateY(28px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .ec-reveal {
-          opacity: 0; transform: translateY(24px);
-          transition: opacity .55s ease, transform .55s ease;
-        }
-        .ec-reveal.visible { opacity: 1; transform: translateY(0); }
-
-        /* ── RESPONSIVE ── */
-        @media (max-width: 768px) {
-          .ec-nav { padding: 1rem 1.25rem; }
-          .ec-nav-links { display: none; }
-          .ec-section { padding: 4rem 1.25rem; }
-          .ec-hero { padding: 6rem 1.25rem 3.5rem; }
-          .ec-steps::before { display: none; }
-          .ec-mobile-inner { gap: 3rem; }
-          .ec-phone-wrap { display: none; }
-        }
-      `}</style>
+    <div className="ec-page">
+      {/* Slow, ambient page-wide aurora background */}
+      <div className="ec-page-aurora" aria-hidden="true">
+        <div className="ec-aurora-blob a" />
+        <div className="ec-aurora-blob b" />
+        <div className="ec-aurora-blob c" />
+        <div className="ec-aurora-grid" />
+      </div>
 
       {/* Scroll Progress Bar */}
       <div className="ec-scroll-bar" style={{ transform: `scaleX(${scrollProgress})` }} />
@@ -688,19 +236,19 @@ export default function EduCoreLanding() {
       {/* ── HERO ── */}
       <header className="ec-hero" ref={heroRef}>
         <div className="ec-hero-bg" />
-
-        <div className="ec-hero-badge">
-          <span className="dot" />
-          Now live in 500+ institutions
-        </div>
+        <div className="ec-hero-orb one" aria-hidden="true" />
+        <div className="ec-hero-orb two" aria-hidden="true" />
 
         <h1>
-          The Operating System<br />
-          for <span className="ec-gradient-text">Modern Education</span>
+          <span className="ec-hero-line">The Operating System
+Built for</span>
+          <span className="ec-hero-line">
+             <span className="ec-gradient-text">Intelligent Platform</span>
+          </span>
         </h1>
 
-        <p>
-          Empower your institution with a unified digital ecosystem — from admissions to analytics, built for the way campuses actually work.
+        <p className="ec-hero-subtitle">
+          Empower your institution with a unified digital ecosystem, from admissions to analytics, built for the way campuses actually work.
         </p>
 
         <div className="ec-hero-actions">
@@ -959,9 +507,11 @@ export default function EduCoreLanding() {
 
             <div className="ec-cta-contacts">
               {[
-                { icon: '✉️', text: 'hello@educore.systems' },
-                { icon: '📞', text: '+1 (888) EDU-CORE' },
-                { icon: '⏱️', text: 'Response within 24 hours' },
+                { icon: '👤', text: 'Ved Prakash' },
+                { icon: '📞', text: '+91 93053 29875' },
+                { icon: '✉️', text: 'vedprakash86@hotmail.com' },
+                { icon: '🏢', text: 'Global Tech Solutions' },
+                { icon: '📧', text: 'globaltechsolutionsprayagraj@gmail.com' },
               ].map((c) => (
                 <div className="ec-cta-contact" key={c.text}>
                   <span>{c.icon}</span>
@@ -977,29 +527,137 @@ export default function EduCoreLanding() {
             </div>
           </div>
 
-          <div className="ec-cta-form">
+          <form className="ec-cta-form" onSubmit={handleSubmit} noValidate>
             <h3>Send Us a Message</h3>
-            <div className="ec-form-group">
-              <label>Full Name</label>
-              <input type="text" placeholder="Jane Smith" />
+
+            <div className={`ec-form-group ${errors.full_name ? 'has-error' : ''}`}>
+              <label htmlFor="ci-full-name">
+                Full Name <span className="ec-req" aria-hidden="true">*</span>
+              </label>
+              <input
+                id="ci-full-name"
+                type="text"
+                name="full_name"
+                autoComplete="name"
+                placeholder="Jane Smith"
+                value={form.full_name}
+                onChange={updateField('full_name')}
+                aria-invalid={Boolean(errors.full_name)}
+                aria-describedby={errors.full_name ? 'ci-full-name-err' : undefined}
+              />
+              {errors.full_name && (
+                <p id="ci-full-name-err" className="ec-form-error">{errors.full_name}</p>
+              )}
             </div>
-            <div className="ec-form-group">
-              <label>Institutional Email</label>
-              <input type="email" placeholder="jane@university.edu" />
+
+            <div className={`ec-form-group ${errors.email ? 'has-error' : ''}`}>
+              <label htmlFor="ci-email">
+                Institutional Email <span className="ec-req" aria-hidden="true">*</span>
+              </label>
+              <input
+                id="ci-email"
+                type="email"
+                name="email"
+                autoComplete="email"
+                inputMode="email"
+                placeholder="jane@university.edu"
+                value={form.email}
+                onChange={updateField('email')}
+                aria-invalid={Boolean(errors.email)}
+                aria-describedby={errors.email ? 'ci-email-err' : undefined}
+              />
+              {errors.email && (
+                <p id="ci-email-err" className="ec-form-error">{errors.email}</p>
+              )}
             </div>
-            <div className="ec-form-group">
-              <label>Institution Name</label>
-              <input type="text" placeholder="Greenfield University" />
+
+            <div className={`ec-form-group ${errors.phone ? 'has-error' : ''}`}>
+              <label htmlFor="ci-phone">Phone Number</label>
+              <input
+                id="ci-phone"
+                type="tel"
+                name="phone"
+                autoComplete="tel"
+                inputMode="tel"
+                placeholder="+91 93053 29875"
+                value={form.phone}
+                onChange={updateField('phone')}
+                aria-invalid={Boolean(errors.phone)}
+                aria-describedby={errors.phone ? 'ci-phone-err' : undefined}
+              />
+              {errors.phone && (
+                <p id="ci-phone-err" className="ec-form-error">{errors.phone}</p>
+              )}
             </div>
-            <div className="ec-form-group">
-              <label>Message</label>
-              <textarea rows={3} placeholder="Tell us about your institution's needs…" />
+
+            <div className={`ec-form-group ${errors.institution_name ? 'has-error' : ''}`}>
+              <label htmlFor="ci-institution">
+                Institution Name <span className="ec-req" aria-hidden="true">*</span>
+              </label>
+              <input
+                id="ci-institution"
+                type="text"
+                name="institution_name"
+                autoComplete="organization"
+                placeholder="Greenfield University"
+                value={form.institution_name}
+                onChange={updateField('institution_name')}
+                aria-invalid={Boolean(errors.institution_name)}
+                aria-describedby={errors.institution_name ? 'ci-institution-err' : undefined}
+              />
+              {errors.institution_name && (
+                <p id="ci-institution-err" className="ec-form-error">{errors.institution_name}</p>
+              )}
             </div>
-            <button className="ec-btn-submit">
-              <span>📨</span>
-              Send Inquiry
+
+            <div className={`ec-form-group ${errors.message ? 'has-error' : ''}`}>
+              <label htmlFor="ci-message">
+                Message <span className="ec-req" aria-hidden="true">*</span>
+              </label>
+              <textarea
+                id="ci-message"
+                name="message"
+                rows={3}
+                placeholder="Tell us about your institution's needs…"
+                value={form.message}
+                onChange={updateField('message')}
+                aria-invalid={Boolean(errors.message)}
+                aria-describedby={errors.message ? 'ci-message-err' : undefined}
+              />
+              {errors.message && (
+                <p id="ci-message-err" className="ec-form-error">{errors.message}</p>
+              )}
+            </div>
+
+            {submitStatus !== 'idle' && submitMessage && (
+              <div
+                className={`ec-form-banner ${submitStatus === 'success' ? 'is-success' : 'is-error'}`}
+                role={submitStatus === 'error' ? 'alert' : 'status'}
+              >
+                <span aria-hidden="true">{submitStatus === 'success' ? '✅' : '⚠️'}</span>
+                {submitMessage}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="ec-btn-submit"
+              disabled={submitting}
+              aria-busy={submitting}
+            >
+              {submitting ? (
+                <>
+                  <span className="ec-spinner" aria-hidden="true" />
+                  Sending…
+                </>
+              ) : (
+                <>
+                  <span aria-hidden="true">📨</span>
+                  Send Inquiry
+                </>
+              )}
             </button>
-          </div>
+          </form>
         </div>
       </section>
 
@@ -1048,21 +706,12 @@ export default function EduCoreLanding() {
     <div className="ec-footer-bottom">
       <p>© 2025 EduCore Systems. All rights reserved.</p>
 
-      <p>
-        Developed by{" "}
-        <a
-          href="https://www.linkedin.com/in/harrshh/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Harsh Srivastava
-        </a>
-      </p>
+      <p>Developed by Global Tech Solutions</p>
     </div>
 
   </div>
 </footer>
 
-    </>
+    </div>
   );
 }

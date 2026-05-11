@@ -176,7 +176,8 @@ type ViewMode =
   | 'employees'
   | 'signups'
   | 'school-supervision'
-  | 'demo-query';
+  | 'demo-query'
+  | 'contact-inquiries';
 
 interface OverviewSchoolRow {
   id: string;
@@ -211,6 +212,20 @@ interface DemoRequestRow {
   demo_date: string;
   demo_time: string;
   created_at: string | null;
+}
+
+interface ContactInquiryRow {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  institution_name: string;
+  message: string;
+  status: 'new' | 'read' | 'responded' | 'archived';
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 interface RedisInfo {
@@ -836,6 +851,13 @@ export default function AdminDashboard() {
   const [expandedSchoolCardId, setExpandedSchoolCardId] = useState<string | null>(null);
   const [demoRequests, setDemoRequests] = useState<DemoRequestRow[]>([]);
   const [demoRequestsLoading, setDemoRequestsLoading] = useState(false);
+  const [contactInquiries, setContactInquiries] = useState<ContactInquiryRow[]>([]);
+  const [contactInquiriesLoading, setContactInquiriesLoading] = useState(false);
+  const [contactInquiryStatusFilter, setContactInquiryStatusFilter] =
+    useState<'all' | ContactInquiryRow['status']>('all');
+  const [contactInquirySearch, setContactInquirySearch] = useState('');
+  const [contactInquiryUpdatingId, setContactInquiryUpdatingId] = useState<string | null>(null);
+  const [contactInquiryDetail, setContactInquiryDetail] = useState<ContactInquiryRow | null>(null);
   const [redisInfo, setRedisInfo] = useState<RedisInfo | null>(null);
   const [redisLoading, setRedisLoading] = useState(false);
 
@@ -1100,11 +1122,20 @@ export default function AdminDashboard() {
       fetchActionAudit();
     } else if (viewMode === 'demo-query') {
       fetchDemoRequests();
+    } else if (viewMode === 'contact-inquiries') {
+      fetchContactInquiries();
     } else if (viewMode === 'redis') {
       fetchRedisInfo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, securityAuditTab]);
+
+  useEffect(() => {
+    if (viewMode === 'contact-inquiries') {
+      fetchContactInquiries();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactInquiryStatusFilter, viewMode]);
 
   useEffect(() => {
     if (viewMode === 'users') {
@@ -1431,6 +1462,78 @@ export default function AdminDashboard() {
       setDemoRequests([]);
     } finally {
       setDemoRequestsLoading(false);
+    }
+  };
+
+  const fetchContactInquiries = async () => {
+    try {
+      setContactInquiriesLoading(true);
+      const params = new URLSearchParams();
+      if (contactInquiryStatusFilter !== 'all') {
+        params.set('status', contactInquiryStatusFilter);
+      }
+      const qs = params.toString();
+      const response = await fetch(
+        `/api/admin/contact-inquiries${qs ? `?${qs}` : ''}`
+      );
+      const result = await response.json();
+      if (response.ok && Array.isArray(result.data)) {
+        setContactInquiries(result.data as ContactInquiryRow[]);
+      } else {
+        setContactInquiries([]);
+      }
+    } catch (error) {
+      console.error('Error fetching contact inquiries:', error);
+      setContactInquiries([]);
+    } finally {
+      setContactInquiriesLoading(false);
+    }
+  };
+
+  const updateContactInquiryStatus = async (
+    id: string,
+    status: ContactInquiryRow['status']
+  ) => {
+    try {
+      setContactInquiryUpdatingId(id);
+      const response = await fetch('/api/admin/contact-inquiries', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      });
+      if (response.ok) {
+        setContactInquiries((rows) =>
+          rows.map((r) => (r.id === id ? { ...r, status } : r))
+        );
+        setContactInquiryDetail((curr) =>
+          curr && curr.id === id ? { ...curr, status } : curr
+        );
+      }
+    } catch (error) {
+      console.error('Error updating contact inquiry status:', error);
+    } finally {
+      setContactInquiryUpdatingId(null);
+    }
+  };
+
+  const deleteContactInquiry = async (id: string) => {
+    if (!window.confirm('Permanently delete this inquiry? This cannot be undone.')) {
+      return;
+    }
+    try {
+      setContactInquiryUpdatingId(id);
+      const response = await fetch(
+        `/api/admin/contact-inquiries?id=${encodeURIComponent(id)}`,
+        { method: 'DELETE' }
+      );
+      if (response.ok) {
+        setContactInquiries((rows) => rows.filter((r) => r.id !== id));
+        setContactInquiryDetail((curr) => (curr && curr.id === id ? null : curr));
+      }
+    } catch (error) {
+      console.error('Error deleting contact inquiry:', error);
+    } finally {
+      setContactInquiryUpdatingId(null);
     }
   };
 
@@ -2437,6 +2540,7 @@ export default function AdminDashboard() {
                           { id: 'redis', label: 'Redis', icon: Database, color: 'from-rose-500 to-orange-500' },
                           { id: 'users', label: 'Users', icon: UserCheck, color: 'from-indigo-500 to-blue-500' },
                           { id: 'demo-query', label: 'Demo Query', icon: ClipboardList, color: 'from-amber-500 to-orange-500' },
+                          { id: 'contact-inquiries', label: 'Contact Inquiries', icon: Mail, color: 'from-sky-500 to-cyan-500' },
                           { id: 'login-audit', label: 'Security & Audit', icon: LogIn, color: 'from-rose-500 to-red-500' },
                         ].map((item) => {
                           const Icon = item.icon;
@@ -3389,6 +3493,307 @@ export default function AdminDashboard() {
                   </table>
                 </div>
               </Card>
+            </motion.div>
+          )}
+
+          {viewMode === 'contact-inquiries' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Contact Inquiries</h2>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Messages submitted from the “Send Us a Message” form on the landing page.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-1">
+                    {(['all', 'new', 'read', 'responded', 'archived'] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setContactInquiryStatusFilter(s)}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors capitalize ${
+                          contactInquiryStatusFilter === s
+                            ? 'bg-sky-500 text-white shadow-sm'
+                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    onClick={fetchContactInquiries}
+                    variant="secondary"
+                    className="inline-flex items-center gap-2"
+                    disabled={contactInquiriesLoading}
+                  >
+                    {contactInquiriesLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="relative max-w-md">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="search"
+                    value={contactInquirySearch}
+                    onChange={(e) => setContactInquirySearch(e.target.value)}
+                    placeholder="Search by name, email, institution, or message…"
+                    className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pl-9 pr-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+              </div>
+
+              <Card className="p-0 overflow-hidden">
+                {contactInquiriesLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#5A7A95] dark:text-[#6B9BB8]" />
+                  </div>
+                ) : (() => {
+                  const q = contactInquirySearch.trim().toLowerCase();
+                  const filtered = q
+                    ? contactInquiries.filter((row) =>
+                        [
+                          row.full_name,
+                          row.email,
+                          row.phone ?? '',
+                          row.institution_name,
+                          row.message,
+                        ]
+                          .join(' ')
+                          .toLowerCase()
+                          .includes(q)
+                      )
+                    : contactInquiries;
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-center py-16 text-gray-500 dark:text-gray-400">
+                        <Mail className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+                        <p className="font-medium">No inquiries found.</p>
+                        <p className="text-sm mt-1">
+                          {contactInquiries.length === 0
+                            ? 'When someone uses the contact form, their message will appear here.'
+                            : 'Try a different filter or search term.'}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  const statusStyle: Record<ContactInquiryRow['status'], string> = {
+                    new: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+                    read: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+                    responded: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+                    archived: 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+                  };
+
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-gray-50 dark:bg-gray-800/60">
+                          <tr className="border-b border-gray-200 dark:border-gray-700">
+                            <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</th>
+                            <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Name</th>
+                            <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Institution</th>
+                            <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Contact</th>
+                            <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Message</th>
+                            <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Received</th>
+                            <th className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {filtered.map((row) => {
+                            const isUpdating = contactInquiryUpdatingId === row.id;
+                            return (
+                              <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                                <td className="px-4 py-3 align-top">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${statusStyle[row.status]}`}>
+                                    {row.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 align-top">
+                                  <div className="font-medium text-gray-900 dark:text-white">{row.full_name}</div>
+                                </td>
+                                <td className="px-4 py-3 align-top text-gray-700 dark:text-gray-300">
+                                  {row.institution_name}
+                                </td>
+                                <td className="px-4 py-3 align-top text-gray-700 dark:text-gray-300">
+                                  <div className="flex items-center gap-1.5">
+                                    <Mail size={13} className="text-gray-400" />
+                                    <a href={`mailto:${row.email}`} className="hover:text-sky-600 dark:hover:text-sky-400 break-all">
+                                      {row.email}
+                                    </a>
+                                  </div>
+                                  {row.phone && (
+                                    <div className="flex items-center gap-1.5 mt-1">
+                                      <Phone size={13} className="text-gray-400" />
+                                      <a href={`tel:${row.phone}`} className="hover:text-sky-600 dark:hover:text-sky-400">
+                                        {row.phone}
+                                      </a>
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 align-top max-w-md">
+                                  <p className="text-gray-700 dark:text-gray-300 line-clamp-2">{row.message}</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setContactInquiryDetail(row);
+                                      if (row.status === 'new') {
+                                        updateContactInquiryStatus(row.id, 'read');
+                                      }
+                                    }}
+                                    className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline mt-1"
+                                  >
+                                    View full message
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3 align-top text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs">
+                                  {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
+                                </td>
+                                <td className="px-4 py-3 align-top text-right">
+                                  <div className="inline-flex items-center gap-1">
+                                    <select
+                                      value={row.status}
+                                      disabled={isUpdating}
+                                      onChange={(e) =>
+                                        updateContactInquiryStatus(row.id, e.target.value as ContactInquiryRow['status'])
+                                      }
+                                      className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-medium px-2 py-1.5 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                                    >
+                                      <option value="new">New</option>
+                                      <option value="read">Read</option>
+                                      <option value="responded">Responded</option>
+                                      <option value="archived">Archived</option>
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteContactInquiry(row.id)}
+                                      disabled={isUpdating}
+                                      title="Delete inquiry"
+                                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </Card>
+
+              <AnimatePresence>
+                {contactInquiryDetail && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                    onClick={() => setContactInquiryDetail(null)}
+                  >
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.96, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.96, y: 10 }}
+                      transition={{ duration: 0.18 }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+                    >
+                      <div className="px-6 py-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-700">
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">{contactInquiryDetail.full_name}</h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">{contactInquiryDetail.institution_name}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setContactInquiryDetail(null)}
+                          className="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                      <div className="px-6 py-5 space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold mb-1">Email</p>
+                            <a href={`mailto:${contactInquiryDetail.email}`} className="text-sky-600 dark:text-sky-400 break-all hover:underline">
+                              {contactInquiryDetail.email}
+                            </a>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold mb-1">Phone</p>
+                            {contactInquiryDetail.phone ? (
+                              <a href={`tel:${contactInquiryDetail.phone}`} className="text-sky-600 dark:text-sky-400 hover:underline">
+                                {contactInquiryDetail.phone}
+                              </a>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold mb-1">Received</p>
+                            <span className="text-gray-700 dark:text-gray-200">
+                              {contactInquiryDetail.created_at
+                                ? new Date(contactInquiryDetail.created_at).toLocaleString()
+                                : '—'}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold mb-1">Status</p>
+                            <select
+                              value={contactInquiryDetail.status}
+                              onChange={(e) =>
+                                updateContactInquiryStatus(
+                                  contactInquiryDetail.id,
+                                  e.target.value as ContactInquiryRow['status']
+                                )
+                              }
+                              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium px-2.5 py-1.5 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                            >
+                              <option value="new">New</option>
+                              <option value="read">Read</option>
+                              <option value="responded">Responded</option>
+                              <option value="archived">Archived</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold mb-1">Message</p>
+                          <p className="text-gray-700 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">
+                            {contactInquiryDetail.message}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2">
+                        <a
+                          href={`mailto:${contactInquiryDetail.email}?subject=Re:%20Your%20inquiry%20to%20EduCore`}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold transition-colors"
+                        >
+                          <Send size={14} />
+                          Reply via Email
+                        </a>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setContactInquiryDetail(null)}
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
 

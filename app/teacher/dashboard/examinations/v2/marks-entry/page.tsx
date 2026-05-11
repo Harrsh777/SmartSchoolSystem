@@ -83,7 +83,7 @@ export default function MarksEntryPage() {
   const [subjects, setSubjects] = useState<ExamSubject[]>([]);
   const [studentMarks, setStudentMarks] = useState<StudentMark[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [locked, setLocked] = useState(false);
