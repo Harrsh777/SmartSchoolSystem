@@ -200,7 +200,7 @@ body.ec-body {
 .ec-hero {
   min-height: 100vh;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 7rem 2.5rem 5rem; position: relative; overflow: hidden; text-align: center;
+  padding: 4rem 2.5rem 4.5rem; position: relative; overflow: hidden; text-align: center;
 }
 .ec-hero-bg {
   position: absolute; inset: 0; z-index: 0;
@@ -734,7 +734,7 @@ body.ec-body {
   .ec-nav { padding: 1rem 1.25rem; }
   .ec-nav-links { display: none; }
   .ec-section { padding: 4rem 1.25rem; }
-  .ec-hero { padding: 6rem 1.25rem 3.5rem; }
+  .ec-hero { padding: 3.5rem 1.25rem 3rem; }
   .ec-steps::before { display: none; }
   .ec-mobile-inner { gap: 3rem; }
   .ec-phone-wrap { display: none; }
