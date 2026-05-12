@@ -507,11 +507,9 @@ Built for</span>
 
             <div className="ec-cta-contacts">
               {[
-                { icon: '👤', text: 'Ved Prakash' },
-                { icon: '📞', text: '+91 93053 29875' },
-                { icon: '✉️', text: 'vedprakash86@hotmail.com' },
+                { icon: '📞', text: '+91 94518 05575' },
+                { icon: '✉️', text: 'info@educorerp.in  ' },
                 { icon: '🏢', text: 'Global Tech Solutions' },
-                { icon: '📧', text: 'globaltechsolutionsprayagraj@gmail.com' },
               ].map((c) => (
                 <div className="ec-cta-contact" key={c.text}>
                   <span>{c.icon}</span>
