@@ -171,14 +171,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for duplicate
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('classes')
       .select('id')
       .eq('school_code', school_code)
       .eq('class', className)
       .eq('section', section)
       .eq('academic_year', academicYearResolvedName)
-      .single();
+      .limit(1)
+      .maybeSingle();
+
+    if (existingError) {
+      return NextResponse.json(
+        { error: 'Failed to check existing classes', details: existingError.message },
+        { status: 500 }
+      );
+    }
 
     if (existing) {
       return NextResponse.json(
@@ -187,19 +195,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert class
-    const { data: newClass, error: insertError } = await supabase
+    const baseClassInsert = {
+      school_id: schoolData.id,
+      school_code: school_code,
+      class: className.toUpperCase(),
+      section: section.toUpperCase(),
+      academic_year: academicYearResolvedName,
+    };
+
+    // Insert class. Try with academic_year_id first, then fall back for older schemas
+    // where classes.academic_year_id is not available yet.
+    let { data: newClass, error: insertError } = await supabase
       .from('classes')
-      .insert([{
-        school_id: schoolData.id,
-        school_code: school_code,
-        class: className.toUpperCase(),
-        section: section.toUpperCase(),
-        academic_year: academicYearResolvedName,
-        academic_year_id: academicYearResolvedId,
-      }])
+      .insert([
+        {
+          ...baseClassInsert,
+          academic_year_id: academicYearResolvedId,
+        },
+      ])
       .select()
       .single();
+
+    if (
+      insertError &&
+      insertError.message.toLowerCase().includes('academic_year_id') &&
+      insertError.message.toLowerCase().includes('column')
+    ) {
+      const fallbackInsert = await supabase
+        .from('classes')
+        .insert([baseClassInsert])
+        .select()
+        .single();
+
+      newClass = fallbackInsert.data;
+      insertError = fallbackInsert.error;
+    }
 
     if (insertError) {
       return NextResponse.json(
