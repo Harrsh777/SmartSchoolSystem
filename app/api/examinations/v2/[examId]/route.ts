@@ -6,6 +6,11 @@ import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 
+function isMissingAcademicYearIdColumn(error: { message?: string } | null | undefined): boolean {
+  const msg = String(error?.message ?? '').toLowerCase();
+  return msg.includes('academic_year_id') && (msg.includes('does not exist') || msg.includes('column'));
+}
+
 function deriveExamDatesFromSchedules(
   schedules: Array<{ exam_date?: string }>
 ): { start_date: string; end_date: string } | null {
@@ -199,23 +204,35 @@ export async function PUT(
       created_by?: string | null;
     };
 
-    const { error: updateExamError } = await supabase
+    const baseUpdate = {
+      exam_name: exam_name.trim(),
+      academic_year: String(resolvedAcademicYearName).trim(),
+      academic_year_id: resolvedAcademicYearId,
+      start_date,
+      end_date,
+      description: description || null,
+      term_id: termIdStr,
+      exam_term_exam_id: templateIdStr,
+      status: typeof existing.status === 'string' && existing.status ? existing.status : 'upcoming',
+      is_published: Boolean(existing.is_published),
+      created_by: existing.created_by ?? created_by ?? null,
+    };
+
+    let { error: updateExamError } = await supabase
       .from('examinations')
-      .update({
-        exam_name: exam_name.trim(),
-        academic_year: String(resolvedAcademicYearName).trim(),
-        academic_year_id: resolvedAcademicYearId,
-        start_date,
-        end_date,
-        description: description || null,
-        term_id: termIdStr,
-        exam_term_exam_id: templateIdStr,
-        status: typeof existing.status === 'string' && existing.status ? existing.status : 'upcoming',
-        is_published: Boolean(existing.is_published),
-        created_by: existing.created_by ?? created_by ?? null,
-      })
+      .update(baseUpdate)
       .eq('id', examId)
       .eq('school_code', school_code);
+
+    // Backward compatibility: retry without academic_year_id on older schemas.
+    if (updateExamError && isMissingAcademicYearIdColumn(updateExamError)) {
+      const fallback = await supabase
+        .from('examinations')
+        .update({ ...baseUpdate, academic_year_id: undefined })
+        .eq('id', examId)
+        .eq('school_code', school_code);
+      updateExamError = fallback.error;
+    }
 
     if (updateExamError) {
       return NextResponse.json(

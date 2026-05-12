@@ -6,6 +6,7 @@ import {
   digits10,
   digits12Aadhaar,
 } from '@/lib/staff/import-validation';
+import { normalizeStaffDepartment } from '@/lib/staff/constants';
 import { friendlyStaffImportDbError } from '@/lib/import-friendly-errors';
 
 export async function GET(request: NextRequest) {
@@ -174,8 +175,8 @@ export async function POST(request: NextRequest) {
         school_code: school_code,
         staff_id: generatedStaffId,
         full_name: staffData.full_name,
-        role: staffData.role,
-        department: staffData.department || null,
+        role: staffData.role || null,
+        department: normalizeStaffDepartment(staffData.department) ?? staffData.department,
         designation: staffData.designation || null,
         email: staffData.email || null,
         phone: phoneClean || null,

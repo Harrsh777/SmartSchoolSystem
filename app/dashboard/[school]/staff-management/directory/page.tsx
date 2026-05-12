@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
 import EmptyState from '@/components/ui/EmptyState';
+import { STAFF_DEPARTMENTS, normalizeStaffDepartment } from '@/lib/staff/constants';
 
 export default function StaffDirectoryPage({
   params,
@@ -38,9 +39,7 @@ export default function StaffDirectoryPage({
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTab, setSelectedTab] = useState<
-    'TEACHING' | 'NON-TEACHING' | 'DRIVER/SUPPORTING STAFF' | 'ADMIN'
-  >('TEACHING');
+  const [selectedTab, setSelectedTab] = useState<(typeof STAFF_DEPARTMENTS)[number]>('Teaching');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
@@ -117,28 +116,38 @@ export default function StaffDirectoryPage({
     }
   };
 
-  const getStaffByRole = (role: string) => {
-    const teaching = ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'];
-    const driverSupporting = ['Driver', 'Support Staff', 'Helper', 'Security'];
-    const admin = ['Admin', 'Super Admin'];
+  const getStaffByDepartment = (department: string) => {
+    const teachingLegacyRoles = ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'];
+    const driverSupportingLegacyRoles = ['Driver', 'Support Staff', 'Helper', 'Security'];
+    const adminLegacyRoles = ['Admin', 'Super Admin'];
 
     return staff.filter((s) => {
+      const mappedDepartment = normalizeStaffDepartment(s.department);
+      if (mappedDepartment === department) return true;
+      if (mappedDepartment !== null) return false;
+
+      // Backward compatibility: older records may have legacy role/department values.
+
       const staffRole = getString(s.role).trim();
-      if (role === 'TEACHING') return teaching.includes(staffRole);
-      if (role === 'DRIVER/SUPPORTING STAFF') return driverSupporting.includes(staffRole);
-      if (role === 'ADMIN') return admin.includes(staffRole);
-      if (role === 'NON-TEACHING') {
+      if (department === 'Teaching') return teachingLegacyRoles.includes(staffRole);
+      if (department === 'DRIVER/SUPPORTING STAFF') return driverSupportingLegacyRoles.includes(staffRole);
+      if (department === 'ADMIN') return adminLegacyRoles.includes(staffRole);
+      if (department === 'Non-Teaching') {
         return (
-          !teaching.includes(staffRole) &&
-          !driverSupporting.includes(staffRole) &&
-          !admin.includes(staffRole)
+          !teachingLegacyRoles.includes(staffRole) &&
+          !driverSupportingLegacyRoles.includes(staffRole) &&
+          !adminLegacyRoles.includes(staffRole)
         );
       }
       return false;
     });
   };
 
-  const filteredStaff = getStaffByRole(selectedTab).filter(member => {
+  const baseStaff = searchQuery.trim()
+    ? staff
+    : getStaffByDepartment(selectedTab);
+
+  const filteredStaff = baseStaff.filter(member => {
     const query = searchQuery.toLowerCase();
     const fullName = getString(member.full_name).toLowerCase();
     const staffId = getString(member.staff_id).toLowerCase();
@@ -205,10 +214,12 @@ export default function StaffDirectoryPage({
         'Staff ID',
         'Employee Code',
         'Full Name',
+        'Department',
         'Role',
         'Designation',
         'Qualification',
-        'Department',
+        'Category',
+        'Religion',
         'Phone',
         'Email',
         'Status',
@@ -220,10 +231,12 @@ export default function StaffDirectoryPage({
           getString(m.staff_id),
           getString(m.employee_code),
           getString(m.full_name),
+          getString(m.department),
           getString(m.role),
           getString(m.designation),
           getString(m.qualification),
-          getString(m.department),
+          getString(m.category),
+          getString(m.religion),
           getString(m.phone),
           getString(m.email),
           status,
@@ -232,7 +245,8 @@ export default function StaffDirectoryPage({
 
       const schoolPart = String(schoolCode || '').toUpperCase().replace(/[^a-z0-9_-]/gi, '');
       const datePart = new Date().toISOString().slice(0, 10);
-      const fileName = `StaffDirectory_${schoolPart}_${selectedTab}_${statusFilter}_${datePart}.csv`
+      const exportScope = searchQuery.trim() ? 'GLOBAL-SEARCH' : selectedTab;
+      const fileName = `StaffDirectory_${schoolPart}_${exportScope}_${statusFilter}_${datePart}.csv`
         .replace(/\s+/g, '-')
         .replace(/\/+/g, '-');
 
@@ -258,13 +272,13 @@ export default function StaffDirectoryPage({
 
   const stats = {
     total: staff.length,
-    teaching: getStaffByRole('TEACHING').length,
-    nonTeaching: getStaffByRole('NON-TEACHING').length,
-    driverSupporting: getStaffByRole('DRIVER/SUPPORTING STAFF').length,
-    admin: getStaffByRole('ADMIN').length,
+    teaching: getStaffByDepartment('Teaching').length,
+    nonTeaching: getStaffByDepartment('Non-Teaching').length,
+    driverSupporting: getStaffByDepartment('DRIVER/SUPPORTING STAFF').length,
+    admin: getStaffByDepartment('ADMIN').length,
   };
 
-  const tabs = ['TEACHING', 'NON-TEACHING', 'DRIVER/SUPPORTING STAFF', 'ADMIN'] as const;
+  const tabs = STAFF_DEPARTMENTS;
 
   if (loading) {
     return (
@@ -412,13 +426,13 @@ export default function StaffDirectoryPage({
               }`}
             >
               {tab}
-              {getStaffByRole(tab).length > 0 && (
+              {getStaffByDepartment(tab).length > 0 && (
                 <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
                   selectedTab === tab
                     ? 'bg-[#1e3a8a] text-white'
                     : 'bg-gray-200 text-gray-700'
                 }`}>
-                  {getStaffByRole(tab).length}
+                  {getStaffByDepartment(tab).length}
                 </span>
               )}
             </button>
@@ -457,7 +471,7 @@ export default function StaffDirectoryPage({
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <Input
                 type="text"
-                placeholder="Search by staff name, employee ID, mobile, email..."
+                placeholder="Global search by name, ID, mobile, email..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -507,6 +521,15 @@ export default function StaffDirectoryPage({
                 </th>
                 <th className="px-4 py-4 text-left text-sm font-semibold">
                   <button
+                    onClick={() => handleSort('department')}
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  >
+                    Department
+                    <Filter size={14} />
+                  </button>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold">
+                  <button
                     onClick={() => handleSort('role')}
                     className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                   >
@@ -516,7 +539,6 @@ export default function StaffDirectoryPage({
                 </th>
                 <th className="px-4 py-4 text-left text-sm font-semibold">Designation</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold">Qualification</th>
-                <th className="px-4 py-4 text-left text-sm font-semibold">Department</th>
                 <th className="px-4 py-4 text-left text-sm font-semibold">Contact</th>
                 <th className="px-4 py-4 text-center text-sm font-semibold">Actions</th>
               </tr>
@@ -594,17 +616,17 @@ export default function StaffDirectoryPage({
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 text-[#1e3a8a] font-medium">
-                          {getString(member.role) || <span className="text-gray-400">-</span>}
+                          {getString(member.department) || <span className="text-gray-400">-</span>}
                         </span>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600">
+                        {getString(member.role) || <span className="text-gray-400">-</span>}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600">
                         {getString(member.designation) || <span className="text-gray-400">-</span>}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600">
                         {getString(member.qualification) || <span className="text-gray-400">-</span>}
-                      </td>
-                      <td className="px-4 py-4 text-sm text-gray-600">
-                        {getString(member.department) || <span className="text-gray-400">-</span>}
                       </td>
                       <td className="px-4 py-4">
                         <div className="space-y-1">

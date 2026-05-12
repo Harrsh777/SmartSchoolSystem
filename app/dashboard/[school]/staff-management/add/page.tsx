@@ -8,8 +8,13 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import { ArrowLeft } from 'lucide-react';
 import { validateStaffImportCore } from '@/lib/staff/import-validation';
+import {
+  STAFF_CATEGORIES,
+  STAFF_DEPARTMENTS,
+  normalizeStaffDepartment,
+  STAFF_RELIGIONS,
+} from '@/lib/staff/constants';
 
 interface FormErrors {
   [key: string]: string;
@@ -71,7 +76,7 @@ export default function AddStaffPage({
     const { fieldErrors } = validateStaffImportCore(
       {
         full_name: formData.full_name.trim(),
-        role: formData.role.trim(),
+        role: formData.role.trim() || null,
         department: formData.department.trim(),
         designation: formData.designation.trim(),
         phone: formData.phone,
@@ -132,8 +137,8 @@ export default function AddStaffPage({
           school_code: schoolCode,
           // staff_id, employee_code, rfid, uuid, short_code are auto-generated - don't send them
           full_name: formData.full_name.trim(),
-          role: formData.role.trim(),
-          department: formData.department.trim() || null,
+          role: formData.role.trim() || null,
+          department: normalizeStaffDepartment(formData.department.trim()) ?? formData.department.trim(),
           designation: formData.designation.trim() || null,
           phone: cleanPhone(formData.phone) || null,
           date_of_joining: formData.date_of_joining,
@@ -349,28 +354,38 @@ export default function AddStaffPage({
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Role <span className="text-red-500">*</span>
+                      Department <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={formData.department}
+                      onChange={(e) => handleChange('department', e.target.value)}
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-black focus:border-transparent ${
+                        errors.department ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                      required
+                    >
+                      <option value="">Select department</option>
+                      {STAFF_DEPARTMENTS.map((department) => (
+                        <option key={department} value={department}>
+                          {department}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.department && (
+                      <p className="mt-1 text-sm text-red-500">{errors.department}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Role <span className="text-gray-400 font-normal">(optional)</span>
                     </label>
                     <Input
                       type="text"
                       value={formData.role}
                       onChange={(e) => handleChange('role', e.target.value)}
                       error={errors.role}
-                      required
-                      placeholder="e.g., Teacher, Principal"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Department <span className="text-gray-400 font-normal">(optional)</span>
-                    </label>
-                    <Input
-                      type="text"
-                      value={formData.department}
-                      onChange={(e) => handleChange('department', e.target.value)}
-                      error={errors.department}
-                      placeholder="e.g., Mathematics, Administration"
+                      placeholder="e.g., Mathematics, Admission, Cashier, Accountant"
                     />
                   </div>
 
@@ -523,25 +538,38 @@ export default function AddStaffPage({
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Religion
                     </label>
-                    <Input
-                      type="text"
+                    <select
                       value={formData.religion}
                       onChange={(e) => handleChange('religion', e.target.value)}
-                      placeholder="Religion"
-                    />
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                    >
+                      <option value="">Select religion</option>
+                      {STAFF_RELIGIONS.map((religion) => (
+                        <option key={religion} value={religion}>
+                          {religion}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Category <span className="text-red-500">*</span>
                     </label>
-                    <Input
-                      type="text"
+                    <select
                       value={formData.category}
                       onChange={(e) => handleChange('category', e.target.value)}
-                      placeholder="e.g., General, SC, ST, OBC"
+                      className={`w-full px-4 py-2 border ${errors.category ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:outline-none focus:ring-2 focus:ring-black`}
                       required
-                    />
+                    >
+                      <option value="">Select category</option>
+                      {STAFF_CATEGORIES.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.category && <p className="mt-1 text-sm text-red-500">{errors.category}</p>}
                   </div>
 
                   <div>

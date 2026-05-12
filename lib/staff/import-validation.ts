@@ -1,4 +1,9 @@
 import { isValidDateFormat } from '@/lib/date-parser';
+import {
+  isValidStaffCategory,
+  isValidStaffDepartment,
+  isValidStaffReligion,
+} from '@/lib/staff/constants';
 
 /** 10-digit Indian mobile from digits only. */
 export function digits10(value: unknown): string | undefined {
@@ -97,10 +102,19 @@ export function validateStaffImportCore(
   if (!fullName) setErr(fieldErrors, errors, 'full_name', 'Full name is required');
 
   const role = String(data.role ?? '').trim();
-  if (!role) setErr(fieldErrors, errors, 'role', 'Role is required');
+  if (role.length > 120) setErr(fieldErrors, errors, 'role', 'Role must be under 120 characters');
 
- 
-  // Department is optional — many spreadsheets omit it; it can be added later in the directory.
+  const department = String(data.department ?? '').trim();
+  if (!department) {
+    setErr(fieldErrors, errors, 'department', 'Department is required');
+  } else if (!isValidStaffDepartment(department)) {
+    setErr(
+      fieldErrors,
+      errors,
+      'department',
+      'Department must be one of: Teaching, Non-Teaching, DRIVER/SUPPORTING STAFF, ADMIN'
+    );
+  }
 
   const designation = String(data.designation ?? '').trim();
   if (
@@ -201,6 +215,14 @@ export function validateStaffImportCore(
 
   const category = String(data.category ?? '').trim();
   if (!category) setErr(fieldErrors, errors, 'category', 'Category is required');
+  else if (!isValidStaffCategory(category)) {
+    setErr(fieldErrors, errors, 'category', 'Category must be one of: SC, ST, OBC, General');
+  }
+
+  const religion = String(data.religion ?? '').trim();
+  if (religion && !isValidStaffReligion(religion)) {
+    warnings.push('Religion should be one of: Hindu, Muslim, Sikh, Christian, Jain');
+  }
 
   const email = String(data.email ?? '').trim();
   if (!email) setErr(fieldErrors, errors, 'email', 'Email is required');

@@ -248,7 +248,7 @@ export default function BulkImportPage({
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Required: Full Name, Role, Department, Designation (subject), Phone, Primary Contact, Date of Joining, DOB, Gender, Category, Email</span>
+                        <span>Required: Full Name, Department (Teaching/Non-Teaching/DRIVER/SUPPORTING STAFF/ADMIN), Phone, Date of Joining, DOB, Gender, Category (SC/ST/OBC/General), Email</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
@@ -413,10 +413,11 @@ export default function BulkImportPage({
                       <div className="space-y-2">
                         {validRows.slice(0, 10).map((row) => {
                           const fullName = getString(row.data.full_name);
+                          const department = getString(row.data.department);
                           const role = getString(row.data.role);
                           return (
                             <div key={row.rowIndex} className="text-sm text-green-800">
-                              Row {row.rowIndex}: {fullName || 'N/A'} - {role || 'N/A'}
+                              Row {row.rowIndex}: {fullName || 'N/A'} - {department || 'N/A'}{role ? ` - ${role}` : ''}
                               {row.warnings.length > 0 && (
                                 <span className="text-yellow-700 ml-2">
                                   (⚠ {row.warnings.length} warning{row.warnings.length > 1 ? 's' : ''})

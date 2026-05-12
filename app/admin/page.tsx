@@ -872,6 +872,7 @@ export default function AdminDashboard() {
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [updatingCredentials, setUpdatingCredentials] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [visibleCredentialSchoolId, setVisibleCredentialSchoolId] = useState<string | null>(null);
   
   // Hold school modal state
   const [showHoldModal, setShowHoldModal] = useState(false);
@@ -2375,10 +2376,43 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                       <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Admin Password</p>
+                      {(() => {
+                        const acceptedSchool = school as AcceptedSchool;
+                        const schoolRecord = acceptedSchool as Record<string, unknown>;
+                        const encryptedPassword =
+                          (typeof schoolRecord.password === 'string' && schoolRecord.password) ||
+                          (typeof schoolRecord.admin_password === 'string' && schoolRecord.admin_password) ||
+                          (typeof schoolRecord.password_hash === 'string' && schoolRecord.password_hash) ||
+                          (typeof schoolRecord.encrypted_password === 'string' &&
+                            schoolRecord.encrypted_password) ||
+                          (typeof schoolRecord.school_password === 'string' && schoolRecord.school_password) ||
+                          null;
+                        const isVisible = visibleCredentialSchoolId === schoolId;
+                        return (
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-mono font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 flex-1">
-                          ••••••••••
+                              {isVisible ? encryptedPassword || 'N/A' : '••••••••••'}
                         </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setVisibleCredentialSchoolId((prev) => (prev === schoolId ? null : schoolId))
+                              }
+                              className="border-blue-300 text-blue-600 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                            >
+                              {isVisible ? (
+                                <>
+                                  <EyeOff size={16} className="mr-1" />
+                                  Hide
+                                </>
+                              ) : (
+                                <>
+                                  <Eye size={16} className="mr-1" />
+                                  View
+                                </>
+                              )}
+                            </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -2392,6 +2426,8 @@ export default function AdminDashboard() {
                           Edit
                         </Button>
                       </div>
+                        );
+                      })()}
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         Password is encrypted for security
                       </p>

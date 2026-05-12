@@ -6,6 +6,11 @@ import { resolveAcademicYear } from '@/lib/academic-year-id';
 import { assertAcademicYearNotLocked } from '@/lib/academic-year-lock';
 import { getRequiredCurrentAcademicYear } from '@/lib/current-academic-year';
 
+function isMissingAcademicYearIdColumn(error: { message?: string } | null | undefined): boolean {
+  const msg = String(error?.message ?? '').toLowerCase();
+  return msg.includes('academic_year_id') && (msg.includes('does not exist') || msg.includes('column'));
+}
+
 function deriveExamDatesFromSchedules(
   schedules: Array<{ exam_date?: string }>
 ): { start_date: string; end_date: string } | null {
@@ -179,7 +184,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create examination with status DRAFT — but fall back gracefully if DB restricts status values
+    // Create examination with status DRAFT — with compatibility fallback for:
+    // 1) DBs that don't have examinations.academic_year_id yet
+    // 2) DBs where status='draft' is not allowed
     const baseInsert = {
       school_id: schoolData.id,
       school_code: school_code,
@@ -198,27 +205,38 @@ export async function POST(request: NextRequest) {
     let examination: { id: string; exam_name?: string; status?: string; [key: string]: unknown } | null = null;
     let examError: { message?: string; code?: string; hint?: string } | null = null;
 
-    // Attempt #1: draft (desired flow)
-    {
-      const attempt = await supabase
-        .from('examinations')
-        .insert([{ ...baseInsert, status: 'draft' }])
-        .select()
-        .single();
-      examination = attempt.data;
-      examError = attempt.error as { message?: string; code?: string; hint?: string } | null;
+    const attemptCreate = async (status: 'draft' | 'upcoming', includeAcademicYearId: boolean) => {
+      const payload = includeAcademicYearId
+        ? { ...baseInsert, status }
+        : { ...baseInsert, status, academic_year_id: undefined };
+      return supabase.from('examinations').insert([payload]).select().single();
+    };
+
+    // Attempt order:
+    // 1) draft + academic_year_id
+    // 2) draft without academic_year_id (old schema)
+    // 3) upcoming + academic_year_id (status enum fallback)
+    // 4) upcoming without academic_year_id (both fallbacks)
+    const first = await attemptCreate('draft', true);
+    examination = first.data;
+    examError = first.error as { message?: string; code?: string; hint?: string } | null;
+
+    if ((examError || !examination) && isMissingAcademicYearIdColumn(examError)) {
+      const second = await attemptCreate('draft', false);
+      examination = second.data;
+      examError = second.error as { message?: string; code?: string; hint?: string } | null;
     }
 
-    // Attempt #2: fallback to upcoming if draft not allowed by DB enum/check
     if (examError || !examination) {
-      console.error('Error creating examination (draft attempt):', examError);
-      const attempt = await supabase
-        .from('examinations')
-        .insert([{ ...baseInsert, status: 'upcoming' }])
-        .select()
-        .single();
-      examination = attempt.data;
-      examError = attempt.error as { message?: string; code?: string; hint?: string } | null;
+      const third = await attemptCreate('upcoming', true);
+      examination = third.data;
+      examError = third.error as { message?: string; code?: string; hint?: string } | null;
+    }
+
+    if ((examError || !examination) && isMissingAcademicYearIdColumn(examError)) {
+      const fourth = await attemptCreate('upcoming', false);
+      examination = fourth.data;
+      examError = fourth.error as { message?: string; code?: string; hint?: string } | null;
     }
 
     if (examError || !examination) {

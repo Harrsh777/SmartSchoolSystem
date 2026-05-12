@@ -8,6 +8,11 @@ import {
   digits10,
   digits12Aadhaar,
 } from '@/lib/staff/import-validation';
+import {
+  isValidStaffCategory,
+  isValidStaffDepartment,
+  isValidStaffReligion,
+} from '@/lib/staff/constants';
 
 interface ValidatedRow {
   rowIndex: number;
@@ -136,6 +141,16 @@ export async function POST(request: NextRequest) {
       if (g) mappedData.gender = g;
 
       if (!mappedData.nationality) mappedData.nationality = 'Indian';
+
+      if (mappedData.department && isValidStaffDepartment(mappedData.department)) {
+        mappedData.department = String(mappedData.department).trim();
+      }
+      if (mappedData.category && isValidStaffCategory(mappedData.category)) {
+        mappedData.category = String(mappedData.category).trim();
+      }
+      if (mappedData.religion && isValidStaffReligion(mappedData.religion)) {
+        mappedData.religion = String(mappedData.religion).trim();
+      }
 
       const core = validateStaffImportCore(mappedData, { validSubjects });
       const errors = [...core.errors];

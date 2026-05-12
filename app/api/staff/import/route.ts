@@ -8,6 +8,7 @@ import {
   normalizeStaffGenderForImport,
   validateStaffImportCore,
 } from '@/lib/staff/import-validation';
+import { normalizeStaffDepartment } from '@/lib/staff/constants';
 import {
   friendlyStaffImportDbError,
   isStaffAdharUniqueViolation,
@@ -61,8 +62,8 @@ function normalizeIncomingRow(
     school_id: schoolId,
     school_code: schoolCode,
     full_name: String(member.full_name ?? '').trim(),
-    role: String(member.role ?? '').trim(),
-    department: String(member.department ?? '').trim() || null,
+    role: String(member.role ?? '').trim() || null,
+    department: normalizeStaffDepartment(member.department) ?? String(member.department ?? '').trim(),
     designation: String(member.designation ?? '').trim() || null,
     email: String(member.email ?? '').trim() || null,
     phone,

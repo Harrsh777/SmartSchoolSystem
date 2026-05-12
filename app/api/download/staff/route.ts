@@ -43,13 +43,15 @@ export async function GET(request: NextRequest) {
       'Full Name': member.full_name || '',
       'Email': member.email || '',
       'Phone': member.phone || '',
-      'Role': member.role || '',
       'Department': member.department || '',
+      'Role': member.role || '',
       'Designation': member.designation || '',
-      'Date of Birth': member.date_of_birth || '',
+      'Category': member.category || '',
+      'Religion': member.religion || '',
+      'Date of Birth': member.dob || '',
       'Date of Joining': member.date_of_joining || '',
       'Address': member.address || '',
-      'Status': member.status || '',
+      'Status': member.is_active === false ? 'Inactive' : 'Active',
       'Created At': member.created_at ? new Date(String(member.created_at)).toLocaleDateString() : '',
     }));
 
