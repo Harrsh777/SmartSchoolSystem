@@ -107,6 +107,9 @@ export async function PATCH(
     if (updateData.qualification !== undefined) updateFields.qualification = updateData.qualification || null;
     if (updateData.experience_years !== undefined) updateFields.experience_years = updateData.experience_years !== null && updateData.experience_years !== '' ? Number(updateData.experience_years) : null;
     if (updateData.gender !== undefined) updateFields.gender = updateData.gender || null;
+    if (updateData.blood_group !== undefined) updateFields.blood_group = updateData.blood_group || null;
+    if (updateData.religion !== undefined) updateFields.religion = updateData.religion || null;
+    if (updateData.category !== undefined) updateFields.category = updateData.category || null;
     if (updateData.address !== undefined) updateFields.address = updateData.address || null;
     if (updateData.is_active !== undefined) updateFields.is_active = Boolean(updateData.is_active);
 

@@ -117,9 +117,9 @@ export default function StaffDirectoryPage({
   };
 
   const getStaffByDepartment = (department: string) => {
-    const teachingLegacyRoles = ['Teacher', 'Principal', 'Vice Principal', 'Head Teacher'];
-    const driverSupportingLegacyRoles = ['Driver', 'Support Staff', 'Helper', 'Security'];
-    const adminLegacyRoles = ['Admin', 'Super Admin'];
+    const teachingLegacyRoles = ['teacher', 'principal', 'vice principal', 'head teacher', 'academic coordinator'];
+    const driverSupportingLegacyRoles = ['driver', 'support staff', 'helper', 'security'];
+    const adminLegacyRoles = ['admin', 'super admin'];
 
     return staff.filter((s) => {
       const mappedDepartment = normalizeStaffDepartment(s.department);
@@ -128,7 +128,7 @@ export default function StaffDirectoryPage({
 
       // Backward compatibility: older records may have legacy role/department values.
 
-      const staffRole = getString(s.role).trim();
+      const staffRole = getString(s.role).trim().toLowerCase();
       if (department === 'Teaching') return teachingLegacyRoles.includes(staffRole);
       if (department === 'DRIVER/SUPPORTING STAFF') return driverSupportingLegacyRoles.includes(staffRole);
       if (department === 'ADMIN') return adminLegacyRoles.includes(staffRole);

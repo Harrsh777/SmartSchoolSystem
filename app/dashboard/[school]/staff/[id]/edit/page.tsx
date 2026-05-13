@@ -9,6 +9,12 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { ArrowLeft, Camera, Upload, X } from 'lucide-react';
 import type { Staff } from '@/lib/supabase';
+import {
+  STAFF_CATEGORIES,
+  STAFF_DEPARTMENTS,
+  STAFF_RELIGIONS,
+  normalizeStaffDepartment,
+} from '@/lib/staff/constants';
 
 export default function EditStaffPage({
   params,
@@ -37,6 +43,9 @@ export default function EditStaffPage({
     qualification: '',
     experience_years: '',
     gender: '',
+    blood_group: '',
+    religion: '',
+    category: '',
     address: '',
   });
 
@@ -70,7 +79,8 @@ export default function EditStaffPage({
           staff_id: result.data.staff_id || '',
           full_name: result.data.full_name || '',
           role: result.data.role || '',
-          department: result.data.department || '',
+          // Keep department consistent with Add Staff dropdown options (handles older legacy values).
+          department: normalizeStaffDepartment(result.data.department) ?? (result.data.department || ''),
           designation: result.data.designation || '',
           email: result.data.email || '',
           phone: result.data.phone || '',
@@ -79,6 +89,9 @@ export default function EditStaffPage({
           qualification: result.data.qualification || '',
           experience_years: result.data.experience_years?.toString() || '',
           gender: result.data.gender || '',
+          blood_group: result.data.blood_group || '',
+          religion: result.data.religion || '',
+          category: result.data.category || '',
           address: result.data.address || '',
         });
         // Set photo preview if exists
@@ -366,12 +379,18 @@ export default function EditStaffPage({
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Department
                 </label>
-                <Input
-                  type="text"
+                <select
                   value={formData.department}
                   onChange={(e) => handleChange('department', e.target.value)}
-                  placeholder="Department name"
-                />
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                >
+                  <option value="">Select department</option>
+                  {STAFF_DEPARTMENTS.map((department) => (
+                    <option key={department} value={department}>
+                      {department}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -383,7 +402,7 @@ export default function EditStaffPage({
                   onChange={(e) => handleChange('designation', e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
                 >
-                  <option value="">Select a subject</option>
+                  <option value="">Not specified</option>
                   {subjects.map((subject) => (
                     <option key={subject.id} value={subject.name}>
                       {subject.name}
@@ -442,6 +461,7 @@ export default function EditStaffPage({
                   <option value="Full-time">Full-time</option>
                   <option value="Part-time">Part-time</option>
                   <option value="Contract">Contract</option>
+                  <option value="Temporary">Temporary</option>
                 </select>
               </div>
 
@@ -483,6 +503,63 @@ export default function EditStaffPage({
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Blood Group
+                </label>
+                <select
+                  value={formData.blood_group}
+                  onChange={(e) => handleChange('blood_group', e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                >
+                  <option value="">Select blood group</option>
+                  <option value="A+">A+</option>
+                  <option value="A-">A-</option>
+                  <option value="B+">B+</option>
+                  <option value="B-">B-</option>
+                  <option value="AB+">AB+</option>
+                  <option value="AB-">AB-</option>
+                  <option value="O+">O+</option>
+                  <option value="O-">O-</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Religion
+                </label>
+                <select
+                  value={formData.religion}
+                  onChange={(e) => handleChange('religion', e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                >
+                  <option value="">Select religion</option>
+                  {STAFF_RELIGIONS.map((religion) => (
+                    <option key={religion} value={religion}>
+                      {religion}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Category
+                </label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => handleChange('category', e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                >
+                  <option value="">Select category</option>
+                  {STAFF_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
                 </select>
               </div>
 

@@ -19,7 +19,7 @@ export function normalizeStaffDepartment(
   const raw = String(value ?? '').trim();
   if (!raw) return null;
   const normalized = raw.toLowerCase();
-  if (normalized === 'teaching' || normalized === 'teaching1') return 'Teaching';
+  if (normalized === 'teaching' || normalized === 'teaching1' || normalized === 'academic') return 'Teaching';
   if (normalized === 'non-teaching' || normalized === 'non teaching' || normalized === 'non-teaching8') {
     return 'Non-Teaching';
   }
