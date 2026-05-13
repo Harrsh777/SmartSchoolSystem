@@ -1,0 +1,1014 @@
+'use client';
+
+import { use, useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import ModuleGuideButton from '@/components/ModuleGuideButton';
+import {
+  Eye,
+  Search,
+  Filter,
+  RefreshCw,
+  Users,
+  BarChart3,
+  FileSpreadsheet,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  GraduationCap,
+  BookOpen,
+  TrendingUp,
+  Award,
+  Lock,
+  Unlock,
+} from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { getGradeColor, getGradeFromPercentage } from '@/lib/grade-calculator';
+
+interface StudentMark {
+  id: string;
+  student_id: string;
+  exam_id: string;
+  total_marks: number;
+  total_max_marks: number;
+  percentage: number;
+  grade: string;
+  result_status: string;
+  student: {
+    id: string;
+    student_name: string;
+    full_name?: string;
+    admission_no: string;
+    roll_number: string;
+    class: string;
+    section: string;
+    photo_url?: string;
+  };
+  exam: {
+    id: string;
+    exam_name: string;
+    name?: string;
+    academic_year: string;
+    start_date: string;
+    end_date: string;
+  };
+  subject_marks?: Array<{
+    id: string;
+    subject_id: string;
+    marks_obtained: number;
+    max_marks: number;
+    percentage: number;
+    grade: string;
+    subject: {
+      id: string;
+      name: string;
+      color: string;
+    };
+  }>;
+  subject_mark?: {
+    id: string;
+    subject_id: string;
+    marks_obtained: number;
+    max_marks: number;
+    percentage: number;
+    grade: string;
+    subject: {
+      id: string;
+      name: string;
+      color: string;
+    };
+  };
+}
+
+interface Analytics {
+  total_students: number;
+  passed: number;
+  failed: number;
+  average_percentage: number;
+  toppers: Array<{
+    student_name: string;
+    percentage: number;
+    grade: string;
+  }>;
+}
+
+export default function MarksDashboardPage({
+  params,
+}: {
+  params: Promise<{ school: string }>;
+}) {
+  const { school: schoolCode } = use(params);
+  const router = useRouter();
+
+  // State
+  const [loading, setLoading] = useState(false);
+  const [marks, setMarks] = useState<StudentMark[]>([]);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [classes, setClasses] = useState<Array<{ id: string; class: string; section?: string }>>([]);
+  const [examinations, setExaminations] = useState<
+    Array<{ id: string; exam_name: string; name?: string; term_id?: string; term?: { id?: string; name?: string; serial?: number } | null }>
+  >([]);
+  /** Subjects assigned to the selected class–section (from class_subjects), not the whole school catalog */
+  const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
+
+  /** Last scope for which marks were loaded successfully (exam|class|section) — drives lock UI */
+  const [marksLoadedScopeKey, setMarksLoadedScopeKey] = useState<string | null>(null);
+  const [marksLocked, setMarksLocked] = useState(false);
+  const [lockStatusLoading, setLockStatusLoading] = useState(false);
+  const [lockActionLoading, setLockActionLoading] = useState(false);
+
+  // Filters (class_id holds class *name* for /api/marks/view — same as students.class)
+  const [filters, setFilters] = useState({
+    term_id: '',
+    class_id: '',
+    section: '',
+    exam_id: '',
+    subject_id: '',
+    search: '',
+  });
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  // Fetch initial data
+  useEffect(() => {
+    fetchClasses();
+    fetchExaminations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolCode]);
+
+  const canLoadMarks =
+    Boolean(filters.term_id?.trim()) &&
+    Boolean(filters.exam_id?.trim()) &&
+    Boolean(filters.class_id?.trim()) &&
+    Boolean(filters.section?.trim());
+
+  const marksScopeKey = `${filters.exam_id}|${filters.class_id}|${filters.section}`;
+
+  useEffect(() => {
+    setMarksLoadedScopeKey(null);
+  }, [filters.exam_id, filters.class_id, filters.section, filters.term_id]);
+
+  // Fetch marks when exam + class + section are all set (no "all classes/sections")
+  useEffect(() => {
+    if (!canLoadMarks) {
+      setMarks([]);
+      setAnalytics(null);
+      setLoading(false);
+      return;
+    }
+    fetchMarks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, schoolCode, canLoadMarks]);
+
+  const fetchClasses = async () => {
+    try {
+      const response = await fetch(`/api/classes?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        setClasses(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching classes:', err);
+    }
+  };
+
+  const fetchExaminations = async () => {
+    try {
+      const response = await fetch(`/api/examinations/v2/list?school_code=${schoolCode}`);
+      const result = await response.json();
+      if (response.ok && result.data) {
+        // Transform the v2 API response to match expected format
+        const exams = (
+          result.data as Array<{
+            id?: string;
+            exam_name?: string;
+            name?: string;
+            term_id?: string;
+            term?: { id?: string; name?: string; serial?: number } | null;
+          }>
+        ).map((exam) => ({
+          id: String(exam.id ?? ''),
+          exam_name: String(exam.exam_name || exam.name || ''),
+          name: String(exam.exam_name || exam.name || ''),
+          term_id: exam.term_id ? String(exam.term_id) : undefined,
+          term: exam.term || null,
+        }));
+        setExaminations(exams);
+      }
+    } catch (err) {
+      console.error('Error fetching examinations:', err);
+    }
+  };
+
+  const fetchMarks = async () => {
+    setLoading(true);
+    const scopeKey = `${filters.exam_id}|${filters.class_id}|${filters.section}`;
+    try {
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        exam_id: filters.exam_id,
+        class_id: filters.class_id,
+        section: filters.section,
+        ...(filters.subject_id && { subject_id: filters.subject_id }),
+        ...(filters.search && { search: filters.search }),
+      });
+
+      const response = await fetch(`/api/marks/view?${params}`);
+      const result = await response.json();
+
+      if (response.ok) {
+        setMarks(result.data || []);
+        setAnalytics(result.analytics || null);
+        setMarksLoadedScopeKey(scopeKey);
+      } else {
+        console.error('Error fetching marks:', result.error);
+        setMarksLoadedScopeKey(null);
+      }
+    } catch (err) {
+      console.error('Error fetching marks:', err);
+      setMarksLoadedScopeKey(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filtered and paginated marks
+  const filteredMarks = useMemo(() => {
+    return marks;
+  }, [marks]);
+
+  const paginatedMarks = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredMarks.slice(start, start + itemsPerPage);
+  }, [filteredMarks, currentPage]);
+
+  const totalPages = Math.ceil(filteredMarks.length / itemsPerPage);
+  const isSingleSubjectView = Boolean(filters.subject_id);
+
+  const uniqueClassNames = useMemo(() => {
+    const names = classes.map((c) => String(c.class ?? '').trim()).filter(Boolean);
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [classes]);
+
+  const sectionsForSelectedClass = useMemo(() => {
+    if (!filters.class_id) return [];
+    const selected = String(filters.class_id).trim();
+    const secs = classes
+      .filter((c) => String(c.class ?? '').trim().toLowerCase() === selected.toLowerCase())
+      .map((c) => String(c.section ?? '').trim())
+      .filter(Boolean);
+    return [...new Set(secs)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [classes, filters.class_id]);
+
+  const matchingClassRow = useMemo(() => {
+    if (!filters.class_id?.trim() || !filters.section?.trim()) return null;
+    const cn = filters.class_id.trim().toLowerCase();
+    const sn = filters.section.trim().toLowerCase();
+    return (
+      classes.find(
+        (c) =>
+          String(c.class ?? '').trim().toLowerCase() === cn &&
+          String(c.section ?? '').trim().toLowerCase() === sn
+      ) ?? null
+    );
+  }, [classes, filters.class_id, filters.section]);
+
+  const showMarksLockPanel =
+    canLoadMarks &&
+    Boolean(matchingClassRow?.id) &&
+    marksLoadedScopeKey === marksScopeKey &&
+    !loading;
+
+  useEffect(() => {
+    if (!showMarksLockPanel || !matchingClassRow?.id || !filters.exam_id) {
+      setMarksLocked(false);
+      return;
+    }
+    let cancelled = false;
+    setLockStatusLoading(true);
+    const q = new URLSearchParams({
+      school_code: schoolCode,
+      exam_id: filters.exam_id,
+      class_id: matchingClassRow.id,
+    });
+    fetch(`/api/marks/exam-class-lock?${q}`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((body) => {
+        if (!cancelled && typeof body.locked === 'boolean') setMarksLocked(body.locked);
+      })
+      .catch(() => {
+        if (!cancelled) setMarksLocked(false);
+      })
+      .finally(() => {
+        if (!cancelled) setLockStatusLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showMarksLockPanel, matchingClassRow?.id, filters.exam_id, schoolCode]);
+
+  const handleMarksLockToggle = async (action: 'lock' | 'unlock') => {
+    if (!matchingClassRow?.id || !filters.exam_id) return;
+    if (!confirm(action === 'lock' ? 'Lock marks for this exam and class–section? Teachers will not be able to edit until you unlock.' : 'Unlock marks so teachers can edit again?')) {
+      return;
+    }
+    setLockActionLoading(true);
+    try {
+      const response = await fetch('/api/marks/exam-class-lock', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          exam_id: filters.exam_id,
+          class_id: matchingClassRow.id,
+          action,
+        }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setMarksLocked(Boolean(result.locked));
+      } else {
+        alert(result.error || `Failed to ${action} marks`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert(`Failed to ${action} marks`);
+    } finally {
+      setLockActionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!matchingClassRow?.id || !schoolCode) {
+      setSubjects([]);
+      setSubjectsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSubjectsLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/classes/${matchingClassRow.id}/subjects?school_code=${encodeURIComponent(schoolCode)}`
+        );
+        const result = await res.json();
+        if (cancelled) return;
+        if (res.ok && Array.isArray(result.data)) {
+          const list = (result.data as Array<{ id?: string; name?: string }>)
+            .map((s) => ({
+              id: String(s.id ?? ''),
+              name: String(s.name ?? '').trim() || 'Unnamed',
+            }))
+            .filter((s) => s.id);
+          setSubjects(list);
+          setFilters((prev) => {
+            if (!prev.subject_id) return prev;
+            return list.some((x) => x.id === prev.subject_id) ? prev : { ...prev, subject_id: '' };
+          });
+        } else {
+          setSubjects([]);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Error fetching class subjects:', err);
+          setSubjects([]);
+        }
+      } finally {
+        if (!cancelled) setSubjectsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchingClassRow?.id, schoolCode]);
+
+  const structureTerms = useMemo(() => {
+    const terms = examinations
+      .map((exam) => exam.term)
+      .filter((term): term is NonNullable<typeof term> => Boolean(term && term.id))
+      .map((term) => ({
+        id: String(term.id),
+        name: String(term.name || '').trim() || (typeof term.serial === 'number' ? `Term ${term.serial}` : 'Unnamed Term'),
+        serial: term.serial,
+      }));
+
+    const seen = new Set<string>();
+    return terms
+      .filter((term) => {
+        if (seen.has(term.id)) return false;
+        seen.add(term.id);
+        return true;
+      })
+      .sort((a, b) => {
+        if (typeof a.serial === 'number' && typeof b.serial === 'number') return a.serial - b.serial;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+  }, [examinations]);
+
+  const examinationsForSelectedTerm = useMemo(() => {
+    if (!filters.term_id) return [];
+    return examinations.filter((exam) => String(exam.term_id || '') === filters.term_id);
+  }, [examinations, filters.term_id]);
+
+  const handleExportExcel = async () => {
+    if (!filters.exam_id?.trim()) {
+      alert('Please select an examination first');
+      return;
+    }
+    if (!filters.class_id?.trim() || !filters.section?.trim()) {
+      alert('Please select class and section first');
+      return;
+    }
+    try {
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        exam_id: filters.exam_id,
+        class_id: filters.class_id,
+        section: filters.section,
+        ...(filters.subject_id && { subject_id: filters.subject_id }),
+        ...(filters.search && { search: filters.search }),
+      });
+
+      const response = await fetch(`/api/marks/export?${params}&format=excel`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `marks_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.error('Error exporting to Excel:', err);
+      alert('Failed to export to Excel');
+    }
+  };
+
+  // Chart data
+  const gradeDistribution = useMemo(() => {
+    const gradeCounts: Record<string, number> = {};
+    marks.forEach((mark) => {
+      const pct = mark.percentage || 0;
+      const grade = (mark.grade && mark.grade.trim()) || getGradeFromPercentage(pct) || 'N/A';
+      gradeCounts[grade] = (gradeCounts[grade] || 0) + 1;
+    });
+    return Object.entries(gradeCounts).map(([name, value]) => ({ name, value }));
+  }, [marks]);
+
+  const subjectPerformance = useMemo(() => {
+    const subjectData: Record<string, { total: number; count: number }> = {};
+    marks.forEach((mark) => {
+      mark.subject_marks?.forEach((sm) => {
+        if (!subjectData[sm.subject.name]) {
+          subjectData[sm.subject.name] = { total: 0, count: 0 };
+        }
+        subjectData[sm.subject.name].total += sm.percentage || 0;
+        subjectData[sm.subject.name].count += 1;
+      });
+    });
+    return Object.entries(subjectData).map(([name, data]) => ({
+      name,
+      average: data.count > 0 ? data.total / data.count : 0,
+    }));
+  }, [marks]);
+
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card rounded-xl p-6 soft-shadow-md"
+        >
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+           
+              <div className="w-14 h-14 rounded-xl bg-[#2C3E50] dark:bg-[#4A707A] flex items-center justify-center soft-shadow">
+                <GraduationCap className="text-white" size={28} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-semibold text-foreground">Marks Management</h1>
+                <p className="text-sm text-muted-foreground mt-1">Manage examination marks, entry, and reports</p>
+              </div>
+            </div>
+            <ModuleGuideButton />
+          </div>
+        </motion.div>
+
+
+        {/* Filters (scrolls with page — not sticky) */}
+        <Card className="soft-shadow-md">
+          <div className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Filter className="text-[#2C3E50] dark:text-[#5A879A]" size={20} />
+              <h2 className="text-lg font-semibold text-foreground">Filters</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Select structure term, examination, class, and section to load marks. Subject list shows only subjects assigned to that class–section;
+              search is optional.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+              {/* Structure Term */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Structure Term <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={filters.term_id}
+                  onChange={(e) => {
+                    setFilters({ ...filters, term_id: e.target.value, exam_id: '' });
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                  required
+                >
+                  <option value="">Select Structure Term</option>
+                  {structureTerms.map((term) => (
+                    <option key={term.id} value={term.id}>
+                      {term.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Examination */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Examination <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={filters.exam_id}
+                  onChange={(e) => {
+                    setFilters({ ...filters, exam_id: e.target.value });
+                    setCurrentPage(1);
+                  }}
+                  disabled={!filters.term_id}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900"
+                  required
+                >
+                  <option value="">{filters.term_id ? 'Select Examination' : 'Select structure term first'}</option>
+                  {examinationsForSelectedTerm.map((exam) => (
+                    <option key={exam.id} value={exam.id}>
+                      {exam.exam_name || exam.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Class */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Class <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={filters.class_id}
+                  onChange={(e) => {
+                    setFilters({ ...filters, class_id: e.target.value, section: '', subject_id: '' });
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8]"
+                >
+                  <option value="">Select class</option>
+                  {uniqueClassNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Section */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Section <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={filters.section}
+                  onChange={(e) => {
+                    setFilters({ ...filters, section: e.target.value, subject_id: '' });
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900"
+                  disabled={!filters.class_id}
+                >
+                  <option value="">{filters.class_id ? 'Select section' : 'Select class first'}</option>
+                  {sectionsForSelectedClass.map((sec) => (
+                    <option key={sec} value={sec}>
+                      {sec}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Subject — only those assigned to selected class–section */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Subject</label>
+                <select
+                  value={filters.subject_id}
+                  onChange={(e) => {
+                    setFilters({ ...filters, subject_id: e.target.value });
+                    setCurrentPage(1);
+                  }}
+                  disabled={!canLoadMarks || subjectsLoading || !matchingClassRow}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                >
+                  <option value="">
+                    {subjectsLoading
+                      ? 'Loading subjects…'
+                      : !canLoadMarks
+                        ? 'Select class & section first'
+                        : !matchingClassRow
+                          ? 'Class record not found'
+                          : 'Full report (every assigned subject)'}
+                  </option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
+                {canLoadMarks && matchingClassRow && !subjectsLoading && subjects.length === 0 ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                    No subjects assigned to this class–section. Assign subjects under Classes, then refresh.
+                  </p>
+                ) : null}
+              </div>
+
+              {/* Search */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <Input
+                    type="text"
+                    placeholder="Name or Roll No."
+                    value={filters.search}
+                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-border flex items-center justify-between flex-wrap gap-3">
+              <Button
+                onClick={() => {
+                  if (!canLoadMarks) {
+                    alert('Select structure term, examination, class, and section to load marks.');
+                    return;
+                  }
+                  fetchMarks();
+                }}
+                disabled={!canLoadMarks}
+                className="bg-[#5A7A95] hover:bg-[#4a6a85] text-white disabled:opacity-50"
+              >
+                <RefreshCw size={18} className="mr-2" />
+                Apply filters
+              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  onClick={handleExportExcel}
+                  disabled={!canLoadMarks || marks.length === 0}
+                  className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
+                >
+                  <FileSpreadsheet size={18} className="mr-2" />
+                  Export Excel
+                </Button>
+              </div>
+            </div>
+
+            {showMarksLockPanel ? (
+              <div className="mt-4 pt-4 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg bg-muted/40 dark:bg-muted/20 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    {marksLocked ? (
+                      <Lock className="text-amber-600 shrink-0" size={18} />
+                    ) : (
+                      <Unlock className="text-emerald-600 shrink-0" size={18} />
+                    )}
+                    Marks {marksLocked ? 'locked' : 'unlocked'} for this exam &amp; class–section
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    While locked, class and subject teachers cannot save or submit marks for this examination and class.
+                    Only a school admin can unlock from this page.
+                    {lockStatusLoading ? ' Checking status…' : ''}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  {!marksLocked ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={lockActionLoading || lockStatusLoading}
+                      onClick={() => handleMarksLockToggle('lock')}
+                      className="border-amber-600/50 text-amber-800 dark:text-amber-200 hover:bg-amber-500/10"
+                    >
+                      <Lock size={16} className="mr-1.5" />
+                      Lock marks
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={lockActionLoading || lockStatusLoading}
+                      onClick={() => handleMarksLockToggle('unlock')}
+                      className="bg-[#5A7A95] hover:bg-[#4a6a85] text-white"
+                    >
+                      <Unlock size={16} className="mr-1.5" />
+                      Unlock marks
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </Card>
+
+      {/* Analytics Cards */}
+      {canLoadMarks && analytics && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="p-6 bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] text-white shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm mb-1">Total Students</p>
+                <p className="text-3xl font-bold">{analytics.total_students}</p>
+              </div>
+              <Users className="text-white/70" size={32} />
+            </div>
+          </Card>
+
+          <Card className="p-6 bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-green-100 text-sm mb-1">Passed</p>
+                <p className="text-3xl font-bold">{analytics.passed}</p>
+              </div>
+              <CheckCircle2 className="text-green-200" size={32} />
+            </div>
+          </Card>
+
+          <Card className="p-6 bg-gradient-to-br from-red-500 to-red-600 text-white shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-red-100 text-sm mb-1">Failed</p>
+                <p className="text-3xl font-bold">{analytics.failed}</p>
+              </div>
+              <XCircle className="text-red-200" size={32} />
+            </div>
+          </Card>
+
+          <Card className="p-6 bg-gradient-to-br from-[#6B9BB8] to-[#7DB5D3] text-white shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm mb-1">Average %</p>
+                <p className="text-3xl font-bold">{analytics.average_percentage.toFixed(1)}%</p>
+              </div>
+              <TrendingUp className="text-white/70" size={32} />
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Subject performance (grade distribution moved to full-width bottom) */}
+      {canLoadMarks && marks.length > 0 && subjectPerformance.length > 0 && (
+        <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <BookOpen className="text-[#5A7A95]" size={20} />
+            Subject Average Performance
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={subjectPerformance}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} stroke="#6b7280" />
+              <YAxis stroke="#6b7280" />
+              <Tooltip />
+              <Line type="monotone" dataKey="average" stroke="#5A7A95" strokeWidth={2} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
+      {/* Toppers */}
+      {canLoadMarks && analytics && analytics.toppers.length > 0 && (
+        <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Award className="text-[#5A7A95]" size={20} />
+            Top Performers
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {analytics.toppers.map((topper, idx) => (
+              <div key={idx} className="text-center p-4 bg-gradient-to-br from-[#5A7A95]/10 to-[#6B9BB8]/10 dark:from-[#5A7A95]/20 dark:to-[#6B9BB8]/20 rounded-lg border border-[#5A7A95]/20 dark:border-[#6B9BB8]/30">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8] text-white flex items-center justify-center mx-auto mb-2 font-bold text-lg shadow-lg">
+                  {idx + 1}
+                </div>
+                <p className="font-semibold text-gray-900 dark:text-white">{topper.student_name}</p>
+                <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-bold">{topper.percentage.toFixed(1)}%</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">{topper.grade}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Marks Table */}
+      <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <GraduationCap className="text-[#5A7A95]" size={20} />
+            Student Marks ({filteredMarks.length} students)
+          </h3>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-12">
+            <RefreshCw className="animate-spin text-[#5A7A95] mx-auto mb-4" size={32} />
+            <p className="text-gray-600 dark:text-gray-400">Loading marks...</p>
+          </div>
+        ) : filteredMarks.length === 0 ? (
+          <div className="text-center py-12">
+            <AlertCircle className="text-gray-400 dark:text-gray-600 mx-auto mb-4" size={48} />
+            <p className="text-gray-600 dark:text-gray-400">
+              {!canLoadMarks
+                ? 'Choose structure term, examination, class, and section to load marks.'
+                : 'No marks match the current filters.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-[#5A7A95] via-[#6B9BB8] to-[#7DB5D3] text-white">
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Roll No.</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Student Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Class</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Subject Marks</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">
+                      {isSingleSubjectView ? 'Subject Total' : 'Total'}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">%</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Grade</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {paginatedMarks.map((mark) => {
+                    const pct = mark.percentage || 0;
+                    const isPass = pct >= 40;
+                    const effectiveGrade =
+                      (mark.grade && mark.grade.trim()) || getGradeFromPercentage(pct) || 'N/A';
+                    const singleSubjectMark =
+                      mark.subject_marks?.[0] || mark.subject_mark;
+                    return (
+                      <motion.tr
+                        key={mark.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="border-b border-gray-100 dark:border-gray-700 hover:bg-[#5A7A95]/5 dark:hover:bg-[#6B9BB8]/10 transition-colors"
+                      >
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{mark.student?.roll_number || '-'}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{mark.student?.student_name || mark.student?.full_name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{mark.student?.class || '-'} {mark.student?.section ? `- ${mark.student.section}` : ''}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {(mark.subject_marks || (mark.subject_mark ? [mark.subject_mark] : []))
+                              .slice(0, 3)
+                              .map((sm) => (
+                              <span
+                                key={sm.id}
+                                className="px-2 py-1 text-xs rounded"
+                                style={{ backgroundColor: `${sm.subject.color}20`, color: sm.subject.color }}
+                              >
+                                {sm.subject.name}: {sm.marks_obtained}/{sm.max_marks}
+                              </span>
+                            ))}
+                            {mark.subject_marks && mark.subject_marks.length > 3 && (
+                              <span className="px-2 py-1 text-xs text-gray-600 dark:text-gray-400">+{mark.subject_marks.length - 3} more</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                          {isSingleSubjectView
+                            ? `${singleSubjectMark?.marks_obtained || 0} / ${singleSubjectMark?.max_marks || 0}`
+                            : `${mark.total_marks || 0} / ${mark.total_max_marks || 0}`}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full ${isPass ? 'bg-green-500' : 'bg-red-500'}`}
+                                style={{ width: `${Math.min(mark.percentage || 0, 100)}%` }}
+                              />
+                            </div>
+                            <span className={`font-semibold text-sm ${isPass ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                              {(mark.percentage || 0).toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={getGradeColor(effectiveGrade)}>
+                            {effectiveGrade}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 text-xs rounded-full ${isPass ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'}`}>
+                            {isPass ? 'Pass' : 'Fail'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => router.push(`/dashboard/${schoolCode}/marks/${mark.student_id}?exam_id=${mark.exam_id}`)}
+                            className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
+                          >
+                            <Eye size={14} className="mr-1" />
+                            View Details
+                          </Button>
+                        </td>
+                      </motion.tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredMarks.length)} of {filteredMarks.length} students
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
+                  >
+                    Previous
+                  </Button>
+                  <span className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="border-[#2C3E50]/30 text-[#2C3E50] hover:bg-[#2C3E50]/10 dark:border-[#4A707A]/30 dark:text-[#5A879A] dark:hover:bg-[#4A707A]/10"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+      </div>
+
+      {/* Full-width bottom: grade distribution */}
+      {canLoadMarks && marks.length > 0 && gradeDistribution.length > 0 && (
+        <div className="w-full border-t border-border bg-muted/30 dark:bg-muted/10 mt-6">
+          <div className="w-full max-w-none px-4 sm:px-6 lg:px-8 py-6">
+            <Card className="bg-white/85 dark:bg-[#1e293b]/85 backdrop-blur-xl rounded-2xl shadow-lg border border-white/60 dark:border-gray-700/50 p-6 w-full">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <BarChart3 className="text-[#5A7A95]" size={20} />
+                Grade Distribution
+              </h3>
+              <div className="w-full min-h-[320px]">
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={gradeDistribution} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="name" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="#5A7A95" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

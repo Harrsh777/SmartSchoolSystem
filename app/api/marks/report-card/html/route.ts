@@ -9,6 +9,7 @@ import {
 } from '@/lib/report-card-html';
 import { fetchCoScholasticRowsForReportCard } from '@/lib/co-scholastic-report';
 import { getOptionalCurrentAcademicYear } from '@/lib/school-current-academic-year';
+import { getGradeFromFlexibleScale } from '@/lib/grade-calculator';
 
 /**
  * Use the same photo endpoint as the student profile UI so report cards work when
@@ -584,10 +585,7 @@ export async function fetchReportCardDataMultiExam(
     ];
   }
 
-  const getGradeFromPct = (pct: number): string => {
-    const s = gradeScales.find((g) => pct >= (g.min_percentage ?? g.min_marks ?? 0) && pct <= (g.max_percentage ?? g.max_marks ?? 100));
-    return s?.grade ?? '-';
-  };
+  const getGradeFromPct = (pct: number): string => getGradeFromFlexibleScale(pct, gradeScales, '-');
 
   // Build multi-exam marks structure: group by subject, then by exam
   type MarkRecord = {

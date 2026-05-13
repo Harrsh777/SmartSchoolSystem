@@ -11,6 +11,15 @@ export interface GradeScale {
   description?: string;
 }
 
+/** Rows from DB / report payload (percentage or absolute marks bounds). */
+export type FlexibleGradeScaleRow = {
+  grade: string;
+  min_percentage?: number;
+  max_percentage?: number;
+  min_marks?: number;
+  max_marks?: number;
+};
+
 /**
  * Default grade scale (can be overridden by school-specific settings)
  */
@@ -34,26 +43,61 @@ export function calculatePercentage(marksObtained: number, maxMarks: number): nu
 }
 
 /**
+ * Map a percentage to a grade using school-defined bands with **decimal-safe** boundaries.
+ *
+ * Bands are ordered by their lower bound (`min_percentage` ?? `min_marks`). For each row
+ * except the highest band: `min_i <= p < min_{i+1}`. For the top band (largest lower bound):
+ * `min_top <= p <= min(100, max_percentage ?? max_marks ?? 100)`.
+ *
+ * This removes gaps like 90 < p < 91 when the DB stores integer max/min (e.g. A2 81–90, A1 91–100).
+ */
+export function getGradeFromFlexibleScale(
+  percentage: number,
+  scale: FlexibleGradeScaleRow[],
+  fallback = '-'
+): string {
+  if (!scale.length) return fallback;
+  const p = Math.max(0, Math.min(100, percentage));
+  if (!Number.isFinite(p)) return fallback;
+
+  type Row = { grade: string; min: number; max: number | undefined };
+  const rows: Row[] = scale.map((r) => ({
+    grade: r.grade,
+    min: r.min_percentage ?? r.min_marks ?? 0,
+    max: r.max_percentage ?? r.max_marks,
+  }));
+
+  rows.sort((a, b) => {
+    if (a.min !== b.min) return a.min - b.min;
+    const am = a.max ?? -Infinity;
+    const bm = b.max ?? -Infinity;
+    return bm - am;
+  });
+
+  for (let i = 0; i < rows.length; i++) {
+    const lo = rows[i].min;
+    if (p < lo) continue;
+    const isLast = i === rows.length - 1;
+    if (!isLast) {
+      const hi = rows[i + 1].min;
+      if (p < hi) return rows[i].grade;
+    } else {
+      const hiInclusive = Math.min(100, rows[i].max ?? 100);
+      if (p <= hiInclusive) return rows[i].grade;
+    }
+  }
+
+  return fallback;
+}
+
+/**
  * Get grade from percentage using grade scale
  */
 export function getGradeFromPercentage(
   percentage: number,
   gradeScale: GradeScale[] = DEFAULT_GRADE_SCALE
 ): string {
-  // Ensure percentage is within valid range
-  const validPercentage = Math.max(0, Math.min(100, percentage));
-
-  // Sort by descending minimum percentage and match by threshold.
-  // This avoids decimal gaps between ranges (e.g. 89.3 between 89 and 90).
-  const sortedScale = [...gradeScale].sort(
-    (a, b) => b.min_percentage - a.min_percentage
-  );
-  for (const scale of sortedScale) {
-    if (validPercentage >= scale.min_percentage) return scale.grade;
-  }
-
-  // Default to F if no match found
-  return 'F';
+  return getGradeFromFlexibleScale(percentage, gradeScale, 'F');
 }
 
 /**

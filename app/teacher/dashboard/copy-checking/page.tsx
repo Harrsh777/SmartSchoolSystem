@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Staff } from '@/lib/supabase';
-import CopyCheckingPage from '@/app/dashboard/[school]/copy-checking/page';
+import CopyCheckingPage from '@/shared/modules/copy-checking/page';
 import Card from '@/components/ui/Card';
 import { ClipboardCheck } from 'lucide-react';
 

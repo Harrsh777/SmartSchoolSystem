@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { generatePassword } from '@/lib/password-generator';
-import { generateSchoolCode } from '@/lib/school-code-generator';
+import {
+  buildSchoolApprovalCodePrefix,
+  computeNextApprovalSerial,
+  formatSchoolApprovalCode,
+} from '@/lib/school-code-generator';
 
 export async function PATCH(
   request: NextRequest,
@@ -83,15 +87,32 @@ export async function PATCH(
       // Generate password based on school name
       const generatedPassword = generatePassword();
       
-      // Retry mechanism for handling potential duplicate school codes (race conditions)
+      // Retry mechanism for duplicate school_code (e.g. concurrent approvals).
       let insertedData = null;
       let insertError = null;
       let generatedSchoolCode = '';
-      const maxRetries = 3;
-      
+      const maxRetries = 8;
+      const approvalDate = new Date();
+      const codePrefix = buildSchoolApprovalCodePrefix(
+        schoolData.school_name,
+        approvalDate
+      );
+
       for (let attempt = 0; attempt < maxRetries; attempt++) {
-        // Generate school code (SCH001, SCH002, etc.)
-        generatedSchoolCode = generateSchoolCode(schoolData.school_name);
+        const { data: existingCodesRows, error: codesLookupError } = await supabase
+          .from('accepted_schools')
+          .select('school_code')
+          .like('school_code', `${codePrefix}/%`);
+
+        if (codesLookupError) {
+          insertError = codesLookupError;
+          break;
+        }
+
+        const existingCodes =
+          existingCodesRows?.map((r) => r.school_code).filter(Boolean) ?? [];
+        const serial = computeNextApprovalSerial(existingCodes, codePrefix);
+        generatedSchoolCode = formatSchoolApprovalCode(codePrefix, serial);
         
         const result = await supabase
           .from('accepted_schools')

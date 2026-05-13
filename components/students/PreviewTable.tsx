@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Card from '@/components/ui/Card';
 import { CheckCircle, AlertCircle, XCircle } from 'lucide-react';
-import type { StudentRow } from '@/app/dashboard/[school]/students/import/page';
+import type { StudentRow } from '@/shared/modules/students/import/page';
 import { getString } from '@/lib/type-utils';
 
 interface PreviewTableProps {

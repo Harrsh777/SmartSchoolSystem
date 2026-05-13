@@ -7,7 +7,7 @@ import {
   matchCanonicalClassFromAllowList,
 } from '@/lib/students/import-class-section';
 import { normalizeStudentGenderForDb } from '@/lib/students/gender';
-import type { StudentRow } from '@/app/dashboard/[school]/students/import/page';
+import type { StudentRow } from '@/shared/modules/students/import/page';
 
 // Field mapping: CSV header -> database field
 const FIELD_MAPPING: Record<string, string> = {

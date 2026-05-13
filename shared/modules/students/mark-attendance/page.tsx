@@ -1,0 +1,787 @@
+'use client';
+
+import { use, useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import { Calendar, CheckCircle, AlertCircle, Save, Users, Filter, Edit3, ClipboardList } from 'lucide-react';
+import ManualAttendanceModal from '@/components/attendance/ManualAttendanceModal';
+
+type AttendanceStatus = 'present' | 'absent' | 'leave';
+type AttendanceState = 'NOT_MARKED' | 'IN_PROGRESS' | 'SAVED';
+
+interface Student {
+  id: string;
+  roll_number: string | null;
+  student_name: string;
+  admission_no: string;
+  academic_year?: string | null;
+}
+
+interface Class {
+  id: string;
+  class: string;
+  section: string;
+  academic_year?: string;
+  class_teacher_id: string | null;
+  class_teacher_staff_id: string | null;
+}
+
+export default function MarkAttendancePage({
+  params,
+}: {
+  params: Promise<{ school: string }>;
+}) {
+  const { school: schoolCode } = use(params);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [selectedSection, setSelectedSection] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [currentStaffId, setCurrentStaffId] = useState<string | null>(null);
+  const [currentStaffStaffId, setCurrentStaffStaffId] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentAcademicYear, setCurrentAcademicYear] = useState<string>('');
+  const [attendanceState, setAttendanceState] = useState<AttendanceState>('NOT_MARKED');
+  const [lastMarkedInfo, setLastMarkedInfo] = useState<{ at: string; by: string } | null>(null);
+  const [manualModalOpen, setManualModalOpen] = useState(false);
+  /** School admin login has no `staff` in session; API still needs a staff UUID for marked_by / audit. */
+  const [fallbackStaffIdForManual, setFallbackStaffIdForManual] = useState<string | null>(null);
+  const [fallbackStaffIdLoading, setFallbackStaffIdLoading] = useState(false);
+
+  useEffect(() => {
+    const loadAcademicYear = async () => {
+      try {
+        const res = await fetch(`/api/classes/academic-years?school_code=${schoolCode}`);
+        const data = await res.json();
+        const years = (data.data || []) as string[];
+        if (years.length > 0) {
+          const currentCalYear = new Date().getFullYear();
+          const match = years.find((y: string) => String(y).includes(String(currentCalYear)));
+          setCurrentAcademicYear(match || years[0]);
+        }
+      } catch {
+        setCurrentAcademicYear('');
+      }
+    };
+    loadAcademicYear();
+  }, [schoolCode]);
+
+  useEffect(() => {
+    checkPermissions();
+    fetchClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolCode]);
+
+  useEffect(() => {
+    setFallbackStaffIdForManual(null);
+  }, [schoolCode]);
+
+  useEffect(() => {
+    if (!manualModalOpen || !isAdmin || currentStaffId) {
+      return;
+    }
+    let cancelled = false;
+    setFallbackStaffIdLoading(true);
+    (async () => {
+      try {
+        const response = await fetch(`/api/staff?school_code=${schoolCode}`);
+        const result = await response.json();
+        if (cancelled) return;
+        if (response.ok && result.data && Array.isArray(result.data) && result.data.length > 0) {
+          const privileged = result.data.find((s: { role?: string; designation?: string; id: string }) => {
+            const role = (s.role || '').toLowerCase();
+            const des = (s.designation || '').toLowerCase();
+            return (
+              role.includes('admin') ||
+              role.includes('principal') ||
+              des.includes('admin') ||
+              des.includes('principal')
+            );
+          });
+          const pick = privileged || result.data[0];
+          if (pick?.id) {
+            setFallbackStaffIdForManual(pick.id);
+          } else {
+            setFallbackStaffIdForManual(null);
+          }
+        } else {
+          setFallbackStaffIdForManual(null);
+        }
+      } catch {
+        if (!cancelled) setFallbackStaffIdForManual(null);
+      } finally {
+        if (!cancelled) setFallbackStaffIdLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [manualModalOpen, isAdmin, currentStaffId, schoolCode]);
+
+  useEffect(() => {
+    if (selectedClass && selectedSection && selectedDate) {
+      fetchStudents();
+      fetchExistingAttendance();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClass, selectedSection, selectedDate, schoolCode, currentAcademicYear]);
+
+  const checkPermissions = () => {
+    const storedStaff = sessionStorage.getItem('staff');
+    if (storedStaff) {
+      try {
+        const staff = JSON.parse(storedStaff);
+        const role = (staff.role || '').toLowerCase();
+        const designation = (staff.designation || '').toLowerCase();
+        setIsAdmin(
+          role.includes('admin') ||
+          role.includes('principal') ||
+          designation.includes('admin') ||
+          designation.includes('principal')
+        );
+        setCurrentStaffId(staff.id || null);
+        setCurrentStaffStaffId(staff.staff_id || null);
+      } catch {
+        setIsAdmin(true);
+      }
+    } else {
+      setIsAdmin(true);
+    }
+  };
+
+  const fetchClasses = async () => {
+    try {
+      setLoading(true);
+      
+      // Check permissions inline
+      const storedStaff = sessionStorage.getItem('staff');
+      let checkIsAdmin = false;
+      let checkStaffId: string | null = null;
+      let checkStaffStaffId: string | null = null;
+      
+      if (storedStaff) {
+        try {
+          const staff = JSON.parse(storedStaff);
+          const role = (staff.role || '').toLowerCase();
+          const designation = (staff.designation || '').toLowerCase();
+          checkIsAdmin = role.includes('admin') || role.includes('principal') ||
+                        designation.includes('admin') || designation.includes('principal');
+          checkStaffId = staff.id || null;
+          checkStaffStaffId = staff.staff_id || null;
+        } catch {
+          checkIsAdmin = true;
+        }
+      } else {
+        checkIsAdmin = true;
+      }
+      
+      const response = await fetch(`/api/classes?school_code=${schoolCode}`);
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        let availableClasses = result.data;
+        
+        // If not admin, filter classes to only those where user is class teacher
+        if (!checkIsAdmin && checkStaffId && checkStaffStaffId) {
+          availableClasses = result.data.filter((cls: Class) => 
+            cls.class_teacher_id === checkStaffId ||
+            cls.class_teacher_staff_id === checkStaffStaffId
+          );
+        }
+        setClasses(availableClasses);
+      }
+    } catch (err) {
+      console.error('Error fetching classes:', err);
+      setError('Failed to load classes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStudents = async () => {
+    if (!selectedClass || !selectedSection) return;
+    
+    try {
+      setLoading(true);
+
+      const params = new URLSearchParams({ 
+        school_code: schoolCode, 
+        class: selectedClass, 
+        section: selectedSection 
+      });
+      if (currentAcademicYear) {
+        params.set('academic_year', currentAcademicYear);
+      }
+      
+      const response = await fetch(`/api/students?${params}`);
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        let list = result.data as Student[];
+        if (currentAcademicYear) {
+          list = list.filter((s: Student) => {
+            const sy = (s.academic_year ?? '').toString().trim();
+            return sy === currentAcademicYear || sy === '';
+          });
+        }
+        const sortedStudents = [...list].sort((a: Student, b: Student) => {
+          const ra = String(a.roll_number ?? '').trim();
+          const rb = String(b.roll_number ?? '').trim();
+          const byRoll = ra.localeCompare(rb, undefined, { numeric: true });
+          if (byRoll !== 0) return byRoll;
+          return (a.student_name || '').localeCompare(b.student_name || '');
+        });
+        setStudents(sortedStudents);
+        // Attendance is set by fetchExistingAttendance (same effect); do not default to present
+      }
+    } catch (err) {
+      console.error('Error fetching students:', err);
+      setError('Failed to load students');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const classesForCurrentYear = currentAcademicYear
+    ? classes.filter((c) => (c.academic_year ?? '') === currentAcademicYear)
+    : classes;
+
+  useEffect(() => {
+    if (classesForCurrentYear.length === 0) {
+      setSelectedClass('');
+      setSelectedSection('');
+      return;
+    }
+
+    // Keep selectors empty until user explicitly chooses class/section.
+    if (!selectedClass) {
+      setSelectedSection('');
+      return;
+    }
+
+    const classExists = classesForCurrentYear.some((c) => c.class === selectedClass);
+    if (!classExists) {
+      setSelectedClass('');
+      setSelectedSection('');
+      return;
+    }
+
+    if (selectedSection) {
+      const pairExists = classesForCurrentYear.some(
+        (c) => c.class === selectedClass && (c.section ?? '') === selectedSection
+      );
+      if (!pairExists) {
+        setSelectedSection('');
+      }
+    }
+  }, [classesForCurrentYear, selectedClass, selectedSection]);
+
+  const fetchExistingAttendance = async () => {
+    if (!selectedClass || !selectedSection || !selectedDate) return;
+
+    try {
+      const classData = classes.find(c => c.class === selectedClass && c.section === selectedSection);
+      if (!classData) return;
+
+      const response = await fetch(
+        `/api/attendance/class?school_code=${schoolCode}&class_id=${classData.id}&date=${selectedDate}`
+      );
+      const result = await response.json();
+
+      if (response.ok && result.data) {
+        if (result.data.length === 0) {
+          setAttendance({});
+          setAttendanceState('NOT_MARKED');
+          setLastMarkedInfo(null);
+        } else {
+          const existingAttendance: Record<string, AttendanceStatus> = {};
+          result.data.forEach((record: { student_id: string; status: string; notes?: string; remarks?: string }) => {
+            const notesOrRemarks = (record.notes || record.remarks || '').trim();
+            const isLeave = record.status === 'leave' || record.status === 'holiday' || (notesOrRemarks === 'Leave' && (record.status === 'leave' || record.status === 'holiday'));
+            let status: AttendanceStatus = record.status === 'late' ? 'present' : (record.status as AttendanceStatus);
+            if (isLeave || record.status === 'holiday') status = 'leave';
+            if (status !== 'present' && status !== 'absent' && status !== 'leave') status = 'present';
+            existingAttendance[record.student_id] = status;
+          });
+          setAttendance(existingAttendance);
+          setAttendanceState('SAVED');
+          const meta = result.meta as { last_marked_at?: string; marked_by_name?: string } | null;
+          if (meta?.last_marked_at) {
+            const at = new Date(meta.last_marked_at);
+            setLastMarkedInfo({
+              at: at.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+              by: meta.marked_by_name || 'Staff',
+            });
+          } else {
+            setLastMarkedInfo(null);
+          }
+        }
+      } else {
+        setAttendance({});
+        setAttendanceState('NOT_MARKED');
+        setLastMarkedInfo(null);
+      }
+    } catch (err) {
+      console.error('Error fetching existing attendance:', err);
+      setAttendance({});
+      setAttendanceState('NOT_MARKED');
+    }
+  };
+
+  const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
+    setAttendanceState('IN_PROGRESS');
+    setAttendance(prev => ({ ...prev, [studentId]: status }));
+  };
+
+  const handleBulkAction = (status: AttendanceStatus) => {
+    setAttendanceState('IN_PROGRESS');
+    const bulkAttendance: Record<string, AttendanceStatus> = {};
+    students.forEach((student) => {
+      bulkAttendance[student.id] = status;
+    });
+    setAttendance(prev => ({ ...prev, ...bulkAttendance }));
+  };
+
+  const handleEditAttendance = () => {
+    setAttendanceState('IN_PROGRESS');
+  };
+
+  const handleSave = async () => {
+    if (!selectedClass || !selectedSection || !selectedDate) {
+      setError('Please select a class, section, and date');
+      return;
+    }
+
+    // Find the class ID based on class and section
+    const classData = classes.find(c => c.class === selectedClass && c.section === selectedSection);
+    if (!classData) {
+      setError('Invalid class or section selected');
+      return;
+    }
+
+    setSaving(true);
+    setSaveSuccess(false);
+    setError(null);
+
+    try {
+      // Get staff ID from session or fetch default admin/principal
+      let staffIdToUse = currentStaffId;
+      
+      if (!staffIdToUse) {
+        try {
+          const response = await fetch(`/api/staff?school_code=${schoolCode}`);
+          const result = await response.json();
+          if (response.ok && result.data && Array.isArray(result.data) && result.data.length > 0) {
+            // Try to find principal or admin first
+            const principal = result.data.find((s: { role?: string; id: string }) => 
+              s.role && (
+                s.role.toLowerCase().includes('principal') || 
+                s.role.toLowerCase().includes('admin')
+              )
+            );
+            // If no principal/admin, use the first staff member
+            const defaultStaff = principal || result.data[0];
+            if (defaultStaff && defaultStaff.id) {
+              staffIdToUse = defaultStaff.id;
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching default staff:', err);
+        }
+      }
+
+      if (!staffIdToUse) {
+        setError('Unable to save attendance. No valid staff found for this school.');
+        setSaving(false);
+        return;
+      }
+
+      const attendanceRecords = students.map((student) => ({
+        student_id: student.id,
+        status: attendance[student.id] || 'absent',
+      }));
+
+      const endpoint = isAdmin ? '/api/attendance/admin-mark' : '/api/attendance/mark';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_code: schoolCode,
+          class_id: classData.id,
+          attendance_date: selectedDate,
+          attendance_records: attendanceRecords,
+          marked_by: staffIdToUse,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setSaveSuccess(true);
+        setAttendanceState('SAVED');
+        setTimeout(() => setSaveSuccess(false), 3000);
+        fetchExistingAttendance();
+      } else {
+        const msg = result.error || 'Failed to save attendance';
+        const details = result.details ? ` (${result.details})` : '';
+        setError(msg + details);
+      }
+    } catch (err) {
+      console.error('Error saving attendance:', err);
+      setError('Failed to save attendance. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const canMarkForClass = (classId: string): boolean => {
+    if (isAdmin) return true;
+    const classData = classes.find(c => c.id === classId);
+    if (!classData || !currentStaffId || !currentStaffStaffId) return false;
+    return classData.class_teacher_id === currentStaffId || 
+           classData.class_teacher_staff_id === currentStaffStaffId;
+  };
+
+  if (loading && classes.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-wrap items-start justify-between gap-4"
+      >
+        <div>
+          <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
+            <Calendar size={32} />
+            Mark Student Attendance
+          </h1>
+          <p className="text-gray-600">
+            {isAdmin ? 'Mark attendance for any class' : 'Mark attendance for your assigned classes'}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0 border-orange-500 text-orange-700 hover:bg-orange-50"
+          onClick={() => setManualModalOpen(true)}
+        >
+          <ClipboardList size={18} className="mr-2" />
+          Manual editing
+        </Button>
+      </motion.div>
+
+      <ManualAttendanceModal
+        open={manualModalOpen}
+        onClose={() => setManualModalOpen(false)}
+        schoolCode={schoolCode}
+        staffId={currentStaffId ?? fallbackStaffIdForManual}
+        staffIdResolving={isAdmin && !currentStaffId && fallbackStaffIdLoading}
+        classes={classesForCurrentYear.map((c) => ({
+          id: c.id,
+          class: c.class,
+          section: c.section ?? '',
+          academic_year: c.academic_year,
+        }))}
+      />
+
+      {/* Filters */}
+      <Card>
+        {currentAcademicYear && (
+          <p className="text-sm text-gray-600 mb-3">
+            Academic year: <span className="font-semibold">{currentAcademicYear}</span> — only classes and students of this year are shown.
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <Filter className="text-gray-400" size={20} />
+            <label className="text-sm font-medium text-gray-700">Class:</label>
+            <select
+              value={selectedClass}
+              onChange={(e) => {
+                setSelectedClass(e.target.value);
+                setSelectedSection('');
+              }}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="">Select Class</option>
+              {Array.from(new Set(classesForCurrentYear.map(c => c.class))).sort().map((cls) => (
+                <option key={cls} value={cls}>{cls}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">Section:</label>
+            <select
+              value={selectedSection}
+              onChange={(e) => setSelectedSection(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              disabled={!selectedClass}
+            >
+              <option value="">Select Section</option>
+              {classesForCurrentYear
+                .filter(c => c.class === selectedClass)
+                .map((cls) => (
+                  <option key={cls.id} value={cls.section}>
+                    {cls.section || 'No Section'}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Calendar className="text-gray-400" size={20} />
+            <label className="text-sm font-medium text-gray-700">Date:</label>
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-auto"
+              max={new Date().toISOString().split('T')[0]}
+            />
+          </div>
+        </div>
+
+        {/* Attendance status badge and message */}
+        {selectedClass && selectedSection && students.length > 0 && (
+          <div className="mb-4 pt-4 border-t border-gray-200 space-y-2">
+            {attendanceState === 'NOT_MARKED' && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <span className="inline-block w-3 h-3 rounded-full bg-amber-500" aria-hidden />
+                <span className="font-medium text-amber-800">Not Marked</span>
+                <p className="text-sm text-amber-700 mt-1 w-full">Today&apos;s attendance has not been marked.</p>
+              </div>
+            )}
+            {attendanceState === 'SAVED' && (
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 rounded-full bg-emerald-500" aria-hidden />
+                  <span className="font-medium text-emerald-800">Saved</span>
+                  {lastMarkedInfo && (
+                    <span className="text-sm text-emerald-700">
+                      Last marked at {lastMarkedInfo.at} by {lastMarkedInfo.by}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEditAttendance}
+                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-100"
+                >
+                  <Edit3 size={16} className="mr-2" />
+                  Edit Attendance
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Attendance Summary Stats */}
+        {selectedClass && selectedSection && students.length > 0 && (
+          <div className="grid grid-cols-4 gap-4 mb-4 pt-4 border-t border-gray-200">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">
+                {Object.values(attendance).filter(s => s === 'present').length}
+              </div>
+              <div className="text-xs text-gray-500">Present</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">
+                {Object.values(attendance).filter(s => s === 'absent').length}
+              </div>
+              <div className="text-xs text-gray-500">Absent</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-600">
+                {students.length - Object.keys(attendance).length}
+              </div>
+              <div className="text-xs text-gray-500">Not Marked</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {Object.values(attendance).filter(s => s === 'leave').length}
+              </div>
+              <div className="text-xs text-gray-500">Leave</div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-800">
+            <AlertCircle size={20} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {saveSuccess && (
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-800">
+            <CheckCircle size={20} />
+            <span>Attendance saved successfully!</span>
+          </div>
+        )}
+
+        {!isAdmin && classes.length === 0 && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
+            <AlertCircle size={20} className="inline mr-2" />
+            You are not assigned as a class teacher for any class.
+          </div>
+        )}
+      </Card>
+
+      {/* Attendance Marking */}
+      {selectedClass && selectedSection && students.length > 0 && (
+        <Card>
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">
+                {selectedClass}{selectedSection ? `-${selectedSection}` : ''}
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {selectedDate} • {students.length} students
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleBulkAction('present')}
+                className="border-green-300 text-green-600 hover:bg-green-50"
+                disabled={attendanceState === 'SAVED'}
+              >
+                Mark All Present
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleBulkAction('absent')}
+                className="border-red-300 text-red-600 hover:bg-red-50"
+                disabled={attendanceState === 'SAVED'}
+              >
+                Mark All Absent
+              </Button>
+            
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Roll no.</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Admission no.</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Student name</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {students.map((student) => (
+                  <tr key={student.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {student.roll_number ?? '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {student.admission_no}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {student.student_name}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => attendanceState !== 'SAVED' && handleStatusChange(student.id, 'present')}
+                          disabled={attendanceState === 'SAVED'}
+                          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                            attendance[student.id] === 'present'
+                              ? 'bg-green-500 text-white'
+                              : attendanceState === 'SAVED' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-green-100'
+                          }`}
+                        >
+                          Present
+                        </button>
+                        <button
+                          onClick={() => attendanceState !== 'SAVED' && handleStatusChange(student.id, 'absent')}
+                          disabled={attendanceState === 'SAVED'}
+                          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                            attendance[student.id] === 'absent'
+                              ? 'bg-red-500 text-white'
+                              : attendanceState === 'SAVED' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-red-100'
+                          }`}
+                        >
+                          Absent
+                        </button>
+                        <button
+                          onClick={() => attendanceState !== 'SAVED' && handleStatusChange(student.id, 'leave')}
+                          disabled={attendanceState === 'SAVED'}
+                          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                            attendance[student.id] === 'leave'
+                              ? 'bg-blue-500 text-white'
+                              : attendanceState === 'SAVED' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-blue-100'
+                          }`}
+                        >
+                          Leave
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <Button
+              onClick={handleSave}
+              disabled={saving || attendanceState !== 'IN_PROGRESS'}
+              className={`flex items-center gap-2 ${
+                attendanceState === 'IN_PROGRESS'
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              <Save size={18} />
+              {saving ? 'Saving...' : attendanceState === 'SAVED' ? 'Saved' : 'Save Attendance'}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {selectedClass && selectedSection && students.length === 0 && !loading && (
+        <Card>
+          <div className="text-center py-12">
+            <Users size={48} className="mx-auto mb-4 text-gray-400" />
+            <p className="text-gray-600">No students found for this class</p>
+          </div>
+        </Card>
+      )}
+
+      {(!selectedClass || !selectedSection) && (
+        <Card>
+          <div className="text-center py-12">
+            <Calendar size={48} className="mx-auto mb-4 text-gray-400" />
+            <p className="text-gray-600">Please select a class and section to mark attendance</p>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}

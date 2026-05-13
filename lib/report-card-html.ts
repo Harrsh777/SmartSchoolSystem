@@ -1,3 +1,4 @@
+import { getGradeFromFlexibleScale } from '@/lib/grade-calculator';
 
 export interface ExamMarksData {
   exam_id: string;
@@ -1002,10 +1003,7 @@ function getGradeFromMarks(
 ): string {
   if (max <= 0) return '-';
   const pct = (obtained / max) * 100;
-  const minKey = (s: (typeof scales)[0]) => s.min_marks ?? s.min_percentage ?? 0;
-  const maxKey = (s: (typeof scales)[0]) => s.max_marks ?? s.max_percentage ?? 100;
-  const scale = scales.find((s) => pct >= minKey(s) && pct <= maxKey(s));
-  return scale?.grade ?? '-';
+  return getGradeFromFlexibleScale(pct, scales, '-');
 }
 
 /** Demo payload so template preview uses the same HTML path as PDF/generate. */
@@ -1231,13 +1229,7 @@ function generateLandscapeReportCardHTML(
     const totalMax = m.max_marks || 0;
     const obtained = m.marks_obtained ?? 0;
     const pct = totalMax > 0 ? (obtained / totalMax) * 100 : 0;
-    const scale =
-      data.gradeScales?.find((g) => {
-        const min = g.min_percentage ?? g.min_marks ?? 0;
-        const max = g.max_percentage ?? g.max_marks ?? 100;
-        return pct >= min && pct <= max;
-      }) || null;
-    return scale?.grade ?? '-';
+    return getGradeFromFlexibleScale(pct, data.gradeScales ?? [], '-');
   };
 
   const isMultiExamLandscape = Array.isArray(data.multiExamMarks) && data.multiExamMarks.length > 0 && Array.isArray(data.examsList) && data.examsList.length > 0;

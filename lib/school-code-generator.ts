@@ -1,31 +1,54 @@
 /**
- * Generate a unique school code based on school name
- * @param schoolName - Name of the school
- * @returns Generated school code (uppercase, max 10 characters)
+ * School code assigned on admin approval:
+ * {first word of school name}{MM}{YY}/{approval serial}
+ * Example: LORETO0426/01 — Loreto, April 2026, first approval with that prefix.
  */
-export function generateSchoolCode(schoolName: string): string {
-  if (!schoolName || schoolName.trim().length === 0) {
-    throw new Error('School name is required');
-  }
 
-  // Remove special characters and convert to uppercase
-  let code = schoolName
-    .trim()
+const MAX_NAME_PART_LEN = 20;
+
+function firstWordNamePart(schoolName: string): string {
+  const raw = schoolName.trim().split(/\s+/)[0] ?? '';
+  const cleaned = raw
     .toUpperCase()
-    .replace(/[^A-Z0-9\s]/g, '') // Remove special characters
-    .replace(/\s+/g, '') // Remove spaces
-    .substring(0, 10); // Max 10 characters
-
-  // If code is too short, pad with numbers
-  if (code.length < 4) {
-    code = code + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    code = code.substring(0, 10);
+    .replace(/[^A-Z0-9]/g, '');
+  if (!cleaned) {
+    return 'SCH';
   }
+  return cleaned.slice(0, MAX_NAME_PART_LEN);
+}
 
-  // If code is empty after processing, generate a random one
-  if (code.length === 0) {
-    code = 'SCH' + Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+/** Prefix only: e.g. LORETO0426 */
+export function buildSchoolApprovalCodePrefix(
+  schoolName: string,
+  approvalDate: Date
+): string {
+  const namePart = firstWordNamePart(schoolName);
+  const mm = String(approvalDate.getMonth() + 1).padStart(2, '0');
+  const yy = String(approvalDate.getFullYear() % 100).padStart(2, '0');
+  return `${namePart}${mm}${yy}`;
+}
+
+/** Full code for a given serial (min width 2 for 1–99, then natural length). */
+export function formatSchoolApprovalCode(prefix: string, serial: number): string {
+  const n = serial < 1 ? 1 : serial;
+  const suffix = n < 100 ? String(n).padStart(2, '0') : String(n);
+  return `${prefix}/${suffix}`;
+}
+
+/** Next serial for this prefix from existing `school_code` values in accepted_schools. */
+export function computeNextApprovalSerial(
+  existingSchoolCodes: string[],
+  prefix: string
+): number {
+  const needle = `${prefix}/`;
+  let max = 0;
+  for (const code of existingSchoolCodes) {
+    if (typeof code !== 'string' || !code.startsWith(needle)) continue;
+    const rest = code.slice(needle.length);
+    const parsed = parseInt(rest, 10);
+    if (!Number.isNaN(parsed)) {
+      max = Math.max(max, parsed);
+    }
   }
-
-  return code;
+  return max + 1;
 }

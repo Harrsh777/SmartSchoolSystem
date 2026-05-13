@@ -3,7 +3,6 @@
  * Session token is stored in HttpOnly cookie; session data lives in Supabase `sessions` table.
  */
 
-import { randomBytes } from 'crypto';
 import { NextRequest } from 'next/server';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import {
@@ -19,7 +18,9 @@ const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days – user stays logged 
 const TOKEN_BYTES = 32;
 
 function generateSessionToken(): string {
-  return randomBytes(TOKEN_BYTES).toString('hex');
+  const bytes = new Uint8Array(TOKEN_BYTES);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export interface SessionData {

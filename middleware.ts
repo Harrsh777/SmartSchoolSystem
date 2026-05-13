@@ -10,11 +10,19 @@ import {
   slotKeyToCookieName,
 } from '@/lib/auth-cookie';
 import { getServiceRoleClient } from '@/lib/supabase-admin';
+import { getSessionFromRequest } from '@/lib/session-store';
+import { getStaffMenuModulesCached } from '@/lib/rbac/get-staff-menu-modules';
+import {
+  evaluateTeacherSlugAgainstMenu,
+  teacherPathnameToSlug,
+} from '@/lib/rbac/teacher-menu-matching';
+import { isTeacherDashboardPathExemptFromRbacMenu } from '@/lib/rbac/teacher-intrinsic-paths';
 
 const LOGIN_PATH = '/login';
 const PUBLIC_PATHS = [
   '/login',
   '/staff/login',
+  '/teacher/login',
   '/student/login',
   '/admin/login',
   '/accountant/login',
@@ -135,19 +143,56 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith('/teacher/')) {
-    if (auth?.role === 'teacher') {
+    if (pathname === '/teacher/login' || pathname.startsWith('/teacher/login/')) {
       return NextResponse.next();
     }
-    for (const c of request.cookies.getAll()) {
-      const sk = cookieNameToSlotKey(c.name);
-      if (sk === 'teacher' || (typeof sk === 'string' && sk.startsWith('teacher:'))) {
-        if (c.value) {
-          return activateSlotOnResponse(request, sk);
+
+    let teacherResponse: NextResponse | null = null;
+    if (auth?.role === 'teacher') {
+      teacherResponse = NextResponse.next();
+    } else {
+      for (const c of request.cookies.getAll()) {
+        const sk = cookieNameToSlotKey(c.name);
+        if (sk === 'teacher' || (typeof sk === 'string' && sk.startsWith('teacher:'))) {
+          if (c.value) {
+            teacherResponse = activateSlotOnResponse(request, sk);
+            break;
+          }
         }
       }
     }
-    const login = new URL('/staff/login', request.url);
-    return NextResponse.redirect(login);
+
+    if (!teacherResponse) {
+      const login = new URL('/staff/login', request.url);
+      return NextResponse.redirect(login);
+    }
+
+    if (
+      pathname.startsWith('/teacher/dashboard') &&
+      !isTeacherDashboardPathExemptFromRbacMenu(pathname)
+    ) {
+      try {
+        const session = await getSessionFromRequest(request);
+        if (!session?.user_id || session.role !== 'teacher') {
+          const login = new URL('/staff/login', request.url);
+          return NextResponse.redirect(login);
+        }
+        const menu = await getStaffMenuModulesCached(session.user_id);
+        const slug = teacherPathnameToSlug(pathname, session.school_code);
+        if (!menu || !evaluateTeacherSlugAgainstMenu(menu, slug).allowed) {
+          const home = new URL('/teacher/dashboard', request.url);
+          home.searchParams.set('access', 'denied');
+          return NextResponse.redirect(home);
+        }
+      } catch (e) {
+        console.error('Teacher dashboard RBAC middleware error:', e);
+        const home = new URL('/teacher/dashboard', request.url);
+        home.searchParams.set('access', 'error');
+        return NextResponse.redirect(home);
+      }
+    }
+
+    return teacherResponse;
   }
 
   if (pathname.startsWith('/student/')) {

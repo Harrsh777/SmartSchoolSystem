@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Card from '@/components/ui/Card';
 import { CheckCircle, AlertCircle, XCircle } from 'lucide-react';
-import type { StaffRow } from '@/app/dashboard/[school]/staff/import/page';
+import type { StaffRow } from '@/shared/modules/staff/import/page';
 import { getString } from '@/lib/type-utils';
 
 interface StaffPreviewTableProps {

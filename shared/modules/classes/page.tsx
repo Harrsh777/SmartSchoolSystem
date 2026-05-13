@@ -1,0 +1,256 @@
+'use client';
+
+import { use, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import { Plus, Search, HelpCircle, BookOpen, RefreshCw } from 'lucide-react';
+import ClassesTable from '@/components/classes/ClassesTable';
+import AddClassModal from '@/components/classes/AddClassModal';
+import AssignTeacherModal from '@/components/classes/AssignTeacherModal';
+import ClassesTutorial from '@/components/classes/ClassesTutorial';
+import type { ClassWithDetails } from '@/lib/supabase';
+
+export default function ClassesPage({
+  params,
+}: {
+  params: Promise<{ school: string }>;
+}) {
+  const { school: schoolCode } = use(params);
+  const router = useRouter();
+  const [classes, setClasses] = useState<ClassWithDetails[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedClass, setSelectedClass] = useState<ClassWithDetails | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchClasses();
+    // On load: sync classes from all existing students (creates any missing class/section rows)
+    syncClassesFromStudents(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolCode]);
+
+  const syncClassesFromStudents = async (silent = false) => {
+    try {
+      if (!silent) setSyncing(true);
+      setSyncMessage(null);
+      const response = await fetch('/api/classes/sync-from-students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_code: schoolCode }),
+      });
+      const result = await response.json();
+      if (response.ok && result.created !== undefined) {
+        if (result.created > 0) {
+          await fetchClasses();
+          if (!silent) setSyncMessage(result.message ?? `Created ${result.created} class(es) from students.`);
+        } else if (!silent) {
+          setSyncMessage(result.message ?? 'All classes are already in sync.');
+        }
+      } else if (!silent) {
+        setSyncMessage(result.error ?? 'Sync failed.');
+      }
+    } catch (err) {
+      console.error('Error syncing classes from students:', err);
+      if (!silent) setSyncMessage('Failed to sync classes.');
+    } finally {
+      if (!silent) setSyncing(false);
+    }
+  };
+
+  const fetchClasses = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/classes?school_code=${schoolCode}`);
+      const result = await response.json();
+      
+      if (response.ok && result.data) {
+        setClasses(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching classes:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddSuccess = () => {
+    setShowAddModal(false);
+    fetchClasses();
+  };
+
+  const handleAssignTeacher = (classItem: ClassWithDetails) => {
+    setSelectedClass(classItem);
+    setShowAssignModal(true);
+  };
+
+  const handleAssignSuccess = () => {
+    setShowAssignModal(false);
+    setSelectedClass(null);
+    fetchClasses();
+  };
+
+  const handleDelete = async (classId: string) => {
+    if (!confirm('Are you sure you want to delete this class? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/classes/${classId}?school_code=${schoolCode}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        fetchClasses();
+      } else {
+        alert(result.error || 'Failed to delete class');
+      }
+    } catch (error) {
+      console.error('Error deleting class:', error);
+      alert('Failed to delete class. Please try again.');
+    }
+  };
+
+  const filteredClasses = classes.filter(cls => {
+    const searchLower = searchQuery.toLowerCase();
+    return (
+      cls.class.toLowerCase().includes(searchLower) ||
+      cls.section.toLowerCase().includes(searchLower) ||
+      cls.academic_year.toLowerCase().includes(searchLower) ||
+      (cls.class_teacher?.full_name.toLowerCase().includes(searchLower) || false)
+    );
+  });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#5A7A95] border-t-transparent mx-auto mb-4"></div>
+          <p className="text-[#5A7A95] dark:text-[#6B9BB8] font-medium">Loading classes...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-black dark:text-white mb-2 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#5A7A95] to-[#6B9BB8]">
+                <BookOpen className="text-white" size={28} />
+              </div>
+              Classes
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">Manage class structure and assign class teachers</p>
+          </div>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowTutorial(true)}
+            >
+              <HelpCircle size={18} className="mr-2" />
+              Tutorial
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => syncClassesFromStudents(false)}
+              disabled={syncing}
+            >
+              <RefreshCw size={18} className={`mr-2 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Sync from students'}
+            </Button>
+            <Button onClick={() => setShowAddModal(true)}>
+              <Plus size={18} className="mr-2" />
+              Add Class
+            </Button>
+          </div>
+        </div>
+        {syncMessage && (
+          <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+            {syncMessage}
+          </p>
+        )}
+      </motion.div>
+
+      {/* Search */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <Card>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder="Search classes by class, section, year, or teacher..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e293b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#5A7A95] dark:focus:ring-[#6B9BB8] focus:border-transparent transition-all hover:border-[#5A7A95]/50 dark:hover:border-[#6B9BB8]/50"
+            />
+          </div>
+        </Card>
+      </motion.div>
+
+      {/* Classes Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <ClassesTable
+          classes={filteredClasses}
+          schoolCode={schoolCode}
+          onAssignTeacher={handleAssignTeacher}
+          onDelete={handleDelete}
+          onStudentCountClick={(cls) => {
+            router.push(`/dashboard/${schoolCode}/students?class=${cls.class}&section=${cls.section}&year=${cls.academic_year}`);
+          }}
+        />
+      </motion.div>
+
+      {/* Modals */}
+      {showAddModal && (
+        <AddClassModal
+          schoolCode={schoolCode}
+          onClose={() => setShowAddModal(false)}
+          onSuccess={handleAddSuccess}
+        />
+      )}
+
+      {showAssignModal && selectedClass && (
+        <AssignTeacherModal
+          schoolCode={schoolCode}
+          classId={selectedClass.id!}
+          currentTeacher={selectedClass.class_teacher}
+          onClose={() => {
+            setShowAssignModal(false);
+            setSelectedClass(null);
+          }}
+          onSuccess={handleAssignSuccess}
+        />
+      )}
+
+      {showTutorial && (
+        <ClassesTutorial
+          schoolCode={schoolCode}
+          onClose={() => setShowTutorial(false)}
+        />
+      )}
+    </div>
+  );
+}
