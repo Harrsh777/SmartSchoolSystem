@@ -276,6 +276,39 @@ export function getDefaultReportCardTemplateConfig(): ReportCardTemplateConfig {
   } satisfies ReportCardTemplateConfig;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Deep-merge saved template JSON with defaults so missing keys still render and PATCH persists a full document. */
+export function mergeReportCardTemplateConfigWithDefaults(
+  partial?: Record<string, unknown> | null
+): ReportCardTemplateConfig {
+  const defaults = getDefaultReportCardTemplateConfig() as unknown as Record<string, unknown>;
+  if (!partial || typeof partial !== 'object') {
+    return getDefaultReportCardTemplateConfig();
+  }
+  return deepMergeTemplateDefaults(defaults, partial) as ReportCardTemplateConfig;
+}
+
+function deepMergeTemplateDefaults(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const key of Object.keys(override)) {
+    const v = override[key];
+    if (v === undefined) continue;
+    const b = base[key];
+    if (isPlainRecord(v) && isPlainRecord(b)) {
+      out[key] = deepMergeTemplateDefaults(b, v);
+    } else {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+
 export function generateReportCardHTML(data: ReportCardData, templateConfig?: ReportCardTemplateConfig): string {
   // Use the same landscape HTML structure as the template live preview.
   // This ensures generated report cards match the updated "new format".
@@ -1075,7 +1108,11 @@ function generateLandscapeReportCardHTML(
   templateConfig?: ReportCardTemplateConfig
 ): string {
   const { school, student } = data;
-  const cfg = templateConfig || {};
+  const cfg = mergeReportCardTemplateConfigWithDefaults(
+    templateConfig && typeof templateConfig === 'object'
+      ? (templateConfig as unknown as Record<string, unknown>)
+      : null
+  );
   const logos = (cfg.logos as Record<string, unknown>) || {};
   const header = (cfg.header as Record<string, unknown>) || {};
   const sectionsCfg = (cfg.sections as Record<string, unknown>) || {};
@@ -1324,7 +1361,8 @@ function generateLandscapeReportCardHTML(
   const totalMax = data.summary?.total_max_marks ?? marksSource.reduce((s, m) => s + (m.max_marks ?? 0), 0);
   const overallPct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
   const overallGrade = data.summary?.grade ?? '-';
-  const rank = data.rank ?? '—';
+  /** Rank is left blank on print for handwritten entry (no system value, no placeholder). */
+  const rankDisplay = '';
   const hardcodedResultDate = String(content.result_date ?? '').trim();
   const resultDate =
     hardcodedResultDate ||
@@ -1400,7 +1438,7 @@ function generateLandscapeReportCardHTML(
       : '';
 
   const rankCell = showRankInSummary
-    ? `<div class="summary-cell"><span class="lbl">Rank</span>${rank}</div>`
+    ? `<div class="summary-cell"><span class="lbl">Rank</span>${rankDisplay}</div>`
     : '';
 
   const footerMetaLine = [
@@ -1416,62 +1454,148 @@ function generateLandscapeReportCardHTML(
 <head>
   <meta charset="UTF-8">
   <style>
+    :root {
+      --a4-landscape-width: 11.69in;
+      --a4-landscape-height: 8.27in;
+      /* Full bleed to sheet edges (same as page; was smaller “safe” inset) */
+      --a4-safe-width: 11.69in;
+      --a4-safe-height: 8.27in;
+      /* Dynamic density for marks / activity tables only (set by script when needed) */
+      --rc-marks-fs: 10px;
+      --rc-marks-head-fs: 10px;
+      --rc-marks-lh: 1.25;
+      --rc-marks-pad-y: 3px;
+      --rc-marks-pad-x: 4px;
+      --rc-cos-fs: 10px;
+      --rc-cos-pad-y: 4px;
+      --rc-cos-pad-x: 6px;
+      --rc-body-py: 8px;
+      --rc-body-px: 12px;
+      /* Translucent surfaces so the watermark reads through uniformly */
+      --rc-wm-surface: rgba(255, 255, 255, 0.09);
+      --rc-wm-surface-th: rgba(255, 255, 255, 0.16);
+      --rc-wm-surface-muted: rgba(245, 245, 245, 0.1);
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @media print {
       @page {
         size: A4 landscape;
-        margin: 6mm;
+        margin: 0;
       }
       html, body {
-        width: 297mm;
-        height: 210mm;
+        width: var(--a4-landscape-width);
+        height: var(--a4-landscape-height);
+        overflow: hidden !important;
       }
       body {
         padding: 0;
         margin: 0;
         background: #fff;
+        display: block;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
+      .print-page {
+        width: var(--a4-landscape-width);
+        height: var(--a4-landscape-height);
+        overflow: hidden !important;
+        position: relative;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
       .report-card {
         width: 100%;
-        max-width: 285mm;
-        margin: 0 auto;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        position: relative;
+        margin: 0;
         border: 1px solid #000;
         page-break-inside: avoid;
         break-inside: avoid-page;
         overflow: hidden;
+        isolation: isolate;
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
       }
       .body-pad {
-        padding: 10px 12px 12px;
+        padding: var(--rc-body-py) var(--rc-body-px) var(--rc-body-py);
+      }
+      .report-card, .wm-wrap, .wm-body, .tbl-wrap, table, tr, td, th, .summary-row, .remark-row, .foot-sigs {
+        page-break-inside: avoid !important;
+        break-inside: avoid-page !important;
       }
       .sample-badge { border: 1px solid #000; }
     }
+    /* Shared typography (screen + print). Preview layout must stay under @media screen
+       so it does not override the print rules below — otherwise transform/position from
+       the preview sheet wins during printing and the card drifts (e.g. bottom-right). */
     body {
       font-family: ${fontFamily};
-      padding: 16px;
-      background: #e5e5e5;
       color: #000;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    .report-card {
-      width: 1120px;
-      max-width: 100%;
-      margin: 0 auto;
-      background: #fff;
+    @media screen {
+      body {
+        padding: 12px;
+        background: #e5e5e5;
+      }
+      /* A4 landscape sheet (11.69\" × 8.27\") — matches @page size for screen preview */
+      .print-page {
+        width: 11.69in;
+        height: 8.27in;
+        max-width: 100%;
+        margin: 0 auto;
+        background: #fff;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 2px 16px rgba(0,0,0,0.12);
+        padding: 0;
+        box-sizing: border-box;
+      }
+      .report-card {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: #fff;
+        position: relative;
+        isolation: isolate;
+        border: 1px solid #000;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+    }
+    /* Foreground blocks stack above the watermark layer */
+    .report-card > *:not(.watermark) {
       position: relative;
-      border: 1px solid #000;
+      z-index: 1;
+    }
+    .report-card {
+      background: #fff;
+    }
+    .body-pad,
+    .wm-body,
+    .wm-wrap {
+      background: transparent;
+    }
+    .wm-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
     }
     ${showWatermark ? `
-    .wm-wrap { position: relative; }
     .watermark {
       position: absolute;
-      left: 50%;
-      top: 42%;
-      transform: translate(-50%, -50%);
-      width: ${watermarkSize * 0.45}px;
-      height: ${watermarkSize * 0.45}px;
+      inset: 0;
+      width: auto;
+      height: auto;
+      transform: none;
       opacity: ${watermarkOpacity};
       pointer-events: none;
       z-index: 0;
@@ -1481,14 +1605,60 @@ function generateLandscapeReportCardHTML(
       color: #bbb;
       font-size: 14px;
       font-weight: 700;
-      border: 1px solid #ddd;
+      border: none;
+      overflow: hidden;
     }
-    .wm-body { position: relative; z-index: 1; }
-    ` : '.wm-wrap { } .wm-body { }'}
+    .watermark img {
+      width: ${watermarkSize * 0.55}px !important;
+      height: ${watermarkSize * 0.55}px !important;
+      max-width: min(94%, 820px);
+      max-height: min(7.35in, 760px);
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+    ` : ''}
+    .rc-marks-section {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .rc-marks-section .section-h {
+      flex-shrink: 0;
+    }
+    .rc-marks-section .tbl-wrap {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .rc-header {
+      flex-shrink: 0;
+    }
+    .rc-stack {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .rc-main {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .rc-footer {
+      flex-shrink: 0;
+      margin-top: auto;
+      padding-top: 6px;
+      border-top: 1px solid #000;
+      background: transparent;
+    }
     .pink-strip {
       background: ${primaryColor};
       color: #fff;
-      padding: 14px 20px;
+      padding: 10px 16px;
       border-bottom: 1px solid #000;
     }
     .strip-row {
@@ -1546,16 +1716,22 @@ function generateLandscapeReportCardHTML(
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      padding: 10px 12px 12px;
+      padding: 8px 10px 9px;
       border-bottom: 1px solid #000;
-      background: #fff;
+      background: rgba(255, 255, 255, 0.42);
     }
-    .body-pad { padding: 12px 16px 18px; }
+    .body-pad {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: var(--rc-body-py) var(--rc-body-px) var(--rc-body-py);
+    }
     .section-h {
       font-size: 10px;
       font-weight: 700;
       text-transform: uppercase;
-      margin: 10px 0 6px;
+      margin: 6px 0 4px;
       border-bottom: 1px solid ${accentColor};
       padding-bottom: 2px;
       color: ${primaryColor};
@@ -1564,9 +1740,10 @@ function generateLandscapeReportCardHTML(
       display: flex;
       gap: 14px;
       align-items: stretch;
-      margin-bottom: 10px;
+      margin-bottom: 6px;
       border: 1px solid #000;
-      padding: 8px 10px;
+      padding: 6px 8px;
+      background: var(--rc-wm-surface);
     }
     .student-cols {
       flex: 1;
@@ -1588,39 +1765,62 @@ function generateLandscapeReportCardHTML(
       color: #666;
       text-align: center;
       padding: 4px;
+      background: var(--rc-wm-surface);
     }
-    .tbl-wrap { position: relative; margin-bottom: 8px; }
+    .tbl-wrap {
+      position: relative;
+      margin-bottom: 6px;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
     table.marks {
       width: 100%;
       border-collapse: collapse;
-      font-size: 10px;
+      font-size: var(--rc-marks-fs);
       border: 1px solid #000;
     }
     table.marks th, table.marks td {
       border: 1px solid #000;
-      padding: 3px 4px;
+      padding: var(--rc-marks-pad-y) var(--rc-marks-pad-x);
+      line-height: var(--rc-marks-lh);
       vertical-align: middle;
+      background: var(--rc-wm-surface);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     table.marks th {
       font-weight: 700;
       text-align: center;
-      background: #fff;
+      font-size: var(--rc-marks-head-fs);
+      line-height: var(--rc-marks-lh);
+      background: var(--rc-wm-surface-th);
     }
     .td-subj { text-align: left; font-weight: 600; }
     .td-num { text-align: center; }
     .td-c { text-align: center; font-weight: 600; }
-    .tr-max td { font-weight: 700; background: #f5f5f5; }
+    .tr-max td { font-weight: 700; background: var(--rc-wm-surface-muted); }
     .scale-row td {
-      font-size: 9px;
-      line-height: 1.3;
-      padding: 4px 6px;
+      font-size: calc(var(--rc-marks-fs) - 1px);
+      line-height: var(--rc-marks-lh);
+      padding: var(--rc-marks-pad-y) var(--rc-marks-pad-x);
     }
-    .att-inline { font-size: 9px; margin-bottom: 6px; border: 1px solid #000; padding: 4px 8px; }
+    .att-inline {
+      font-size: 9px;
+      margin-bottom: 6px;
+      border: 1px solid #000;
+      padding: 4px 8px;
+      background: var(--rc-wm-surface);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
     .summary-row {
       display: flex;
       border: 1px solid #000;
       margin-bottom: 8px;
       font-size: 10px;
+      background: var(--rc-wm-surface);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .summary-cell {
       flex: 1;
@@ -1633,33 +1833,41 @@ function generateLandscapeReportCardHTML(
     table.cos {
       width: 100%;
       border-collapse: collapse;
-      font-size: 10px;
+      font-size: var(--rc-cos-fs);
       border: 1px solid #000;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
     table.cos th, table.cos td {
       border: 1px solid #000;
-      padding: 4px 6px;
+      padding: var(--rc-cos-pad-y) var(--rc-cos-pad-x);
+      line-height: 1.25;
+      background: var(--rc-wm-surface);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
-    table.cos th { font-weight: 700; text-align: center; background: #fff; }
+    table.cos th { font-weight: 700; text-align: center; background: var(--rc-wm-surface-th); }
     .td-left { text-align: left; }
     .remark-row {
       font-size: 10px;
       border: 1px solid #000;
-      padding: 8px 10px;
-      margin-bottom: 10px;
-      min-height: 56px;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      min-height: 40px;
+      flex-shrink: 0;
+      background: var(--rc-wm-surface);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .remark-main { width: 100%; }
     .foot-sigs {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       align-items: end;
-      gap: 12px 20px;
+      gap: 8px 16px;
       font-size: 10px;
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid #000;
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
       width: 100%;
     }
     .foot-sigs .foot-date {
@@ -1680,24 +1888,161 @@ function generateLandscapeReportCardHTML(
     .foot-sigs .foot-prin { justify-self: center; }
     .foot-sigs .sig-line-f {
       border-bottom: 1px solid #000;
-      min-height: 56px;
+      min-height: 40px;
       width: 240px;
       max-width: 100%;
-      margin: 0 0 6px 0;
+      margin: 0 0 4px 0;
     }
     .inst-box {
-      margin-top: 10px;
+      margin-top: 8px;
       font-size: 9px;
       border: 1px solid #000;
-      padding: 8px 10px;
+      padding: 6px 8px;
       line-height: 1.45;
+      background: var(--rc-wm-surface);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .inst-box strong { display: block; margin-bottom: 4px; font-size: 10px; }
+    .rc-result-line {
+      font-size: 9px;
+      margin-top: 6px;
+      padding: 4px 0 0;
+      border-top: 1px solid #000;
+      background: transparent;
+    }
   </style>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const defaults = {
+        marksFs: 10,
+        marksHeadFs: 10,
+        marksLhTicks: 125,
+        marksPadY: 3,
+        marksPadX: 4,
+        cosFs: 10,
+        cosPadY: 4,
+        cosPadX: 6,
+        bodyPy: 8,
+        bodyPx: 12,
+      };
+      const mins = {
+        marksFs: 6,
+        marksHeadFs: 6,
+        marksLhTicks: 100,
+        marksPadY: 0,
+        marksPadX: 1,
+        cosFs: 6,
+        cosPadY: 0,
+        cosPadX: 1,
+        bodyPy: 4,
+        bodyPx: 6,
+      };
+
+      const applyVars = (s) => {
+        root.style.setProperty('--rc-marks-fs', s.marksFs + 'px');
+        root.style.setProperty('--rc-marks-head-fs', s.marksHeadFs + 'px');
+        root.style.setProperty('--rc-marks-lh', (s.marksLhTicks / 100).toFixed(2));
+        root.style.setProperty('--rc-marks-pad-y', s.marksPadY + 'px');
+        root.style.setProperty('--rc-marks-pad-x', s.marksPadX + 'px');
+        root.style.setProperty('--rc-cos-fs', s.cosFs + 'px');
+        root.style.setProperty('--rc-cos-pad-y', s.cosPadY + 'px');
+        root.style.setProperty('--rc-cos-pad-x', s.cosPadX + 'px');
+        root.style.setProperty('--rc-body-py', s.bodyPy + 'px');
+        root.style.setProperty('--rc-body-px', s.bodyPx + 'px');
+      };
+
+      const tighten = (s) => {
+        if (s.marksPadY > mins.marksPadY) {
+          s.marksPadY -= 1;
+          return true;
+        }
+        if (s.marksPadX > mins.marksPadX) {
+          s.marksPadX -= 1;
+          return true;
+        }
+        if (s.marksLhTicks > mins.marksLhTicks) {
+          s.marksLhTicks -= 5;
+          return true;
+        }
+        if (s.marksFs > mins.marksFs) {
+          s.marksFs -= 1;
+          if (s.marksHeadFs > mins.marksHeadFs) s.marksHeadFs -= 1;
+          return true;
+        }
+        if (s.marksHeadFs > mins.marksHeadFs) {
+          s.marksHeadFs -= 1;
+          return true;
+        }
+        if (s.cosPadY > mins.cosPadY) {
+          s.cosPadY -= 1;
+          return true;
+        }
+        if (s.cosPadX > mins.cosPadX) {
+          s.cosPadX -= 1;
+          return true;
+        }
+        if (s.cosFs > mins.cosFs) {
+          s.cosFs -= 1;
+          return true;
+        }
+        if (s.bodyPy > mins.bodyPy) {
+          s.bodyPy -= 1;
+          return true;
+        }
+        if (s.bodyPx > mins.bodyPx) {
+          s.bodyPx -= 1;
+          return true;
+        }
+        return false;
+      };
+
+      const layoutOverflows = () => {
+        const tol = 2;
+        const card = document.querySelector('.report-card');
+        const main = document.querySelector('.rc-main');
+        const tblWrap = document.querySelector('.rc-marks-section .tbl-wrap');
+        if (card && card.scrollHeight > card.clientHeight + tol) return true;
+        if (main && main.scrollHeight > main.clientHeight + tol) return true;
+        if (tblWrap && tblWrap.scrollHeight > tblWrap.clientHeight + tol) return true;
+        return false;
+      };
+
+      const fitReportCardLayout = () => {
+        const s = { ...defaults };
+        applyVars(s);
+        let guard = 0;
+        while (layoutOverflows() && guard < 220) {
+          if (!tighten(s)) break;
+          applyVars(s);
+          guard += 1;
+        }
+      };
+
+      window.addEventListener('load', fitReportCardLayout);
+      window.addEventListener('resize', fitReportCardLayout);
+      window.addEventListener('beforeprint', fitReportCardLayout);
+      setTimeout(fitReportCardLayout, 0);
+      setTimeout(fitReportCardLayout, 120);
+      window.addEventListener('load', () => {
+        const printPageEl = document.querySelector('.print-page');
+        if (typeof ResizeObserver !== 'undefined' && printPageEl) {
+          const ro = new ResizeObserver(() => fitReportCardLayout());
+          ro.observe(printPageEl);
+          const cardEl = document.querySelector('.report-card');
+          if (cardEl) ro.observe(cardEl);
+        }
+      });
+      document.fonts?.ready?.then(() => fitReportCardLayout()).catch(() => {});
+    })();
+  </script>
 </head>
 <body>
+  <div class="print-page">
   <div class="report-card">
-    ${showWatermark ? `<div class="watermark" style="pointer-events:none;opacity:${watermarkOpacity};">${leftLogo ? `<img src="${leftLogo}" alt="Watermark Logo" style="width:100%;height:100%;object-fit:contain;display:block;" />` : 'LOGO'}</div>` : ''}
+    ${showWatermark ? `<div class="watermark" aria-hidden="true">${leftLogo ? `<img src="${leftLogo}" alt="" />` : 'LOGO'}</div>` : ''}
+    <div class="rc-header">
     <div class="pink-strip">
       <div class="strip-row">
         <div class="logo-circle">
@@ -1715,9 +2060,11 @@ function generateLandscapeReportCardHTML(
       </div>
     </div>
     <div class="annual-line">ANNUAL REPORT – ${academicYear}</div>
+    </div>
 
     <div class="body-pad wm-wrap">
-      <div class="wm-body">
+      <div class="wm-body rc-stack">
+        <div class="rc-main">
         ${showStudentProfile ? `
         <div class="section-h">${sectionStudentProfile}</div>
         <div class="student-wrap">
@@ -1729,6 +2076,7 @@ function generateLandscapeReportCardHTML(
         ` : ''}
 
         ${showMarksTable ? `
+        <div class="rc-marks-section">
         <div class="section-h">${isMultiExamLandscape ? `${sectionScholastic} — ${multiExams.map((e) => e.name).join(' + ')}` : `${sectionScholastic} — ${examName}`}</div>
         <div class="tbl-wrap">
           <table class="marks" cellspacing="0" cellpadding="0">
@@ -1769,6 +2117,7 @@ function generateLandscapeReportCardHTML(
             </tbody>
           </table>
         </div>
+        </div>
         ` : ''}
 
         ${showAttendance ? `<div class="att-inline"><strong>${attendanceLabel}</strong>: ${attendanceText}</div>` : ''}
@@ -1804,7 +2153,9 @@ function generateLandscapeReportCardHTML(
           </div>
         </div>
         ` : ''}
+        </div>
 
+        <div class="rc-footer">
         <div class="foot-sigs">
           <div class="foot-date">Date: _______________</div>
           ${showClassTeacherSig
@@ -1821,7 +2172,7 @@ function generateLandscapeReportCardHTML(
             : '<div class="foot-prin" aria-hidden="true"></div>'}
         </div>
 
-        <div style="font-size:9px;margin-top:8px;padding:4px 0;border-top:1px solid #000;">
+        <div class="rc-result-line">
           ${footerMetaLine}
         </div>
 
@@ -1831,8 +2182,10 @@ function generateLandscapeReportCardHTML(
           <div>${instructionsText}</div>
         </div>
         ` : ''}
+        </div>
       </div>
     </div>
+  </div>
   </div>
 </body>
 </html>`;

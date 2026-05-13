@@ -44,6 +44,8 @@ interface ReportCardItem {
   section: string;
   academic_year: string;
   created_at: string;
+  /** Set when a card is re-generated; use this for “latest first” so updates surface at the top */
+  updated_at?: string | null;
   sent_at?: string | null;
 }
 
@@ -60,6 +62,7 @@ export default function ReportCardDashboardPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
+  const [generatedSort, setGeneratedSort] = useState<'latest' | 'oldest'>('latest');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sendModalOpen, setSendModalOpen] = useState(false);
@@ -122,6 +125,18 @@ export default function ReportCardDashboardPage({
     );
   });
 
+  /** Prefer updated_at so re-generated cards (same DB row) appear as “latest” */
+  const generatedTimestamp = (c: ReportCardItem) => {
+    const u = c.updated_at ? new Date(c.updated_at).getTime() : 0;
+    const cr = c.created_at ? new Date(c.created_at).getTime() : 0;
+    return Math.max(u, cr);
+  };
+  const sortedCards = [...filteredCards].sort((a, b) => {
+    const aTime = generatedTimestamp(a);
+    const bTime = generatedTimestamp(b);
+    return generatedSort === 'latest' ? bTime - aTime : aTime - bTime;
+  });
+
   const classes = [...new Set(reportCards.map((c) => c.class_name).filter(Boolean))].sort();
 
   const cardsForClass = classFilter
@@ -151,9 +166,17 @@ export default function ReportCardDashboardPage({
 
   const handleDownloadPdf = (id: string) => {
     const w = window.open(`/api/marks/report-card/${id}?_t=${Date.now()}`, '_blank', 'noopener,noreferrer');
-    if (w) {
-      w.onload = () => { w.focus(); w.print(); };
-    }
+    if (!w) return;
+    w.addEventListener('load', () => {
+      setTimeout(() => {
+        try {
+          w.focus();
+          w.print();
+        } catch {
+          /* ignore */
+        }
+      }, 450);
+    });
   };
 
   const handleDelete = async (card: ReportCardItem) => {
@@ -182,10 +205,10 @@ export default function ReportCardDashboardPage({
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredCards.length) {
+    if (selectedIds.size === sortedCards.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredCards.map((c) => c.id)));
+      setSelectedIds(new Set(sortedCards.map((c) => c.id)));
     }
   };
 
@@ -269,11 +292,17 @@ export default function ReportCardDashboardPage({
         throw new Error('Pop-up blocked. Allow pop-ups to print or save all report cards as PDF.');
       }
       const cleanup = () => URL.revokeObjectURL(url);
-      w.onload = () => {
-        w.focus();
-        w.print();
-        setTimeout(cleanup, 60_000);
-      };
+      w.addEventListener('load', () => {
+        setTimeout(() => {
+          try {
+            w.focus();
+            w.print();
+          } catch {
+            /* ignore */
+          }
+          setTimeout(cleanup, 60_000);
+        }, 450);
+      });
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -339,7 +368,7 @@ export default function ReportCardDashboardPage({
       </motion.div>
 
       <Card>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <div className="md:col-span-2 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input
@@ -382,6 +411,17 @@ export default function ReportCardDashboardPage({
               ))}
             </select>
           </div>
+          <div>
+            <select
+              value={generatedSort}
+              onChange={(e) => setGeneratedSort(e.target.value as 'latest' | 'oldest')}
+              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
+              title="Sort by generated date"
+            >
+              <option value="latest">Latest activity first</option>
+              <option value="oldest">Oldest activity first</option>
+            </select>
+          </div>
         </div>
 
         {loading ? (
@@ -402,7 +442,7 @@ export default function ReportCardDashboardPage({
               Generate Report Card
             </Button>
           </div>
-        ) : filteredCards.length === 0 ? (
+        ) : sortedCards.length === 0 ? (
           <div className="py-12 text-center">
             <FileText size={48} className="mx-auto text-gray-300" />
             <p className="mt-4 text-gray-500 font-medium">No report cards match your filters</p>
@@ -420,9 +460,9 @@ export default function ReportCardDashboardPage({
                       type="button"
                       onClick={toggleSelectAll}
                       className="p-1 rounded hover:bg-white/20 transition-colors"
-                      title={selectedIds.size === filteredCards.length ? 'Deselect all' : 'Select all'}
+                      title={selectedIds.size === sortedCards.length ? 'Deselect all' : 'Select all'}
                     >
-                      {selectedIds.size === filteredCards.length && filteredCards.length > 0 ? (
+                      {selectedIds.size === sortedCards.length && sortedCards.length > 0 ? (
                         <CheckSquare size={22} className="text-white" />
                       ) : (
                         <Square size={22} className="text-white/90" />
@@ -440,7 +480,7 @@ export default function ReportCardDashboardPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredCards.map((card, index) => (
+                {sortedCards.map((card, index) => (
                   <motion.tr
                     key={card.id}
                     initial={{ opacity: 0, y: 10 }}
@@ -467,7 +507,12 @@ export default function ReportCardDashboardPage({
                     <td className="px-4 py-3 text-sm text-gray-600">{card.class_name || '-'}-{card.section || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{card.academic_year || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {card.created_at ? new Date(card.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                      {(() => {
+                        const t = card.updated_at || card.created_at;
+                        if (!t) return '-';
+                        const d = new Date(t);
+                        return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       {card.sent_at ? (

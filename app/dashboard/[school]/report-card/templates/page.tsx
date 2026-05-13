@@ -9,6 +9,7 @@ import {
   buildDemoReportCardData,
   generateReportCardHTML,
   getDefaultReportCardTemplateConfig,
+  mergeReportCardTemplateConfigWithDefaults,
   type ReportCardData,
   type ReportCardTemplateConfig,
 } from '@/lib/report-card-html';
@@ -75,7 +76,9 @@ export default function ReportCardTemplatesPage({
         description: row.description != null ? String(row.description) : undefined,
         is_system: Boolean(row.is_system),
         school_code: (row.school_code as string | null | undefined) ?? null,
-        config: (row.config && typeof row.config === 'object' ? row.config : {}) as Config,
+        config: mergeReportCardTemplateConfigWithDefaults(
+          row.config && typeof row.config === 'object' ? (row.config as Record<string, unknown>) : null
+        ) as unknown as Config,
       }));
     setTemplates(list);
     if (list.length === 0 && json.message && typeof json.message === 'string') {
@@ -143,21 +146,22 @@ export default function ReportCardTemplatesPage({
     };
   }, [schoolCode]);
 
-  /** Keep select value in sync when the list loads (avoids blank HTML selects). */
+  /** Sync picker + load merged template config when the list or selection changes. */
   useEffect(() => {
     if (!templatesForPicker.length) return;
     const ids = new Set(templatesForPicker.map((x) => x.id));
-    if (!selectedId || !ids.has(selectedId)) {
-      const first = templatesForPicker[0];
-      setSelectedId(first.id);
-      setConfig(first.config || {});
+    let effectiveId = selectedId;
+    if (!effectiveId || !ids.has(effectiveId)) {
+      effectiveId = templatesForPicker[0].id;
+      if (selectedId !== effectiveId) setSelectedId(effectiveId);
+    }
+    const t = templatesForPicker.find((x) => x.id === effectiveId);
+    if (t) {
+      setConfig(
+        mergeReportCardTemplateConfigWithDefaults(t.config as Record<string, unknown>) as unknown as Config
+      );
     }
   }, [templatesForPicker, selectedId]);
-
-  useEffect(() => {
-    const t = templatesForPicker.find((x) => x.id === selectedId);
-    if (t) setConfig(t.config || {});
-  }, [selectedId, templatesForPicker]);
 
   const handleCreateSchoolTemplate = async () => {
     setCreating(true);
@@ -178,7 +182,9 @@ export default function ReportCardTemplatesPage({
         description: row.description != null ? String(row.description) : undefined,
         is_system: false,
         school_code: schoolCode,
-        config: (row.config && typeof row.config === 'object' ? row.config : getDefaultReportCardTemplateConfig()) as Config,
+        config: mergeReportCardTemplateConfigWithDefaults(
+          row.config && typeof row.config === 'object' ? (row.config as Record<string, unknown>) : null
+        ) as unknown as Config,
       };
       setTemplates((prev) => [...prev.filter((p) => p.id !== newRow.id), newRow]);
       setSelectedId(newRow.id);
@@ -197,22 +203,34 @@ export default function ReportCardTemplatesPage({
       alert('No template selected. Create a template first, or refresh the page.');
       return;
     }
+    const fullConfig = mergeReportCardTemplateConfigWithDefaults(config as Record<string, unknown>) as unknown as Config;
     setSaving(true);
     try {
       const res = await fetch(`/api/report-card/templates/${selectedId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config, school_code: schoolCode }),
+        body: JSON.stringify({ config: fullConfig, school_code: schoolCode }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save');
       if (data.data?.id && data.data.id !== selectedId) {
-        setTemplates((prev) => [...prev, { id: data.data.id, name: (templates.find((x) => x.id === selectedId)?.name || 'Custom') + ' (Copy)', is_system: false, config }]);
+        setTemplates((prev) => [
+          ...prev,
+          {
+            id: data.data.id,
+            name: (templates.find((x) => x.id === selectedId)?.name || 'Custom') + ' (Copy)',
+            is_system: false,
+            school_code: schoolCode,
+            config: fullConfig,
+          },
+        ]);
         setSelectedId(data.data.id);
+        setConfig(fullConfig);
       } else {
         setTemplates((prev) =>
-          prev.map((x) => (x.id === selectedId ? { ...x, config } : x))
+          prev.map((x) => (x.id === selectedId ? { ...x, config: fullConfig } : x))
         );
+        setConfig(fullConfig);
       }
       alert('Template saved successfully');
     } catch (e) {
@@ -298,6 +316,15 @@ export default function ReportCardTemplatesPage({
       return next;
     });
   };
+
+  /** Remount iframe whenever output changes — browsers often skip updating iframe srcDoc in place. */
+  const previewIframeKey = useMemo(() => {
+    try {
+      return `${selectedId}:${JSON.stringify(config)}`;
+    } catch {
+      return `${selectedId}:${Date.now()}`;
+    }
+  }, [config, selectedId]);
 
   // Same HTML path as generate (landscape engine + saved config)
   const previewHTML = useMemo(() => {
@@ -835,10 +862,11 @@ export default function ReportCardTemplatesPage({
         </div>
         <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white">
           <iframe
+            key={previewIframeKey}
             srcDoc={previewHTML}
             title="Report Card Preview"
             className="w-full h-[800px] border-0"
-            sandbox="allow-same-origin"
+            sandbox="allow-scripts allow-same-origin"
           />
         </div>
       </Card>
