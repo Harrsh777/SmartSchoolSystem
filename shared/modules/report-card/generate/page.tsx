@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -57,6 +57,7 @@ export default function ReportCardGeneratePage({
     }>
   >([]);
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; description?: string }>>([]);
+  const selectAllStudentsCheckboxRef = useRef<HTMLInputElement>(null);
 
   const sortStudentsByRoll = <
     T extends { roll_number?: string | null; student_name: string }
@@ -301,6 +302,12 @@ export default function ReportCardGeneratePage({
     if (selectedStudents.size === students.length) setSelectedStudents(new Set());
     else setSelectedStudents(new Set(students.map((s) => s.id)));
   };
+
+  useEffect(() => {
+    const el = selectAllStudentsCheckboxRef.current;
+    if (!el || students.length === 0) return;
+    el.indeterminate = selectedStudents.size > 0 && selectedStudents.size < students.length;
+  }, [selectedStudents, students.length]);
 
   const selectAllTerms = () => {
     if (selectedTerms.size === termsForClass.length) setSelectedTerms(new Set());
@@ -571,60 +578,148 @@ export default function ReportCardGeneratePage({
         )}
 
         {step === 4 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <Users size={24} className="text-[#1e3a8a]" />
-              Step 4: Select Student(s)
-            </h2>
-            <div className="flex justify-between border-b pb-2">
-              <button onClick={selectAllStudents} className="text-sm font-medium text-[#1e3a8a] hover:underline">
-                {selectedStudents.size === students.length ? 'Deselect All' : 'Select All'}
-              </button>
-              <span className="text-sm text-gray-500">{selectedStudents.size} of {students.length} selected</span>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-4 min-h-0">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2 shrink-0">
+                <Users size={24} className="text-[#1e3a8a] shrink-0" />
+                Step 4: Select Student(s)
+              </h2>
+              {selectedClass && selectedSection ? (
+                <p className="text-sm text-gray-600 dark:text-gray-400 sm:text-right">
+                  Class <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedClass}</span>
+                  {' · '}
+                  Section <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedSection}</span>
+                </p>
+              ) : null}
             </div>
-            <div className="max-h-[44vh] overflow-y-auto border rounded-lg divide-y">
-              {loading ? (
-                <div className="p-8 text-center">
-                  <Loader2 size={32} className="animate-spin mx-auto text-[#1e3a8a]" />
-                  <p className="mt-2 text-gray-500">Loading students...</p>
+
+            <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 sm:p-4 dark:border-gray-700 dark:bg-gray-900/40">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-600">
+                    {loading ? 'Loading…' : `${selectedStudents.size} / ${students.length} selected`}
+                  </span>
+                  {!loading && students.length > 0 ? (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Use the table or header checkbox to select</span>
+                  ) : null}
                 </div>
-              ) : students.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">No students found.</div>
-              ) : (
-                students.map((s) => (
-                  <label key={s.id} className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer">
-                    {selectedStudents.has(s.id) ? <CheckSquare size={22} className="text-[#1e3a8a]" /> : <Square size={22} className="text-gray-400" />}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-medium truncate">{s.student_name}</span>
-                      </div>
-                      <div className="text-sm text-gray-500 flex items-center gap-3 flex-wrap">
-                        <span className="font-mono">{s.admission_no}</span>
-                        <span className="inline-flex items-center gap-1">
-                          <span className="text-gray-400">Roll:</span>
-                          <span className="font-mono">{s.roll_number || '—'}</span>
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
-                        <span className="inline-flex items-center gap-1">
-                          <span className="text-gray-400">DOB:</span>
-                          <span className="font-mono">{formatDob(s.date_of_birth || s.dob)}</span>
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <span className="text-gray-400">Contact:</span>
-                          <span className="font-mono">{resolveContact(s)}</span>
-                        </span>
-                      </div>
-                    </div>
-                    <input type="checkbox" checked={selectedStudents.has(s.id)} onChange={() => toggleStudent(s.id)} className="sr-only" />
-                  </label>
-                ))
-              )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-[#1e3a8a] text-[#1e3a8a] dark:border-sky-500 dark:text-sky-400"
+                    disabled={loading || students.length === 0}
+                    onClick={selectAllStudents}
+                  >
+                    {selectedStudents.size === students.length && students.length > 0 ? 'Clear all' : 'Select all'}
+                  </Button>
+                </div>
+              </div>
+
+              <div
+                className="overflow-y-auto overscroll-y-contain rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-600 dark:bg-gray-950 min-h-[12rem] max-h-[min(28rem,calc(100dvh-20rem))] sm:max-h-[min(32rem,calc(100dvh-18rem))]"
+                role="region"
+                aria-label="Student list"
+              >
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-16 text-gray-500">
+                    <Loader2 size={32} className="animate-spin text-[#1e3a8a]" />
+                    <p className="text-sm">Loading students…</p>
+                  </div>
+                ) : students.length === 0 ? (
+                  <div className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">No students found for this class and section.</div>
+                ) : (
+                  <table className="w-full min-w-[320px] border-collapse text-left text-sm">
+                    <thead className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50/95 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95">
+                      <tr className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
+                        <th scope="col" className="w-10 px-2 py-3 text-center sm:px-3">
+                          <span className="sr-only">Select all</span>
+                          <input
+                            ref={selectAllStudentsCheckboxRef}
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 text-[#1e3a8a] focus:ring-[#1e3a8a] dark:border-gray-600 dark:bg-gray-800"
+                            checked={students.length > 0 && selectedStudents.size === students.length}
+                            onChange={selectAllStudents}
+                            aria-label={selectedStudents.size === students.length ? 'Deselect all students' : 'Select all students'}
+                          />
+                        </th>
+                        <th scope="col" className="px-2 py-3 sm:px-3 whitespace-nowrap">
+                          Roll
+                        </th>
+                        <th scope="col" className="px-2 py-3 sm:px-3 min-w-[8rem]">
+                          Name
+                        </th>
+                        <th scope="col" className="hidden px-2 py-3 sm:table-cell sm:px-3 whitespace-nowrap">
+                          Admission
+                        </th>
+                        <th scope="col" className="hidden px-2 py-3 md:table-cell md:px-3 whitespace-nowrap">
+                          DOB
+                        </th>
+                        <th scope="col" className="hidden px-2 py-3 lg:table-cell lg:px-3 min-w-[6rem]">
+                          Contact
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {students.map((s) => {
+                        const checked = selectedStudents.has(s.id);
+                        return (
+                          <tr
+                            key={s.id}
+                            className={`transition-colors cursor-pointer ${
+                              checked ? 'bg-blue-50/70 dark:bg-blue-950/30' : 'hover:bg-gray-50 dark:hover:bg-gray-900/60'
+                            }`}
+                            onClick={() => toggleStudent(s.id)}
+                          >
+                            <td className="px-2 py-2.5 text-center align-middle sm:px-3" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-gray-300 text-[#1e3a8a] focus:ring-[#1e3a8a] dark:border-gray-600 dark:bg-gray-800"
+                                checked={checked}
+                                onChange={() => toggleStudent(s.id)}
+                                aria-label={`Select ${s.student_name}`}
+                              />
+                            </td>
+                            <td className="px-2 py-2.5 font-mono text-xs text-gray-700 tabular-nums dark:text-gray-300 sm:px-3">
+                              {s.roll_number || '—'}
+                            </td>
+                            <td className="px-2 py-2.5 font-medium text-gray-900 dark:text-gray-100 sm:px-3">
+                              <span className="line-clamp-2">{s.student_name}</span>
+                            </td>
+                            <td className="hidden px-2 py-2.5 font-mono text-xs text-gray-600 dark:text-gray-400 sm:table-cell sm:px-3">
+                              {s.admission_no || '—'}
+                            </td>
+                            <td className="hidden px-2 py-2.5 font-mono text-xs text-gray-600 tabular-nums dark:text-gray-400 md:table-cell md:px-3">
+                              {formatDob(s.date_of_birth || s.dob)}
+                            </td>
+                            <td className="hidden max-w-[10rem] truncate px-2 py-2.5 font-mono text-xs text-gray-600 dark:text-gray-400 lg:table-cell lg:px-3">
+                              {resolveContact(s)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setStep(3)}>Back</Button>
+
+            <div className="flex flex-wrap gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+              <Button variant="outline" onClick={() => setStep(3)}>
+                Back
+              </Button>
               <Button onClick={handleGenerate} disabled={!canGenerate || generating} className="bg-gradient-to-r from-[#1e3a8a] to-[#3B82F6] text-white">
-                {generating ? <><Loader2 size={18} className="animate-spin mr-2" />Generating...</> : selectedStudents.size > 1 ? <>Generate {selectedStudents.size} Report Cards</> : <>Generate Report Card</>}
+                {generating ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin mr-2" />
+                    Generating…
+                  </>
+                ) : selectedStudents.size > 1 ? (
+                  <>Generate {selectedStudents.size} Report Cards</>
+                ) : (
+                  <>Generate Report Card</>
+                )}
               </Button>
             </div>
           </motion.div>

@@ -352,21 +352,7 @@ export default function ReportCardDashboardPage({
             <Send size={15} className="mr-1.5 shrink-0" />
             Send Report Card {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleBulkDownloadPdf}
-            disabled={selectedIds.size === 0 || bulkDownloading !== null}
-            className="border-green-600 text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:pointer-events-none px-3 py-2 text-sm"
-            title="Download one combined PDF of selected report cards (A4 landscape, one student per page)"
-          >
-            {bulkDownloading === 'pdf' ? (
-              <Loader2 size={15} className="mr-1.5 animate-spin shrink-0" />
-            ) : (
-              <Download size={15} className="mr-1.5 shrink-0" />
-            )}
-            Bulk Download {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
-          </Button>
+      
           <Button
             size="sm"
             variant="outline"
