@@ -1,17 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getSessionFromRequest } from '@/lib/session-store';
+import { studentTargetMatchesDiary } from '@/lib/digital-diary-access';
 
 /**
  * GET /api/student/diary
- * Fetch diary entries (announcements) for a specific student's class
+ * Fetch diary entries for the logged-in student's class (session or query params).
  */
 export async function GET(request: NextRequest) {
   try {
+    const session = await getSessionFromRequest(request);
     const searchParams = request.nextUrl.searchParams;
-    const schoolCode = searchParams.get('school_code');
-    const studentId = searchParams.get('student_id');
-    const class_name = searchParams.get('class');
-    const section = searchParams.get('section');
+
+    let schoolCode = searchParams.get('school_code');
+    let studentId = searchParams.get('student_id');
+    let class_name = searchParams.get('class');
+    let section = searchParams.get('section');
+
+    if (session?.role === 'student' && session.user_id) {
+      const { data: st } = await supabase
+        .from('students')
+        .select('id, school_code, class, section')
+        .eq('id', session.user_id)
+        .single();
+      if (st) {
+        schoolCode = st.school_code;
+        studentId = st.id;
+        class_name = st.class;
+        section = st.section ?? null;
+      }
+    }
 
     if (!schoolCode || !studentId || !class_name) {
       return NextResponse.json(
@@ -20,8 +38,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch diary entries that target this student's class
-    // We need to join with diary_targets to filter by class and section
     const { data: diaries, error } = await supabase
       .from('diaries')
       .select(`
@@ -57,7 +73,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Filter diaries to only include those targeting this student's class
     interface DiaryTarget {
       class_name: string;
       section_name?: string | null;
@@ -66,35 +81,53 @@ export async function GET(request: NextRequest) {
       id: string;
       diary_targets?: DiaryTarget[] | null;
     }
+
     const filteredDiaries = (diaries || []).filter((diary: DiaryRecord) => {
       const targets = diary.diary_targets || [];
-      return targets.some((target: DiaryTarget) => {
-        // Match class name
-        if (target.class_name !== class_name) return false;
-        
-        // If section is specified, match section (or if target has no section, it applies to all sections)
-        if (section && target.section_name && target.section_name !== section) return false;
-        
-        // If academic_year is provided, we could filter by it, but for now we'll include all
-        return true;
-      });
+      return studentTargetMatchesDiary(
+        schoolCode!,
+        schoolCode!,
+        class_name!,
+        section,
+        targets.map((t) => ({ class_name: t.class_name, section_name: t.section_name ?? null }))
+      );
     });
 
-    // Check which diaries the student has read
     const diaryIds = filteredDiaries.map((d: DiaryRecord) => d.id);
+
     const { data: readRecords } = await supabase
       .from('diary_reads')
       .select('diary_id')
-      .in('diary_id', diaryIds)
+      .in('diary_id', diaryIds.length ? diaryIds : ['00000000-0000-0000-0000-000000000000'])
       .eq('user_id', studentId)
       .eq('user_type', 'STUDENT');
 
-    interface ReadRecord {
-      diary_id: string;
-    }
-    const readDiaryIds = new Set((readRecords || []).map((r: ReadRecord) => r.diary_id));
+    const readDiaryIds = new Set((readRecords || []).map((r: { diary_id: string }) => r.diary_id));
 
-    // Format the data
+    const submissionByDiary = new Map<string, Record<string, unknown>>();
+    if (diaryIds.length > 0) {
+      const { data: subs } = await supabase
+        .from('diary_student_submissions')
+        .select(
+          `
+          id,
+          diary_id,
+          status,
+          submitted_at,
+          is_late,
+          attempt_count,
+          student_comment,
+          diary_submission_files ( id, file_name, mime_type, file_size, storage_path, storage_bucket )
+        `
+        )
+        .eq('student_id', studentId)
+        .in('diary_id', diaryIds);
+
+      for (const s of subs || []) {
+        submissionByDiary.set((s as { diary_id: string }).diary_id, s as Record<string, unknown>);
+      }
+    }
+
     interface DiaryWithDetails extends DiaryRecord {
       title: string;
       content: string;
@@ -102,6 +135,11 @@ export async function GET(request: NextRequest) {
       mode?: string | null;
       subject_id?: string | null;
       subject_name?: string | null;
+      due_at?: string | null;
+      instructions?: string | null;
+      submissions_allowed?: boolean;
+      allow_late_submission?: boolean;
+      max_submission_attempts?: number;
       created_at: string;
       updated_at?: string | null;
       created_by?: string;
@@ -112,53 +150,66 @@ export async function GET(request: NextRequest) {
         file_type?: string | null;
         file_size?: number | null;
       }> | null;
-      created_by_staff?: {
-        full_name?: string;
-      } | null;
+      created_by_staff?: { full_name?: string } | null;
       academic_year_id?: string | null;
     }
+
     const subjectIds = Array.from(
       new Set(
         filteredDiaries
-          .map((diary) => {
-            const d = diary as DiaryWithDetails;
-            return d.subject_id || null;
-          })
+          .map((diary) => (diary as DiaryWithDetails).subject_id)
           .filter((id): id is string => !!id)
       )
     );
 
     const subjectNameById = new Map<string, string>();
     if (subjectIds.length > 0) {
-      const { data: subjects, error: subjectsError } = await supabase
-        .from('subjects')
-        .select('id, name')
-        .in('id', subjectIds);
+      const { data: subjects } = await supabase.from('subjects').select('id, name').in('id', subjectIds);
+      (subjects || []).forEach((subject: { id: string; name: string }) => {
+        subjectNameById.set(subject.id, subject.name);
+      });
+    }
 
-      if (subjectsError) {
-        console.error('Error fetching subject names for diary:', subjectsError);
-      } else {
-        (subjects || []).forEach((subject: { id: string; name: string }) => {
-          subjectNameById.set(subject.id, subject.name);
-        });
+    function chipFor(
+      type: string,
+      submissionsAllowed: boolean,
+      sub: Record<string, unknown> | undefined,
+      dueAt: string | null | undefined
+    ): string {
+      if (!submissionsAllowed || (type !== 'HOMEWORK' && type !== 'ASSIGNMENT')) return 'NONE';
+      if (!sub) {
+        if (dueAt && new Date(dueAt).getTime() < Date.now()) return 'Pending';
+        return 'Pending';
       }
+      const status = String(sub.status || '');
+      if (status === 'draft') return 'Draft';
+      if (status === 'late' || sub.is_late) return 'Late';
+      if (status === 'submitted') return 'Submitted';
+      return 'Pending';
     }
 
     const formattedDiaries = filteredDiaries.map((diary: DiaryWithDetails) => {
-      // Get target classes for display
       const targetClasses = (diary.diary_targets || [])
         .map((t: DiaryTarget) => `${t.class_name}${t.section_name ? `-${t.section_name}` : ''}`)
         .join(', ');
+
+      const rawSub = submissionByDiary.get(diary.id);
+      const submissionsAllowed = diary.submissions_allowed !== false;
 
       return {
         id: diary.id,
         title: diary.title,
         content: diary.content,
-        type: diary.type, // 'HOMEWORK' or 'OTHER'
+        type: diary.type,
         mode: diary.mode,
         subject_id: diary.subject_id || null,
         subject_name:
           diary.subject_name || (diary.subject_id ? subjectNameById.get(diary.subject_id) || null : null),
+        due_at: diary.due_at || null,
+        instructions: diary.instructions || null,
+        submissions_allowed: submissionsAllowed,
+        allow_late_submission: diary.allow_late_submission !== false,
+        max_submission_attempts: diary.max_submission_attempts ?? 3,
         created_at: diary.created_at,
         updated_at: diary.updated_at,
         created_by: diary.created_by_staff?.full_name || 'Unknown',
@@ -173,6 +224,20 @@ export async function GET(request: NextRequest) {
         })),
         is_read: readDiaryIds.has(diary.id),
         academic_year_id: diary.academic_year_id,
+        submission: rawSub
+          ? {
+              id: rawSub.id,
+              status: rawSub.status,
+              submitted_at: rawSub.submitted_at,
+              is_late: rawSub.is_late,
+              attempt_count: rawSub.attempt_count,
+              student_comment: rawSub.student_comment,
+              files: Array.isArray(rawSub.diary_submission_files)
+                ? rawSub.diary_submission_files
+                : [],
+            }
+          : null,
+        submission_chip: chipFor(diary.type, submissionsAllowed, rawSub, diary.due_at),
       };
     });
 

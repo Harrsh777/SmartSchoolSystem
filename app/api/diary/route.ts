@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getSessionFromRequest } from '@/lib/session-store';
+import {
+  assertTeacherCanCreateDiary,
+  isSchoolAdminStaff,
+  resolveClassIdForDiaryTarget,
+} from '@/lib/digital-diary-access';
+import { buildDiarySubmissionStatsMap } from '@/lib/digital-diary-submission-stats';
 
 interface DiaryTargetInput {
   class_name: string;
@@ -90,6 +97,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const session = await getSessionFromRequest(request);
+    if (!session || session.role !== 'teacher' || !session.user_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const payload = session.user_payload as { school_code?: string } | null | undefined;
+    const sessionSchool = String(session.school_code || payload?.school_code || '').trim().toUpperCase();
+    if (!sessionSchool || sessionSchool !== schoolCode.trim().toUpperCase()) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const isAdminStaff = await isSchoolAdminStaff(supabase, session.user_id);
+
     // Build query
     let query = supabase
       .from('diaries')
@@ -98,13 +118,15 @@ export async function GET(request: NextRequest) {
         diary_targets (
           id,
           class_name,
-          section_name
+          section_name,
+          class_id
         ),
         diary_attachments (
           id,
           file_name,
           file_url,
-          file_type
+          file_type,
+          file_size
         )
       `, { count: 'exact' })
       .eq('school_code', schoolCode)
@@ -112,6 +134,10 @@ export async function GET(request: NextRequest) {
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
+
+    if (!isAdminStaff) {
+      query = query.eq('created_by', session.user_id);
+    }
 
     if (academicYearId) {
       query = query.eq('academic_year_id', academicYearId);
@@ -141,6 +167,25 @@ export async function GET(request: NextRequest) {
     (readCounts || []).forEach((read) => {
       readCountMap.set(read.diary_id, (readCountMap.get(read.diary_id) || 0) + 1);
     });
+
+    const submissionStatsMap =
+      diaryIds.length > 0
+        ? await buildDiarySubmissionStatsMap(
+            supabase,
+            (diaries || []).map((diary) => ({
+              id: diary.id,
+              school_code: diary.school_code,
+              submissions_allowed: diary.submissions_allowed,
+              diary_targets: (diary.diary_targets || []).map(
+                (t: { class_name: string; section_name?: string | null; class_id?: string | null }) => ({
+                  class_name: t.class_name,
+                  section_name: t.section_name ?? null,
+                  class_id: t.class_id ?? null,
+                })
+              ),
+            }))
+          )
+        : new Map<string, { submitted: number; pending: number; late: number }>();
 
     const subjectIds = Array.from(
       new Set(
@@ -172,7 +217,13 @@ export async function GET(request: NextRequest) {
       subject_name:
         diary.subject_name || (diary.subject_id ? subjectNameById.get(diary.subject_id) || null : null),
       read_count: readCountMap.get(diary.id) || 0,
-      total_targets: diary.diary_targets?.length || 0, // Simplified - should count actual students
+      total_targets: diary.diary_targets?.length || 0,
+      submission_stats: (() => {
+        const s = submissionStatsMap.get(diary.id);
+        return s
+          ? { submitted: s.submitted, pending: s.pending, late: s.late }
+          : { submitted: 0, pending: 0, late: 0 };
+      })(),
     }));
 
     return NextResponse.json({
@@ -199,6 +250,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSessionFromRequest(request);
+    if (!session || session.role !== 'teacher' || !session.user_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const {
       school_code,
@@ -208,9 +264,13 @@ export async function POST(request: NextRequest) {
       type,
       mode,
       subject_id,
-      targets, // Array of { class_name, section_name }
-      attachments, // Array of { file_name, file_url, file_type, file_size }
-      created_by,
+      targets,
+      attachments,
+      due_at,
+      instructions,
+      submissions_allowed,
+      allow_late_submission,
+      max_submission_attempts,
     } = body;
 
     // Validation
@@ -239,7 +299,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: scopeValidation.error }, { status: 400 });
     }
 
-    // Get school ID
+    const createDiaryMinimal = {
+      school_code,
+      subject_id: mode === 'SUBJECT_WISE' ? subject_id || null : null,
+      mode: mode || 'GENERAL',
+      academic_year_id: academic_year_id || null,
+    };
+
+    const targetRows =
+      ((targets || []) as DiaryTargetInput[]).map((t) => ({
+        class_name: t.class_name,
+        section_name: t.section_name,
+      })) || [];
+
+    const canCreate = await assertTeacherCanCreateDiary(supabase, session, createDiaryMinimal, targetRows);
+    if (!canCreate) {
+      return NextResponse.json({ error: 'You do not have permission to create this diary entry' }, { status: 403 });
+    }
+
+    const staffPayload = session.user_payload as { school_code?: string } | null | undefined;
+    const sessionSchoolPost = String(session.school_code || staffPayload?.school_code || '').trim().toUpperCase();
+    if (!sessionSchoolPost || sessionSchoolPost !== String(school_code).trim().toUpperCase()) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const staffRowId = session.user_id;
     const { data: schoolData, error: schoolError } = await supabase
       .from('accepted_schools')
       .select('id')
@@ -253,7 +337,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create diary entry
     interface DiaryData {
       school_id: string;
       school_code: string;
@@ -264,6 +347,11 @@ export async function POST(request: NextRequest) {
       created_by: string | null;
       academic_year_id?: string;
       subject_id?: string | null;
+      due_at?: string | null;
+      instructions?: string | null;
+      submissions_allowed?: boolean;
+      allow_late_submission?: boolean;
+      max_submission_attempts?: number;
     }
 
     const diaryData: DiaryData = {
@@ -273,8 +361,24 @@ export async function POST(request: NextRequest) {
       content: content ? content.trim() : null,
       type,
       mode: mode || 'GENERAL',
-      created_by: created_by || null,
+      created_by: staffRowId,
     };
+
+    if (due_at !== undefined && due_at !== null && String(due_at).trim() !== '') {
+      diaryData.due_at = new Date(due_at).toISOString();
+    }
+    if (instructions !== undefined) {
+      diaryData.instructions = instructions ? String(instructions).trim() : null;
+    }
+    if (typeof submissions_allowed === 'boolean') {
+      diaryData.submissions_allowed = submissions_allowed;
+    }
+    if (typeof allow_late_submission === 'boolean') {
+      diaryData.allow_late_submission = allow_late_submission;
+    }
+    if (max_submission_attempts !== undefined && max_submission_attempts !== null) {
+      diaryData.max_submission_attempts = Math.min(20, Math.max(1, parseInt(String(max_submission_attempts), 10) || 3));
+    }
 
     // Add academic_year_id if provided (it's a text field, not a UUID)
     if (academic_year_id) {
@@ -292,28 +396,45 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error('Error creating diary entry:', insertError);
-      console.error('Diary data attempted:', JSON.stringify(diaryData, null, 2));
-      console.error('Error code:', insertError.code);
-      console.error('Error hint:', insertError.hint);
-      
+      if (insertError.code === '23514' && String(insertError.message || '').includes('diaries_type_check')) {
+        return NextResponse.json(
+          {
+            error: 'Diary type ASSIGNMENT is not enabled in the database yet.',
+            details:
+              'Run migration supabase/migrations/20260515130000_diaries_allow_assignment_type.sql in Supabase (SQL editor or CLI), then try again.',
+            code: insertError.code,
+          },
+          { status: 500 }
+        );
+      }
       return NextResponse.json(
-        { 
-          error: 'Failed to create diary entry', 
+        {
+          error: 'Failed to create diary entry',
           details: insertError.message,
           code: insertError.code,
           hint: insertError.hint,
-          attempted_data: diaryData
         },
         { status: 500 }
       );
     }
 
     // Create diary targets
-    const targetInserts = targets.map((target: { class_name: string; section_name?: string }) => ({
-      diary_id: diary.id,
-      class_name: target.class_name,
-      section_name: target.section_name || null,
-    }));
+    const targetInserts = await Promise.all(
+      targets.map(async (target: { class_name: string; section_name?: string }) => {
+        const class_id = await resolveClassIdForDiaryTarget(
+          supabase,
+          school_code,
+          { class_name: target.class_name, section_name: target.section_name },
+          academic_year_id
+        );
+        return {
+          diary_id: diary.id,
+          class_name: target.class_name,
+          section_name: target.section_name || null,
+          class_id,
+        };
+      })
+    );
 
     const { error: targetsError } = await supabase
       .from('diary_targets')
@@ -336,7 +457,7 @@ export async function POST(request: NextRequest) {
         file_url: att.file_url,
         file_type: att.file_type,
         file_size: att.file_size || null,
-        uploaded_by: created_by || null,
+        uploaded_by: staffRowId,
       }));
 
       const { error: attachmentsError } = await supabase
@@ -357,7 +478,8 @@ export async function POST(request: NextRequest) {
         diary_targets (
           id,
           class_name,
-          section_name
+          section_name,
+          class_id
         ),
         diary_attachments (
           id,

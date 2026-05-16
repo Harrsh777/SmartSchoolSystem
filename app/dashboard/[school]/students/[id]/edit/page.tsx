@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowLeft, Camera, Loader2, X } from 'lucide-react';
+import { Camera, Loader2, X } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 
 export default function EditStudentPage({

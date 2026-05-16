@@ -1279,7 +1279,7 @@ export default function DashboardLayout({ children, schoolName }: DashboardLayou
     { label: 'Fee Heads', path: '/fees/v2/fee-heads', category: 'Fees', icon: Tag, parent: 'Fees' },
     { label: 'Fee Structures', path: '/fees/v2/fee-structures', category: 'Fees', icon: FileText, parent: 'Fees' },
     { label: 'Class-wise Fees', path: '/fees/v2/class-wise', category: 'Fees', icon: SlidersHorizontal, parent: 'Fees' },
-    
+    { label: 'Discounts & Fines', path: '/fees/discounts-fines', category: 'Fees', icon: Tag, parent: 'Fees' },
     { label: 'Collect Fees', path: '/fees/v2/collection', category: 'Fees', icon: CreditCard, parent: 'Fees' },
     { label: 'Student Fee Statements', path: '/fees/statements', category: 'Fees', icon: IndianRupee, parent: 'Fees' },
     { label: 'Fee Reports', path: '/fees/reports', category: 'Fees', icon: BarChart3, parent: 'Fees' },

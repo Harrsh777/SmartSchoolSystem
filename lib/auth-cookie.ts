@@ -221,14 +221,25 @@ export function applyLoginCookies(
   const maxAge = SESSION_MAX_AGE;
   const sc =
     schoolCode && String(schoolCode).trim() ? String(schoolCode).trim().toUpperCase() : undefined;
-  setAuthCookie(response, role, sc, maxAge);
   const slotKey = buildAuthCookieValue(role, sc);
   setSessionSlotCookie(response, sessionToken, maxAge, slotKey);
   const existing = request.cookies.get(AUTH_SLOTS_COOKIE_NAME)?.value;
   mergeAuthSlotsCookie(response, slotKey, maxAge, existing);
+
+  const currentAuth = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const currentParsed = currentAuth ? parseAuthCookie(currentAuth) : null;
+  const isDifferentRole = currentParsed && currentParsed.role !== role;
+
+  // Keep the active auth_session when another role is already signed in (multi-tab coexistence).
+  if (!isDifferentRole) {
+    setAuthCookie(response, role, sc, maxAge);
+  }
 }
 
-export type CookieGetter = { get: (name: string) => { value: string } | undefined };
+export type CookieGetter = {
+  get: (name: string) => { value: string } | undefined;
+  getAll?: () => { name: string; value: string }[];
+};
 
 export function getSessionTokenFromCookieGetter(
   getter: CookieGetter,
@@ -326,4 +337,142 @@ export function redirectPathForAuth(auth: { role: AuthRole; schoolCode?: string 
     default:
       return '/login';
   }
+}
+
+type SlotHint = { role: AuthRole; schoolCode?: string };
+
+/** Infer which auth role a URL path belongs to (pages and API prefixes). */
+export function inferSlotHintFromUrlPath(pathname: string): SlotHint | null {
+  const p = pathname.split('?')[0].replace(/\/$/, '') || '/';
+
+  if (p === '/student/login' || p.startsWith('/student/login/')) return null;
+  if (p.startsWith('/student/') || p.startsWith('/api/student/')) {
+    return { role: 'student' };
+  }
+
+  if (
+    p === '/teacher/login' ||
+    p.startsWith('/teacher/login/') ||
+    p === '/staff/login' ||
+    p.startsWith('/staff/login/')
+  ) {
+    return null;
+  }
+  if (
+    p.startsWith('/teacher/') ||
+    p.startsWith('/api/teacher/') ||
+    p.startsWith('/api/auth/teacher/')
+  ) {
+    return { role: 'teacher' };
+  }
+
+  if (p === '/accountant/login' || p.startsWith('/accountant/login/')) return null;
+  if (p.startsWith('/accountant/') || p.startsWith('/api/accountant/')) {
+    return { role: 'accountant' };
+  }
+
+  const dashMatch = p.match(/^\/dashboard\/([^/]+)/);
+  if (dashMatch?.[1]) {
+    return { role: 'school', schoolCode: dashMatch[1].toUpperCase() };
+  }
+
+  return null;
+}
+
+function slotKeyHasToken(getter: CookieGetter, slotKey: string): boolean {
+  return !!getter.get(slotKeyToCookieName(slotKey))?.value;
+}
+
+/** Find a logged-in slot key matching role (and optional school), using auth_slots then erp_sid_* cookies. */
+export function findSlotKeyForHint(getter: CookieGetter, hint: SlotHint): string | null {
+  if (hint.role === 'school' && hint.schoolCode) {
+    const key = buildAuthCookieValue('school', hint.schoolCode);
+    return slotKeyHasToken(getter, key) ? key : null;
+  }
+
+  const slots = parseAuthSlots(getter.get(AUTH_SLOTS_COOKIE_NAME)?.value);
+  for (const slotKey of slots) {
+    const parsed = parseAuthCookie(slotKey);
+    if (!parsed || parsed.role !== hint.role) continue;
+    if (
+      hint.schoolCode &&
+      parsed.schoolCode?.toUpperCase() !== hint.schoolCode.toUpperCase()
+    ) {
+      continue;
+    }
+    if (slotKeyHasToken(getter, slotKey)) return slotKey;
+  }
+
+  if (getter.getAll) {
+    for (const c of getter.getAll()) {
+      const sk = cookieNameToSlotKey(c.name);
+      if (!sk || !c.value) continue;
+      const parsed = parseAuthCookie(sk);
+      if (!parsed || parsed.role !== hint.role) continue;
+      if (
+        hint.schoolCode &&
+        parsed.schoolCode?.toUpperCase() !== hint.schoolCode.toUpperCase()
+      ) {
+        continue;
+      }
+      return sk;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resolve which login slot should be active for this request.
+ * Uses ?role=, URL path, Referer, then auth_session / auth_slots — so student + staff tabs can coexist.
+ */
+export function resolveActiveAuthSlotKey(request: NextRequest): string | null {
+  const hints: SlotHint[] = [];
+
+  const roleQuery = request.nextUrl.searchParams.get('role');
+  if (
+    roleQuery === 'student' ||
+    roleQuery === 'teacher' ||
+    roleQuery === 'accountant' ||
+    roleQuery === 'school'
+  ) {
+    hints.push({ role: roleQuery });
+  }
+
+  const pathHint = inferSlotHintFromUrlPath(request.nextUrl.pathname);
+  if (pathHint) hints.push(pathHint);
+
+  const referer = request.headers.get('referer');
+  if (referer) {
+    try {
+      const refHint = inferSlotHintFromUrlPath(new URL(referer).pathname);
+      if (refHint) hints.push(refHint);
+    } catch {
+      /* ignore malformed referer */
+    }
+  }
+
+  for (const hint of hints) {
+    const key = findSlotKeyForHint(request.cookies, hint);
+    if (key) return key;
+  }
+
+  const authRaw = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  if (authRaw) {
+    const parsed = parseAuthCookie(authRaw);
+    if (parsed) {
+      const key = buildAuthCookieValue(parsed.role, parsed.schoolCode);
+      if (slotKeyHasToken(request.cookies, key)) return key;
+    }
+  }
+
+  for (const slotKey of parseAuthSlots(request.cookies.get(AUTH_SLOTS_COOKIE_NAME)?.value)) {
+    if (slotKeyHasToken(request.cookies, slotKey)) return slotKey;
+  }
+
+  return null;
+}
+
+export function parsedAuthFromSlotKey(slotKey: string): { role: AuthRole; schoolCode?: string } | null {
+  return parseAuthCookie(slotKey);
 }

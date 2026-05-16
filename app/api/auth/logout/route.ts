@@ -11,7 +11,9 @@ import {
   getSessionTokenFromCookieGetter,
   parseAuthCookie,
   parseAuthSlots,
+  parsedAuthFromSlotKey,
   redirectPathForAuth,
+  resolveActiveAuthSlotKey,
   setAuthCookieFromSlotKey,
   writeAuthSlotsCookie,
   SESSION_MAX_AGE,
@@ -40,13 +42,16 @@ export async function POST(request: NextRequest) {
       await destroySession(leg);
     }
   } else {
-    const authRaw = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-    const parsed = authRaw ? parseAuthCookie(authRaw) : null;
+    const resolvedSlot = resolveActiveAuthSlotKey(request);
+    const parsed = resolvedSlot
+      ? parsedAuthFromSlotKey(resolvedSlot)
+      : parseAuthCookie(request.cookies.get(AUTH_COOKIE_NAME)?.value ?? '');
 
     if (parsed) {
       const token = getSessionTokenFromCookieGetter(request.cookies, parsed);
       if (token) await destroySession(token);
-      slotKeyForClear = buildAuthCookieValue(parsed.role, parsed.schoolCode);
+      slotKeyForClear =
+        resolvedSlot ?? buildAuthCookieValue(parsed.role, parsed.schoolCode);
       let slots = parseAuthSlots(request.cookies.get(AUTH_SLOTS_COOKIE_NAME)?.value);
       slots = slots.filter((s) => s !== slotKeyForClear);
       slotsAfterLogout = slots;

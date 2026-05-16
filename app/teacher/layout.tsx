@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -45,6 +45,7 @@ import {
 } from '@/lib/rbac/teacher-intrinsic-paths';
 import { evaluateTeacherSlugAgainstMenu, teacherPathnameToSlug } from '@/lib/rbac/teacher-menu-matching';
 import { TeacherRbacSidebar } from '@/components/teacher/TeacherRbacSidebar';
+import { INTRINSIC_DIGITAL_DIARY_SIDEBAR_MODULE } from '@/lib/rbac/intrinsic-digital-diary';
 
 interface TeacherLayoutProps {
   children: React.ReactNode;
@@ -179,7 +180,7 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       const teacherAuthenticated = sessionStorage.getItem('teacher_authenticated');
 
       if (!storedTeacher || (teacherAuthenticated !== '1' && role !== 'teacher')) {
-        const res = await fetch('/api/auth/session', { credentials: 'include' });
+        const res = await fetch('/api/auth/session?role=teacher', { credentials: 'include' });
         if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
@@ -241,6 +242,25 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       (teacher as { designation?: string | null }).designation ?? null
     );
 
+  const rbacHasDigitalDiary = dynamicModules.some((m) => m.module_key === 'digital_diary');
+  const intrinsicDigitalDiaryEligible =
+    teacher != null && !isRestrictedNonTeaching && (isClassTeacher || hasTimetableTeaching);
+
+  const mergedMenuModules = useMemo(() => {
+    if (!teacher) return dynamicModules;
+    if (intrinsicDigitalDiaryEligible && !rbacHasDigitalDiary) {
+      return [...dynamicModules, INTRINSIC_DIGITAL_DIARY_SIDEBAR_MODULE];
+    }
+    return dynamicModules;
+  }, [
+    teacher,
+    dynamicModules,
+    intrinsicDigitalDiaryEligible,
+    rbacHasDigitalDiary,
+  ]);
+
+  const showDigitalDiaryInPortal = mergedMenuModules.some((m) => m.module_key === 'digital_diary');
+
   useEffect(() => {
     if (pathname === '/staff/login' || pathname === '/teacher/login') return;
     if (loading || !teacher) return;
@@ -255,12 +275,12 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
       return;
     }
     const slug = teacherPathnameToSlug(pathname, teacher.school_code);
-    if (!dynamicModules.length) return;
-    const access = evaluateTeacherSlugAgainstMenu(dynamicModules, slug);
+    if (!mergedMenuModules.length) return;
+    const access = evaluateTeacherSlugAgainstMenu(mergedMenuModules, slug);
     if (!access.allowed) {
       router.replace(home);
     }
-  }, [loading, teacher, pathname, router, dynamicModules, isRestrictedNonTeaching]);
+  }, [loading, teacher, pathname, router, mergedMenuModules, isRestrictedNonTeaching]);
 
   const fetchStaffPermissions = async (staffId: string) => {
     try {
@@ -590,7 +610,8 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
                   pathname={pathname}
                   setSidebarOpen={setSidebarOpen}
                   teacherBaseItems={teacherBaseItems}
-                  dynamicModules={dynamicModules}
+                  mergedMenuModules={mergedMenuModules}
+                  showDigitalDiaryInPortal={showDigitalDiaryInPortal}
                   teacherSchoolCode={String(teacher?.school_code ?? '').trim()}
                   isRestrictedNonTeaching={isRestrictedNonTeaching}
                   isClassTeacher={isClassTeacher}

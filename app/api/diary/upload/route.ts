@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getSessionFromRequest } from '@/lib/session-store';
+import { getDiaryStorageBucket } from '@/lib/digital-diary-storage';
 
 /**
  * POST /api/diary/upload
@@ -7,6 +9,11 @@ import { supabase } from '@/lib/supabase';
  */
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSessionFromRequest(request);
+    if (!session || session.role !== 'teacher' || !session.user_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const schoolCode = formData.get('school_code') as string;
@@ -18,8 +25,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    const payload = session.user_payload as { school_code?: string } | null | undefined;
+    const ses = String(session.school_code || payload?.school_code || '').trim().toUpperCase();
+    if (!ses || ses !== schoolCode.trim().toUpperCase()) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Validate file size (max 25MB)
+    const maxSize = 25 * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
         { error: 'File size exceeds 10MB limit' },
@@ -38,14 +51,17 @@ export async function POST(request: NextRequest) {
       'image/jpg',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/zip',
+      'application/x-zip-compressed',
+      'multipart/x-zip',
     ]);
-    const allowedExtensions = new Set(['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx']);
+    const allowedExtensions = new Set(['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx', 'zip', 'webp', 'gif']);
     const isAllowedMimeType = !!file.type && allowedMimeTypes.has(file.type.toLowerCase());
     const isAllowedExtension = !!extension && allowedExtensions.has(extension);
 
     if (!isAllowedMimeType && !isAllowedExtension) {
       return NextResponse.json(
-        { error: 'Invalid file type. Only PDF, DOC, DOCX, and images are allowed' },
+        { error: 'Invalid file type (allowed: pdf, doc, docx, images, zip).' },
         { status: 400 }
       );
     }
@@ -59,9 +75,11 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    const bucket = getDiaryStorageBucket();
+
     // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
-      .from('diary-attachments')
+      .from(bucket)
       .upload(storageFileName, buffer, {
         contentType: file.type || undefined,
         upsert: false,
@@ -75,16 +93,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('diary-attachments')
-      .getPublicUrl(storageFileName);
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storageFileName);
 
     // Determine file type category
     let fileTypeCategory = 'OTHER';
-    if (file.type === 'application/pdf') {
+    if (extension === 'zip' || file.type.includes('zip')) {
+      fileTypeCategory = 'ZIP';
+    } else if (file.type === 'application/pdf') {
       fileTypeCategory = 'PDF';
     } else if (file.type.startsWith('image/')) {
       fileTypeCategory = 'IMAGE';
+    } else if (extension === 'doc' || extension === 'docx') {
+      fileTypeCategory = 'DOC';
     }
 
     return NextResponse.json({

@@ -414,7 +414,7 @@ function generateReceiptContent(
               <tr>
                 <td>
                   <div class="rf-line1" style="font-weight:700;font-size:9px;">${escapeHtml(line.label)}</div>
-                  <div class="rf-line2" style="font-size:8px;color:#64748b;margin-top:2px;">${line.kind === 'discount' ? 'Discount' : 'Misc'}${line.source ? ` · ${escapeHtml(line.source)}` : ''}</div>
+                  <div class="rf-line2" style="font-size:8px;color:#64748b;margin-top:2px;">${line.kind === 'discount' ? 'Discount' : escapeHtml(String(line.label || 'Additional charge'))}${line.source ? ` · ${escapeHtml(line.source)}` : ''}</div>
                 </td>
                 <td class="text-right">${isDisc ? '₹0.00' : `₹${amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</td>
                 <td class="text-right">${isDisc ? `₹${Math.abs(amt).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₹0.00'}</td>

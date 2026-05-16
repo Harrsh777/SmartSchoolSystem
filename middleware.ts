@@ -6,6 +6,7 @@ import {
   cookieNameToSlotKey,
   getAuthCookieOptions,
   parseAuthCookie,
+  resolveActiveAuthSlotKey,
   SESSION_MAX_AGE,
   slotKeyToCookieName,
 } from '@/lib/auth-cookie';
@@ -54,10 +55,27 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
-function activateSlotOnResponse(request: NextRequest, slotKey: string): NextResponse {
-  const res = NextResponse.next();
+function activateSlotOnResponse(
+  request: NextRequest,
+  slotKey: string,
+  base?: NextResponse
+): NextResponse {
+  const res = base ?? NextResponse.next();
   res.cookies.set(AUTH_COOKIE_NAME, slotKey, getAuthCookieOptions(SESSION_MAX_AGE));
   return res;
+}
+
+function maybeActivateResolvedSlot(request: NextRequest, response: NextResponse): NextResponse {
+  const slotKey = resolveActiveAuthSlotKey(request);
+  if (!slotKey || !request.cookies.get(slotKeyToCookieName(slotKey))?.value) {
+    return response;
+  }
+  const current = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const currentDecoded = current ? decodeURIComponent(current) : '';
+  if (currentDecoded === slotKey) {
+    return response;
+  }
+  return activateSlotOnResponse(request, slotKey, response);
 }
 
 export async function middleware(request: NextRequest) {
@@ -77,7 +95,7 @@ export async function middleware(request: NextRequest) {
     Object.entries(getCorsHeaders(origin)).forEach(([key, value]) => {
       response.headers.set(key, value);
     });
-    return response;
+    return maybeActivateResolvedSlot(request, response);
   }
 
   if (pathname.startsWith('/_next') || pathname.includes('.')) {
@@ -147,19 +165,14 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
+    const teacherSlot = resolveActiveAuthSlotKey(request);
+    const teacherParsed = teacherSlot ? parseAuthCookie(teacherSlot) : null;
     let teacherResponse: NextResponse | null = null;
-    if (auth?.role === 'teacher') {
-      teacherResponse = NextResponse.next();
-    } else {
-      for (const c of request.cookies.getAll()) {
-        const sk = cookieNameToSlotKey(c.name);
-        if (sk === 'teacher' || (typeof sk === 'string' && sk.startsWith('teacher:'))) {
-          if (c.value) {
-            teacherResponse = activateSlotOnResponse(request, sk);
-            break;
-          }
-        }
-      }
+    if (teacherParsed?.role === 'teacher' && teacherSlot) {
+      teacherResponse =
+        auth?.role === 'teacher'
+          ? NextResponse.next()
+          : activateSlotOnResponse(request, teacherSlot);
     }
 
     if (!teacherResponse) {
@@ -199,16 +212,13 @@ export async function middleware(request: NextRequest) {
     if (pathname === '/student/login' || pathname === '/student') {
       return NextResponse.next();
     }
-    if (auth?.role === 'student') {
-      return NextResponse.next();
-    }
-    for (const c of request.cookies.getAll()) {
-      const sk = cookieNameToSlotKey(c.name);
-      if (sk === 'student' || (typeof sk === 'string' && sk.startsWith('student:'))) {
-        if (c.value) {
-          return activateSlotOnResponse(request, sk);
-        }
+    const studentSlot = resolveActiveAuthSlotKey(request);
+    const studentParsed = studentSlot ? parseAuthCookie(studentSlot) : null;
+    if (studentParsed?.role === 'student' && studentSlot) {
+      if (auth?.role === 'student') {
+        return NextResponse.next();
       }
+      return activateSlotOnResponse(request, studentSlot);
     }
     const login = new URL('/student/login', request.url);
     return NextResponse.redirect(login);

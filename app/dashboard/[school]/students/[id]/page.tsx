@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { 
-  ArrowLeft, 
   User, 
   Mail, 
   Phone, 

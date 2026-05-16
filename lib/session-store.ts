@@ -10,6 +10,8 @@ import {
   SESSION_ID_COOKIE_NAME,
   getSessionTokenFromCookieGetter,
   parseAuthCookie,
+  parsedAuthFromSlotKey,
+  resolveActiveAuthSlotKey,
 } from '@/lib/auth-cookie';
 import type { AuthRole } from '@/lib/auth-cookie';
 import { cookies } from 'next/headers';
@@ -156,6 +158,21 @@ export async function destroySessionsForUser(role: AuthRole, userId: string): Pr
  * Use in API routes to authorize requests.
  */
 export async function getSessionFromRequest(request: NextRequest): Promise<SessionData | null> {
+  const slotKey = resolveActiveAuthSlotKey(request);
+  if (slotKey) {
+    const parsed = parsedAuthFromSlotKey(slotKey);
+    if (parsed) {
+      const token = getSessionTokenFromCookieGetter(request.cookies, parsed);
+      if (token) {
+        const session = await getSession(token, {
+          sliding: true,
+          extendSeconds: SESSION_TTL_SECONDS,
+        });
+        if (session && sessionMatchesParsedAuth(session, parsed)) return session;
+      }
+    }
+  }
+
   const authRaw = request.cookies.get(AUTH_COOKIE_NAME)?.value;
   const parsed = authRaw ? parseAuthCookie(authRaw) : null;
   if (!parsed) {

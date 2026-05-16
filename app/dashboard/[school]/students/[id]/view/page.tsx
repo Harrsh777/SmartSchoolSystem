@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Building2, UsersRound } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Building2, UsersRound } from 'lucide-react';
 import type { Student } from '@/lib/supabase';
 import { getString } from '@/lib/type-utils';
 

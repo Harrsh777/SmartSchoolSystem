@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getSessionFromRequest } from '@/lib/session-store';
+import { assertTeacherCanAccessDiary, resolveClassIdForDiaryTarget } from '@/lib/digital-diary-access';
+import type { DiaryTargetRow } from '@/lib/digital-diary-access';
 
 interface DiaryTargetInput {
   class_name: string;
@@ -79,6 +82,11 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    const session = await getSessionFromRequest(request);
+    if (!session || session.role !== 'teacher' || !session.user_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const {
       title,
@@ -88,7 +96,11 @@ export async function PATCH(
       subject_id,
       targets,
       attachments,
-      updated_by,
+      due_at,
+      instructions,
+      submissions_allowed,
+      allow_late_submission,
+      max_submission_attempts,
     } = body;
 
     // Get existing diary
@@ -98,7 +110,8 @@ export async function PATCH(
         *,
         diary_targets (
           class_name,
-          section_name
+          section_name,
+          class_id
         )
       `)
       .eq('id', id)
@@ -109,6 +122,37 @@ export async function PATCH(
         { error: 'Diary entry not found' },
         { status: 404 }
       );
+    }
+
+    const existingTargets: DiaryTargetRow[] = ((existing.diary_targets as DiaryTargetRow[]) || []).map((t) => ({
+      class_name: t.class_name,
+      section_name: t.section_name ?? null,
+      class_id: t.class_id ?? null,
+    }));
+
+    const allowed = await assertTeacherCanAccessDiary(
+      supabase,
+      session,
+      {
+        school_code: existing.school_code,
+        created_by: existing.created_by,
+        subject_id: existing.subject_id,
+        mode: existing.mode,
+        academic_year_id: existing.academic_year_id,
+      },
+      existingTargets
+    );
+    if (!allowed) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const payload = session.user_payload as { school_code?: string } | null | undefined;
+    const sessionSchool = String(session.school_code || payload?.school_code || '').trim().toUpperCase();
+    if (
+      !sessionSchool ||
+      sessionSchool !== String(existing.school_code || '').trim().toUpperCase()
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Update diary entry
@@ -145,7 +189,25 @@ export async function PATCH(
       return NextResponse.json({ error: scopeValidation.error }, { status: 400 });
     }
 
-    if (updated_by !== undefined) updateData.updated_by = updated_by;
+    if (due_at !== undefined) {
+      updateData.due_at =
+        due_at === null || String(due_at).trim() === '' ? null : new Date(due_at).toISOString();
+    }
+    if (instructions !== undefined) {
+      updateData.instructions = instructions ? String(instructions).trim() : null;
+    }
+    if (typeof submissions_allowed === 'boolean') {
+      updateData.submissions_allowed = submissions_allowed;
+    }
+    if (typeof allow_late_submission === 'boolean') {
+      updateData.allow_late_submission = allow_late_submission;
+    }
+    if (max_submission_attempts !== undefined && max_submission_attempts !== null) {
+      updateData.max_submission_attempts = Math.min(
+        20,
+        Math.max(1, parseInt(String(max_submission_attempts), 10) || 3)
+      );
+    }
 
     const { error: updateError } = await supabase
       .from('diaries')
@@ -168,11 +230,22 @@ export async function PATCH(
 
       // Insert new targets
       if (targets.length > 0) {
-        const targetInserts = targets.map((target: { class_name: string; section_name?: string }) => ({
-          diary_id: id,
-          class_name: target.class_name,
-          section_name: target.section_name || null,
-        }));
+        const targetInserts = await Promise.all(
+          targets.map(async (target: { class_name: string; section_name?: string }) => {
+            const class_id = await resolveClassIdForDiaryTarget(
+              supabase,
+              existing.school_code,
+              { class_name: target.class_name, section_name: target.section_name },
+              existing.academic_year_id || undefined
+            );
+            return {
+              diary_id: id,
+              class_name: target.class_name,
+              section_name: target.section_name || null,
+              class_id,
+            };
+          })
+        );
 
         await supabase.from('diary_targets').insert(targetInserts);
       }
@@ -191,7 +264,7 @@ export async function PATCH(
           file_url: att.file_url,
           file_type: att.file_type,
           file_size: att.file_size || null,
-          uploaded_by: updated_by || null,
+          uploaded_by: session.user_id,
         }));
 
         await supabase.from('diary_attachments').insert(attachmentInserts);
@@ -206,7 +279,8 @@ export async function PATCH(
         diary_targets (
           id,
           class_name,
-          section_name
+          section_name,
+          class_id
         ),
         diary_attachments (
           id,
@@ -238,6 +312,55 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+
+    const session = await getSessionFromRequest(request);
+    if (!session || session.role !== 'teacher' || !session.user_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('diaries')
+      .select(
+        `id, school_code, created_by, subject_id, mode, academic_year_id,
+        diary_targets ( class_name, section_name, class_id )`
+      )
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) {
+      return NextResponse.json({ error: 'Diary entry not found' }, { status: 404 });
+    }
+
+    const existingTargets: DiaryTargetRow[] = ((existing.diary_targets as DiaryTargetRow[]) || []).map((t) => ({
+      class_name: t.class_name,
+      section_name: t.section_name ?? null,
+      class_id: t.class_id ?? null,
+    }));
+
+    const allowed = await assertTeacherCanAccessDiary(
+      supabase,
+      session,
+      {
+        school_code: existing.school_code,
+        created_by: existing.created_by,
+        subject_id: existing.subject_id,
+        mode: existing.mode,
+        academic_year_id: existing.academic_year_id,
+      },
+      existingTargets
+    );
+    if (!allowed) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const payload = session.user_payload as { school_code?: string } | null | undefined;
+    const sessionSchool = String(session.school_code || payload?.school_code || '').trim().toUpperCase();
+    if (
+      !sessionSchool ||
+      sessionSchool !== String(existing.school_code || '').trim().toUpperCase()
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Soft delete
     const { error: deleteError } = await supabase

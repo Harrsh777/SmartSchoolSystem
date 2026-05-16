@@ -136,19 +136,29 @@ export default function StudentLayout({ children }: StudentLayoutProps) {
       let storedStudent = sessionStorage.getItem('student');
       let role = sessionStorage.getItem('role');
 
-      // If sessionStorage empty (e.g. new tab), rehydrate from server so multiple tabs work
-      if (!storedStudent || role !== 'student') {
-        const res = await fetch('/api/auth/session', { credentials: 'include' });
-        if (cancelled) return;
-        if (res.ok) {
-          const data = await res.json();
-          if (data.role === 'student' && data.user) {
-            sessionStorage.setItem('student', JSON.stringify(data.user));
-            sessionStorage.setItem('role', 'student');
-            storedStudent = JSON.stringify(data.user);
-            role = 'student';
-          }
+      // Server session is source of truth — sessionStorage alone is not enough for write APIs
+      const res = await fetch('/api/auth/session?role=student', { credentials: 'include' });
+      if (cancelled) return;
+      if (res.ok) {
+        const data = await res.json();
+        if (data.role === 'student' && data.user) {
+          sessionStorage.setItem('student', JSON.stringify(data.user));
+          sessionStorage.setItem('role', 'student');
+          storedStudent = JSON.stringify(data.user);
+          role = 'student';
+        } else if (pathname !== '/student/dashboard/calendar/academic') {
+          sessionStorage.removeItem('student');
+          sessionStorage.removeItem('role');
+          router.push('/student/login');
+          setLoading(false);
+          return;
         }
+      } else if (pathname !== '/student/dashboard/calendar/academic') {
+        sessionStorage.removeItem('student');
+        sessionStorage.removeItem('role');
+        router.push('/student/login');
+        setLoading(false);
+        return;
       }
 
       // Academic calendar: allow any logged-in user (student or staff) without permission check

@@ -109,7 +109,8 @@ type TeacherRbacSidebarProps = {
   pathname: string;
   setSidebarOpen: (v: boolean) => void;
   teacherBaseItems: TeacherPortalBaseItem[];
-  dynamicModules: TeacherRbacModule[];
+  mergedMenuModules: TeacherRbacModule[];
+  showDigitalDiaryInPortal: boolean;
   /** Staff's school_code — RBAC module links are `/teacher/dashboard/<school>/...`. */
   teacherSchoolCode: string;
   isRestrictedNonTeaching: boolean;
@@ -122,7 +123,8 @@ export function TeacherRbacSidebar({
   pathname,
   setSidebarOpen,
   teacherBaseItems,
-  dynamicModules,
+  mergedMenuModules,
+  showDigitalDiaryInPortal,
   teacherSchoolCode,
   isRestrictedNonTeaching,
   isClassTeacher,
@@ -133,6 +135,10 @@ export function TeacherRbacSidebar({
 
   const portalItems = useMemo(() => {
     return teacherBaseItems.filter((item) => {
+      if (item.id === 'homework') {
+        if (isRestrictedNonTeaching) return false;
+        return showDigitalDiaryInPortal;
+      }
       if (INTRINSIC_MENU_IDS.has(item.id)) return true;
       if (CLASS_TEACHER_MENU_IDS.has(item.id)) {
         if (isRestrictedNonTeaching) return false;
@@ -145,13 +151,19 @@ export function TeacherRbacSidebar({
       }
       return false;
     });
-  }, [teacherBaseItems, isRestrictedNonTeaching, isClassTeacher, hasTimetableTeaching]);
+  }, [
+    teacherBaseItems,
+    isRestrictedNonTeaching,
+    isClassTeacher,
+    hasTimetableTeaching,
+    showDigitalDiaryInPortal,
+  ]);
 
   useEffect(() => {
-    if (!dynamicModules.length) return;
+    if (!mergedMenuModules.length) return;
     setExpanded((prev) => {
       const next = { ...prev };
-      for (const mod of dynamicModules) {
+      for (const mod of mergedMenuModules) {
         for (const sm of mod.sub_modules || []) {
           const href = teacherHrefFromModuleRoute(sm.route, teacherSchoolCode);
           if (pathname === href || pathname.startsWith(`${href}/`)) {
@@ -161,7 +173,7 @@ export function TeacherRbacSidebar({
       }
       return next;
     });
-  }, [pathname, dynamicModules, teacherSchoolCode]);
+  }, [pathname, mergedMenuModules, teacherSchoolCode]);
 
   return (
     <nav className="p-5 space-y-4 overflow-visible">
@@ -199,13 +211,13 @@ export function TeacherRbacSidebar({
         </div>
       </div>
 
-      {dynamicModules.length > 0 ? (
+      {mergedMenuModules.length > 0 ? (
         <div>
           <p className="px-3.5 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-200/80">
             School modules
           </p>
           <div className="space-y-1">
-            {dynamicModules.map((mod) => {
+            {mergedMenuModules.map((mod) => {
               const Icon = MODULE_ICONS[mod.module_key] || FileText;
               const open = expanded[mod.module_key] ?? false;
               const moduleActive = (mod.sub_modules || []).some((sm) => {
@@ -280,7 +292,7 @@ export function TeacherRbacSidebar({
 /** Client-side guard aligned with middleware + class-teacher portal rules. */
 export function isPathAllowedOnTeacherDashboardClient(
   pathname: string,
-  dynamicModules: TeacherRbacModule[],
+  mergedMenuModules: TeacherRbacModule[],
   isRestrictedNonTeaching: boolean,
   sessionSchoolCode?: string | null
 ): boolean {
@@ -289,7 +301,7 @@ export function isPathAllowedOnTeacherDashboardClient(
   if (isTeacherClassTeacherIntrinsicPath(pathname)) {
     return !isRestrictedNonTeaching;
   }
-  if (!dynamicModules.length) return true;
+  if (!mergedMenuModules.length) return true;
   const slug = teacherPathnameToSlug(pathname, sessionSchoolCode);
-  return evaluateTeacherSlugAgainstMenu(dynamicModules, slug).allowed;
+  return evaluateTeacherSlugAgainstMenu(mergedMenuModules, slug).allowed;
 }

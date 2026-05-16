@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -16,7 +16,13 @@ import {
   FileText,
   Image as ImageIcon,
   Calendar,
+  Search,
+  Users,
+  Clock,
 } from 'lucide-react';
+import { TeacherSubmissionsPanel } from '@/components/digital-diary/TeacherSubmissionsPanel';
+import { useDiaryRealtime } from '@/components/digital-diary/useDiaryRealtime';
+import type { TeacherAnalytics } from '@/components/digital-diary/types';
 
 interface AcademicYear {
   academic_year: string;
@@ -44,6 +50,10 @@ interface DiaryEntry {
   }>;
   read_count: number;
   total_targets: number;
+  due_at?: string | null;
+  instructions?: string | null;
+  submissions_allowed?: boolean;
+  submission_stats?: { submitted: number; pending: number; late: number };
 }
 
 interface Subject {
@@ -70,6 +80,9 @@ export default function TeacherDigitalDiaryPage() {
   const [diaryType, setDiaryType] = useState<'HOMEWORK' | 'OTHER' | 'ASSIGNMENT' | 'NOTICE'>('HOMEWORK');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [analytics, setAnalytics] = useState<TeacherAnalytics | null>(null);
+  const [submissionsDiary, setSubmissionsDiary] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     const storedTeacher = sessionStorage.getItem('teacher');
@@ -133,7 +146,7 @@ export default function TeacherDigitalDiaryPage() {
       });
       params.append('academic_year_id', selectedYear.academic_year);
 
-      const response = await fetch(`/api/diary?${params}`);
+      const response = await fetch(`/api/diary?${params}`, { credentials: 'include' });
       const result = await response.json();
       if (response.ok && result.data) {
         setDiaries(result.data);
@@ -154,15 +167,45 @@ export default function TeacherDigitalDiaryPage() {
       });
       params.append('academic_year_id', selectedYear.academic_year);
 
-      const response = await fetch(`/api/diary/stats?${params}`);
+      const response = await fetch(`/api/diary/stats?${params}`, { credentials: 'include' });
       const result = await response.json();
       if (response.ok && result.data) {
         setTotalCount(result.data.total);
+        setAnalytics({
+          total_assignments: result.data.total_assignments ?? 0,
+          pending_submissions: result.data.pending_submissions ?? 0,
+          submission_rate_pct: result.data.submission_rate_pct ?? 0,
+          late_submissions: result.data.late_submissions ?? 0,
+        });
       }
     } catch (err) {
       console.error('Error fetching stats:', err);
     }
   };
+
+  const refreshLists = useCallback(() => {
+    void fetchDiaries();
+    void fetchStats();
+  }, [schoolCode, selectedYear, page]);
+
+  useDiaryRealtime(
+    diaries.map((d) => d.id),
+    refreshLists
+  );
+
+  const filteredDiaries = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return diaries;
+    return diaries.filter(
+      (d) =>
+        d.title.toLowerCase().includes(q) ||
+        d.type.toLowerCase().includes(q) ||
+        (d.subject_name || '').toLowerCase().includes(q) ||
+        d.diary_targets.some((t) =>
+          `${t.class_name}${t.section_name || ''}`.toLowerCase().includes(q)
+        )
+    );
+  }, [diaries, searchQuery]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this diary entry?')) return;
@@ -170,6 +213,7 @@ export default function TeacherDigitalDiaryPage() {
     try {
       const response = await fetch(`/api/diary/${id}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
       if (response.ok) {
         fetchDiaries();
@@ -331,16 +375,38 @@ export default function TeacherDigitalDiaryPage() {
         </div>
       </Card>
 
-      {/* Stats Card - Dark green */}
-      <Card className="p-6 bg-gradient-to-r from-emerald-700 to-emerald-800 text-white">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-lg bg-emerald-900/80 flex items-center justify-center">
-            <BookOpen className="text-white" size={32} />
-          </div>
-          <div>
-            <p className="text-3xl font-bold">{totalCount}</p>
-            <p className="text-emerald-100 text-sm">Total Diaries</p>
-          </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Card className="p-4 bg-gradient-to-br from-emerald-700 to-emerald-800 text-white">
+          <p className="text-2xl font-bold">{totalCount}</p>
+          <p className="text-emerald-100 text-xs mt-1">Total entries</p>
+        </Card>
+        <Card className="p-4 border border-emerald-100">
+          <p className="text-2xl font-bold text-gray-900">{analytics?.total_assignments ?? 0}</p>
+          <p className="text-gray-500 text-xs mt-1">Assignments</p>
+        </Card>
+        <Card className="p-4 border border-amber-100">
+          <p className="text-2xl font-bold text-amber-700">{analytics?.pending_submissions ?? 0}</p>
+          <p className="text-gray-500 text-xs mt-1">Pending</p>
+        </Card>
+        <Card className="p-4 border border-emerald-100">
+          <p className="text-2xl font-bold text-emerald-700">{analytics?.submission_rate_pct ?? 0}%</p>
+          <p className="text-gray-500 text-xs mt-1">Submission rate</p>
+        </Card>
+        <Card className="p-4 border border-red-100">
+          <p className="text-2xl font-bold text-red-600">{analytics?.late_submissions ?? 0}</p>
+          <p className="text-gray-500 text-xs mt-1">Late</p>
+        </Card>
+      </div>
+
+      <Card className="p-4 sticky top-20 z-10 shadow-md border border-gray-100">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by title, class, subject..."
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+          />
         </div>
       </Card>
 
@@ -349,9 +415,9 @@ export default function TeacherDigitalDiaryPage() {
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-2 border-emerald-600 border-t-transparent rounded-full"></div>
         </div>
-      ) : diaries.length > 0 ? (
+      ) : filteredDiaries.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {diaries.map((diary) => (
+          {filteredDiaries.map((diary) => (
             <Card key={diary.id} className="p-6 hover:shadow-lg transition-shadow">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -416,9 +482,43 @@ export default function TeacherDigitalDiaryPage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <Calendar size={14} />
-                <span>{formatTimeAgo(diary.created_at)}</span>
+              {diary.due_at ? (
+                <div className="flex items-center gap-1 text-xs text-amber-700 mb-2">
+                  <Clock size={14} />
+                  <span>Due {new Date(diary.due_at).toLocaleString()}</span>
+                </div>
+              ) : null}
+              {(diary.type === 'HOMEWORK' || diary.type === 'ASSIGNMENT') && diary.submissions_allowed !== false ? (
+                <div className="mb-3">
+                  <motion.div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full"
+                      style={{
+                        width: `${Math.min(100, ((diary.submission_stats?.submitted || 0) / Math.max(1, (diary.submission_stats?.submitted || 0) + (diary.submission_stats?.pending || 0))) * 100)}%`,
+                      }}
+                    />
+                  </motion.div>
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    {diary.submission_stats?.submitted ?? 0} submitted · {diary.submission_stats?.pending ?? 0} pending
+                    {(diary.submission_stats?.late ?? 0) > 0 ? ` · ${diary.submission_stats?.late} late` : ''}
+                  </p>
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Calendar size={14} />
+                  <span>{formatTimeAgo(diary.created_at)}</span>
+                </div>
+                {(diary.type === 'HOMEWORK' || diary.type === 'ASSIGNMENT') ? (
+                  <button
+                    type="button"
+                    onClick={() => setSubmissionsDiary({ id: diary.id, title: diary.title })}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                  >
+                    <Users size={14} />
+                    Submissions
+                  </button>
+                ) : null}
               </div>
             </Card>
           ))}
@@ -457,6 +557,13 @@ export default function TeacherDigitalDiaryPage() {
       )}
 
       {/* Create/Edit Modal */}
+      <TeacherSubmissionsPanel
+        diaryId={submissionsDiary?.id || ''}
+        diaryTitle={submissionsDiary?.title || ''}
+        open={Boolean(submissionsDiary)}
+        onClose={() => setSubmissionsDiary(null)}
+      />
+
       {showModal && schoolCode && (
         <DiaryModal
           schoolCode={schoolCode}
@@ -494,6 +601,8 @@ function DiaryModal({
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [canSelectAll, setCanSelectAll] = useState(false);
+  const [loadingClasses, setLoadingClasses] = useState(false);
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [availableSections, setAvailableSections] = useState<string[]>([]);
   const [selectedSection, setSelectedSection] = useState<string>('');
@@ -502,6 +611,14 @@ function DiaryModal({
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(diary?.subject_id || '');
+  const [dueAtLocal, setDueAtLocal] = useState(() => {
+    if (!diary?.due_at) return '';
+    const d = new Date(diary.due_at);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  const [instructions, setInstructions] = useState(diary?.instructions || '');
+  const [dragOver, setDragOver] = useState(false);
   const [formData, setFormData] = useState({
     title: diary?.title || '',
     content: diary?.content || '',
@@ -538,6 +655,7 @@ function DiaryModal({
       fetchClasses();
     } else {
       setClasses([]);
+      setCanSelectAll(false);
       setSelectedClass('');
       setAvailableSections([]);
       setSelectedSection('');
@@ -553,12 +671,16 @@ function DiaryModal({
         .filter((s): s is string => !!s);
       const uniqueSections = Array.from(new Set(sections)).sort();
       setAvailableSections(uniqueSections);
-      setSelectedSection('');
+      if (!canSelectAll && uniqueSections.length === 1) {
+        setSelectedSection(uniqueSections[0]);
+      } else {
+        setSelectedSection('');
+      }
     } else {
       setAvailableSections([]);
       setSelectedSection('');
     }
-  }, [selectedClass, classes]);
+  }, [selectedClass, classes, canSelectAll]);
 
   useEffect(() => {
     if (formData.mode !== 'SUBJECT_WISE') {
@@ -615,19 +737,39 @@ function DiaryModal({
     try {
       if (!selectedAcademicYear) {
         setClasses([]);
+        setCanSelectAll(false);
         return;
       }
 
-      const response = await fetch(`/api/classes?school_code=${schoolCode}`);
+      setLoadingClasses(true);
+      const params = new URLSearchParams({
+        school_code: schoolCode,
+        academic_year: selectedAcademicYear,
+      });
+      const response = await fetch(`/api/diary/teacher-classes?${params}`, { credentials: 'include' });
       const result = await response.json();
-      if (response.ok && result.data) {
-        const filteredClasses = result.data.filter((item: { academic_year?: string }) => {
-          return item.academic_year === selectedAcademicYear;
-        });
-        setClasses(filteredClasses);
+      if (response.ok && Array.isArray(result.data)) {
+        setCanSelectAll(Boolean(result.can_select_all));
+        setClasses(
+          result.data.map(
+            (item: { id: string; class: string; section?: string; academic_year?: string }): ClassOption => ({
+              id: item.id,
+              class: item.class,
+              section: item.section,
+              academic_year: item.academic_year,
+            })
+          )
+        );
+      } else {
+        setClasses([]);
+        setCanSelectAll(false);
       }
     } catch (err) {
       console.error('Error fetching classes:', err);
+      setClasses([]);
+      setCanSelectAll(false);
+    } finally {
+      setLoadingClasses(false);
     }
   };
 
@@ -689,6 +831,7 @@ function DiaryModal({
 
       const response = await fetch('/api/diary/upload', {
         method: 'POST',
+        credentials: 'include',
         body: form,
       });
 
@@ -709,6 +852,11 @@ function DiaryModal({
   const handleAddTarget = () => {
     if (!selectedClass) {
       alert('Please select a class');
+      return;
+    }
+
+    if (!canSelectAll && !selectedSection) {
+      alert('Please select a section for your assigned class');
       return;
     }
 
@@ -758,10 +906,14 @@ function DiaryModal({
       const method = diary ? 'PATCH' : 'POST';
       const response = await fetch(url, {
         method,
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           school_code: schoolCode,
           academic_year_id: selectedAcademicYear || academicYearId || null,
+          due_at: dueAtLocal ? new Date(dueAtLocal).toISOString() : null,
+          instructions: instructions.trim() || null,
+          submissions_allowed: formData.type === 'HOMEWORK' || formData.type === 'ASSIGNMENT',
           ...formData,
           ...(formData.mode === 'SUBJECT_WISE'
             ? {
@@ -899,6 +1051,11 @@ function DiaryModal({
 
             {selectedAcademicYear && (
               <div className="space-y-4">
+                {!canSelectAll && !loadingClasses && classes.length === 0 ? (
+                  <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    No classes are assigned to you for this academic year. Contact your admin if you need access.
+                  </p>
+                ) : null}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -910,9 +1067,12 @@ function DiaryModal({
                         setSelectedClass(e.target.value);
                         setSelectedSection('');
                       }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      disabled={loadingClasses || (!canSelectAll && classes.length === 0)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-60"
                     >
-                      <option value="">Select Class</option>
+                      <option value="">
+                        {loadingClasses ? 'Loading classes...' : 'Select Class'}
+                      </option>
                       {Array.from(new Set(classes.map((c) => c.class))).sort().map((className) => (
                         <option key={className} value={className}>
                           {className}
@@ -922,14 +1082,20 @@ function DiaryModal({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Section</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Section {!canSelectAll ? <span className="text-red-500">*</span> : null}
+                    </label>
                     <select
                       value={selectedSection}
                       onChange={(e) => setSelectedSection(e.target.value)}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                      disabled={!selectedClass}
+                      disabled={!selectedClass || loadingClasses}
                     >
-                      <option value="">All Sections (Whole Class)</option>
+                      {canSelectAll ? (
+                        <option value="">All Sections (Whole Class)</option>
+                      ) : (
+                        <option value="">Select Section</option>
+                      )}
                       {availableSections.map((section) => (
                         <option key={section} value={section}>
                           {section}
@@ -942,7 +1108,12 @@ function DiaryModal({
                 <Button
                   type="button"
                   onClick={handleAddTarget}
-                  disabled={!selectedClass || selectedTargets.length > 0}
+                  disabled={
+                    !selectedClass ||
+                    selectedTargets.length > 0 ||
+                    loadingClasses ||
+                    (!canSelectAll && !selectedSection)
+                  }
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Plus size={16} className="mr-2" />
@@ -1010,13 +1181,31 @@ function DiaryModal({
             )}
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Instruction (Rich Text)</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Due date</label>
+              <input
+                type="datetime-local"
+                value={dueAtLocal}
+                onChange={(e) => setDueAtLocal(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-4"
+              />
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
               <textarea
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-y"
-                rows={4}
-                placeholder="Enter instructions or content (HTML supported)"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+                rows={3}
+                placeholder="Assignment description for students"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Optional instructions</label>
+              <textarea
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+                rows={2}
+                placeholder="Extra notes for students"
               />
             </div>
 

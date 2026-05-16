@@ -4,8 +4,6 @@ import { requirePermission } from '@/lib/api-permissions';
 import { academicYearMatchesStructure } from '@/lib/fees/fee-structure-class-match';
 import { enrichStudentFeesWithAdjustments } from '@/lib/fees/enrich-student-fees';
 
-const DUE_EPS = 0.01;
-
 function normalizePhone(value: unknown): string {
   return String(value ?? '').replace(/\D/g, '');
 }

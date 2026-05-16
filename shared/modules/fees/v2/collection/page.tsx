@@ -25,6 +25,7 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react';
+import { MANUAL_LINES_SECTION_TITLE, manualLineReceiptLabel } from '@/lib/fees/manual-line-display';
 
 interface AdjustmentLine {
   rule_id: string;
@@ -1757,7 +1758,7 @@ export default function PaymentCollectionPage({
                                             {manual.length > 0 && (
                                               <div className="mt-3">
                                                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
-                                                  Misc & discounts
+                                                  {MANUAL_LINES_SECTION_TITLE}
                                                 </p>
                                                 <ul className="rounded-lg border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-800">
                                                   {manual.map((ln) => (
@@ -1766,8 +1767,7 @@ export default function PaymentCollectionPage({
                                                       className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2 text-sm text-gray-800 dark:text-slate-200"
                                                     >
                                                       <span className="min-w-0">
-                                                        {ln.label}{' '}
-                                                        <span className="text-gray-500 text-xs">({ln.kind})</span>
+                                                        {manualLineReceiptLabel(ln)}
                                                       </span>
                                                       <span
                                                         className={`tabular-nums font-medium text-right shrink-0 ${
@@ -2288,7 +2288,7 @@ export default function PaymentCollectionPage({
                                     {manual.length > 0 && (
                                       <div className="mt-3">
                                         <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
-                                          Misc & discounts
+                                          {MANUAL_LINES_SECTION_TITLE}
                                         </p>
                                         <ul className="rounded-lg border border-gray-200 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-800">
                                           {manual.map((ln) => (
@@ -2845,7 +2845,7 @@ export default function PaymentCollectionPage({
                                 {manual.length > 0 && (
                                   <div>
                                     <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-2">
-                                      Misc & discounts (receipt lines)
+                                      {MANUAL_LINES_SECTION_TITLE}
                                     </p>
                                     <ul className="rounded-lg border border-gray-200 dark:border-slate-800 divide-y divide-gray-100 dark:divide-slate-700">
                                       {manual.map((ln) => (

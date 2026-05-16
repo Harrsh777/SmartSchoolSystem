@@ -1,5 +1,9 @@
 import { getServiceRoleClient } from '@/lib/supabase-admin';
 import type { RbacMenuModule } from '@/lib/rbac/teacher-menu-matching';
+import {
+  mergeIntrinsicDigitalDiaryModule,
+  staffHasIntrinsicDigitalDiaryAccess,
+} from '@/lib/rbac/intrinsic-digital-diary';
 
 type PermissionRow = {
   module_name: string;
@@ -291,7 +295,16 @@ export async function getStaffMenuModulesForStaffId(staffId: string): Promise<Rb
     .filter((module) => module.sub_modules.length > 0)
     .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
 
-  return menuItems;
+  const schoolCode = String(staffData.school_code || '').trim();
+  if (!schoolCode) {
+    return menuItems;
+  }
+  const intrinsicDigitalDiary = await staffHasIntrinsicDigitalDiaryAccess(
+    supabase,
+    staffData.id,
+    schoolCode
+  );
+  return mergeIntrinsicDigitalDiaryModule(menuItems, intrinsicDigitalDiary);
 }
 
 export async function getStaffMenuModulesCached(staffId: string): Promise<RbacMenuModule[] | null> {
